@@ -32,7 +32,11 @@ test('declares one private installable DSH bundle', async () => {
   })
   assert.deepEqual(packageJson.files, [
     'lib/index.js',
-    'lib/types/**/*.d.ts',
+    'lib/catalog.js',
+    'lib/provider.js',
+    'lib/types/index.d.ts',
+    'lib/types/catalog.d.ts',
+    'lib/types/provider.d.ts',
     'cordis.patch.yml',
     'generated/catalog.json',
     'vendor/mattpocock-skills/',

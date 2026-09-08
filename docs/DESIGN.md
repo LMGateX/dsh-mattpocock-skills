@@ -1,6 +1,6 @@
 # DSH Matt Pocock Skills — Accepted Design
 
-- **Status:** Accepted; Phases 0–2 implemented and verified
+- **Status:** Accepted; Phases 0–3 implemented and verified
 - **Accepted on:** 2026-09-08
 - **Owner:** LMGateX
 - **Local checkout:** `<checkout of this repository>`
@@ -101,11 +101,13 @@ The initial peer seams are `@deepseek-ai/cordis`, `@deepseek-ai/dsh-skill`, and 
 
 The provider is immutable for one plugin mount:
 
-- `list()` reads no Skill files and performs no directory scan. It filters and maps the generated catalog for the configured channel.
-- `get()` accepts only a candidate created by this provider, reads the exact cataloged `SKILL.md`, rejects path or identity drift, removes the validated YAML frontmatter, and returns the body as DSH Skill content.
-- Each definition preserves the candidate's name, description, invocation policy, provider, source, metadata, path, and package-directory `resourceBase`.
-- The provider observes `AbortSignal` and passes it to abortable host reads where supported.
-- Missing files, malformed content, hash drift, or candidate/catalog mismatch return no definition with a useful diagnostic; they never silently substitute another Skill.
+- The generated JSON catalog is loaded, closed-schema validated, and deeply frozen once when the Host module loads.
+- `list()` reads no Skill files and performs no directory scan. It returns the immutable configured-channel selection from that catalog.
+- `get()` accepts only the exact candidate object created by this provider. It anchors the non-symlink vendored root to `realpath(packageRoot)` while permitting the package root itself to be package-manager symlinked, resolves the cataloged directory and file back to their exact real paths beneath that anchor, rejects root/intermediate/final symlink or identity drift, opens `SKILL.md` with no-follow semantics as a regular file, then repeats containment and bigint device/inode checks before reading.
+- Each definition preserves the candidate's name, description, invocation policy, provider, source, metadata, path, and package-directory `resourceBase`; the body starts at the generation-validated frontmatter byte boundary.
+- The provider observes `AbortSignal`, passes it into the active file-read operation, and propagates the exact lookup or lifecycle abort reason.
+- Node does not expose an `openat2`-style beneath/no-symlink resolver. Concurrent hostile mutation can therefore retain a residual parent-directory race after the repeated checks; installed package artifacts are treated as immutable during a provider read, and unsupported no-follow hosts fail closed.
+- Missing files, malformed content, hash drift, or candidate/catalog mismatch return no definition and emit a warning through the plugin's named Cordis logger; they never silently substitute another Skill. Abort reasons propagate instead of being diagnosed as corruption.
 - No watcher or invalidation loop is required. Changing plugin config remounts the plugin through the normal Cordis lifecycle.
 
 Candidate fields include:
@@ -161,6 +163,8 @@ The target implementation layout is:
 ├── tests/
 └── lib/
     ├── index.js
+    ├── catalog.js
+    ├── provider.js
     └── types/
 ```
 
@@ -174,7 +178,7 @@ Each catalog entry records at least:
 
 - Skill name and description
 - optional `whenToUse` and metadata
-- unconsumed source frontmatter under deterministic `frontmatterExtensions` audit metadata; notably, `argument-hint` is preserved there and is never mapped to `whenToUse`
+- unconsumed source frontmatter under deterministic `frontmatterExtensions` audit metadata; at runtime this is exposed as `SkillCandidate.metadata.frontmatterExtensions`, while source `metadata` keeps its original keys; notably, `argument-hint` is preserved there and is never mapped to `whenToUse`
 - canonical invocation policy
 - relative Skill directory and `SKILL.md` path
 - channel membership
@@ -254,7 +258,7 @@ The initial private repository may use Git commits or locally packed tarballs wi
 
 ## 11. Compatibility and Precedence
 
-The initial implementation targets the locally installed DSH `0.1.2-rc.1`. The provider API was also observed unchanged on the researched `0.1.3-alpha.2` source. Compatibility claims are limited to releases actually tested.
+The initial implementation targets the locally installed DSH `0.1.2-rc.1` on Linux with Node `24.17.0` and a filesystem exposing POSIX no-follow opens plus stable device/inode identity. The provider API was also observed unchanged on the researched `0.1.3-alpha.2` source. Unsupported no-follow hosts fail closed, and compatibility claims are limited to releases, operating systems, and filesystems actually tested.
 
 The package must use the host's DSH and Cordis service identities through peer dependencies rather than bundling duplicate runtime copies.
 
@@ -271,7 +275,8 @@ Deterministic gates include:
 - complete Stable/Beta membership tests
 - `list()` and `get()` provider contract tests
 - relative resource-base tests
-- abort and malformed/missing-file behavior
+- deterministic active-read lookup/lifecycle aborts and malformed/missing-file behavior
+- final, vendored-root, and intermediate-ancestor symlink rejection
 - project/user precedence integration
 - parseable one-row Bundle patch
 - packed-file allowlist and packed-script consistency

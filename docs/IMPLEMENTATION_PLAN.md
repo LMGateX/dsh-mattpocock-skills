@@ -36,6 +36,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## Phase 3 — Immutable Provider
 
+**Status:** Complete. The immutable provider passes 13 direct/registry provider tests against `@deepseek-ai/dsh-skill@0.1.2-rc.1`; the complete suite has 27 passing tests, including anchored root/intermediate/final symlink drift and deterministic active-read cancellation regressions.
+
 - Implement the Host provider over the generated catalog.
 - Implement static `list()` and exact lazy `get()`.
 - Preserve DSH invocation policy and package-directory resource bases.

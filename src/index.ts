@@ -1,6 +1,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 
+import { createMattPocockSkillProvider } from './provider.js'
+
+export { CATALOG, parseCatalog } from './catalog.js'
+export type { CatalogInvocation, CatalogSkill, SkillCatalog } from './catalog.js'
+export { PACKAGE_ROOT, PROVIDER_NAME, createMattPocockSkillProvider } from './provider.js'
+export type { ProviderDiagnostic, ProviderOptions, SkillFileReader } from './provider.js'
+
 export const name = 'dsh-mattpocock-skills'
 export const inject = ['skills'] as const
 
@@ -16,9 +23,11 @@ export const Config: Schema<Config> = Schema.object({
   channel: Schema.union([...CHANNELS]).default(DEFAULT_CHANNEL),
 }).description('Select the Matt Pocock Skills distribution channel')
 
-/**
- * Phase 1 establishes the installable plugin surface. The immutable Skill
- * provider is added in Phase 3 after verified source ingestion and catalog
- * generation exist.
- */
-export function apply(_ctx: Context, _config: Config): void {}
+/** Register one immutable bundled Skill provider for the selected channel. */
+export function apply(ctx: Context, config: Config = { channel: DEFAULT_CHANNEL }): void {
+  const logger = ctx.logger(name)
+  ctx.skills.registerProvider((control) => createMattPocockSkillProvider(config.channel, {
+    lifecycleSignal: control.signal,
+    diagnostic: (message) => logger.warn(message),
+  }))
+}
