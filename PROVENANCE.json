@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "name": "update-source",
+    "package": "@lmgatex/dsh-mattpocock-skills",
+    "version": 1
+  },
+  "sourceLockSha256": "f3ac11d9fdb3c29c0f5f46b3b553c9d5c9a5d1cd392ea1c0ccc9f31f78270c02",
+  "sourceDistribution": {
+    "repository": "https://github.com/LMGateX/mattpocock-skills-distribution.git",
+    "tag": "v0.1.0-beta.1",
+    "tagObject": "0108f00aa90cde51b290d6c58ac86d7f0b045ba0",
+    "commit": "f0834542c543df9197364127d13383ffea6e43d3",
+    "verifier": {
+      "path": ".distribution/scripts/verify-channels.mjs",
+      "sha256": "8b1b01c562af52ae9c330e63a47aaa7ae52f03ee12d4be69ea36fbefea760155",
+      "invocation": [
+        "node",
+        ".distribution/scripts/verify-channels.mjs"
+      ]
+    }
+  },
+  "upstream": {
+    "repository": "https://github.com/mattpocock/skills",
+    "commit": "3cca18b368ae95cdbdebbff572ccafa662551015",
+    "contentSha256": "e7bcca432ff838a071214bf578b7fd993a0c86ef2edbc1b7d3abad1f861c76f0"
+  },
+  "manifests": [
+    {
+      "channel": "stable",
+      "path": "vendor/mattpocock-skills/.distribution/channels/stable.json",
+      "schemaVersion": 1,
+      "sha256": "3155c4068625c1f10676521f2f2eb321b812e822fb80ab0ebe5d62e731fd4acb",
+      "skillCount": 25
+    },
+    {
+      "channel": "beta",
+      "path": "vendor/mattpocock-skills/.distribution/channels/beta.json",
+      "schemaVersion": 1,
+      "sha256": "7a2956f3bf9391f06b43f1dcac1abc22624777ad5a4b9e9a45ad02719f586ab4",
+      "skillCount": 26
+    }
+  ],
+  "catalog": {
+    "path": "generated/catalog.json",
+    "sha256": "33afe9dd4feccaf49136695f199e428969be4626c927dca600ce3858d5167322",
+    "skillCount": 26
+  },
+  "inventory": {
+    "path": "vendor-files.json",
+    "root": "vendor/mattpocock-skills",
+    "hashAlgorithm": "sha256",
+    "fileCount": 81,
+    "totalBytes": 212143,
+    "rootSha256": "1e6182fe1e430a5f653be3b33e9340e19ff8a812d0f7bb7bbc44da10fb9c6a50"
+  }
+}

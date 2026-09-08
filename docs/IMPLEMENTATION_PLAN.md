@@ -4,6 +4,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## Phase 0 — Repository Baseline
 
+**Status:** Complete.
+
 - Keep both GitHub repositories private.
 - Confirm the source distribution default branch and immutable tag are reachable.
 - Commit this design baseline before runtime implementation.
@@ -11,6 +13,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 **Gate:** clean local worktrees, private repository visibility, and matching remote commit IDs.
 
 ## Phase 1 — Package Scaffold
+
+**Status:** Complete.
 
 - Create the TypeScript ESM package and exact development lockfile.
 - Add the one-row `cordis.patch.yml` and Schemastery channel config.
@@ -20,6 +24,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 **Gate:** package metadata and patch parse successfully; no client entry, install lifecycle script, or runtime network dependency exists.
 
 ## Phase 2 — Verified Source Ingestion
+
+**Status:** Complete. The pinned Beta union contains 26 Skills and 81 vendored files (212,143 bytes); offline inventory root SHA-256 is `1e6182fe1e430a5f653be3b33e9340e19ff8a812d0f7bb7bbc44da10fb9c6a50`.
 
 - Implement explicit tag/commit source ingestion.
 - Vendor the complete Beta union from the source manifests.

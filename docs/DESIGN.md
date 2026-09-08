@@ -1,6 +1,6 @@
 # DSH Matt Pocock Skills — Accepted Design
 
-- **Status:** Accepted; implementation not started
+- **Status:** Accepted; Phases 0–2 implemented and verified
 - **Accepted on:** 2026-09-08
 - **Owner:** LMGateX
 - **Local checkout:** `<checkout of this repository>`
@@ -44,6 +44,7 @@ The initial source baseline is:
 | Distribution commit | `f0834542c543df9197364127d13383ffea6e43d3` |
 | Matt Pocock upstream | `mattpocock/skills` |
 | Upstream commit | `3cca18b368ae95cdbdebbff572ccafa662551015` |
+| Source verifier SHA-256 | `8b1b01c562af52ae9c330e63a47aaa7ae52f03ee12d4be69ea36fbefea760155` |
 | Stable selection | 25 promoted Skills |
 | Beta selection | Stable plus official `skills/in-progress/implement-spec` |
 
@@ -173,6 +174,7 @@ Each catalog entry records at least:
 
 - Skill name and description
 - optional `whenToUse` and metadata
+- unconsumed source frontmatter under deterministic `frontmatterExtensions` audit metadata; notably, `argument-hint` is preserved there and is never mapped to `whenToUse`
 - canonical invocation policy
 - relative Skill directory and `SKILL.md` path
 - channel membership
@@ -195,7 +197,7 @@ The committed catalog is sorted deterministically by Skill name and serialized c
 
 ## 8. Vendoring and Provenance
 
-`scripts/update-source.mjs` consumes an explicit source repository, tag, and full commit. It performs updates in a clean staging directory and moves results into place only after all checks pass.
+`scripts/update-source.mjs` consumes immutable identities from `source-lock.json`; `--source` changes only the Git transport. It verifies the annotated tag object, peeled commit, and pinned verifier SHA-256 before executing the verifier. It performs updates in a same-filesystem clean staging directory and moves results into place only after all checks pass.
 
 Required update sequence:
 
@@ -203,15 +205,17 @@ Required update sequence:
 2. Verify the source in a real Git checkout using the source distribution's verifier.
 3. Parse the selected distribution manifests and reject unknown schemas.
 4. Build the Beta union from manifests, not from directory enumeration.
-5. Copy each selected complete Skill directory without rewriting bytes.
-6. Copy the distribution manifests, provenance metadata, distribution document, and upstream license.
+5. Read each selected complete Skill directory from Git tree entries and blob bytes, preserving Git-compatible modes without relying on checkout bytes.
+6. Copy exactly `.distribution/channels/stable.json`, `.distribution/channels/beta.json`, `.distribution/upstream.json`, `DISTRIBUTION.md`, and the upstream `LICENSE`; do not copy maintenance scripts or the rest of `.distribution/`.
 7. Generate the catalog, `PROVENANCE.json`, and sorted `vendor-files.json`.
 8. Verify every regular file, executable bit, and symlink target; reject path escapes and residue from an older source.
 9. Re-run generation in check mode and require zero drift.
 
 `PROVENANCE.json` records both repositories, tag object, distribution commit, upstream commit, manifest hashes, generator version, and inventory root hash.
 
-`vendor-files.json` records normalized paths, file kind, Git-compatible mode, SHA-256, and symlink target where applicable. The inventory must be verifiable from an extracted npm or tar archive without Git metadata.
+`vendor-files.json` records normalized paths, file kind, Git-compatible mode, SHA-256, and symlink target where applicable. Its `rootSha256` is SHA-256 over UTF-8 byte-sorted, NUL-delimited records prefixed by the domain string `dsh-mattpocock-vendor-v1\0`. The inventory must be verifiable from an extracted npm or tar archive without Git metadata.
+
+Updates use an exclusive `O_EXCL` lock and backup/rollback renames. The accepted four-output layout provides transactional all-or-rollback replacement, not true reader-level atomic visibility across `vendor/`, `generated/`, `PROVENANCE.json`, and `vendor-files.json`; achieving the latter would require a single generated root or indirection and is outside this design.
 
 ## 9. Source-Body Policy
 
@@ -234,7 +238,7 @@ If a repeatable evaluation proves a generic Skill failure, first determine wheth
 
 Author in TypeScript and commit the prebuilt `lib/` output. Private GitHub installation must not require `prepare`, `postinstall`, or pnpm build approval.
 
-The package file allowlist includes only runtime code and types, the bundle patch, generated catalog, vendored selected files and provenance, licenses/notices, and user documentation. Source maintenance scripts may be included only if every advertised package script remains runnable from the packed artifact; otherwise they remain source-only and are not advertised as installed-package commands.
+The package file allowlist includes only runtime code and types, the bundle patch, generated catalog, vendored selected files and provenance, the immutable `source-lock.json`, licenses/notices, and user documentation. Source maintenance scripts may be included only if every advertised package script remains runnable from the packed artifact; otherwise they remain source-only and are not advertised as installed-package commands.
 
 Before any release:
 

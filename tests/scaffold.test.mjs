@@ -38,6 +38,7 @@ test('declares one private installable DSH bundle', async () => {
     'vendor/mattpocock-skills/',
     'PROVENANCE.json',
     'vendor-files.json',
+    'source-lock.json',
     'README.md',
     'README.zh-CN.md',
     'LICENSE',
