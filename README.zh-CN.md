@@ -2,10 +2,11 @@
 
 这是一个私有的、可复现的 DeepSeek Harness Profile Bundle，用于加载 [LMGateX/mattpocock-skills-distribution](https://github.com/LMGateX/mattpocock-skills-distribution) 中定义的 Stable/Beta Skills Channel。
 
-**当前状态：Phase 0–3 已完成。** 已实现经过验证的 Stable/Beta 源码集合和不可变 DSH Skill Provider，并通过确定性 Provider 门禁。隔离 DSH 安装、行为评估及所有者 Profile 启用仍属于后续独立阶段。
+**当前状态：Phase 0–3 已完成。** 已实现经过验证的 Stable/Beta 源码集合和不可变 DSH Skill Provider，并通过确定性 Provider 门禁。校验和绑定制品验证、行为评估及所有者 Profile 启用仍采用彼此独立的阶段门禁。
 
 - 权威设计：[docs/DESIGN.md](docs/DESIGN.md)
 - 实施计划：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+- Phase 4 校验和绑定制品流程：[docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
 - `implement-spec` 行为评估：[docs/IMPLEMENT_SPEC_EVAL.md](docs/IMPLEMENT_SPEC_EVAL.md)
 
 该包通过 DSH 原生 `ctx.skills` Provider 暴露未经正文重写的上游 Skill：
@@ -19,7 +20,7 @@
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm exec tsc -p tsconfig.json
+node scripts/verify-package.mjs --prepack
 node --test
 node scripts/verify-vendor.mjs
 node scripts/update-source.mjs --source ../mattpocock-skills-fork --check

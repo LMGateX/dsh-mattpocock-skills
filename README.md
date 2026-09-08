@@ -2,10 +2,11 @@
 
 Private DSH adapter and distribution bundle for the Matt Pocock Skills channels maintained in [LMGateX/mattpocock-skills-distribution](https://github.com/LMGateX/mattpocock-skills-distribution).
 
-**Current status:** Phases 0–3 are complete. The verified Stable/Beta source union and immutable DSH Skill provider are implemented and pass the deterministic provider gates. Isolated DSH installation, behavioral evaluation, and owner-profile activation remain separate later phases.
+**Current status:** Phases 0–3 are complete. The verified Stable/Beta source union and immutable DSH Skill provider are implemented and pass the deterministic provider gates. Checksum-bound artifact verification, behavioral evaluation, and owner-profile activation remain separately gated phases.
 
 - Authoritative architecture: [docs/DESIGN.md](docs/DESIGN.md)
 - Implementation sequence and gates: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+- Checksum-bound Phase 4 artifact runbook: [docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
 - Required `implement-spec` behavioral evaluation: [docs/IMPLEMENT_SPEC_EVAL.md](docs/IMPLEMENT_SPEC_EVAL.md)
 
 The package exposes unchanged upstream Skill bodies through DSH's native `ctx.skills` provider API. `stable` is the default 25-Skill channel; `beta` adds the user-invocable, model-disabled `implement-spec` Skill. It is an unofficial adapter and does not imply endorsement by Matt Pocock.
@@ -14,7 +15,7 @@ The package exposes unchanged upstream Skill bodies through DSH's native `ctx.sk
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm exec tsc -p tsconfig.json
+node scripts/verify-package.mjs --prepack
 node --test
 node scripts/verify-vendor.mjs
 node scripts/update-source.mjs --source ../mattpocock-skills-fork --check

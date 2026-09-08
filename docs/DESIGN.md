@@ -247,12 +247,15 @@ The package file allowlist includes only runtime code and types, the bundle patc
 Before any release:
 
 1. Start from a clean Git tree.
-2. Verify source provenance, vendor inventory, generated catalog, tests, and type/build output.
-3. Build one tarball once.
-4. Verify and smoke-install that exact tarball in an isolated DSH Profile.
-5. Compute and record its SHA-256.
-6. Attach or publish the same bytes. Do not rebuild independently for GitHub and npm.
-7. Create the immutable release tag for the exact source commit represented by the artifact.
+2. Verify source provenance, vendor inventory, generated catalog, tests, and a scratch build that byte-matches committed output.
+3. Build one accepted tarball once into a fresh out-of-repository directory.
+4. Immediately compute and record its size and SHA-256, then make the artifact read-only.
+5. Verify the exact archive members, bytes, modes, extracted provenance, and runtime entry targets without rebuilding.
+6. Smoke-install that exact checksum-bound tarball in an isolated DSH Profile and compare it with a separate isolated checkout installation.
+7. Attach or publish the same bytes. Do not rebuild independently for GitHub and npm.
+8. Create the immutable release tag for the exact source commit represented by the artifact.
+
+Phase 4 produces a private development-verification artifact, not a release. Its scope, accepted command, isolation boundary, and recorded evidence are fixed in [PHASE4_ARTIFACT_VERIFICATION.md](PHASE4_ARTIFACT_VERIFICATION.md).
 
 The initial private repository may use Git commits or locally packed tarballs without publishing to npmjs.
 

@@ -47,13 +47,15 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## Phase 4 — Build and Artifact Verification
 
-- Build and commit `lib/` and declarations.
-- Pack the package.
-- Verify the complete tarball allowlist and hashes.
-- Install the exact local checkout and tarball in separate isolated DSH homes.
-- Inspect composed configs and registry behavior for Stable and Beta.
+**Status:** In progress under the exact runbook in [PHASE4_ARTIFACT_VERIFICATION.md](PHASE4_ARTIFACT_VERIFICATION.md).
 
-**Gate:** no build permission is requested during install; the bundle is automatically activated; `/implement-spec` appears only in Beta; no custom Web module is needed.
+- Prove a scratch TypeScript build exactly matches committed `lib/` and declarations.
+- Build one accepted private development tarball into a fresh external directory, then bind its identity immediately with size and SHA-256.
+- Verify its exact 16 fixed files plus the closed 81-file vendor inventory, extracted provenance, modes, entry points, and absence of source/client payloads.
+- Install the exact local checkout and checksum-bound tarball in separate isolated `DSH_HOME` roots using the `headless` profile.
+- Inspect identical composed Stable/Beta configs and query both installed providers through an actual booted DSH Skill Registry without invoking a model.
+
+**Gate:** the sole accepted tarball passes `scripts/verify-package.mjs`; normal installs request no package build approval; checkout and tarball registry reports match; `implement-spec` appears only in Beta and remains model-disabled; no custom Web module or owner-profile change is needed.
 
 ## Phase 5 — Behavioral Evaluation
 
