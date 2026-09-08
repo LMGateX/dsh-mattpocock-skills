@@ -5,8 +5,8 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
-  PACKAGE_FILES_ALLOWLIST,
   diffFileInventories,
+  expectedPackedFileBytes,
   parseChecksumText,
   parseCliArgs,
   parseGnuTarListing,
@@ -21,9 +21,9 @@ const hash = 'a'.repeat(64)
 
 function expectedMembers() {
   return new Map([
-    ['package/package.json', { type: 'file', mode: 0o644 }],
-    ['package/lib/index.js', { type: 'file', mode: 0o644 }],
-    ['package/vendor/skill/link', { type: 'symlink', target: 'SKILL.md' }],
+    ['package/package.json', { type: 'file', mode: 0o644, size: 10 }],
+    ['package/lib/index.js', { type: 'file', mode: 0o644, size: 20 }],
+    ['package/vendor/skill/link', { type: 'symlink', target: 'SKILL.md', size: 0 }],
   ])
 }
 
@@ -33,9 +33,9 @@ function validMembers() {
     { path: 'package/lib/', type: 'directory', mode: 0o755 },
     { path: 'package/vendor/', type: 'directory', mode: 0o755 },
     { path: 'package/vendor/skill/', type: 'directory', mode: 0o755 },
-    { path: 'package/package.json', type: 'file', mode: 0o644 },
-    { path: 'package/lib/index.js', type: 'file', mode: 0o644 },
-    { path: 'package/vendor/skill/link', type: 'symlink', mode: 0o777, target: 'SKILL.md' },
+    { path: 'package/package.json', type: 'file', mode: 0o644, size: 10 },
+    { path: 'package/lib/index.js', type: 'file', mode: 0o644, size: 20 },
+    { path: 'package/vendor/skill/link', type: 'symlink', mode: 0o777, target: 'SKILL.md', size: 0 },
   ]
 }
 
@@ -45,7 +45,7 @@ test('package policy accepts the current private source-only manifest', () => {
     name: '@lmgatex/dsh-mattpocock-skills',
     version: '0.0.0-development',
     private: true,
-    files: PACKAGE_FILES_ALLOWLIST.length,
+    files: 16,
     peerDependencies: [
       '@deepseek-ai/cordis',
       '@deepseek-ai/dsh-skill',
@@ -96,15 +96,24 @@ test('member validation accepts only expected files, symlinks, and ancestor dire
 test('member validation rejects missing, extra, duplicate, casefold, type, mode, and symlink hazards', () => {
   const cases = [
     [validMembers().filter((member) => member.path !== 'package/lib/index.js'), /missing package\/lib\/index\.js/],
-    [[...validMembers(), { path: 'package/extra', type: 'file', mode: 0o644 }], /unexpected tar member/],
-    [[...validMembers(), { path: 'package/package.json', type: 'file', mode: 0o644 }], /duplicate tar member/],
-    [[...validMembers(), { path: 'package/Package.json', type: 'file', mode: 0o644 }], /case-fold collision/],
+    [[...validMembers(), { path: 'package/extra', type: 'file', mode: 0o644, size: 1 }], /unexpected tar member/],
+    [[...validMembers(), { path: 'package/package.json', type: 'file', mode: 0o644, size: 10 }], /duplicate tar member/],
+    [[...validMembers(), { path: 'package/Package.json', type: 'file', mode: 0o644, size: 10 }], /case-fold collision/],
     [validMembers().map((member) => member.path === 'package/lib/index.js' ? { ...member, type: 'hardlink' } : member), /unsupported tar member type/],
     [validMembers().map((member) => member.path === 'package/lib/index.js' ? { ...member, mode: 0o755 } : member), /mode differs/],
+    [validMembers().map((member) => member.path === 'package/lib/index.js' ? { ...member, size: 21 } : member), /size differs/],
     [validMembers().map((member) => member.path === 'package/vendor/skill/link' ? { ...member, target: '../../../../escape' } : member), /escapes package root/],
-    [[...validMembers(), { path: 'package/vendor/skill/link/child', type: 'file', mode: 0o644 }], /unexpected tar member|ancestor/],
+    [[...validMembers(), { path: 'package/vendor/skill/link/child', type: 'file', mode: 0o644, size: 1 }], /unexpected tar member|ancestor/],
   ]
   for (const [members, pattern] of cases) assert.throws(() => validateTarMembers(members, expectedMembers()), pattern)
+})
+
+test('pnpm package manifest normalization removes exactly one final LF only', () => {
+  assert.deepEqual(expectedPackedFileBytes('README.md', Buffer.from('readme\n')), Buffer.from('readme\n'))
+  assert.deepEqual(expectedPackedFileBytes('package.json', Buffer.from('{}\n')), Buffer.from('{}'))
+  assert.throws(() => expectedPackedFileBytes('package.json', Buffer.from('{}')), /exactly one LF/)
+  assert.throws(() => expectedPackedFileBytes('package.json', Buffer.from('{}\n\n')), /exactly one LF/)
+  assert.throws(() => expectedPackedFileBytes('package.json', Buffer.from('{}\r\n')), /exactly one LF/)
 })
 
 test('checksum parser requires one SHA-256 for the named tarball', () => {
@@ -112,6 +121,7 @@ test('checksum parser requires one SHA-256 for the named tarball', () => {
   assert.equal(parseChecksumText(hash.toUpperCase() + '\n', '/tmp/artifact.tgz'), hash)
   assert.throws(() => parseChecksumText('bad\n', '/tmp/artifact.tgz'), /SHA-256 format/)
   assert.throws(() => parseChecksumText(hash + '  other.tgz\n', '/tmp/artifact.tgz', '/tmp/checksums.txt'), /different artifact/)
+  assert.throws(() => parseChecksumText(hash + '  /other/artifact.tgz\n', '/tmp/artifact.tgz', '/tmp/checksums.txt'), /different artifact/)
   assert.throws(() => parseChecksumText(hash + '\n' + hash + '\n', '/tmp/artifact.tgz'), /exactly one/)
 })
 
@@ -135,7 +145,7 @@ test('build inventory diff identifies missing, extra, mode, and byte drift', () 
 test('GNU tar listing parser preserves member types, modes, spaces, and targets', () => {
   const listing = [
     'drwxr-xr-x 0/0         0 2026-09-08 09:24:21 "package/"',
-    '-rw-r--r-- 0/0        12 2026-09-08 09:24:21 "package/a file"',
+    '-rw-r--r-- 0/0        12 2026-09-08 09:24:21 +0000 "package/a file"',
     'lrwxrwxrwx 0/0         0 2026-09-08 09:24:21 "package/link" -> "a file"',
     '',
   ].join('\n')

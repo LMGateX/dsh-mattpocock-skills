@@ -2,9 +2,9 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { lstat, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
+import { chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, posix, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { parseStrictJsonBytes, verifyCommittedArtifacts } from './lib/source-ingestion.mjs'
@@ -66,7 +66,11 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const SHA256 = /^[0-9a-f]{64}$/
+const EXPECTED_FIXED_PACKED_FILES = 16
+const EXPECTED_VENDOR_PACKED_FILES = 81
+const EXPECTED_PACKED_FILES = 97
+const MAX_TARBALL_BYTES = 16 * 1024 * 1024
+const EXPECTED_PNPM_VERSION = '11.8.0'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -84,7 +88,30 @@ function canonicalFileMode(mode) {
   return mode & 0o111 ? 0o755 : 0o644
 }
 
+export function requirePnpmVersion() {
+  const version = execFileSync('pnpm', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  assert(version === EXPECTED_PNPM_VERSION, 'Phase 4 requires pnpm ' + EXPECTED_PNPM_VERSION + ', got ' + version)
+  return version
+}
+
+function requireCleanSourceCommit(root) {
+  const commit = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  assert(/^[0-9a-f]{40}$/.test(commit), 'source Git commit is invalid')
+  const status = execFileSync('git', ['-C', root, 'status', '--porcelain=v1', '--untracked-files=all'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  assert(status.length === 0, 'source Git tree must be clean before Phase 4 package verification')
+  return { commit, clean: true }
+}
+
+export function expectedPackedFileBytes(path, sourceBytes) {
+  assert(Buffer.isBuffer(sourceBytes), 'packed source bytes must be a Buffer')
+  if (path !== 'package.json') return sourceBytes
+  assert(sourceBytes.length > 1 && sourceBytes.at(-1) === 0x0a && sourceBytes.at(-2) !== 0x0a && sourceBytes.at(-2) !== 0x0d, 'source package.json must end in exactly one LF')
+  return sourceBytes.subarray(0, sourceBytes.length - 1)
+}
+
 export function validatePackagePolicy(packageJson) {
+  assert(PACKAGE_FILES_ALLOWLIST.length === EXPECTED_FIXED_PACKED_FILES, 'internal package allowlist count must remain exactly 16')
+  assert(FIXED_PACKED_FILES.length === EXPECTED_FIXED_PACKED_FILES, 'internal fixed package file count must remain exactly 16')
   assert(packageJson && typeof packageJson === 'object' && !Array.isArray(packageJson), 'package.json must contain an object')
   assert(packageJson.name === '@lmgatex/dsh-mattpocock-skills', 'package name is not the accepted package identity')
   assert(packageJson.version === '0.0.0-development', 'Phase 4 verifier requires version 0.0.0-development')
@@ -172,6 +199,7 @@ export function validateTarMembers(members, expectedMembers) {
     const expected = expectedMembers.get(path)
     assert(expected, 'unexpected tar member ' + path)
     assert(member.type === expected.type, 'tar member type differs for ' + path + ': expected ' + expected.type + ', got ' + member.type)
+    assert(Number.isSafeInteger(member.size) && member.size === expected.size, 'tar member size differs for ' + path + ': expected ' + expected.size + ', got ' + member.size)
     if (member.type === 'file') {
       assert(Number.isInteger(member.mode), 'tar member mode is missing for ' + path)
       assert(member.mode === expected.mode, 'tar member mode differs for ' + path + ': expected ' + modeString(expected.mode) + ', got ' + modeString(member.mode))
@@ -203,7 +231,7 @@ export function parseChecksumText(text, tarballPath, checksumPath = tarballPath 
   if (namedPath !== undefined) {
     const expected = resolve(tarballPath)
     const named = isAbsolute(namedPath) ? resolve(namedPath) : resolve(dirname(checksumPath), namedPath)
-    assert(named === expected || basename(namedPath) === basename(tarballPath), 'checksum file names a different artifact: ' + namedPath)
+    assert(named === expected, 'checksum file names a different artifact: ' + namedPath)
   }
   return hash
 }
@@ -300,6 +328,8 @@ async function readVendorInventory(root) {
   assert(inventory && typeof inventory === 'object' && !Array.isArray(inventory), 'vendor-files.json must contain an object')
   assert(inventory.root === 'vendor/mattpocock-skills', 'vendor inventory root is invalid')
   assert(Array.isArray(inventory.entries), 'vendor inventory entries must be an array')
+  assert(inventory.fileCount === EXPECTED_VENDOR_PACKED_FILES, 'vendor inventory fileCount must remain exactly 81')
+  assert(inventory.entries.length === EXPECTED_VENDOR_PACKED_FILES, 'vendor inventory must contain exactly 81 entries')
   return inventory
 }
 
@@ -313,9 +343,10 @@ function inventoryMode(mode) {
 async function expectedTarMembers(root, inventory) {
   const expected = new Map()
   for (const path of FIXED_PACKED_FILES) {
-    const info = await lstat(join(root, ...path.split('/')))
+    const absolute = join(root, ...path.split('/'))
+    const [info, sourceBytes] = await Promise.all([lstat(absolute), readFile(absolute)])
     assert(info.isFile() && !info.isSymbolicLink(), 'fixed package path must be a regular file: ' + path)
-    expected.set('package/' + path, { type: 'file', mode: canonicalFileMode(info.mode) })
+    expected.set('package/' + path, { type: 'file', mode: canonicalFileMode(info.mode), size: expectedPackedFileBytes(path, sourceBytes).length })
   }
   for (const entry of inventory.entries) {
     assert(entry && typeof entry === 'object', 'vendor inventory entry must be an object')
@@ -323,14 +354,16 @@ async function expectedTarMembers(root, inventory) {
     const path = 'package/' + relativePath
     assert(!expected.has(path), 'duplicate expected package path ' + path)
     if (entry.kind === 'file') {
-      expected.set(path, { type: 'file', mode: inventoryMode(entry.mode) })
+      assert(Number.isSafeInteger(entry.size) && entry.size >= 0, 'vendor inventory size is invalid for ' + entry.path)
+      expected.set(path, { type: 'file', mode: inventoryMode(entry.mode), size: entry.size })
     } else if (entry.kind === 'symlink') {
       assert(entry.mode === '120000', 'symlink inventory mode is invalid for ' + entry.path)
-      expected.set(path, { type: 'symlink', target: entry.target })
+      expected.set(path, { type: 'symlink', target: entry.target, size: 0 })
     } else {
       throw new Error('unsupported vendor inventory kind ' + JSON.stringify(entry.kind))
     }
   }
+  assert(expected.size === EXPECTED_PACKED_FILES, 'expected package inventory must remain exactly 97 files')
   return expected
 }
 
@@ -379,7 +412,7 @@ export function parseGnuTarListing(text) {
   const members = []
   const lines = text.split('\n').filter((line) => line.length > 0)
   for (const line of lines) {
-    const match = /^(.{10})\s+\d+\/\d+\s+(\d+)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+(.+)$/.exec(line)
+    const match = /^(.{10})\s+\d+\/\d+\s+(\d+)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s+[+-]\d{4})?\s+(.+)$/.exec(line)
     assert(match, 'cannot parse GNU tar listing line: ' + line)
     const symbolic = match[1]
     const typeCharacter = symbolic[0]
@@ -452,7 +485,7 @@ async function compareFixedExtractedFiles(sourceRoot, extractedRoot) {
     ])
     assert(sourceInfo.isFile() && extractedInfo.isFile() && !extractedInfo.isSymbolicLink(), 'fixed packed path is not a regular file: ' + path)
     assert(canonicalFileMode(sourceInfo.mode) === canonicalFileMode(extractedInfo.mode), 'extracted mode differs from source for ' + path)
-    assert(sourceBytes.equals(extractedBytes), 'extracted bytes differ from source for ' + path)
+    assert(expectedPackedFileBytes(path, sourceBytes).equals(extractedBytes), 'extracted bytes differ from expected packed source for ' + path)
   }
 }
 
@@ -488,14 +521,9 @@ async function requireForbiddenPathsAbsent(extractedRoot) {
   }
 }
 
-async function verifyChecksum(tarballPath, checksumPath) {
-  const expected = parseChecksumText(await readFile(checksumPath, 'utf8'), tarballPath, checksumPath)
-  const actual = await sha256File(tarballPath)
-  assert(actual === expected, 'tarball SHA-256 differs: expected ' + expected + ', got ' + actual)
-  return actual
-}
-
 export async function runPrepack({ root = repositoryRoot } = {}) {
+  const pnpm = requirePnpmVersion()
+  const source = requireCleanSourceCommit(root)
   const packageJson = await readPackageJson(root)
   const packagePolicy = validatePackagePolicy(packageJson.value)
   const vendor = await verifyCommittedArtifacts(root)
@@ -505,6 +533,8 @@ export async function runPrepack({ root = repositoryRoot } = {}) {
   return {
     mode: 'prepack',
     root,
+    source,
+    pnpm,
     package: packagePolicy,
     build,
     vendor,
@@ -519,21 +549,35 @@ export async function runTarball({ root = repositoryRoot, tarballPath, checksumP
   assert(typeof checksumPath === 'string' && checksumPath.length > 0, '--sha256-file requires a path')
   const absoluteTarball = resolve(tarballPath)
   const absoluteChecksum = resolve(checksumPath)
+  const pnpm = requirePnpmVersion()
+  const source = requireCleanSourceCommit(root)
   const packageJson = await readPackageJson(root)
   const packagePolicy = validatePackagePolicy(packageJson.value)
-  await verifyCommittedArtifacts(root)
+  const sourceVendor = await verifyCommittedArtifacts(root)
+  const build = await compareCommittedBuild(root)
   const inventory = await readVendorInventory(root)
   const expected = await expectedTarMembers(root, inventory)
   const tarVersion = gnuTarVersion()
-  const sha256 = await verifyChecksum(absoluteTarball, absoluteChecksum)
-  const members = listTarball(absoluteTarball)
-  const memberSummary = validateTarMembers(members, expected)
-  assert(await verifyChecksum(absoluteTarball, absoluteChecksum) === sha256, 'tarball changed after listing')
+  const [tarballInfo, checksumInfo] = await Promise.all([lstat(absoluteTarball), lstat(absoluteChecksum)])
+  assert(tarballInfo.isFile() && !tarballInfo.isSymbolicLink(), 'tarball must be a regular non-symlink file')
+  assert(checksumInfo.isFile() && !checksumInfo.isSymbolicLink(), 'checksum must be a regular non-symlink file')
+  assert((tarballInfo.mode & 0o222) === 0, 'accepted tarball must be read-only')
+  assert(tarballInfo.size > 0 && tarballInfo.size <= MAX_TARBALL_BYTES, 'tarball exceeds the Phase 4 compressed-size limit')
+  const checksumText = await readFile(absoluteChecksum, 'utf8')
+  const expectedSha256 = parseChecksumText(checksumText, absoluteTarball, absoluteChecksum)
 
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-package-tar-'))
+  const snapshot = join(temporary, 'artifact.tgz')
   try {
-    extractTarball(absoluteTarball, temporary)
-    assert(await verifyChecksum(absoluteTarball, absoluteChecksum) === sha256, 'tarball changed after extraction')
+    await copyFile(absoluteTarball, snapshot)
+    await chmod(snapshot, 0o444)
+    const sha256 = await sha256File(snapshot)
+    assert(sha256 === expectedSha256, 'tarball SHA-256 differs: expected ' + expectedSha256 + ', got ' + sha256)
+    const members = listTarball(snapshot)
+    const memberSummary = validateTarMembers(members, expected)
+    assert(await sha256File(snapshot) === sha256, 'private tarball snapshot changed after listing')
+    extractTarball(snapshot, temporary)
+    assert(await sha256File(snapshot) === sha256, 'private tarball snapshot changed after extraction')
     const extractedRoot = join(temporary, 'package')
     await compareFixedExtractedFiles(root, extractedRoot)
     const extractedPackage = await readPackageJson(extractedRoot)
@@ -541,17 +585,20 @@ export async function runTarball({ root = repositoryRoot, tarballPath, checksumP
     const vendor = await verifyCommittedArtifacts(extractedRoot)
     const targets = await requirePackageTargets(extractedRoot, extractedPackage.value)
     await requireForbiddenPathsAbsent(extractedRoot)
-    const tarballInfo = await stat(absoluteTarball)
     return {
       mode: 'tarball',
       tarball: absoluteTarball,
       checksumFile: absoluteChecksum,
+      source,
+      pnpm,
       sha256,
       bytes: tarballInfo.size,
       tar: tarVersion,
       package: packagePolicy,
+      build,
       members: memberSummary,
       targets,
+      sourceVendor,
       vendor,
     }
   } finally {

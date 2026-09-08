@@ -159,7 +159,9 @@ The target implementation layout is:
 ├── scripts/
 │   ├── update-source.mjs
 │   ├── verify-vendor.mjs
-│   └── verify-package.mjs
+│   ├── verify-package.mjs
+│   ├── verify-package-e2e.mjs
+│   └── verify-isolated-dsh.mjs
 ├── tests/
 └── lib/
     ├── index.js
@@ -250,7 +252,7 @@ Before any release:
 2. Verify source provenance, vendor inventory, generated catalog, tests, and a scratch build that byte-matches committed output.
 3. Build one accepted tarball once into a fresh out-of-repository directory.
 4. Immediately compute and record its size and SHA-256, then make the artifact read-only.
-5. Verify the exact archive members, bytes, modes, extracted provenance, and runtime entry targets without rebuilding.
+5. Verify the exact archive members, bytes, modes, extracted provenance, and runtime entry targets without rebuilding; the only accepted packer normalization is pnpm 11.8.0's deterministic removal of the final LF from packed `package.json`.
 6. Smoke-install that exact checksum-bound tarball in an isolated DSH Profile and compare it with a separate isolated checkout installation.
 7. Attach or publish the same bytes. Do not rebuild independently for GitHub and npm.
 8. Create the immutable release tag for the exact source commit represented by the artifact.

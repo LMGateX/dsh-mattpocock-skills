@@ -55,7 +55,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 - Install the exact local checkout and checksum-bound tarball in separate isolated `DSH_HOME` roots using the `headless` profile.
 - Inspect identical composed Stable/Beta configs and query both installed providers through an actual booted DSH Skill Registry without invoking a model.
 
-**Gate:** the sole accepted tarball passes `scripts/verify-package.mjs`; normal installs request no package build approval; checkout and tarball registry reports match; `implement-spec` appears only in Beta and remains model-disabled; no custom Web module or owner-profile change is needed.
+**Gate:** the disposable pnpm-pack regression and sole accepted tarball pass `scripts/verify-package.mjs` under pnpm 11.8.0; `scripts/verify-isolated-dsh.mjs` securely creates and removes fresh homes, normal installs request no package build approval, all four composed configs are asserted, checkout and tarball registry reports match byte-for-byte, `implement-spec` appears only in Beta and remains model-disabled, and no custom Web module or owner-profile change is needed.
 
 ## Phase 5 — Behavioral Evaluation
 
