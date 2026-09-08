@@ -251,9 +251,9 @@ Before any release:
 1. Start from a clean Git tree.
 2. Verify source provenance, vendor inventory, generated catalog, tests, and a scratch build that byte-matches committed output.
 3. Build one accepted tarball once into a fresh out-of-repository directory.
-4. Immediately compute and record its size and SHA-256, then make the artifact read-only.
-5. Verify the exact archive members, bytes, modes, extracted provenance, and runtime entry targets without rebuilding; the only accepted packer normalization is pnpm 11.8.0's deterministic removal of the final LF from packed `package.json`.
-6. Smoke-install that exact checksum-bound tarball in an isolated DSH Profile and compare it with a separate isolated checkout installation.
+4. Immediately record its source commit and pnpm version, compute its size and SHA-256, and make the artifact plus identity records read-only inside a fresh mode-0700 directory.
+5. Verify the recorded build context and exact archive members, bytes, modes, extracted provenance, and runtime entry targets without rebuilding; the only accepted packer normalization is pnpm 11.8.0's deterministic removal of the final LF from packed `package.json`.
+6. Under exact DSH 0.1.2-rc.1, smoke-install a checksum-verified private snapshot of those exact tarball bytes in an isolated DSH Profile and compare full per-Skill invocation plus lazy-definition hashes with a separate isolated checkout installation.
 7. Attach or publish the same bytes. Do not rebuild independently for GitHub and npm.
 8. Create the immutable release tag for the exact source commit represented by the artifact.
 

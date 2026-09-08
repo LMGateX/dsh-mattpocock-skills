@@ -156,14 +156,24 @@ test('GNU tar listing parser preserves member types, modes, spaces, and targets'
   ])
 })
 
-test('CLI parser exposes only prepack and explicit tarball/checksum modes', () => {
+test('CLI parser requires checksum, size, commit, and packer records for tarballs', () => {
   assert.deepEqual(parseCliArgs(['--prepack']), { mode: 'prepack' })
-  assert.deepEqual(parseCliArgs(['--tarball', '/tmp/a.tgz', '--sha256-file', '/tmp/a.sha256']), {
+  assert.deepEqual(parseCliArgs([
+    '--tarball', '/tmp/a.tgz', '--sha256-file', '/tmp/a.sha256', '--size-file', '/tmp/a.size',
+    '--source-commit-file', '/tmp/a.commit', '--pnpm-version-file', '/tmp/a.pnpm',
+  ]), {
     mode: 'tarball',
     tarballPath: '/tmp/a.tgz',
     checksumPath: '/tmp/a.sha256',
+    sizePath: '/tmp/a.size',
+    sourceCommitPath: '/tmp/a.commit',
+    pnpmVersionPath: '/tmp/a.pnpm',
   })
   assert.throws(() => parseCliArgs([]), /choose --prepack/)
   assert.throws(() => parseCliArgs(['--tarball', '/tmp/a.tgz']), /sha256-file/)
-  assert.throws(() => parseCliArgs(['--prepack', '--tarball', '/tmp/a.tgz', '--sha256-file', '/tmp/a.sha256']), /exactly one/)
+  assert.throws(() => parseCliArgs(['--tarball', '/tmp/a.tgz', '--sha256-file', '/tmp/a.sha256']), /size-file/)
+  assert.throws(() => parseCliArgs([
+    '--prepack', '--tarball', '/tmp/a.tgz', '--sha256-file', '/tmp/a.sha256', '--size-file', '/tmp/a.size',
+    '--source-commit-file', '/tmp/a.commit', '--pnpm-version-file', '/tmp/a.pnpm',
+  ]), /exactly one/)
 })

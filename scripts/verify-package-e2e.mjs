@@ -10,7 +10,12 @@ import { repositoryRoot, runTarball } from './verify-package.mjs'
 const temporary = await mkdtemp(join(tmpdir(), 'dsh-package-e2e-'))
 const tarball = join(temporary, 'lmgatex-dsh-mattpocock-skills-0.0.0-development.tgz')
 const checksum = join(temporary, 'sha256.txt')
+const size = join(temporary, 'size.txt')
+const sourceCommit = join(temporary, 'source-commit.txt')
+const pnpmVersion = join(temporary, 'pnpm-version.txt')
 try {
+  await writeFile(sourceCommit, execFileSync('git', ['-C', repositoryRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }))
+  await writeFile(pnpmVersion, execFileSync('pnpm', ['--version'], { encoding: 'utf8' }))
   execFileSync('pnpm', ['pack', '--json', '--skip-manifest-obfuscation', '--out', tarball], {
     cwd: repositoryRoot,
     encoding: 'utf8',
@@ -20,8 +25,12 @@ try {
   const bytes = await readFile(tarball)
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   await writeFile(checksum, sha256 + '  ' + tarball + '\n')
-  await chmod(tarball, 0o444)
-  const result = await runTarball({ root: repositoryRoot, tarballPath: tarball, checksumPath: checksum })
+  await writeFile(size, String(bytes.length) + '\n')
+  await Promise.all([tarball, checksum, size, sourceCommit, pnpmVersion].map((path) => chmod(path, 0o444)))
+  const result = await runTarball({
+    root: repositoryRoot, tarballPath: tarball, checksumPath: checksum, sizePath: size,
+    sourceCommitPath: sourceCommit, pnpmVersionPath: pnpmVersion,
+  })
   if (result.members.expectedFiles !== 97 || result.members.files !== 97 || result.members.symlinks !== 0) {
     throw new Error('unexpected disposable package inventory: ' + JSON.stringify(result.members))
   }

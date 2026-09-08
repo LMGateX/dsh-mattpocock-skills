@@ -544,11 +544,17 @@ export async function runPrepack({ root = repositoryRoot } = {}) {
   }
 }
 
-export async function runTarball({ root = repositoryRoot, tarballPath, checksumPath }) {
+export async function runTarball({ root = repositoryRoot, tarballPath, checksumPath, sizePath, sourceCommitPath, pnpmVersionPath }) {
   assert(typeof tarballPath === 'string' && tarballPath.length > 0, '--tarball requires a path')
   assert(typeof checksumPath === 'string' && checksumPath.length > 0, '--sha256-file requires a path')
+  assert(typeof sizePath === 'string' && sizePath.length > 0, '--size-file requires a path')
+  assert(typeof sourceCommitPath === 'string' && sourceCommitPath.length > 0, '--source-commit-file requires a path')
+  assert(typeof pnpmVersionPath === 'string' && pnpmVersionPath.length > 0, '--pnpm-version-file requires a path')
   const absoluteTarball = resolve(tarballPath)
   const absoluteChecksum = resolve(checksumPath)
+  const absoluteSize = resolve(sizePath)
+  const absoluteSourceCommit = resolve(sourceCommitPath)
+  const absolutePnpmVersion = resolve(pnpmVersionPath)
   const pnpm = requirePnpmVersion()
   const source = requireCleanSourceCommit(root)
   const packageJson = await readPackageJson(root)
@@ -558,9 +564,22 @@ export async function runTarball({ root = repositoryRoot, tarballPath, checksumP
   const inventory = await readVendorInventory(root)
   const expected = await expectedTarMembers(root, inventory)
   const tarVersion = gnuTarVersion()
-  const [tarballInfo, checksumInfo] = await Promise.all([lstat(absoluteTarball), lstat(absoluteChecksum)])
+  const [tarballInfo, checksumInfo, sizeInfo, sourceCommitInfo, pnpmVersionInfo] = await Promise.all([
+    lstat(absoluteTarball), lstat(absoluteChecksum), lstat(absoluteSize), lstat(absoluteSourceCommit), lstat(absolutePnpmVersion),
+  ])
   assert(tarballInfo.isFile() && !tarballInfo.isSymbolicLink(), 'tarball must be a regular non-symlink file')
   assert(checksumInfo.isFile() && !checksumInfo.isSymbolicLink(), 'checksum must be a regular non-symlink file')
+  assert(sizeInfo.isFile() && !sizeInfo.isSymbolicLink(), 'size record must be a regular non-symlink file')
+  assert(sourceCommitInfo.isFile() && !sourceCommitInfo.isSymbolicLink(), 'source commit record must be a regular non-symlink file')
+  assert(pnpmVersionInfo.isFile() && !pnpmVersionInfo.isSymbolicLink(), 'pnpm version record must be a regular non-symlink file')
+  for (const info of [checksumInfo, sizeInfo, sourceCommitInfo, pnpmVersionInfo]) assert((info.mode & 0o222) === 0, 'artifact identity records must be read-only')
+  const recordedSizeText = (await readFile(absoluteSize, 'utf8')).trim()
+  assert(/^[1-9][0-9]*$/.test(recordedSizeText) && Number.isSafeInteger(Number(recordedSizeText)), 'artifact size record must contain one positive safe integer')
+  assert(Number(recordedSizeText) === tarballInfo.size, 'artifact size record differs: expected ' + tarballInfo.size + ', got ' + recordedSizeText)
+  const recordedSourceCommit = (await readFile(absoluteSourceCommit, 'utf8')).trim()
+  const recordedPnpmVersion = (await readFile(absolutePnpmVersion, 'utf8')).trim()
+  assert(recordedSourceCommit === source.commit, 'artifact source commit record differs: expected ' + source.commit + ', got ' + recordedSourceCommit)
+  assert(recordedPnpmVersion === pnpm, 'artifact pnpm version record differs: expected ' + pnpm + ', got ' + recordedPnpmVersion)
   assert((tarballInfo.mode & 0o222) === 0, 'accepted tarball must be read-only')
   assert(tarballInfo.size > 0 && tarballInfo.size <= MAX_TARBALL_BYTES, 'tarball exceeds the Phase 4 compressed-size limit')
   const checksumText = await readFile(absoluteChecksum, 'utf8')
@@ -589,6 +608,9 @@ export async function runTarball({ root = repositoryRoot, tarballPath, checksumP
       mode: 'tarball',
       tarball: absoluteTarball,
       checksumFile: absoluteChecksum,
+      sizeFile: absoluteSize,
+      sourceCommitFile: absoluteSourceCommit,
+      pnpmVersionFile: absolutePnpmVersion,
       source,
       pnpm,
       sha256,
@@ -623,6 +645,18 @@ export function parseCliArgs(argv) {
       index += 1
       assert(index < argv.length, '--sha256-file requires a path')
       options.checksumPath = argv[index]
+    } else if (argument === '--size-file') {
+      index += 1
+      assert(index < argv.length, '--size-file requires a path')
+      options.sizePath = argv[index]
+    } else if (argument === '--source-commit-file') {
+      index += 1
+      assert(index < argv.length, '--source-commit-file requires a path')
+      options.sourceCommitPath = argv[index]
+    } else if (argument === '--pnpm-version-file') {
+      index += 1
+      assert(index < argv.length, '--pnpm-version-file requires a path')
+      options.pnpmVersionPath = argv[index]
     } else if (argument === '--help' || argument === '-h') {
       return { mode: 'help' }
     } else {
@@ -631,10 +665,13 @@ export function parseCliArgs(argv) {
   }
   assert(options.mode === 'prepack' || options.mode === 'tarball', 'choose --prepack or --tarball <path> --sha256-file <path>')
   if (options.mode === 'prepack') {
-    assert(options.tarballPath === undefined && options.checksumPath === undefined, '--prepack does not accept artifact paths')
+    assert(options.tarballPath === undefined && options.checksumPath === undefined && options.sizePath === undefined && options.sourceCommitPath === undefined && options.pnpmVersionPath === undefined, '--prepack does not accept artifact paths')
   } else {
     assert(typeof options.tarballPath === 'string', '--tarball requires a path')
     assert(typeof options.checksumPath === 'string', '--sha256-file is required with --tarball')
+    assert(typeof options.sizePath === 'string', '--size-file is required with --tarball')
+    assert(typeof options.sourceCommitPath === 'string', '--source-commit-file is required with --tarball')
+    assert(typeof options.pnpmVersionPath === 'string', '--pnpm-version-file is required with --tarball')
   }
   return options
 }
@@ -643,7 +680,7 @@ function usage() {
   return [
     'Usage:',
     '  node scripts/verify-package.mjs --prepack',
-    '  node scripts/verify-package.mjs --tarball <path> --sha256-file <path>',
+    '  node scripts/verify-package.mjs --tarball <path> --sha256-file <path> --size-file <path> --source-commit-file <path> --pnpm-version-file <path>',
     '',
     'This verifier never packs, publishes, tags, installs, or changes a DSH profile.',
   ].join('\n')

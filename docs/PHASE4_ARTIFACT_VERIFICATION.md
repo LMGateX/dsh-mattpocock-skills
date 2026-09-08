@@ -43,15 +43,21 @@ pnpm --version > "$ARTIFACT_DIR/pnpm-version.txt"
 pnpm pack --json --skip-manifest-obfuscation --out "$TARBALL" > "$ARTIFACT_DIR/pack.json"
 sha256sum "$TARBALL" > "$ARTIFACT_DIR/sha256.txt"
 stat --format='%s' "$TARBALL" > "$ARTIFACT_DIR/size.txt"
-chmod 0444 "$TARBALL" "$ARTIFACT_DIR/sha256.txt" "$ARTIFACT_DIR/size.txt" "$ARTIFACT_DIR/source-commit.txt" "$ARTIFACT_DIR/pnpm-version.txt"
+chmod 0444 "$TARBALL" "$ARTIFACT_DIR/sha256.txt" "$ARTIFACT_DIR/size.txt" "$ARTIFACT_DIR/source-commit.txt" "$ARTIFACT_DIR/pnpm-version.txt" "$ARTIFACT_DIR/pack.json"
 ~~~
 
-A failed or exploratory archive is not accepted and must not be reused. Once the accepted artifact is identified, every verifier and installer consumes the same read-only file.
+A failed or exploratory archive is not accepted and must not be reused. Once the accepted artifact is identified, every verifier consumes the same read-only file and every installer consumes a checksum-verified private snapshot of those exact bytes. The fresh mode-0700 artifact directory is the procedural trust boundary for the tarball and its size, source-commit, pnpm-version, and checksum records; `pack.json` is informational packer output.
 
 ## Exact Archive Verification
 
 ~~~bash
-node scripts/verify-package.mjs --tarball "$TARBALL" --sha256-file "$ARTIFACT_DIR/sha256.txt" > "$ARTIFACT_DIR/verification.json"
+node scripts/verify-package.mjs \
+  --tarball "$TARBALL" \
+  --sha256-file "$ARTIFACT_DIR/sha256.txt" \
+  --size-file "$ARTIFACT_DIR/size.txt" \
+  --source-commit-file "$ARTIFACT_DIR/source-commit.txt" \
+  --pnpm-version-file "$ARTIFACT_DIR/pnpm-version.txt" \
+  > "$ARTIFACT_DIR/verification.json"
 ~~~
 
 The verifier requires exactly 16 fixed package files plus every path authorized by vendor-files.json—97 files for the current baseline. It rejects unsafe or duplicate archive paths and unsupported member kinds; compares fixed bytes and modes with the source checkout, explicitly accounting only for pnpm 11.8.0's deterministic removal of the final LF from packed package.json; re-runs extracted provenance, catalog, and inventory verification; checks entry-point targets; and rejects source, tests, scripts, docs, dependencies, and custom client/Web payloads.
@@ -66,6 +72,9 @@ node scripts/verify-isolated-dsh.mjs \
   --source "$SOURCE" \
   --tarball "$TARBALL" \
   --sha256-file "$ARTIFACT_DIR/sha256.txt" \
+  --size-file "$ARTIFACT_DIR/size.txt" \
+  --source-commit-file "$ARTIFACT_DIR/source-commit.txt" \
+  --pnpm-version-file "$ARTIFACT_DIR/pnpm-version.txt" \
   --evidence-dir "$ISOLATED_EVIDENCE" \
   > "$ARTIFACT_DIR/isolated-verification.json"
 cmp "$ISOLATED_EVIDENCE/checkout-stable-registry.json" "$ISOLATED_EVIDENCE/tarball-stable-registry.json"
@@ -75,9 +84,9 @@ sha256sum --check "$ARTIFACT_DIR/sha256.txt"
 
 `scripts/verify-isolated-dsh.mjs` creates a mode-0700 random work root with `mkdtemp` under the canonical system temporary directory, creates two empty child `DSH_HOME` directories, and removes the entire work root in `finally`. Every DSH command receives an explicit non-empty child home and uses only profile `headless`; the script contains no `web` command, listener, slash invocation, or model route. It rejects an existing evidence path rather than following or reusing it.
 
-The exact four probes are checkout/Stable, checkout/Beta, tarball/Stable, and tarball/Beta. Stable inserts only the source-owned registry-verifier fixture. Beta first applies `tests/fixtures/phase4-beta.patch.yml`, then inserts the same verifier fixture. For every probe the script runs `dsh --profile headless --dump-config`, requires exactly one `dsh-mattpocock-skills` Host row with the expected channel and no package client row, then boots with `--help`. It rejects install output that requests or reports blocked dependency builds, checks the tarball hash before and after installation, and compares checkout/tarball registry reports byte-for-byte.
+The exact four probes are checkout/Stable, checkout/Beta, tarball/Stable, and tarball/Beta. Stable inserts only the source-owned registry-verifier fixture. Beta first applies `tests/fixtures/phase4-beta.patch.yml`, then inserts the same verifier fixture. For every probe the script runs `dsh --profile headless --dump-config`, requires exactly one `dsh-mattpocock-skills` Host row with the expected channel and no package client row, then boots with `--help`. It requires DSH 0.1.2-rc.1, rejects install output that requests or reports blocked dependency builds, validates the recorded size/source commit/pnpm version, copies the accepted tarball into the mode-0700 work root, checksum-verifies and makes that private snapshot read-only, installs only the private snapshot, checks both original and snapshot hashes, and compares checkout/tarball registry reports byte-for-byte.
 
-The registry fixture lists the actual booted registry and lazily loads one definition. Stable must expose 25 package Skills and no `implement-spec`; Beta must expose 26, with `implement-spec` user-invocable and model-disabled. Both channels must expose 11 model-visible Skills. Listing and lazy loading are allowed; slash invocation and model execution are not.
+The registry fixture lists the actual booted registry, records every Skill's name, description hash, provider, source, rank, and invocation flags, and lazily loads one definition whose identity, invocation, resource kind, and content hash are recorded. Stable must expose 25 package Skills and no `implement-spec`; Beta must expose 26, with `implement-spec` user-invocable and model-disabled. Both channels must expose 11 model-visible Skills. Listing and lazy loading are allowed; slash invocation and model execution are not.
 
 ## Recorded Evidence
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 
 export const name = 'dsh-mattpocock-phase4-verifier'
@@ -6,7 +7,18 @@ export const inject = ['skills']
 /** Inspect the installed provider through an actual booted DSH Skill Registry. */
 export async function apply(ctx, config) {
   const summaries = (await ctx.skills.list()).filter((skill) => skill.provider === 'dsh-mattpocock-skills')
-  const names = summaries.map((skill) => skill.name)
+  const skills = summaries.map((skill) => ({
+    name: skill.name,
+    descriptionSha256: createHash('sha256').update(skill.description, 'utf8').digest('hex'),
+    provider: skill.provider,
+    source: skill.source,
+    rank: skill.rank,
+    invocation: {
+      modelInvocable: skill.invocation.modelInvocable,
+      userInvocable: skill.invocation.userInvocable,
+    },
+  }))
+  const names = skills.map((skill) => skill.name)
   const implementSpec = summaries.find((skill) => skill.name === 'implement-spec')
   const expectedCount = config.channel === 'beta' ? 26 : 25
   if (summaries.length !== expectedCount) throw new Error('unexpected package Skill count: ' + summaries.length)
@@ -26,6 +38,14 @@ export async function apply(ctx, config) {
     channel: config.channel,
     count: summaries.length,
     names,
-    definition: definition.name,
+    skills,
+    definition: {
+      name: definition.name,
+      provider: definition.provider,
+      source: definition.source,
+      invocation: definition.invocation,
+      resourceKind: definition.resourceBase.kind,
+      contentSha256: createHash('sha256').update(definition.content, 'utf8').digest('hex'),
+    },
   }, null, 2) + String.fromCharCode(10))
 }
