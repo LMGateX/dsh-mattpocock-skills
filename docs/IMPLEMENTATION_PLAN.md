@@ -47,7 +47,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## Phase 4 — Build and Artifact Verification
 
-**Status:** In progress under the exact runbook in [PHASE4_ARTIFACT_VERIFICATION.md](PHASE4_ARTIFACT_VERIFICATION.md).
+**Status:** Complete. The checksum-bound 98,347-byte development artifact from commit `7adf8b352153dff8beea42f9f4ba002502d3c504` passed the exact 97-file archive gate and all four isolated DSH 0.1.2-rc.1 probes; details are recorded in [PHASE4_ARTIFACT_VERIFICATION.md](PHASE4_ARTIFACT_VERIFICATION.md).
 
 - Prove a scratch TypeScript build exactly matches committed `lib/` and declarations.
 - Build one accepted private development tarball into a fresh mode-0700 external directory, then bind its identity immediately with source commit, pnpm version, size, and SHA-256 records.

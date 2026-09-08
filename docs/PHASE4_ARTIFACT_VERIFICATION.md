@@ -90,4 +90,27 @@ The registry fixture lists the actual booted registry, records every Skill's nam
 
 ## Recorded Evidence
 
-Pending completion of the accepted-artifact run. This section is updated after the checksum-bound tarball and both isolated-home checks pass.
+Phase 4 completed at `2026-09-08T10:51:08Z` against source commit `7adf8b352153dff8beea42f9f4ba002502d3c504`. The accepted private development artifact is:
+
+- Path: `/tmp/dsh-mattpocock-phase4-accepted/lmgatex-dsh-mattpocock-skills-0.0.0-development.tgz`
+- Size: `98,347` bytes
+- SHA-256: `309c4dbcf7c02797b1ce1c3406a1805dc35c54c6493908a65b85c0faefd84d22`
+- Artifact directory mode: `0700`; tarball and identity-record mode: `0444`
+- Packer: pnpm `11.8.0`; package version: `0.0.0-development`
+
+The checksum/size/source-commit/pnpm-version-bound archive verifier passed with exactly 97 regular files, comprising 16 fixed files and 81 vendored files, with zero symlinks. The scratch build matched all six committed `lib/` files. Source and extracted vendor verification both reported Stable 25, Beta 26, 81 files, 212,143 bytes, and root SHA-256 `1e6182fe1e430a5f653be3b33e9340e19ff8a812d0f7bb7bbc44da10fb9c6a50`.
+
+Isolated verification used DSH `0.1.2-rc.1`, profile `headless`, and two fresh mode-0700 `DSH_HOME` roots beneath a random canonical system-temporary root. The tarball profile installed only a checksum-verified read-only private snapshot. The temporary homes and work root were removed in `finally`.
+
+| Probe | Skills | Model-visible | Lazy definition | Definition content SHA-256 |
+|---|---:|---:|---|---|
+| Checkout / Stable | 25 | 11 | `triage` | `a5733fe78bc11c1e37d1aff276a04ae7c843c0228bf23ff6dfab4fa967f2d487` |
+| Tarball / Stable | 25 | 11 | `triage` | `a5733fe78bc11c1e37d1aff276a04ae7c843c0228bf23ff6dfab4fa967f2d487` |
+| Checkout / Beta | 26 | 11 | `implement-spec` | `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3` |
+| Tarball / Beta | 26 | 11 | `implement-spec` | `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3` |
+
+The Stable and Beta checkout/tarball registry reports matched byte-for-byte, including every Skill's invocation flags and description hash. In Beta, `implement-spec` remained `{ modelInvocable: false, userInvocable: true }`. All four composed configs contained exactly one package Host row with the expected channel and no package client row. Install logs contained no build-approval or blocked-build warning.
+
+The final checksum recheck and both explicit `cmp` checks passed. No model was invoked, no Web server or listener was started, no slash command was executed, and no owner profile was read or changed. An independent final audit reported no blocker, high-severity, or medium-severity findings. Runtime evidence used Node `24.17.0`, npm `11.13.0`, TypeScript `5.9.3`, Git `2.47.2`, GNU tar `1.35`, and Linux `6.12.41+deb13-amd64 x86_64`.
+
+This evidence update changes unpacked documentation only. The accepted artifact remains attributed to and reproducible from commit `7adf8b352153dff8beea42f9f4ba002502d3c504`; it is not a release artifact and was not published, tagged, or uploaded.
