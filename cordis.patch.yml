@@ -1,0 +1,6 @@
+# Installs the immutable Matt Pocock Skills provider in the Host scope.
+- insert:
+    - id: dsh-mattpocock-skills
+      name: '@lmgatex/dsh-mattpocock-skills'
+      config:
+        channel: stable

@@ -1,0 +1,70 @@
+{
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.0.0-development",
+  "private": true,
+  "description": "Private reproducible DSH bundle for Matt Pocock Skills stable and beta channels",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "generated/catalog.json",
+    "vendor/mattpocock-skills/",
+    "PROVENANCE.json",
+    "vendor-files.json",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "skills",
+    "matt-pocock",
+    "subagents"
+  ],
+  "author": "LMGateX",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LMGateX/dsh-mattpocock-skills.git"
+  },
+  "homepage": "https://github.com/LMGateX/dsh-mattpocock-skills#readme",
+  "bugs": {
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.8.0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-skill": "^0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-skill": "0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "3.18.2",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "yaml": "2.9.0"
+  }
+}
