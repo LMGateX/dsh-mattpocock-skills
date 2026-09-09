@@ -1,6 +1,6 @@
 # DSH Matt Pocock Skills — Accepted Design
 
-- **Status:** Accepted; Phases 0–3 implemented and verified
+- **Status:** Accepted; core adapter and Phase 4 verified; Phase 5 closed with a failed campaign; owner activation and release remain unauthorized
 - **Accepted on:** 2026-09-08
 - **Owner:** LMGateX
 - **Local checkout:** `<checkout of this repository>`
@@ -8,6 +8,10 @@
 - **Private source distribution:** `https://github.com/LMGateX/mattpocock-skills-distribution`
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
+
+## Scope clarification
+
+The owner-approved [thin-adapter scope](ADAPTER_SCOPE.md) governs subsequent engineering scope: keep native Skill delivery small, freeze expansion of the historical behavioral analyzer, and investigate demonstrated compatibility gaps. Historical campaign results and activation/publication authorization boundaries remain unchanged.
 
 ## 1. Purpose
 

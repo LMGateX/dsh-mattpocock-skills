@@ -2,7 +2,7 @@
 
 Private DSH adapter and distribution bundle for the Matt Pocock Skills channels maintained in [LMGateX/mattpocock-skills-distribution](https://github.com/LMGateX/mattpocock-skills-distribution).
 
-**Current status:** Phases 0–3 are complete. The verified Stable/Beta source union and immutable DSH Skill provider are implemented and pass the deterministic provider gates. Checksum-bound artifact verification, behavioral evaluation, and owner-profile activation remain separately gated phases.
+**Current status:** The core adapter and Phase 4 artifact verification are complete. The Phase 5 behavioral campaign is closed but failed: two trials passed and one had a hard failure. Subsequent maintenance focuses on the thin adapter and demonstrated compatibility gaps, not expansion of the behavioral analyzer. Owner-profile activation and release remain unauthorized.
 
 - Authoritative architecture: [docs/DESIGN.md](docs/DESIGN.md)
 - Implementation sequence and gates: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
@@ -10,6 +10,21 @@ Private DSH adapter and distribution bundle for the Matt Pocock Skills channels 
 - Required `implement-spec` behavioral evaluation: [docs/IMPLEMENT_SPEC_EVAL.md](docs/IMPLEMENT_SPEC_EVAL.md)
 
 The package exposes unchanged upstream Skill bodies through DSH's native `ctx.skills` provider API. `stable` is the default 25-Skill channel; `beta` adds the user-invocable, model-disabled `implement-spec` Skill. It is an unofficial adapter and does not imply endorsement by Matt Pocock.
+
+## Usage sequence and known limitations
+
+1. **Installation and activation belong to DSH.** This package supplies a native Skill provider, defaulting to Stable; an authorized target profile may select Beta. Installation does not automatically change the owner profile or project conventions.
+2. **Project setup is separate.** In a target project session with the plugin enabled, run `/setup-matt-pocock-skills` before first using the engineering workflows. It confirms the tracker, labels, and domain documentation with the user and writes project configuration; it is not the plugin installer. GitHub/GitLab workflows need the appropriate CLI, authentication, and authorization; local Markdown is also supported.
+3. **Use native invocation.** Users invoke `/skill-name`; subsequent Skill calls described in a body are performed by the agent through the DSH `skill` tool, not by recursively executing slash text. User and model invocation permissions are distinct.
+
+Compatibility notes for the currently inspected local DSH implementation (not a claim that every profile enables these capabilities):
+
+- `/compact` accepts no arguments. Upstream examples of `/compact <instructions>` cannot be used verbatim. A same-name `/clear` entry remains unverified; do not automatically clear a session.
+- DSH recognizes both `AGENTS.md` and `CLAUDE.md` by default; blanket filename substitutions are unnecessary.
+- **Background dispatch does not guarantee headless lifetime.** The inspected headless driver summarizes and exits after the root becomes idle; continued normal completion and delivery of background work are not guaranteed. This does not establish equivalent Web behavior. Full unattended workflows require a separate host-lifecycle decision.
+- Git/worktrees, browsers, online research, and shared notes depend on target environment capabilities and permissions. The provider does not install those tools, authorize external writes, or bypass filesystem policy.
+
+See the [thin-adapter scope](docs/ADAPTER_SCOPE.md) and [evidence-based compatibility inventory](docs/COMPATIBILITY.md) (Chinese). These notes neither rewrite upstream bodies or historical campaign results nor lift activation/release gates.
 
 ## Current development verification
 
