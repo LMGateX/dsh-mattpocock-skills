@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -9,6 +10,9 @@ import { parseChecksumText, requirePnpmVersion } from './verify-package.mjs'
 
 /** Historical Phase 4 gate version; the default so the original runbook semantics stay intact. */
 const EXPECTED_DSH_VERSION = '0.1.2-rc.1'
+
+/** Credential-free task used only when a host app handles --help before mounting the profile. */
+const MOUNT_TASK = 'respond with the single word ok'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -37,7 +41,7 @@ function parseArgs(argv) {
   return options
 }
 
-function run(command, args, { cwd, env, label }) {
+function run(command, args, { cwd, env, label, allowFailure = false }) {
   const result = spawnSync(command, args, {
     cwd,
     env,
@@ -48,8 +52,8 @@ function run(command, args, { cwd, env, label }) {
   const stdout = result.stdout || ''
   const stderr = result.stderr || ''
   if (result.error) throw new Error(label + ' could not start: ' + result.error.message, { cause: result.error })
-  if (result.status !== 0) throw new Error(label + ' failed with exit ' + result.status + ': ' + (stderr.trim() || stdout.trim()))
-  return { stdout, stderr, combined: stdout + stderr }
+  if (!allowFailure && result.status !== 0) throw new Error(label + ' failed with exit ' + result.status + ': ' + (stderr.trim() || stdout.trim()))
+  return { status: result.status, stdout, stderr, combined: stdout + stderr }
 }
 
 async function sha256File(path) {
@@ -112,6 +116,21 @@ async function verifyInstallation({ kind, specification, home, source, verifier,
       cwd: source, env, label: kind + ' ' + channel + ' headless boot',
     })
     await writeFile(join(evidence, kind + '-' + channel + '-boot.log'), boot.combined)
+    if (!existsSync(output)) {
+      // Host apps that handle --help before mounting (DSH 0.1.7-alpha.2 and later) never
+      // load the profile here. Mount through one credential-free task instead: the
+      // environment is scrubbed so the host must fail before any model request can be
+      // issued, and a successful run means a model may have executed.
+      const scrubHome = join(work, kind + '-' + channel + '-scrub-home')
+      await mkdir(scrubHome, { mode: 0o700, recursive: true })
+      const scrubEnv = { PATH: process.env.PATH || '', HOME: scrubHome, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }
+      const mount = run('dsh', ['--profile', 'headless', ...patches, MOUNT_TASK], {
+        cwd: source, env: scrubEnv, label: kind + ' ' + channel + ' headless mount', allowFailure: true,
+      })
+      await writeFile(join(evidence, kind + '-' + channel + '-mount.log'), mount.combined)
+      assert(mount.status !== 0, kind + ' ' + channel + ' credential-free mount unexpectedly succeeded; a model may have run')
+      assert(mount.combined.includes('MISSING_CREDENTIAL'), kind + ' ' + channel + ' credential-free mount did not stop at a missing credential: ' + mount.combined.trim())
+    }
     const bytes = await readFile(output)
     JSON.parse(bytes.toString('utf8'))
     await writeFile(join(evidence, kind + '-' + channel + '-registry.json'), bytes)
