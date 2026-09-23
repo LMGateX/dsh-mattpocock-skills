@@ -7,6 +7,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { parseChecksumText, requirePnpmVersion } from './verify-package.mjs'
 
+/** Historical Phase 4 gate version; the default so the original runbook semantics stay intact. */
 const EXPECTED_DSH_VERSION = '0.1.2-rc.1'
 
 function assert(condition, message) {
@@ -18,14 +19,18 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index]
     if (key === '--help' || key === '-h') return { help: true }
-    assert(['--source', '--tarball', '--sha256-file', '--size-file', '--source-commit-file', '--pnpm-version-file', '--evidence-dir'].includes(key), 'unknown argument ' + JSON.stringify(key))
+    assert(['--source', '--tarball', '--sha256-file', '--size-file', '--source-commit-file', '--pnpm-version-file', '--evidence-dir', '--expected-dsh-version'].includes(key), 'unknown argument ' + JSON.stringify(key))
     index += 1
     assert(index < argv.length, key + ' requires a path')
-    const field = { '--source': 'source', '--tarball': 'tarball', '--sha256-file': 'checksum', '--size-file': 'sizeFile', '--source-commit-file': 'sourceCommitFile', '--pnpm-version-file': 'pnpmVersionFile', '--evidence-dir': 'evidence' }[key]
+    const field = { '--source': 'source', '--tarball': 'tarball', '--sha256-file': 'checksum', '--size-file': 'sizeFile', '--source-commit-file': 'sourceCommitFile', '--pnpm-version-file': 'pnpmVersionFile', '--evidence-dir': 'evidence', '--expected-dsh-version': 'expectedDshVersion' }[key]
     assert(options[field] === undefined, key + ' may be supplied only once')
     options[field] = argv[index]
   }
   for (const field of ['source', 'tarball', 'checksum', 'sizeFile', 'sourceCommitFile', 'pnpmVersionFile', 'evidence']) {
+    if (field === 'expectedDshVersion') {
+      assert(typeof options[field] === 'string' && options[field].length > 0, '--expected-dsh-version requires a non-empty version')
+      continue
+    }
     assert(typeof options[field] === 'string' && isAbsolute(options[field]), '--' + ({ checksum: 'sha256-file', sizeFile: 'size-file', sourceCommitFile: 'source-commit-file', pnpmVersionFile: 'pnpm-version-file', evidence: 'evidence-dir' }[field] || field) + ' requires an absolute path')
     options[field] = resolve(options[field])
   }
@@ -118,7 +123,7 @@ async function verifyInstallation({ kind, specification, home, source, verifier,
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
-    console.log('Usage: node scripts/verify-isolated-dsh.mjs --source <absolute checkout> --tarball <absolute tgz> --sha256-file <absolute checksum> --size-file <absolute record> --source-commit-file <absolute record> --pnpm-version-file <absolute record> --evidence-dir <absolute new directory>')
+    console.log('Usage: node scripts/verify-isolated-dsh.mjs --source <absolute checkout> --tarball <absolute tgz> --sha256-file <absolute checksum> --size-file <absolute record> --source-commit-file <absolute record> --pnpm-version-file <absolute record> --evidence-dir <absolute new directory> [--expected-dsh-version <version, default ' + EXPECTED_DSH_VERSION + '>]')
     return
   }
 
@@ -169,7 +174,8 @@ async function main() {
     await Promise.all([requireRegular(verifier, 'registry verifier fixture'), requireRegular(betaPatch, 'Beta patch fixture')])
     const versionEnv = { ...process.env, DSH_HOME: localHome, DSH_TELEMETRY_DISABLED: '1' }
     const dsh = run('dsh', ['--version'], { cwd: options.source, env: versionEnv, label: 'DSH version lookup' }).stdout.trim()
-    assert(dsh === EXPECTED_DSH_VERSION, 'Phase 4 requires DSH ' + EXPECTED_DSH_VERSION + ', got ' + dsh)
+    const requiredDsh = options.expectedDshVersion ?? EXPECTED_DSH_VERSION
+    assert(dsh === requiredDsh, 'compatibility verification requires DSH ' + requiredDsh + ', got ' + dsh)
 
     const checkout = await verifyInstallation({
       kind: 'checkout', specification: options.source, home: localHome, source: options.source,

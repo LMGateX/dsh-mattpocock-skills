@@ -7,8 +7,9 @@ import { join } from 'node:path'
 
 import { repositoryRoot, runTarball } from './verify-package.mjs'
 
+const version = JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')).version
 const temporary = await mkdtemp(join(tmpdir(), 'dsh-package-e2e-'))
-const tarball = join(temporary, 'lmgatex-dsh-mattpocock-skills-0.0.0-development.tgz')
+const tarball = join(temporary, 'lmgatex-dsh-mattpocock-skills-' + version + '.tgz')
 const checksum = join(temporary, 'sha256.txt')
 const size = join(temporary, 'size.txt')
 const sourceCommit = join(temporary, 'source-commit.txt')

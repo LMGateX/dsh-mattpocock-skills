@@ -27,7 +27,7 @@ test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.scripts, undefined)
   assert.deepEqual(packageJson.peerDependencies, {
     '@deepseek-ai/cordis': '^4.0.2',
-    '@deepseek-ai/dsh-skill': '^0.1.2-rc.1',
+    '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2',
     '@deepseek-ai/schemastery': '^3.18.2',
   })
   assert.deepEqual(packageJson.files, [
