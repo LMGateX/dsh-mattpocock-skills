@@ -67,6 +67,7 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 | 旧宿主 0.1.2-rc.1 隔离安装并装载插件树 | Stable 25 / Beta 26 |
 | 新宿主 0.1.7-alpha.2 隔离安装并装载插件树 | Stable 25 / Beta 26 |
 | 新宿主 0.1.7-rc.2 隔离安装并装载插件树 | Stable 25 / Beta 26 |
+| 本机 Web Profile 在 0.1.7-rc.2 上的实时装载 | Beta 26 个 Skill、正文全部加载、0 诊断；实时调用 `tdd` 由本包提供 |
 | 三宿主（0.1.2-rc.1 / 0.1.7-alpha.2 / 0.1.7-rc.2）注册表报告 | **逐字节一致**（Stable 与 Beta 均一致） |
 | `implement-spec` 调用权限 | `userInvocable: true` / `modelInvocable: false` |
 | `implement-spec` 正文与资源目录 | 正文 SHA-256 `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3`；资源为 directory |
@@ -80,8 +81,7 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 - `0.1.7-rc.1` 未单独验证：其 `dsh-skill` / `dsh-tool-skill` 与 `0.1.7-rc.2` 同一版本线，本次直接验证了更晚的 `0.1.7-rc.2`。
 - Web 场景下的 GUI 行为未在新宿主验证。
 - 新宿主新增的插件相关能力未纳入适配器：顺序加载多个 patch 文件、声明免重载配置字段、`--dump-config-schema`、Profile 插件配置取代 settings.yaml。
-- `0.1.7-rc.2` 只在本机隔离环境中验证；本机正在运行的仍是 `0.1.7-alpha.2`，未升级到 rc。
-- 本机 Profile 中已装入 `0.1.0-beta.1`，那是兼容性核对完成之后的独立步骤，不属于本次核对范围。
+- 本机正在运行的 DSH 已随后由 `0.1.7-alpha.2` 升级到 `0.1.7-rc.2`，本机 Profile 中装入的是 `0.1.0-beta.1`；两者都是兼容性核对完成之后的独立步骤，不属于核对本身的范围。
 
 ## 复现方式
 
