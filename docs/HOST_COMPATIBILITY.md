@@ -2,7 +2,7 @@
 
 ## 结论
 
-**从 DSH `0.1.2-rc.1` 到 `0.1.7-alpha.2`，本插件不需要修改运行时代码。**
+**从 DSH `0.1.2-rc.1` 到 `0.1.7-rc.2`（含 `0.1.7-alpha.2`），本插件不需要修改运行时代码。**
 
 Skill Provider 契约在两个宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与旧宿主编译结果**逐字节相同**。
 
@@ -10,7 +10,7 @@ Skill Provider 契约在两个宿主版本之间保持不变：`registerProvider
 
 ## 核对范围与方法
 
-只做只读与隔离验证，未改动本机正在使用的 DSH 实例，未调用任何模型。
+核对过程只做只读与隔离验证：不改动本机正在使用的 Profile，不调用任何模型。
 
 1. 用 `npm pack` 拉取两个版本的发布包，直接对比 `lib/types/*.d.ts`、运行时导出与 `package.json`。
 2. 用新宿主的类型声明重新编译 TypeScript，比较 `lib/` 产物。
@@ -19,12 +19,12 @@ Skill Provider 契约在两个宿主版本之间保持不变：`registerProvider
 
 ## 版本对照
 
-| 宿主包 | 0.1.2-rc.1 | 0.1.7-alpha.2 |
-|---|---|---|
-| `@deepseek-ai/dsh-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 |
-| `@deepseek-ai/dsh-tool-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 |
-| `@deepseek-ai/cordis` | 4.0.2 | 4.0.4 |
-| `@deepseek-ai/schemastery` | 3.18.2 | 3.18.4 |
+| 宿主包 | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 |
+|---|---|---|---|
+| `@deepseek-ai/dsh-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 |
+| `@deepseek-ai/dsh-tool-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 |
+| `@deepseek-ai/cordis` | 4.0.2 | 4.0.4 | 4.0.4 |
+| `@deepseek-ai/schemastery` | 3.18.2 | 3.18.4 | 3.18.4 |
 
 ## 实际 API 差异
 
@@ -36,6 +36,7 @@ Skill Provider 契约在两个宿主版本之间保持不变：`registerProvider
 | `BUNDLED_SKILL_RANK` = 600、`RUNTIME_RANK` = 250 | 数值相同 | 无需改动 |
 | `dsh-skill` 运行时导出清单 | 完全相同 | 无需改动 |
 | `dsh-tool-skill` 类型声明 | 完全无差异 | 无需改动 |
+| `0.1.7-alpha.2` → `0.1.7-rc.2`：`dsh-skill` 类型、导出、`dsh-tool-skill` 类型 | 逐字相同 | 无需改动 |
 | cordis 4.0.2 → 4.0.4 | 新增 `Volatile` / `VolatileSnapshot` 类型导出，属附加性变化 | 无需改动 |
 | schemastery 3.18.2 → 3.18.4 | `Schema` 增加第三个类型参数、`NoInfer`、`volatile` meta 等类型层调整 | 现有 Config schema 未改仍可编译 |
 
@@ -51,7 +52,9 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 | `>=0.1.2-rc.1 <0.2.0` | 满足 | 不满足 | 不满足 |
 | `^0.1.2-rc.1 \|\| ^0.1.5-rc.2 \|\| ^0.1.7-alpha.2`（现声明） | 满足 | 满足 | 满足 |
 
-因此没有既简洁又能覆盖任意预发布版本的单一范围写法，只能显式枚举已知的三个发布线：本机已装的 rc、npm `latest` 的 rc、以及最新 alpha。
+现声明同时覆盖 `0.1.5-rc.3`、`0.1.7-rc.1` 与 `0.1.7-rc.2`：`^0.1.7-alpha.2` 带有 major.minor.patch 为 0.1.7 且含预发布标记的比较符，因此该元组上的任何预发布版本（rc 高于 alpha）都被接受。**新增 rc 版本时无需修改 peer 声明。**
+
+因此没有既简洁又能覆盖任意预发布版本的单一范围写法，只能显式枚举：最初的 `0.1.2-rc.1`、npm `latest` 的 `0.1.5-rc.2`，以及覆盖整个 0.1.7 预发布线（alpha 与 rc）的 `^0.1.7-alpha.2`。
 
 `@deepseek-ai/cordis` 的 `^4.0.2` 与 `@deepseek-ai/schemastery` 的 `^3.18.2` 已分别覆盖 4.0.4 与 3.18.4，无需修改。
 
@@ -59,11 +62,12 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 
 | 检查 | 结果 |
 |---|---|
-| TypeScript 编译（新宿主类型声明） | 通过；`lib/` 产物逐字节未变 |
+| TypeScript 编译（0.1.7-alpha.2 与 0.1.7-rc.2 类型声明） | 通过；`lib/` 的 JS 与 `.d.ts` 产物逐字节未变 |
 | 插件契约测试（新宿主真实 registry） | 95/95 通过 |
 | 旧宿主 0.1.2-rc.1 隔离安装并装载插件树 | Stable 25 / Beta 26 |
 | 新宿主 0.1.7-alpha.2 隔离安装并装载插件树 | Stable 25 / Beta 26 |
-| 两宿主注册表报告逐字节一致 | 是（Stable 与 Beta 均一致） |
+| 新宿主 0.1.7-rc.2 隔离安装并装载插件树 | Stable 25 / Beta 26 |
+| 三宿主（0.1.2-rc.1 / 0.1.7-alpha.2 / 0.1.7-rc.2）注册表报告 | **逐字节一致**（Stable 与 Beta 均一致） |
 | `implement-spec` 调用权限 | `userInvocable: true` / `modelInvocable: false` |
 | `implement-spec` 正文与资源目录 | 正文 SHA-256 `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3`；资源为 directory |
 | 模型调用 | 无 |
@@ -73,9 +77,11 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 ## 未验证事项
 
 - `0.1.3`、`0.1.5`、`0.1.6` 等中间预发布版本未逐一验证。
+- `0.1.7-rc.1` 未单独验证：其 `dsh-skill` / `dsh-tool-skill` 与 `0.1.7-rc.2` 同一版本线，本次直接验证了更晚的 `0.1.7-rc.2`。
 - Web 场景下的 GUI 行为未在新宿主验证。
 - 新宿主新增的插件相关能力未纳入适配器：顺序加载多个 patch 文件、声明免重载配置字段、`--dump-config-schema`、Profile 插件配置取代 settings.yaml。
-- 本机安装并正在运行的 DSH 仍是 `0.1.2-rc.1`；本次没有升级本机 DSH，也没有把新版本装进正在使用的 Profile。
+- `0.1.7-rc.2` 只在本机隔离环境中验证；本机正在运行的仍是 `0.1.7-alpha.2`，未升级到 rc。
+- 本机 Profile 中已装入 `0.1.0-beta.1`，那是兼容性核对完成之后的独立步骤，不属于本次核对范围。
 
 ## 复现方式
 
