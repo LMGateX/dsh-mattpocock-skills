@@ -49,11 +49,11 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'vendor-files.json',
 ])
 
-const EXPECTED_VERSION = '0.1.0-beta.1'
+const EXPECTED_VERSION = '0.1.0-beta.2'
 
 const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2',
-  '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2',
+  '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1',
   '@deepseek-ai/schemastery': '^3.18.2',
 })
 

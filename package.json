@@ -1,6 +1,6 @@
 {
   "name": "@lmgatex/dsh-mattpocock-skills",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "private": true,
   "description": "Private reproducible DSH bundle for Matt Pocock Skills stable and beta channels",
   "type": "module",
@@ -61,7 +61,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-skill": "^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2",
+    "@deepseek-ai/dsh-skill": "^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1",
     "@deepseek-ai/schemastery": "^3.18.2"
   },
   "devDependencies": {

@@ -43,7 +43,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.1.0-beta.1',
+    version: '0.1.0-beta.2',
     private: true,
     files: 16,
     peerDependencies: [
@@ -56,7 +56,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client, and allowlist drift', () => {
   const cases = [
-    [{ ...packageJson, version: '1.0.0' }, /0\.1\.0-beta\.1/],
+    [{ ...packageJson, version: '1.0.0' }, /0\.1\.0-beta\.2/],
     [{ ...packageJson, private: false }, /private/],
     [{ ...packageJson, scripts: { prepare: 'tsc' } }, /scripts/],
     [{ ...packageJson, publishConfig: { access: 'public' } }, /publishConfig/],
