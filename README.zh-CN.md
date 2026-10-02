@@ -7,7 +7,7 @@
 - 权威设计：[docs/DESIGN.md](docs/DESIGN.md)
 - 实施计划：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 - Phase 4 校验和绑定制品流程：[docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
-- `implement-spec` 行为评估：[docs/IMPLEMENT_SPEC_EVAL.md](docs/IMPLEMENT_SPEC_EVAL.md)
+- `implement-spec` 行为评估：已关闭且未通过（2 次通过、1 次硬失败）。其活动定义、器械与原始记录属于评估材料而非本包内容，已归档于本仓库之外。
 
 该包通过 DSH 原生 `ctx.skills` Provider 暴露未经正文重写的上游 Skill：
 

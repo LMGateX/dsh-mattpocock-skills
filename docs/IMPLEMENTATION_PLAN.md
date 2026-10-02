@@ -59,9 +59,11 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## Phase 5 — Behavioral Evaluation
 
-Run [IMPLEMENT_SPEC_EVAL.md](IMPLEMENT_SPEC_EVAL.md) from clean fixture repositories. Capture the designated model route, DSH version, complete transcript, Git graph, test output, and cleanup state.
+Run the `implement-spec` campaign from clean fixture repositories. Capture the designated model route, DSH version, complete transcript, Git graph, test output, and cleanup state.
 
 **Gate:** meet the evaluation pass policy without editing the vendored `implement-spec` body.
+
+**Status:** closed and failed. The campaign definition, harness and raw records are evaluation material rather than package content, and are archived outside this repository.
 
 ## Phase 6 — Owner Profile Enablement
 

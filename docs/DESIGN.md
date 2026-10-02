@@ -3,7 +3,7 @@
 - **Status:** Accepted; core adapter and Phase 4 verified; Phase 5 closed with a failed campaign; owner activation and release remain unauthorized
 - **Accepted on:** 2026-09-08
 - **Owner:** LMGateX
-- **Local checkout:** `<checkout of this repository>`
+- **Local checkout:** `<working copy of this repository>`
 - **Private plugin repository:** `https://github.com/LMGateX/dsh-mattpocock-skills`
 - **Private source distribution:** `https://github.com/LMGateX/mattpocock-skills-distribution`
 
@@ -33,7 +33,7 @@ The initial package is private and intended for the owner's DSH profiles. Public
 10. **Host only:** ship one Host Cordis plugin row. Do not ship a browser client plugin; existing DSH Web Skill UI and slash invocation consume the Host registry.
 11. **Offline runtime:** no install-time fetch, postinstall updater, runtime network access, mutable source cache, or file watcher.
 12. **No legacy manifest initially:** do not ship `dsh.plugin.json`. The authoritative activation mechanism is `package.json#dsh.bundle.patch` plus `cordis.patch.yml`.
-13. **Real behavioral evaluation:** the first usable release must run the `implement-spec` evaluation defined in `IMPLEMENT_SPEC_EVAL.md`.
+13. **Real behavioral evaluation:** the first usable release must run the `implement-spec` evaluation. The campaign definition, harness and raw records are evaluation material kept outside this repository.
 14. **Immutable release:** a release version, Git tag, npm artifact if any, and GitHub artifact must identify the same commit and the same once-built tarball bytes.
 
 ## 3. Source Baseline
@@ -293,7 +293,7 @@ Deterministic gates include:
 - composed config inspection with `dsh --profile <name> --dump-config`
 - Web/Host behavior verification without a custom client bundle
 
-The nondeterministic model-level gate is defined separately in `IMPLEMENT_SPEC_EVAL.md`.
+The nondeterministic model-level gate is defined separately in the evaluation campaign material, which is kept outside this repository.
 
 ## 13. Non-Goals
 

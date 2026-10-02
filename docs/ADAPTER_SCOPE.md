@@ -17,7 +17,7 @@
 | 运行时加载 | `src/provider.ts` | `list` 按 channel 返回候选项；`get` 按需返回准确正文、调用元数据和资源目录；保留 |
 | 来源与分发 | `scripts/update-source.mjs`、`scripts/verify-vendor.mjs`、静态 catalog 与 vendor | 固定来源、构建元数据及检查内容完整性；保留，不继续增加无实际需求的机制 |
 | 包契约验证 | package/provider/registry 测试与 package/isolated verifier | 验证可安装性和原生注册加载契约；保留 |
-| 历史行为评估 | `scripts/*phase5*.mjs`、`tests/phase5-*.test.mjs`、campaign 结果 | 独立评估资产，不是插件运行时；冻结扩展，不删除原始记录，不作为所有后续维护的默认前置步骤 |
+| 历史行为评估 | 不在本仓库内 | 独立评估资产，不是插件运行时。为公开仓库做准备，评估器械与原始记录已于源提交 `f4e8c12` 逐字节归档到本仓库之外的私有位置，不再保留在公开仓库中；原始记录未被删除或改写，结论不变，仍为 2 次通过、1 次硬失败、总体失败 |
 
 实际运行时入口共三个 TypeScript 文件：index 33 行、catalog 171 行、provider 251 行（本次盘点基线）。主要复杂度来自校验与外围评估，而不是另建了一套运行时调度框架。薄适配不意味着为减少行数而移除已验证的内容和路径检查。
 

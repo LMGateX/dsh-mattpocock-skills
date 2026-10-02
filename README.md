@@ -7,7 +7,7 @@ Private DSH adapter and distribution bundle for the Matt Pocock Skills channels 
 - Authoritative architecture: [docs/DESIGN.md](docs/DESIGN.md)
 - Implementation sequence and gates: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 - Checksum-bound Phase 4 artifact runbook: [docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
-- Required `implement-spec` behavioral evaluation: [docs/IMPLEMENT_SPEC_EVAL.md](docs/IMPLEMENT_SPEC_EVAL.md)
+- Required `implement-spec` behavioral evaluation: closed and failed (two trials passed, one had a hard failure). Its campaign definition, harness and raw records are evaluation material rather than package content, and are archived outside this repository.
 
 The package exposes unchanged upstream Skill bodies through DSH's native `ctx.skills` provider API. `stable` is the default 25-Skill channel; `beta` adds the user-invocable, model-disabled `implement-spec` Skill. It is an unofficial adapter and does not imply endorsement by Matt Pocock.
 

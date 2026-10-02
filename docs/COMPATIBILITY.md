@@ -61,7 +61,7 @@
 
 ## 源码定位
 
-上述 Skill 行号相对于 `vendor/mattpocock-skills/skills/`，工程类位于 `engineering/`，implement-spec 位于 `in-progress/`，grill-me 位于 `productivity/`。DSH 本次检查根：`<npm global prefix>/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/`。
+上述 Skill 行号相对于 `vendor/mattpocock-skills/skills/`，工程类位于 `engineering/`，implement-spec 位于 `in-progress/`，grill-me 位于 `productivity/`。DSH 本次检查根：`<npm 全局前缀>/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/`。
 
 - `dsh-command-compact/lib/index.js:47–97`：参数检查、compactNow 调用和人类命令注册。
 - `dsh-agent-instructions/lib/index.js:16–31,525–578`：默认候选与所有现存候选收集，不是只取 AGENTS.md 丢弃 CLAUDE.md。
