@@ -49,7 +49,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'vendor-files.json',
 ])
 
-const EXPECTED_VERSION = '0.1.0-beta.2'
+const EXPECTED_VERSION = '0.1.0-beta.3'
 
 const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2',

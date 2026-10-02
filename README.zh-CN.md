@@ -28,7 +28,7 @@
 - DSH 默认识别 `AGENTS.md` 与 `CLAUDE.md`，无需批量改写为某一种文件名。
 - **后台派发不等于 headless 保活。** 当前 headless 等 root idle 后汇总并退出，不能承诺后台子任务继续正常完成及回传。Web 场景不能由此直接推断；完整无人值守工作流需另行解决宿主生命周期。
 - Git/worktree、浏览器、网络研究与共享笔记目录依赖目标环境和权限。provider 不安装这些工具、不授予外部写权限，也不绕过文件策略。
-- **宿主版本。** 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2` 与 `0.2.0-rc.1` 上验证。始终不需要修改运行时代码，只需放宽 peer 依赖范围，因为 npm semver 无法用单一范围覆盖宿主的预发布版本。DSH `0.2.0-rc.1` 新增了安装期 peer 硬门禁，因此 `0.1.0-beta.1` 会被拒绝，`0.1.0-beta.2` 是首个可安装版本。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
+- **宿主版本。** 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2` 与 `0.2.0-rc.1` 上验证。始终不需要修改运行时代码，只需放宽 peer 依赖范围，因为 npm semver 无法用单一范围覆盖宿主的预发布版本。DSH `0.2.0-rc.1` 新增了安装期 peer 硬门禁，只声明 `^0.1.7-alpha.2` 的版本会被拒绝；本版本同时声明了 `^0.2.0-rc.1`，可在全部已验证宿主上安装。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
