@@ -71,8 +71,8 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
 ])
 
 const EXPECTED_FIXED_PACKED_FILES = 17
-const EXPECTED_VENDOR_PACKED_FILES = 81
-const EXPECTED_PACKED_FILES = 97
+const EXPECTED_VENDOR_PACKED_FILES = 83
+const EXPECTED_PACKED_FILES = 100
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
 const EXPECTED_PNPM_VERSION = '11.8.0'
 
@@ -332,8 +332,8 @@ async function readVendorInventory(root) {
   assert(inventory && typeof inventory === 'object' && !Array.isArray(inventory), 'vendor-files.json must contain an object')
   assert(inventory.root === 'vendor/mattpocock-skills', 'vendor inventory root is invalid')
   assert(Array.isArray(inventory.entries), 'vendor inventory entries must be an array')
-  assert(inventory.fileCount === EXPECTED_VENDOR_PACKED_FILES, 'vendor inventory fileCount must remain exactly 81')
-  assert(inventory.entries.length === EXPECTED_VENDOR_PACKED_FILES, 'vendor inventory must contain exactly 81 entries')
+  assert(inventory.fileCount === EXPECTED_VENDOR_PACKED_FILES, 'vendor inventory fileCount must remain exactly ' + EXPECTED_VENDOR_PACKED_FILES)
+  assert(inventory.entries.length === EXPECTED_VENDOR_PACKED_FILES, 'vendor inventory must contain exactly ' + EXPECTED_VENDOR_PACKED_FILES + ' entries')
   return inventory
 }
 
@@ -367,7 +367,7 @@ async function expectedTarMembers(root, inventory) {
       throw new Error('unsupported vendor inventory kind ' + JSON.stringify(entry.kind))
     }
   }
-  assert(expected.size === EXPECTED_PACKED_FILES, 'expected package inventory must remain exactly 97 files')
+  assert(expected.size === EXPECTED_PACKED_FILES, 'expected package inventory must remain exactly ' + EXPECTED_PACKED_FILES + ' files')
   return expected
 }
 
