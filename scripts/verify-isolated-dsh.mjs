@@ -74,6 +74,22 @@ function assertConfigDump(text, channel, label) {
   assert(!text.includes('@lmgatex/dsh-mattpocock-skills/client'), label + ' contains a forbidden package client row')
 }
 
+/**
+ * A profile-layer patch that selects one declared channel. The channel set is
+ * data-driven, so this is generated per channel rather than committed as a
+ * fixture, and it proves a profile can select any channel the catalog declares
+ * without the package itself changing.
+ */
+function channelOverlay(channel) {
+  return [
+    '# Injected by verify-isolated-dsh.mjs; a profile selecting a declared channel.',
+    '- id: dsh-mattpocock-skills',
+    '  config:',
+    '    channel: ' + channel,
+    '',
+  ].join('\n')
+}
+
 function verifierOverlay(verifier, channel, output) {
   return [
     '- insert:',
@@ -112,9 +128,11 @@ async function verifyInstallation({ kind, specification, home, source, verifier,
   const reports = {}
   for (const channel of channels) {
     const output = join(work, kind + '-' + channel + '-report.json')
+    const channelPatch = join(work, kind + '-' + channel + '-channel.patch.yml')
+    await writeFile(channelPatch, channelOverlay(channel), { mode: 0o600 })
     const overlay = join(work, kind + '-' + channel + '-verifier.patch.yml')
     await writeFile(overlay, verifierOverlay(verifier, channel, output), { mode: 0o600 })
-    const patches = ['--patch', overlay]
+    const patches = ['--patch', channelPatch, '--patch', overlay]
     const dump = run('dsh', ['--profile', 'headless', ...patches, '--dump-config'], {
       cwd: source, env, label: kind + ' ' + channel + ' config dump',
     })
