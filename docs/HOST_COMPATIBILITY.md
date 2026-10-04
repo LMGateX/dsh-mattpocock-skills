@@ -31,7 +31,7 @@ for (const [name, range] of Object.entries(dependencies)) {
 - 使用 **`includePrerelease: true`**，比 pnpm 默认的 peer 判定宽松。这也意味着 `^` 上限在该模式下会接受同一次版本线内的更高预发布版本。
 - 不满足时安装被拒绝，并提示可用 `dsh plugin allow-version` 做**按精确版本的风险豁免**。本项目不使用该豁免，而是发布兼容版本。
 
-## 0.2.1-alpha.1 核对（`v0.2.0` 基线）
+## 0.2.1-alpha.1 核对
 
 `0.2.1-alpha.1` 是 npm `alpha` dist-tag 指向的新开发线（`latest` / `next` 仍是 `0.2.0-rc.2`）。核对在 `/tmp` 下的两个全新隔离安装里对拆 `0.2.0-rc.2` 与 `0.2.1-alpha.1`，未改动本机 DSH 与任何 Profile。
 
@@ -111,7 +111,7 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 
 ## 验证结果
 
-> 表中与 `0.1.0-beta.x` 有关的行记录的是**双通道基线**（Stable 25 / Beta 26），当时的事实保持原样。当前 `v0.2.0` 基线是**单一 `stable` 通道、27 个 Skills**，对应验证见 0.2.1-alpha.1 小节与本表末尾。
+> 表中与 `0.1.0-beta.x` 有关的行记录的是**旧的 25/26 Skills 基线**，当时的事实保持原样。当前基线是**两个通道（`stable` + `beta`）、各 27 个 Skills**。
 
 | 检查 | 结果 |
 |---|---|
@@ -127,10 +127,11 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 | `0.1.0-beta.2` 在 0.2.0-rc.1 上安装并装载插件树 | Stable 25 / Beta 26；`implement-spec` 正文哈希与其它宿主一致 |
 | `implement-spec` 调用权限 | `userInvocable: true` / `modelInvocable: false` |
 | `implement-spec` 正文与资源目录 | 正文 SHA-256 `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3`（双通道基线）；资源为 directory |
-| **`v0.2.0` 基线（单一 `stable` 通道，27 个 Skills）** | |
+| **双通道基线（`stable` + `beta`，各 27 个 Skills）** | |
 | `0.2.0-rc.2` 与 `0.2.1-alpha.1` 隔离对拆：安装期门禁真身函数判定 | 两版均 `OK (no incompatibility)`，无需 `allow-version` 豁免 |
 | 两版 skill 包 `lib/` 递归对拆 | **逐字节相同**，sha256 一致 |
-| provider 运行时冒烟 | 25 候选 / 25 加载成功；两版指纹一致 `cd41342e…` |
+| provider 运行时冒烟（当时插件为 25 个 Skills） | 25 候选 / 25 加载成功；两版指纹一致 `cd41342e…` |
+| 双通道制品在两宿主上的隔离安装与装载 | 见下方「双通道制品核对」 |
 | 模型调用 | 无 |
 
 装载插件树时，`0.1.2-rc.1` 由 app 的 `--help` 触发生效；`0.1.7-alpha.2` 的 `--help` 会在装载前提前退出，因此改用「无凭据环境下的一次运行」触发装载——宿主会在调用模型之前以 `MISSING_CREDENTIAL` 结束，插件注册仍然完成。

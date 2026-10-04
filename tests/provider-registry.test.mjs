@@ -105,6 +105,18 @@ test('actual DSH registry exposes implement-spec as user-invocable and model-hid
   }
 })
 
+test('the beta channel resolves to the same set as stable while nothing is previewed', async () => {
+  const mounted = await mount('beta')
+  try {
+    assert.deepEqual(plugin.CATALOG.channels.beta, plugin.CATALOG.channels.stable)
+    const summaries = await mounted.ctx.skills.list()
+    assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.beta)
+    assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.stable)
+  } finally {
+    await cleanup(mounted.packageFiber, mounted.registryFiber)
+  }
+})
+
 test('provider registration is owned and disposed by the Cordis plugin fiber', async () => {
   const mounted = await mount('stable')
   try {

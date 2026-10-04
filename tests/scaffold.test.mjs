@@ -69,9 +69,12 @@ test('exports the closed channel set declared by the vendored distribution', asy
   const plugin = await import('../lib/index.js')
   assert.equal(plugin.name, 'dsh-mattpocock-skills')
   assert.deepEqual(plugin.inject, ['skills'])
+  // The channel set is a public interface: it only ever grows, and `stable` stays the default.
+  assert.deepEqual(plugin.CHANNELS, ['beta', 'stable'])
   assert.deepEqual(plugin.CHANNELS, Object.keys(plugin.CATALOG.channels).sort())
   assert.equal(plugin.DEFAULT_CHANNEL, 'stable')
   assert.deepEqual(plugin.Config({}), { channel: 'stable' })
   assert.deepEqual(plugin.Config({ channel: 'stable' }), { channel: 'stable' })
+  assert.deepEqual(plugin.Config({ channel: 'beta' }), { channel: 'beta' })
   assert.throws(() => plugin.Config({ channel: 'nightly' }))
 })

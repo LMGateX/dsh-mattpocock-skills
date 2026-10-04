@@ -8,8 +8,8 @@ Current provenance:
 
 - Upstream commit: `d81f3a183412e71a5b1e84ca21bc1a35eea03a60`
 - Source distribution: `LMGateX/mattpocock-skills-distribution`
-- Distribution tag: `v0.2.0`
-- Distribution commit: `47cc6fa6afe6c106cc0f197fa516c49d747340af`
+- Distribution tag: `v0.2.1`
+- Distribution commit: `150ec3c09e7083c9ba82c522c0ab916fb6a01f7a`
 
 The Matt Pocock Skills files are licensed under the MIT License:
 

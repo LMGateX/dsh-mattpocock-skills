@@ -2,12 +2,41 @@
   "schemaVersion": 1,
   "distribution": {
     "repository": "https://github.com/LMGateX/mattpocock-skills-distribution.git",
-    "tag": "v0.2.0",
-    "tagObject": "7eaede65be94dbcea63681dff3c1d139065f2b45",
-    "commit": "47cc6fa6afe6c106cc0f197fa516c49d747340af",
+    "tag": "v0.2.1",
+    "tagObject": "7e4c7ae9491f7e0241d7887c6da9a2573b4751f7",
+    "commit": "150ec3c09e7083c9ba82c522c0ab916fb6a01f7a",
     "upstreamCommit": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60"
   },
   "channels": {
+    "beta": [
+      "ask-matt",
+      "code-review",
+      "codebase-design",
+      "diagnosing-bugs",
+      "domain-modeling",
+      "grill-me",
+      "grill-with-docs",
+      "grilling",
+      "handoff",
+      "implement",
+      "implement-spec",
+      "improve-codebase-architecture",
+      "pr",
+      "prototype",
+      "research",
+      "retro",
+      "setup-matt-pocock-skills",
+      "tdd",
+      "teach",
+      "to-questionnaire",
+      "to-spec",
+      "to-tickets",
+      "triage",
+      "wait-what",
+      "wayfinder",
+      "wizard",
+      "writing-for-agents"
+    ],
     "stable": [
       "ask-matt",
       "code-review",
@@ -47,6 +76,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/ask-matt",
@@ -62,6 +92,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/code-review",
@@ -77,6 +108,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/codebase-design",
@@ -92,6 +124,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/diagnosing-bugs",
@@ -107,6 +140,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/domain-modeling",
@@ -122,6 +156,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/grill-me",
@@ -137,6 +172,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/grill-with-docs",
@@ -152,6 +188,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/grilling",
@@ -170,6 +207,7 @@
         "argument-hint": "What will the next session be used for?"
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/handoff",
@@ -185,6 +223,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/implement",
@@ -200,6 +239,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/implement-spec",
@@ -215,6 +255,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/improve-codebase-architecture",
@@ -238,6 +279,7 @@
         }
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/pr",
@@ -253,6 +295,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/prototype",
@@ -268,6 +311,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/research",
@@ -283,6 +327,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/retro",
@@ -298,6 +343,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/setup-matt-pocock-skills",
@@ -313,6 +359,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/tdd",
@@ -331,6 +378,7 @@
         "argument-hint": "What would you like to learn about?"
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/teach",
@@ -346,6 +394,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/to-questionnaire",
@@ -361,6 +410,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/to-spec",
@@ -376,6 +426,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/to-tickets",
@@ -391,6 +442,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/triage",
@@ -406,6 +458,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/wait-what",
@@ -421,6 +474,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/wayfinder",
@@ -436,6 +490,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/engineering/wizard",
@@ -451,6 +506,7 @@
         "userInvocable": true
       },
       "channels": [
+        "beta",
         "stable"
       ],
       "directory": "skills/productivity/writing-for-agents",

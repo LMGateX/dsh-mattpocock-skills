@@ -2,10 +2,17 @@
   "schemaVersion": 1,
   "root": "vendor/mattpocock-skills",
   "hashAlgorithm": "sha256",
-  "fileCount": 83,
-  "totalBytes": 221337,
-  "rootSha256": "dce8b66611b9215d3f6ad3c741e519558a65e1946c74916b0caf463d9813d363",
+  "fileCount": 84,
+  "totalBytes": 223396,
+  "rootSha256": "e9063234dc3f5ddf4bfd39af244d62a778f3306a20a5fa860b191e21d83b3bec",
   "entries": [
+    {
+      "path": ".distribution/channels/beta.json",
+      "kind": "file",
+      "mode": "100644",
+      "size": 1360,
+      "sha256": "dc591cbb1c7124c5edf18c5b8414653cdac92479624d19b2817c60b4e7e0c27a"
+    },
     {
       "path": ".distribution/channels/stable.json",
       "kind": "file",
@@ -17,15 +24,15 @@
       "path": ".distribution/upstream.json",
       "kind": "file",
       "mode": "100644",
-      "size": 459,
-      "sha256": "ed9ad648f761059a72f64c16e97a6a2e890229800176f9f89917b66565192712"
+      "size": 482,
+      "sha256": "4f7f50e3ad8f2be05c1987b1025450794fb82aab3284616a39306d6dafd6d2ca"
     },
     {
       "path": "DISTRIBUTION.md",
       "kind": "file",
       "mode": "100644",
-      "size": 3368,
-      "sha256": "fdcbfb1ee347d5f8a9f2c29debc8637f4bed608e13e87a778911275ac3aab612"
+      "size": 4044,
+      "sha256": "2533b33bb13662bfab4ccc2fae8c0dcd88b95166526197219671551789ad1670"
     },
     {
       "path": "LICENSE",

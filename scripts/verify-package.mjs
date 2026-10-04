@@ -51,7 +51,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'vendor-files.json',
 ])
 
-const EXPECTED_VERSION = '0.2.0'
+const EXPECTED_VERSION = '0.2.1'
 
 const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2',
@@ -71,8 +71,8 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
 ])
 
 const EXPECTED_FIXED_PACKED_FILES = 17
-const EXPECTED_VENDOR_PACKED_FILES = 83
-const EXPECTED_PACKED_FILES = 100
+const EXPECTED_VENDOR_PACKED_FILES = 84
+const EXPECTED_PACKED_FILES = 101
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
 const EXPECTED_PNPM_VERSION = '11.8.0'
 

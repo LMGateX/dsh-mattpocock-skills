@@ -2,7 +2,7 @@
 
 This document is the authoritative Phase 4 runbook and evidence record for the private development artifact. It does not authorize Phase 5 model evaluation, owner-profile activation, release tagging, GitHub Releases, npm publication, or public visibility.
 
-> **Historical record, bound to one artifact.** This runbook and its evidence describe the **two-channel** baseline at source distribution `v0.1.0-beta.1`, and the counts, member lists, and hashes below are checksum-bound to the Phase 4 artifact built from that baseline. **They are not the current numbers and must not be updated in place**: changing them would falsify the evidence. The current baseline is source distribution `v0.2.0` (single `stable` channel, 27 Skills, 83 vendored files); its verification is recorded in [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md) and by the current release artifact.
+> **Historical record, bound to one artifact.** This runbook and its evidence describe the **two-channel** baseline at source distribution `v0.1.0-beta.1`, and the counts, member lists, and hashes below are checksum-bound to the Phase 4 artifact built from that baseline. **They are not the current numbers and must not be updated in place**: changing them would falsify the evidence. The current baseline is source distribution `v0.2.1` (two channels, `stable` and `beta`, 27 Skills each and 84 vendored files); its verification is recorded in [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md) and by the current release artifact.
 
 ## Scope Fence
 

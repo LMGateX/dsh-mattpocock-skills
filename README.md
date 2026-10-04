@@ -2,7 +2,7 @@
 
 Private DSH adapter and distribution bundle for the Matt Pocock Skills channels maintained in [LMGateX/mattpocock-skills-distribution](https://github.com/LMGateX/mattpocock-skills-distribution).
 
-**Current status:** The core adapter and Phase 4 artifact verification are complete. The Phase 5 behavioral campaign is closed but failed: two trials passed and one had a hard failure. Subsequent maintenance focuses on the thin adapter and demonstrated compatibility gaps, not expansion of the behavioral analyzer. Owner-profile activation and release remain unauthorized.
+**Current status:** The core adapter and Phase 4 artifact verification are complete. The Phase 5 behavioral campaign is closed but failed: two trials passed and one had a hard failure. Subsequent maintenance focuses on the thin adapter and demonstrated compatibility gaps, not expansion of the behavioral analyzer. Owner-profile activation remains unauthorized.
 
 - Upgrading a repository that already used these Skills: [MIGRATION.md](MIGRATION.md)
 - Authoritative architecture: [docs/DESIGN.md](docs/DESIGN.md)
@@ -10,7 +10,14 @@ Private DSH adapter and distribution bundle for the Matt Pocock Skills channels 
 - Checksum-bound Phase 4 artifact runbook: [docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
 - Required `implement-spec` behavioral evaluation: closed and failed (two trials passed, one had a hard failure). Its campaign definition, harness and raw records are evaluation material rather than package content, and are archived outside this repository.
 
-The package exposes unchanged upstream Skill bodies through DSH's native `ctx.skills` provider API. The channel set is data-driven: the plugin publishes exactly the channels declared by the pinned distribution, currently one `stable` channel of 27 Skills. An unknown channel name fails closed instead of loading an empty set. It is an unofficial adapter and does not imply endorsement by Matt Pocock.
+The package exposes unchanged upstream Skill bodies through DSH's native `ctx.skills` provider API. The channel set is data-driven: the plugin publishes exactly the channels declared by the pinned distribution, and an unknown channel name fails closed instead of loading an empty set.
+
+The pinned distribution publishes **two channels, and only ever adds channels**:
+
+- `stable` — upstream's promoted set: 27 Skills.
+- `beta` — `stable` plus whatever upstream is previewing under `skills/in-progress/`. Nothing is previewed today, so `beta` resolves to the **same 27 Skills**; it exists so that a profile which selected `beta` keeps working.
+
+`stable` is the default. It is an unofficial adapter and does not imply endorsement by Matt Pocock.
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.
 

@@ -2,7 +2,7 @@
 
 这是一个私有的、可复现的 DeepSeek Harness Profile Bundle，用于加载 [LMGateX/mattpocock-skills-distribution](https://github.com/LMGateX/mattpocock-skills-distribution) 中定义的 Skills Channel。
 
-**当前状态：核心插件与 Phase 4 制品验证已完成；Phase 5 行为评估已关闭，但未通过。** 三次试验为 2 次通过、1 次硬失败，总体失败。后续维护聚焦薄适配与真实兼容缺口，不继续扩展行为审计器；所有者 Profile 启用与发布仍未授权。
+**当前状态：核心插件与 Phase 4 制品验证已完成；Phase 5 行为评估已关闭，但未通过。** 三次试验为 2 次通过、1 次硬失败，总体失败。后续维护聚焦薄适配与真实兼容缺口，不继续扩展行为审计器；所有者 Profile 启用仍未授权。
 
 - 已有仓库的升级须知：[MIGRATION.md](MIGRATION.md)
 - 权威设计：[docs/DESIGN.md](docs/DESIGN.md)
@@ -10,9 +10,14 @@
 - Phase 4 校验和绑定制品流程：[docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
 - `implement-spec` 行为评估：已关闭且未通过（2 次通过、1 次硬失败）。其活动定义、器械与原始记录属于评估材料而非本包内容，已归档于本仓库之外。
 
-该包通过 DSH 原生 `ctx.skills` Provider 暴露未经正文重写的上游 Skill。通道集是**数据驱动**的：插件发布的正是钉住的分发版本所声明的通道，目前是**一个 `stable` 通道、27 个 Skills**。未知通道名会失败关闭，而不是加载空集。
+该包通过 DSH 原生 `ctx.skills` Provider 暴露未经正文重写的上游 Skill。通道集是**数据驱动**的：插件发布的正是钉住的分发版本所声明的通道；未知通道名会**失败关闭**，而不是加载空集。
 
-这是非官方适配器，不代表 Matt Pocock 的认可、背书或关联。
+钉住的分发版本发布**两个通道，且通道只增不减**：
+
+- `stable`：上游的正式集合，27 个 Skills。
+- `beta`：`stable` 加上上游正在 `skills/in-progress/` 里预览的内容。目前没有预览项，所以 `beta` 解析出**同样的 27 个 Skills**；它存在的意义是让已经选了 `beta` 的 Profile 继续可用。
+
+默认是 `stable`。这是非官方适配器，不代表 Matt Pocock 的认可、背书或关联。
 
 **升级须知：** 上游 v1.3 把 `CONTEXT.md` 改名为 `GLOSSARY.md`，且**没有旧名回退**；技能在旧名缺失时**不会报错**，只会静默新建一份空的 `GLOSSARY.md`。已有仓库请先读 [MIGRATION.md](MIGRATION.md)。
 

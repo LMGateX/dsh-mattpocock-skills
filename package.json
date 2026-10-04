@@ -1,6 +1,6 @@
 {
   "name": "@lmgatex/dsh-mattpocock-skills",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Private reproducible DSH bundle for the Matt Pocock Skills promoted set",
   "type": "module",

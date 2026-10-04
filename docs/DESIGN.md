@@ -23,9 +23,9 @@ The initial package is private and intended for the owner's DSH profiles. Public
 
 1. **Package identity:** use `@lmgatex/dsh-mattpocock-skills`. The npm scope is provisional until a matching npmjs account or organization is controlled; private GitHub and local installs do not depend on npmjs ownership.
 2. **Repository visibility:** both the source distribution and plugin repositories remain private until the owner explicitly changes visibility.
-3. **One package, manifest-driven channels:** ship one package whose channel set is exactly the channel manifests the pinned distribution declares. Runtime code must not hard-code channel names. *(Amended on the `v0.2.0` baseline: the distribution removed its `beta` channel after upstream v1.3 promoted `implement-spec`, `pr`, and `retro` into the promoted set. The set is currently a single `stable` channel; a later preview channel is a deliberate new decision, not a permanent second track.)*
-4. **Default channel:** `stable` when the catalog declares it, otherwise the first declared channel.
-5. **Owner's Web profile:** mount the package after isolated package verification. No channel selection is needed, because the promoted set already contains `implement-spec`. *(Amended on the `v0.2.0` baseline, superseding the previous instruction to configure `beta`.)*
+3. **One package, manifest-driven channels:** ship one package whose channel set is exactly the channel manifests the pinned distribution declares. Runtime code must not hard-code channel names, channel counts, or the relationship between channels. *(Amended on the `v0.2.1` baseline: the distribution always publishes `stable` and `beta`, where `beta` is `stable` plus whatever upstream paths it previews. While nothing is previewed the two resolve to the same set, so a profile that selected either keeps working. The distribution owns that policy and its verifier rejects a reduced channel set.)*
+4. **Default channel:** `stable`, which the distribution always declares.
+5. **Owner's Web profile:** any declared channel may be selected, and no selection is required, because `implement-spec` is in the promoted set. *(Amended on the `v0.2.1` baseline. The earlier instruction to configure `beta` in order to get `implement-spec` is obsolete; `beta` remains supported for compatibility.)*
 6. **Vendored union:** vendor the union of every declared channel once; each channel is a manifest-driven selection from that union.
 7. **Unchanged Skill sources:** preserve selected upstream-owned files byte-for-byte. Do not apply DSH wording substitutions or delete source resources.
 8. **Provider shape:** use a custom immutable provider backed by a generated static catalog, not a runtime recursive scanner and not `ctx.skills.register()`.
@@ -43,14 +43,15 @@ The initial source baseline is:
 | Item | Value |
 |---|---|
 | Distribution repository | `LMGateX/mattpocock-skills-distribution` |
-| Distribution tag | `v0.2.0` |
-| Annotated tag object | `7eaede65be94dbcea63681dff3c1d139065f2b45` |
-| Distribution commit | `47cc6fa6afe6c106cc0f197fa516c49d747340af` |
+| Distribution tag | `v0.2.1` |
+| Annotated tag object | `7e4c7ae9491f7e0241d7887c6da9a2573b4751f7` |
+| Distribution commit | `150ec3c09e7083c9ba82c522c0ab916fb6a01f7a` |
 | Matt Pocock upstream | `mattpocock/skills` |
 | Upstream commit | `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` |
-| Source verifier SHA-256 | `613343111b3dc9d3d6ab8f5c76d1824adba51cec917a29ec75d0d42970ac5d41` |
-| Declared channels | one `stable` channel |
+| Source verifier SHA-256 | `f62039d108fdbfd0bf56165dd8e35a407cf6c11ab1be361351ea37e8bc401bf7` |
+| Declared channels | `stable` and `beta`, both always published |
 | Stable selection | 27 promoted Skills |
+| Beta selection | `stable` plus the distribution's `previewSkills`, which is empty and so resolves to the same 27 Skills |
 
 The annotated tag is unsigned. Reproducibility therefore relies on the pinned repository, immutable full object IDs, source verification, and the downstream per-file inventory. Signing a later tag is desirable but not required.
 
@@ -60,13 +61,15 @@ Upstream v1.3 is merged to `mattpocock/skills` `main`, but its version bump was 
 
 The source distribution manifests are authoritative. The plugin must not hard-code channel names or directory buckets: ingestion discovers whatever `.distribution/channels/*.json` the pinned distribution ships, and the runtime catalog records that set.
 
+The distribution owns channel policy and publishes a closed set that only ever grows. Its own verifier rejects a reduced set, so a name a consumer already selected cannot disappear. The plugin must not assume two channels, or any particular relationship between them.
+
 - Each declared channel loads exactly the paths its manifest selects.
 - Ingestion vends the union of every declared channel in one pass. A Skill's `channels` membership is derived from the manifests, never from the directory it happens to live in.
 - Unknown channel names, unknown manifest schema versions, and a manifest that declares `additionalSkills` without `extends` all fail closed.
 - When a channel declares `extends`, ingestion asserts that it contains every Skill of the base channel and that `additionalSkills` equals the difference.
 - Each selected Skill path means the complete Skill directory, including references, scripts, assets, and adapter metadata supplied by the source distribution.
 
-`implement-spec` has `disable-model-invocation: true`, so it adds the user command `/implement-spec` without adding a model-visible catalog entry. Upstream v1.3 promoted it into the same set as everything else, so the `v0.2.0` baseline has no separate preview channel.
+`implement-spec` has `disable-model-invocation: true`, so it adds the user command `/implement-spec` without adding a model-visible catalog entry. Upstream v1.3 promoted it into the promoted set, so it is now selected by both channels.
 
 ## 5. DSH Integration
 
@@ -87,7 +90,7 @@ The package manifest declares an installable Profile Bundle:
 }
 ```
 
-The bundle patch inserts exactly one globally mounted Host row. Its final identifier must be unique and stable. The row loads the package and omits `channel`, which selects the catalog's default. A profile-owned later patch may set any declared channel name.
+The bundle patch inserts exactly one globally mounted Host row. Its final identifier must be unique and stable. The row loads the package and sets `channel: stable`. A profile-owned later patch may set any declared channel name.
 
 Installation is through DSH's profile package manager, for example a local checkout, private Git commit, or prebuilt tarball. Activation occurs on the next Profile boot.
 
