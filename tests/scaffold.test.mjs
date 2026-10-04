@@ -45,6 +45,7 @@ test('declares one private installable DSH bundle', async () => {
     'source-lock.json',
     'README.md',
     'README.zh-CN.md',
+    'MIGRATION.md',
     'LICENSE',
     'THIRD_PARTY_NOTICES.md',
   ])
@@ -64,13 +65,13 @@ test('declares one private installable DSH bundle', async () => {
   ])
 })
 
-test('exports a closed stable/beta channel schema', async () => {
+test('exports the closed channel set declared by the vendored distribution', async () => {
   const plugin = await import('../lib/index.js')
   assert.equal(plugin.name, 'dsh-mattpocock-skills')
   assert.deepEqual(plugin.inject, ['skills'])
-  assert.deepEqual(plugin.CHANNELS, ['stable', 'beta'])
+  assert.deepEqual(plugin.CHANNELS, Object.keys(plugin.CATALOG.channels).sort())
   assert.equal(plugin.DEFAULT_CHANNEL, 'stable')
   assert.deepEqual(plugin.Config({}), { channel: 'stable' })
-  assert.deepEqual(plugin.Config({ channel: 'beta' }), { channel: 'beta' })
+  assert.deepEqual(plugin.Config({ channel: 'stable' }), { channel: 'stable' })
   assert.throws(() => plugin.Config({ channel: 'nightly' }))
 })

@@ -2,6 +2,8 @@
 
 This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is intentionally phased so provenance and package behavior are testable before the plugin is enabled in the owner's active Web profile.
 
+> **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. The current baseline is source distribution `v0.2.0`: a single `stable` channel, 27 Skills, 83 vendored files. Do not read the numbers below as the current state.
+
 ## Phase 0 — Repository Baseline
 
 **Status:** Complete.

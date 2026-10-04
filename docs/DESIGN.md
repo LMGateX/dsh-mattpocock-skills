@@ -23,10 +23,10 @@ The initial package is private and intended for the owner's DSH profiles. Public
 
 1. **Package identity:** use `@lmgatex/dsh-mattpocock-skills`. The npm scope is provisional until a matching npmjs account or organization is controlled; private GitHub and local installs do not depend on npmjs ownership.
 2. **Repository visibility:** both the source distribution and plugin repositories remain private until the owner explicitly changes visibility.
-3. **One package, two channels:** ship one package with `channel: stable | beta`.
-4. **Default channel:** `stable`.
-5. **Owner's Web profile:** configure `beta` after isolated package verification so `/implement-spec` is available.
-6. **Vendored union:** vendor the complete Beta union once; Stable is a manifest-driven selection from that union.
+3. **One package, manifest-driven channels:** ship one package whose channel set is exactly the channel manifests the pinned distribution declares. Runtime code must not hard-code channel names. *(Amended on the `v0.2.0` baseline: the distribution removed its `beta` channel after upstream v1.3 promoted `implement-spec`, `pr`, and `retro` into the promoted set. The set is currently a single `stable` channel; a later preview channel is a deliberate new decision, not a permanent second track.)*
+4. **Default channel:** `stable` when the catalog declares it, otherwise the first declared channel.
+5. **Owner's Web profile:** mount the package after isolated package verification. No channel selection is needed, because the promoted set already contains `implement-spec`. *(Amended on the `v0.2.0` baseline, superseding the previous instruction to configure `beta`.)*
+6. **Vendored union:** vendor the union of every declared channel once; each channel is a manifest-driven selection from that union.
 7. **Unchanged Skill sources:** preserve selected upstream-owned files byte-for-byte. Do not apply DSH wording substitutions or delete source resources.
 8. **Provider shape:** use a custom immutable provider backed by a generated static catalog, not a runtime recursive scanner and not `ctx.skills.register()`.
 9. **Precedence:** every packaged candidate uses `source: 'bundled'` and DSH's `BUNDLED_SKILL_RANK` (currently 600), so project and user Skills override the package.
@@ -43,27 +43,30 @@ The initial source baseline is:
 | Item | Value |
 |---|---|
 | Distribution repository | `LMGateX/mattpocock-skills-distribution` |
-| Distribution tag | `v0.1.0-beta.1` |
-| Annotated tag object | `0108f00aa90cde51b290d6c58ac86d7f0b045ba0` |
-| Distribution commit | `f0834542c543df9197364127d13383ffea6e43d3` |
+| Distribution tag | `v0.2.0` |
+| Annotated tag object | `7eaede65be94dbcea63681dff3c1d139065f2b45` |
+| Distribution commit | `47cc6fa6afe6c106cc0f197fa516c49d747340af` |
 | Matt Pocock upstream | `mattpocock/skills` |
-| Upstream commit | `3cca18b368ae95cdbdebbff572ccafa662551015` |
-| Source verifier SHA-256 | `8b1b01c562af52ae9c330e63a47aaa7ae52f03ee12d4be69ea36fbefea760155` |
-| Stable selection | 25 promoted Skills |
-| Beta selection | Stable plus official `skills/in-progress/implement-spec` |
+| Upstream commit | `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` |
+| Source verifier SHA-256 | `613343111b3dc9d3d6ab8f5c76d1824adba51cec917a29ec75d0d42970ac5d41` |
+| Declared channels | one `stable` channel |
+| Stable selection | 27 promoted Skills |
 
-The initial annotated tag is unsigned. Reproducibility therefore relies on the private repository, immutable full object IDs, source verification, and the downstream per-file inventory. Signing a later tag is desirable but not required for local private use.
+The annotated tag is unsigned. Reproducibility therefore relies on the pinned repository, immutable full object IDs, source verification, and the downstream per-file inventory. Signing a later tag is desirable but not required.
+
+Upstream v1.3 is merged to `mattpocock/skills` `main`, but its version bump was still pending on upstream's release branch when this baseline was pinned, so `.claude-plugin/plugin.json` at the pinned commit still reads `1.2.3`. The channel manifest describes the skill set at the pinned commit, not at the newest upstream tag. When upstream publishes v1.3, the pinned commit may differ from the released one; re-pinning is a separate, deliberate sync.
 
 ## 4. Channel Semantics
 
-The source distribution manifests are authoritative. The plugin must not hard-code directory buckets or assume that Beta always means “Stable plus one known path.”
+The source distribution manifests are authoritative. The plugin must not hard-code channel names or directory buckets: ingestion discovers whatever `.distribution/channels/*.json` the pinned distribution ships, and the runtime catalog records that set.
 
-- `stable`: load exactly the paths selected by `.distribution/channels/stable.json`.
-- `beta`: load exactly the paths selected by `.distribution/channels/beta.json`.
-- Unknown channel names or unknown manifest schema versions fail closed.
+- Each declared channel loads exactly the paths its manifest selects.
+- Ingestion vends the union of every declared channel in one pass. A Skill's `channels` membership is derived from the manifests, never from the directory it happens to live in.
+- Unknown channel names, unknown manifest schema versions, and a manifest that declares `additionalSkills` without `extends` all fail closed.
+- When a channel declares `extends`, ingestion asserts that it contains every Skill of the base channel and that `additionalSkills` equals the difference.
 - Each selected Skill path means the complete Skill directory, including references, scripts, assets, and adapter metadata supplied by the source distribution.
 
-The initial `implement-spec` Skill has `disable-model-invocation: true`. Enabling Beta therefore adds the user command `/implement-spec` without adding another model-visible catalog entry.
+`implement-spec` has `disable-model-invocation: true`, so it adds the user command `/implement-spec` without adding a model-visible catalog entry. Upstream v1.3 promoted it into the same set as everything else, so the `v0.2.0` baseline has no separate preview channel.
 
 ## 5. DSH Integration
 
@@ -84,7 +87,7 @@ The package manifest declares an installable Profile Bundle:
 }
 ```
 
-The bundle patch inserts exactly one globally mounted Host row. Its final identifier must be unique and stable. The row loads the package and sets `channel: stable` by default. A profile-owned later patch may replace the row config with `channel: beta`.
+The bundle patch inserts exactly one globally mounted Host row. Its final identifier must be unique and stable. The row loads the package and omits `channel`, which selects the catalog's default. A profile-owned later patch may set any declared channel name.
 
 Installation is through DSH's profile package manager, for example a local checkout, private Git commit, or prebuilt tarball. Activation occurs on the next Profile boot.
 
@@ -94,7 +97,7 @@ The entry exports the conventional Cordis surface:
 
 - `name`
 - `inject = ['skills']`
-- a Schemastery `Config` with the closed values `stable` and `beta`, defaulting to `stable`
+- a Schemastery `Config` whose closed value set is the catalog's channel names, defaulting to `stable` when declared and otherwise to the first channel
 - `apply(ctx, config)`
 
 `apply` synchronously registers one `SkillProvider` with `ctx.skills.registerProvider`. The package does not provide a competing Skill Registry service and does not parse user messages itself.
@@ -214,9 +217,9 @@ Required update sequence:
 1. Resolve and verify the exact annotated tag object and peeled commit.
 2. Verify the source in a real Git checkout using the source distribution's verifier.
 3. Parse the selected distribution manifests and reject unknown schemas.
-4. Build the Beta union from manifests, not from directory enumeration.
+4. Build the union of every declared channel from manifests, not from directory enumeration.
 5. Read each selected complete Skill directory from Git tree entries and blob bytes, preserving Git-compatible modes without relying on checkout bytes.
-6. Copy exactly `.distribution/channels/stable.json`, `.distribution/channels/beta.json`, `.distribution/upstream.json`, `DISTRIBUTION.md`, and the upstream `LICENSE`; do not copy maintenance scripts or the rest of `.distribution/`.
+6. Copy exactly every discovered `.distribution/channels/*.json`, `.distribution/upstream.json`, `DISTRIBUTION.md`, and the upstream `LICENSE`; do not copy maintenance scripts or the rest of `.distribution/`.
 7. Generate the catalog, `PROVENANCE.json`, and sorted `vendor-files.json`.
 8. Verify every regular file, executable bit, and symlink target; reject path escapes and residue from an older source.
 9. Re-run generation in check mode and require zero drift.
@@ -281,7 +284,7 @@ Deterministic gates include:
 - exact Vendor inventory verification
 - generated catalog drift check
 - invocation-policy mapping tests
-- complete Stable/Beta membership tests
+- complete channel membership tests
 - `list()` and `get()` provider contract tests
 - relative resource-base tests
 - deterministic active-read lookup/lifecycle aborts and malformed/missing-file behavior

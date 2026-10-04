@@ -6,8 +6,14 @@ export { PACKAGE_ROOT, PROVIDER_NAME, createMattPocockSkillProvider } from './pr
 export type { ProviderDiagnostic, ProviderOptions, SkillFileReader } from './provider.js';
 export declare const name = "dsh-mattpocock-skills";
 export declare const inject: readonly ["skills"];
-export declare const CHANNELS: readonly ["stable", "beta"];
-export type Channel = (typeof CHANNELS)[number];
+/**
+ * Channels declared by the vendored distribution. Sorting is stable and the set is
+ * closed for one mount: an unknown channel name is rejected rather than silently empty.
+ */
+export declare const CHANNELS: readonly string[];
+/** Channel names are data-driven, so the type is a string validated against {@link CHANNELS}. */
+export type Channel = string;
+/** Channel used when a profile selects none: `stable` when declared, otherwise the first channel. */
 export declare const DEFAULT_CHANNEL: Channel;
 export interface Config {
     channel: Channel;

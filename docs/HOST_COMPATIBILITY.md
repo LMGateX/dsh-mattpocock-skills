@@ -2,7 +2,7 @@
 
 ## 结论
 
-**从 DSH `0.1.2-rc.1` 到 `0.2.0-rc.1`（含 `0.1.7-alpha.2`、`0.1.7-rc.1`、`0.1.7-rc.2`），本插件始终不需要修改运行时代码。**
+**从 DSH `0.1.2-rc.1` 到 `0.2.1-alpha.1`（含 `0.1.7-alpha.2`、`0.1.7-rc.1`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2`），本插件始终不需要修改运行时代码。**
 
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与最初宿主编译结果**逐字节相同**。
 
@@ -31,6 +31,27 @@ for (const [name, range] of Object.entries(dependencies)) {
 - 使用 **`includePrerelease: true`**，比 pnpm 默认的 peer 判定宽松。这也意味着 `^` 上限在该模式下会接受同一次版本线内的更高预发布版本。
 - 不满足时安装被拒绝，并提示可用 `dsh plugin allow-version` 做**按精确版本的风险豁免**。本项目不使用该豁免，而是发布兼容版本。
 
+## 0.2.1-alpha.1 核对（`v0.2.0` 基线）
+
+`0.2.1-alpha.1` 是 npm `alpha` dist-tag 指向的新开发线（`latest` / `next` 仍是 `0.2.0-rc.2`）。核对在 `/tmp` 下的两个全新隔离安装里对拆 `0.2.0-rc.2` 与 `0.2.1-alpha.1`，未改动本机 DSH 与任何 Profile。
+
+| 核对项 | 结果 |
+|---|---|
+| 安装期 peer 门禁（`dsh-app-boot/lib/index.js:277-313`） | 与 `0.2.0-rc.2` **逐字节相同**；仍只检查 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 前缀 |
+| 直接调用两版**真身**判定函数（喂插件真实 `package.json`） | 四种组合全部 `OK (no incompatibility)` |
+| `dsh-skill`、`dsh-skill-filesystem`、`dsh-skill-badge`、`dsh-skill-office` 的整个 `lib/`（含类型） | **逐字节相同**，sha256 一致 |
+| `BUNDLED_SKILL_RANK` = 600、`RUNTIME_RANK` = 250、`registerProvider` / `list` / `get`、导出面 | 全部相同 |
+| provider 冒烟（真实运行时注册表） | 两版均为 25 候选、25/25 加载成功，指纹同为 `cd41342ee6cd67b8164d4a515d7c10d2389895f54e999aba32fad1bffe416119` |
+| patch 解析与加载（`bundlePatchFiles`、`loadOverlayPatches`、`prepareProfileEntries` 等） | 逐字节相同；插件 `cordis.patch.yml` 两版解析输出一致 |
+| profile bundle 变化 | 仅新增 `dropRetiredBundles()`（只移除 `@deepseek-ai/dsh-experimental-schedule-bundle`）与 `OPTIONAL_BUNDLES` 换入 inspector-profile，均不含本插件 |
+
+**两个边界要记住：**
+
+- 门禁放行**依赖 `includePrerelease: true`**。换成 pnpm 的默认判定，`0.2.1-alpha.1` **不满足**现有范围，只会产生 peer 告警（安装期门禁本身仍会放行）。
+- 上界是 `<0.3.0-0`：`0.3.0-alpha.1` 实测为 **false**。0.3 线到来时必须更新 peer 范围，或使用 `allow-version` 豁免。
+
+因为两版 `dsh-skill` 的 `lib/types` 逐字节相同，`devDependencies` 仍钉在 `@deepseek-ai/dsh-skill@0.1.7-alpha.2`：升级它不会改变编译产物，只会让 pnpm 把整条新宿主的 peer 家族重新解析进来。运行时由 profile interception 指向运行时副本，`devDependencies` 只影响编译期类型。
+
 ## 核对范围与方法
 
 核对过程只做只读与隔离验证：不改动本机正在使用的 Profile，不调用任何模型。
@@ -42,12 +63,12 @@ for (const [name, range] of Object.entries(dependencies)) {
 
 ## 版本对照
 
-| 宿主包 | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 | 0.2.0-rc.1 |
-|---|---|---|---|---|
-| `@deepseek-ai/dsh-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 | 0.2.0-rc.1 |
-| `@deepseek-ai/dsh-tool-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 | 0.2.0-rc.1 |
-| `@deepseek-ai/cordis` | 4.0.2 | 4.0.4 | 4.0.4 | 4.0.4 |
-| `@deepseek-ai/schemastery` | 3.18.2 | 3.18.4 | 3.18.4 | 3.18.4 |
+| 宿主包 | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 | 0.2.0-rc.1 | 0.2.0-rc.2 | 0.2.1-alpha.1 |
+|---|---|---|---|---|---|---|
+| `@deepseek-ai/dsh-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 | 0.2.0-rc.1 | 0.2.0-rc.2 | 0.2.1-alpha.1 |
+| `@deepseek-ai/dsh-tool-skill` | 0.1.2-rc.1 | 0.1.7-alpha.2 | 0.1.7-rc.2 | 0.2.0-rc.1 | 0.2.0-rc.2 | 0.2.1-alpha.1 |
+| `@deepseek-ai/cordis` | 4.0.2 | 4.0.4 | 4.0.4 | 4.0.4 | 4.0.4 | 4.0.4 |
+| `@deepseek-ai/schemastery` | 3.18.2 | 3.18.4 | 3.18.4 | 3.18.4 | 3.18.4 | 3.18.4 |
 
 ## 实际 API 差异
 
@@ -64,28 +85,33 @@ for (const [name, range] of Object.entries(dependencies)) {
 | cordis 4.0.4、schemastery 3.18.4 | 与 `0.1.7-rc.2` 相同 | 无需改动 |
 | cordis 4.0.2 → 4.0.4 | 新增 `Volatile` / `VolatileSnapshot` 类型导出，属附加性变化 | 无需改动 |
 | schemastery 3.18.2 → 3.18.4 | `Schema` 增加第三个类型参数、`NoInfer`、`volatile` meta 等类型层调整 | 现有 Config schema 未改仍可编译 |
+| `0.2.0-rc.1` → `0.2.0-rc.2`：`dsh-skill` 与 `dsh-tool-skill` 的整个 `lib/` | **逐字节相同** | 无需改动 |
+| `0.2.0-rc.2` → `0.2.1-alpha.1`：四个 skill 包的整个 `lib/`（含类型） | **逐字节相同** | 无需改动 |
+| `0.2.1-alpha.1` 新增 `dropRetiredBundles()` 与 `OPTIONAL_BUNDLES` 调整 | 退役/可选 bundle 集合均不含本插件 | 无需改动 |
 
 ## Peer 依赖范围（本次真正的修复）
 
 npm semver 对预发布版本有额外限制：预发布版本只有在比较符具有**完全相同的 major.minor.patch** 且带预发布标记时才算满足。实测结果：
 
-| 范围写法 | 0.1.2-rc.1 | 0.1.5-rc.2 | 0.1.7-rc.2 | 0.2.0-rc.1 |
-|---|---|---|---|---|
-| `^0.1.2-rc.1`（最初声明） | 满足 | 不满足 | 不满足 | 不满足 |
-| `*` / `0.1.x` / `>=0.1.2-rc.1 <0.2.0` | 不满足 | 不满足 | 不满足 | 不满足 |
-| `… \|\| ^0.1.7-alpha.2`（0.1.0-beta.1） | 满足 | 满足 | 满足 | **不满足（被门禁拒绝）** |
-| `… \|\| ^0.2.0-rc.1`（0.1.0-beta.3 现声明） | 满足 | 满足 | 满足 | **满足** |
+| 范围写法 | 0.1.2-rc.1 | 0.1.5-rc.2 | 0.1.7-rc.2 | 0.2.0-rc.1 | 0.2.1-alpha.1 |
+|---|---|---|---|---|---|
+| `^0.1.2-rc.1`（最初声明） | 满足 | 不满足 | 不满足 | 不满足 | 不满足 |
+| `*` / `0.1.x` / `>=0.1.2-rc.1 <0.2.0` | 不满足 | 不满足 | 不满足 | 不满足 | 不满足 |
+| `… \|\| ^0.1.7-alpha.2`（0.1.0-beta.1） | 满足 | 满足 | 满足 | **不满足（被门禁拒绝）** | 不满足 |
+| `… \|\| ^0.2.0-rc.1`（现声明） | 满足 | 满足 | 满足 | **满足** | **满足**（门禁判定）／不满足（pnpm 默认判定，仅告警） |
 
 现声明为 `^0.1.2-rc.1 \|\| ^0.1.5-rc.2 \|\| ^0.1.7-alpha.2 \|\| ^0.2.0-rc.1`，覆盖的版本线：
 
 - `^0.1.2-rc.1`、`^0.1.5-rc.2`、`^0.1.7-alpha.2` 分别覆盖最初的 rc、npm `latest` 的 rc，以及整个 0.1.7 预发布线（alpha 与 rc）。
-- `^0.2.0-rc.1` 覆盖整个 0.2.x 线。在门禁使用的 `includePrerelease: true` 下，`0.2.0`、`0.2.1-rc.1` 等也都满足。
+- `^0.2.0-rc.1` 覆盖整个 0.2.x 线。在门禁使用的 `includePrerelease: true` 下，`0.2.0`、`0.2.0-rc.2`、`0.2.1-alpha.1` 等全部实测满足；上界到 `0.3.0-alpha.1` 为止，实测为 false。
 
 没有既简洁又能覆盖任意预发布版本的单一范围写法（`*`、`0.1.x`、`>=0.1.2-rc.1 <0.3.0` 在 pnpm 默认判定下都不覆盖预发布版本），因此按发布线显式枚举。
 
 `@deepseek-ai/cordis` 的 `^4.0.2` 与 `@deepseek-ai/schemastery` 的 `^3.18.2` 已分别覆盖 4.0.4 与 3.18.4，且不在门禁检查范围内，无需修改。
 
 ## 验证结果
+
+> 表中与 `0.1.0-beta.x` 有关的行记录的是**双通道基线**（Stable 25 / Beta 26），当时的事实保持原样。当前 `v0.2.0` 基线是**单一 `stable` 通道、27 个 Skills**，对应验证见 0.2.1-alpha.1 小节与本表末尾。
 
 | 检查 | 结果 |
 |---|---|
@@ -100,7 +126,11 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 | `0.1.0-beta.1` 在 0.2.0-rc.1 上安装 | **被门禁拒绝**（记录为门禁行为，不是缺陷） |
 | `0.1.0-beta.2` 在 0.2.0-rc.1 上安装并装载插件树 | Stable 25 / Beta 26；`implement-spec` 正文哈希与其它宿主一致 |
 | `implement-spec` 调用权限 | `userInvocable: true` / `modelInvocable: false` |
-| `implement-spec` 正文与资源目录 | 正文 SHA-256 `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3`；资源为 directory |
+| `implement-spec` 正文与资源目录 | 正文 SHA-256 `765b731e95338695c374b32eca8e78c64407fc8c404f046cb9a9b3bf50e435f3`（双通道基线）；资源为 directory |
+| **`v0.2.0` 基线（单一 `stable` 通道，27 个 Skills）** | |
+| `0.2.0-rc.2` 与 `0.2.1-alpha.1` 隔离对拆：安装期门禁真身函数判定 | 两版均 `OK (no incompatibility)`，无需 `allow-version` 豁免 |
+| 两版 skill 包 `lib/` 递归对拆 | **逐字节相同**，sha256 一致 |
+| provider 运行时冒烟 | 25 候选 / 25 加载成功；两版指纹一致 `cd41342e…` |
 | 模型调用 | 无 |
 
 装载插件树时，`0.1.2-rc.1` 由 app 的 `--help` 触发生效；`0.1.7-alpha.2` 的 `--help` 会在装载前提前退出，因此改用「无凭据环境下的一次运行」触发装载——宿主会在调用模型之前以 `MISSING_CREDENTIAL` 结束，插件注册仍然完成。
@@ -113,6 +143,9 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 - Web 场景下的 GUI 行为未在新宿主验证。
 - 新宿主新增的插件相关能力未纳入适配器：顺序加载多个 patch 文件、声明免重载配置字段、`--dump-config-schema`、Profile 插件配置取代 settings.yaml。
 - 本机正在运行的 DSH 已随后由 `0.1.7-alpha.2` 升级到 `0.1.7-rc.2`，本机 Profile 中装入的是 `0.1.0-beta.1`；两者都是兼容性核对完成之后的独立步骤，不属于核对本身的范围。
+- `0.2.0-rc.2` 与 `0.2.1-alpha.1` 的 Web/GUI 行为未验证。
+- `0.2.1-alpha.1` 未做隔离 `DSH_HOME` 端到端装载：本次只做了门禁真身判定、`lib/` 递归对拆与运行时注册表冒烟，没有像 `0.2.0-rc.1` 那样跑完整插件树装载。
+- `0.3.0-alpha.1` 被现有 peer 上界排除，未验证，也不在兼容性声明范围内。
 
 ## 复现方式
 

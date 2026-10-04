@@ -1,8 +1,8 @@
 {
   "name": "@lmgatex/dsh-mattpocock-skills",
-  "version": "0.1.0-beta.3",
+  "version": "0.2.0",
   "private": true,
-  "description": "Private reproducible DSH bundle for Matt Pocock Skills stable and beta channels",
+  "description": "Private reproducible DSH bundle for the Matt Pocock Skills promoted set",
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -30,6 +30,7 @@
     "source-lock.json",
     "README.md",
     "README.zh-CN.md",
+    "MIGRATION.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],

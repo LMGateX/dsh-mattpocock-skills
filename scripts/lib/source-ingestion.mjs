@@ -27,7 +27,10 @@ export const CATALOG_SCHEMA_VERSION = 1
 export const INVENTORY_SCHEMA_VERSION = 1
 export const PROVENANCE_SCHEMA_VERSION = 1
 export const SOURCE_LOCK_SCHEMA_VERSION = 1
-export const DISTRIBUTION_SCHEMA_VERSION = 1
+/** Channel manifest schema emitted by the source distribution. */
+export const CHANNEL_SCHEMA_VERSION = 1
+/** Upstream provenance manifest schema, shared with the distribution's upstream.json. */
+export const UPSTREAM_SCHEMA_VERSION = 2
 export const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url))
 
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -39,13 +42,13 @@ const OUTPUT_PATHS = [
   'PROVENANCE.json',
   'vendor-files.json',
 ]
+/** Distribution-owned files copied verbatim; channel manifests are added per discovered channel. */
 const COPIED_METADATA = [
   'DISTRIBUTION.md',
   'LICENSE',
-  '.distribution/channels/stable.json',
-  '.distribution/channels/beta.json',
   '.distribution/upstream.json',
 ]
+const CHANNEL_DIRECTORY = '.distribution/channels/'
 const CONSUMED_FRONTMATTER = new Set([
   'name',
   'description',
@@ -200,6 +203,19 @@ export function normalizeSkillPath(value, label = 'skill path') {
   return stripped
 }
 
+/** Channel manifests shipped by one distribution commit, in stable order. */
+function discoverChannelPaths(tree) {
+  const paths = [...tree.keys()].filter((path) => path.startsWith(CHANNEL_DIRECTORY)).sort(compareText)
+  const manifests = paths.filter((path) => path.endsWith('.json') && !path.slice(CHANNEL_DIRECTORY.length).includes('/'))
+  assert(paths.length > 0, 'source distribution declares no channel manifest under ' + CHANNEL_DIRECTORY)
+  assert(JSON.stringify(paths) === JSON.stringify(manifests), 'unexpected files under ' + CHANNEL_DIRECTORY)
+  for (const path of manifests) {
+    const name = path.slice(CHANNEL_DIRECTORY.length, -'.json'.length)
+    assert(SKILL_NAME.test(name), 'channel manifest name is not kebab-case: ' + name)
+  }
+  return manifests
+}
+
 function assertNoOverlappingRoots(paths, label) {
   const sorted = [...paths].sort(compareText)
   for (let index = 0; index < sorted.length; index += 1) {
@@ -211,49 +227,43 @@ function assertNoOverlappingRoots(paths, label) {
 
 function validateChannelManifest(manifest, expectedChannel) {
   assert(isRecord(manifest), expectedChannel + ' manifest must contain an object')
-  const required = ['schemaVersion', 'channel', 'stability', 'upstreamCommit', 'generatedFrom', 'skills']
-  const optional = expectedChannel === 'beta' ? ['extends', 'additionalSkills'] : []
-  assertKeys(manifest, required, optional, expectedChannel + ' manifest')
-  assert(manifest.schemaVersion === DISTRIBUTION_SCHEMA_VERSION, 'unsupported ' + expectedChannel + ' manifest schemaVersion ' + manifest.schemaVersion)
+  assertKeys(
+    manifest,
+    ['schemaVersion', 'channel', 'stability', 'upstreamCommit', 'generatedFrom', 'skills'],
+    ['extends', 'additionalSkills'],
+    expectedChannel + ' manifest',
+  )
+  assert(manifest.schemaVersion === CHANNEL_SCHEMA_VERSION, 'unsupported ' + expectedChannel + ' manifest schemaVersion ' + manifest.schemaVersion)
   assert(manifest.channel === expectedChannel, expectedChannel + ' manifest channel mismatch')
   assert(manifest.stability === expectedChannel, expectedChannel + ' manifest stability mismatch')
-  const expectedGeneratedFrom = expectedChannel === 'stable'
-    ? '.claude-plugin/plugin.json'
-    : '.claude-plugin/plugin.json + .distribution/upstream.json'
-  assert(manifest.generatedFrom === expectedGeneratedFrom, expectedChannel + ' manifest generatedFrom mismatch')
+  assert(typeof manifest.generatedFrom === 'string' && manifest.generatedFrom.length > 0, expectedChannel + ' manifest generatedFrom is invalid')
   assert(typeof manifest.upstreamCommit === 'string' && HEX_OBJECT.test(manifest.upstreamCommit), expectedChannel + ' manifest upstreamCommit is invalid')
   assert(Array.isArray(manifest.skills), expectedChannel + ' manifest skills must be an array')
   const skills = manifest.skills.map((value, index) => normalizeSkillPath(value, expectedChannel + '.skills[' + index + ']'))
   assertPortableUniquePaths(skills, expectedChannel + ' manifest')
   assertNoOverlappingRoots(skills, expectedChannel + ' manifest')
-  if (expectedChannel === 'beta') {
-    assert(manifest.extends === 'stable', 'beta manifest must extend stable')
-    assert(Array.isArray(manifest.additionalSkills), 'beta additionalSkills must be an array')
-    const additional = manifest.additionalSkills.map((value, index) => normalizeSkillPath(value, 'beta.additionalSkills[' + index + ']'))
-    assertPortableUniquePaths(additional, 'beta additionalSkills')
+  if (Object.hasOwn(manifest, 'extends')) {
+    assert(typeof manifest.extends === 'string' && manifest.extends.length > 0, expectedChannel + ' manifest extends is invalid')
+    assert(manifest.extends !== expectedChannel, expectedChannel + ' manifest must not extend itself')
+    assert(Array.isArray(manifest.additionalSkills), expectedChannel + ' manifest must declare additionalSkills when it extends another channel')
+    const additional = manifest.additionalSkills.map((value, index) => normalizeSkillPath(value, expectedChannel + '.additionalSkills[' + index + ']'))
+    assertPortableUniquePaths(additional, expectedChannel + ' additionalSkills')
+    for (const path of additional) assert(skills.includes(path), expectedChannel + ' additionalSkills names an unselected Skill ' + path)
+  } else {
+    assert(!Object.hasOwn(manifest, 'additionalSkills'), expectedChannel + ' manifest declares additionalSkills without extends')
   }
   return { manifest, skills }
 }
 
 function validateUpstreamManifest(upstream) {
   assert(isRecord(upstream), 'upstream manifest must contain an object')
-  assertKeys(upstream, ['schemaVersion', 'repository', 'remote', 'branch', 'commit', 'commitDate', 'recordedAt', 'contentPolicy', 'betaSkills', 'upstreamContentSha256'], [], 'upstream manifest')
-  assert(upstream.schemaVersion === DISTRIBUTION_SCHEMA_VERSION, 'unsupported upstream manifest schemaVersion ' + upstream.schemaVersion)
+  assertKeys(upstream, ['schemaVersion', 'repository', 'remote', 'branch', 'commit', 'commitDate', 'recordedAt', 'contentPolicy', 'upstreamContentSha256'], [], 'upstream manifest')
+  assert(upstream.schemaVersion === UPSTREAM_SCHEMA_VERSION, 'unsupported upstream manifest schemaVersion ' + upstream.schemaVersion)
   for (const key of ['repository', 'remote', 'branch', 'commit', 'commitDate', 'recordedAt', 'contentPolicy', 'upstreamContentSha256']) {
     assert(typeof upstream[key] === 'string' && upstream[key].length > 0, 'upstream manifest ' + key + ' is invalid')
   }
   assert(HEX_OBJECT.test(upstream.commit), 'upstream manifest commit is invalid')
   assert(SHA256.test(upstream.upstreamContentSha256), 'upstream manifest content hash is invalid')
-  assert(isRecord(upstream.betaSkills), 'upstream manifest betaSkills must be an object')
-  assertKeys(upstream.betaSkills, ['implement-spec'], [], 'upstream manifest betaSkills')
-  const implement = upstream.betaSkills['implement-spec']
-  assert(isRecord(implement), 'upstream implement-spec provenance must be an object')
-  assertKeys(implement, ['path', 'introducedByCommit', 'baselineFixCommit', 'skillGitBlob'], [], 'upstream implement-spec provenance')
-  assert(implement.path === './skills/in-progress/implement-spec', 'upstream implement-spec path is invalid')
-  normalizeSkillPath(implement.path, 'upstream implement-spec path')
-  for (const key of ['introducedByCommit', 'baselineFixCommit', 'skillGitBlob']) {
-    assert(typeof implement[key] === 'string' && HEX_OBJECT.test(implement[key]), 'upstream implement-spec ' + key + ' is invalid')
-  }
   return upstream
 }
 
@@ -441,18 +451,31 @@ async function materializeSkillDirectory(repo, entries, skillDirectory, vendorRo
   for (const entry of entries) await materializeEntry(repo, entry, join(vendorRoot, ...entry.path.split('/')), skillDirectory)
 }
 
-function validateManifestRelationship(stable, beta) {
-  const stableSet = new Set(stable.skills)
-  const betaSet = new Set(beta.skills)
-  for (const path of stable.skills) assert(betaSet.has(path), 'beta channel is missing stable Skill ' + path)
-  const actualAdditional = beta.skills.filter((path) => !stableSet.has(path)).sort(compareText)
-  const declaredAdditional = beta.manifest.additionalSkills.map((value, index) => normalizeSkillPath(value, 'beta.additionalSkills[' + index + ']')).sort(compareText)
-  assert(JSON.stringify(actualAdditional) === JSON.stringify(declaredAdditional), 'beta additionalSkills does not match beta minus stable')
+function validateManifestRelationship(channels) {
+  for (const [name, channel] of Object.entries(channels)) {
+    if (!Object.hasOwn(channel.manifest, 'extends')) continue
+    const baseName = channel.manifest.extends
+    const base = channels[baseName]
+    assert(base, name + ' manifest extends an unknown channel ' + baseName)
+    const baseSet = new Set(base.skills)
+    const ownSet = new Set(channel.skills)
+    for (const path of base.skills) assert(ownSet.has(path), name + ' channel is missing ' + baseName + ' Skill ' + path)
+    const actualAdditional = channel.skills.filter((path) => !baseSet.has(path)).sort(compareText)
+    const declaredAdditional = channel.manifest.additionalSkills
+      .map((value, index) => normalizeSkillPath(value, name + '.additionalSkills[' + index + ']'))
+      .sort(compareText)
+    assert(
+      JSON.stringify(actualAdditional) === JSON.stringify(declaredAdditional),
+      name + ' additionalSkills does not match the difference from ' + baseName,
+    )
+  }
 }
 
-function catalogFromSkills(lock, skillRows) {
-  const stableNames = skillRows.filter((row) => row.channels.includes('stable')).map((row) => row.name).sort(compareText)
-  const betaNames = skillRows.map((row) => row.name).sort(compareText)
+function catalogFromSkills(lock, channelNames, skillRows) {
+  const channels = {}
+  for (const name of channelNames) {
+    channels[name] = skillRows.filter((row) => row.channels.includes(name)).map((row) => row.name).sort(compareText)
+  }
   return {
     schemaVersion: CATALOG_SCHEMA_VERSION,
     distribution: {
@@ -462,12 +485,16 @@ function catalogFromSkills(lock, skillRows) {
       commit: lock.commit,
       upstreamCommit: lock.upstreamCommit,
     },
-    channels: {
-      stable: stableNames,
-      beta: betaNames,
-    },
+    channels,
     skills: skillRows.sort((a, b) => compareText(a.name, b.name)),
   }
+}
+
+/** Channel names that select one Skill directory, in stable order. */
+function channelNamesForDirectory(channels, skillDirectory) {
+  return Object.keys(channels)
+    .filter((name) => channels[name].set.has(skillDirectory))
+    .sort(compareText)
 }
 
 async function walkInventory(root) {
@@ -546,7 +573,7 @@ async function walkInventory(root) {
   }
 }
 
-function provenanceFromArtifacts(lock, sourceLockSha256, upstream, sourceVerifierSha256, manifests, inventory, catalogBytes) {
+function provenanceFromArtifacts(lock, sourceLockSha256, upstream, sourceVerifierSha256, channelEntries, inventory, catalogBytes, catalogSkillCount) {
   return {
     schemaVersion: PROVENANCE_SCHEMA_VERSION,
     generator: {
@@ -571,26 +598,17 @@ function provenanceFromArtifacts(lock, sourceLockSha256, upstream, sourceVerifie
       commit: upstream.commit,
       contentSha256: upstream.upstreamContentSha256,
     },
-    manifests: [
-      {
-        channel: 'stable',
-        path: 'vendor/mattpocock-skills/.distribution/channels/stable.json',
-        schemaVersion: manifests.stable.schemaVersion,
-        sha256: sha256(manifests.stableBytes),
-        skillCount: manifests.stable.skills.length,
-      },
-      {
-        channel: 'beta',
-        path: 'vendor/mattpocock-skills/.distribution/channels/beta.json',
-        schemaVersion: manifests.beta.schemaVersion,
-        sha256: sha256(manifests.betaBytes),
-        skillCount: manifests.beta.skills.length,
-      },
-    ],
+    manifests: channelEntries.map((entry) => ({
+      channel: entry.name,
+      path: 'vendor/mattpocock-skills/' + entry.path,
+      schemaVersion: entry.manifest.schemaVersion,
+      sha256: sha256(entry.bytes),
+      skillCount: entry.skills.length,
+    })),
     catalog: {
       path: 'generated/catalog.json',
       sha256: sha256(catalogBytes),
-      skillCount: manifests.beta.skills.length,
+      skillCount: catalogSkillCount,
     },
     inventory: {
       path: 'vendor-files.json',
@@ -641,13 +659,15 @@ async function loadGitJson(repo, tree, path, label) {
   return { bytes, value: parseStrictJsonBytes(bytes, label) }
 }
 
-function skillCatalogRow(repo, tree, skillDirectory, stableSet) {
+function skillCatalogRow(repo, tree, skillDirectory, channels) {
   const skillPath = skillDirectory + '/SKILL.md'
   const entry = tree.get(skillPath)
   assert(entry?.type === 'blob' && entry.mode !== '120000', 'SKILL.md must be a regular file: ' + skillPath)
   const bytes = gitBlob(repo, entry.object)
   const parsed = parseSkillMarkdown(bytes, skillPath)
   assert(parsed.name === basename(skillDirectory), skillPath + ' declares ' + parsed.name + ' instead of directory name ' + basename(skillDirectory))
+  const channelNames = channelNamesForDirectory(channels, skillDirectory)
+  assert(channelNames.length > 0, 'Skill is selected by no channel: ' + skillDirectory)
   return {
     name: parsed.name,
     description: parsed.description,
@@ -655,7 +675,7 @@ function skillCatalogRow(repo, tree, skillDirectory, stableSet) {
     invocation: parsed.invocation,
     ...(parsed.metadata === undefined ? {} : { metadata: parsed.metadata }),
     ...(parsed.frontmatterExtensions === undefined ? {} : { frontmatterExtensions: parsed.frontmatterExtensions }),
-    channels: stableSet.has(skillDirectory) ? ['stable', 'beta'] : ['beta'],
+    channels: channelNames,
     directory: skillDirectory,
     skillPath,
     bodyByteOffset: parsed.bodyByteOffset,
@@ -670,22 +690,35 @@ async function buildStage(root, source, stageRoot) {
   const clone = await prepareVerifiedClone(source, lock)
   try {
     const tree = readGitTree(clone.repo, lock.commit)
-    const stableData = await loadGitJson(clone.repo, tree, '.distribution/channels/stable.json', 'stable manifest')
-    const betaData = await loadGitJson(clone.repo, tree, '.distribution/channels/beta.json', 'beta manifest')
     const upstreamData = await loadGitJson(clone.repo, tree, '.distribution/upstream.json', 'upstream manifest')
-    const stable = validateChannelManifest(stableData.value, 'stable')
-    const beta = validateChannelManifest(betaData.value, 'beta')
     const upstream = validateUpstreamManifest(upstreamData.value)
-    assert(stable.manifest.upstreamCommit === lock.upstreamCommit, 'stable upstream commit differs from source lock')
-    assert(beta.manifest.upstreamCommit === lock.upstreamCommit, 'beta upstream commit differs from source lock')
     assert(upstream.commit === lock.upstreamCommit, 'upstream manifest commit differs from source lock')
     assert(upstream.repository === lock.upstreamRepository, 'upstream repository differs from source lock')
-    validateManifestRelationship(stable, beta)
+
+    const channels = {}
+    for (const channelPath of discoverChannelPaths(tree)) {
+      const name = channelPath.slice(CHANNEL_DIRECTORY.length, -'.json'.length)
+      const data = await loadGitJson(clone.repo, tree, channelPath, name + ' manifest')
+      const validated = validateChannelManifest(data.value, name)
+      assert(validated.manifest.upstreamCommit === lock.upstreamCommit, name + ' upstream commit differs from source lock')
+      channels[name] = {
+        name,
+        path: channelPath,
+        manifest: validated.manifest,
+        skills: validated.skills,
+        set: new Set(validated.skills),
+        bytes: data.bytes,
+      }
+    }
+    validateManifestRelationship(channels)
+    const channelNames = Object.keys(channels).sort(compareText)
+    const channelEntries = channelNames.map((name) => channels[name])
+    const selectedSkillDirectories = [...new Set(channelEntries.flatMap((entry) => entry.skills))].sort(compareText)
 
     const vendorRoot = join(stageRoot, 'vendor/mattpocock-skills')
     const selectedEntries = new Map()
     const entriesBySkill = new Map()
-    for (const skillDirectory of beta.skills) {
+    for (const skillDirectory of selectedSkillDirectories) {
       const entries = selectedTreeEntries(clone.repo, tree, lock.commit, skillDirectory)
       entriesBySkill.set(skillDirectory, entries)
       for (const entry of entries) {
@@ -693,20 +726,22 @@ async function buildStage(root, source, stageRoot) {
         selectedEntries.set(entry.path, entry)
       }
     }
-    assertPortableUniquePaths([...COPIED_METADATA, ...selectedEntries.keys()], 'vendored source files')
-    for (const metadataPath of COPIED_METADATA) await materializeFile(clone.repo, tree, metadataPath, join(vendorRoot, ...metadataPath.split('/')))
-    for (const skillDirectory of beta.skills) {
+    const channelManifestPaths = channelEntries.map((entry) => entry.path)
+    assertPortableUniquePaths([...COPIED_METADATA, ...channelManifestPaths, ...selectedEntries.keys()], 'vendored source files')
+    for (const metadataPath of [...COPIED_METADATA, ...channelManifestPaths]) {
+      await materializeFile(clone.repo, tree, metadataPath, join(vendorRoot, ...metadataPath.split('/')))
+    }
+    for (const skillDirectory of selectedSkillDirectories) {
       await materializeSkillDirectory(clone.repo, entriesBySkill.get(skillDirectory), skillDirectory, vendorRoot)
     }
 
-    const stableSet = new Set(stable.skills)
-    const rows = beta.skills.map((skillDirectory) => skillCatalogRow(clone.repo, tree, skillDirectory, stableSet))
+    const rows = selectedSkillDirectories.map((skillDirectory) => skillCatalogRow(clone.repo, tree, skillDirectory, channels))
     const names = new Map()
     for (const row of rows) {
       assert(!names.has(row.name), 'duplicate Skill name ' + row.name + ' at ' + names.get(row.name) + ' and ' + row.directory)
       names.set(row.name, row.directory)
     }
-    const catalog = catalogFromSkills(lock, rows)
+    const catalog = catalogFromSkills(lock, channelNames, rows)
     const catalogBytes = Buffer.from(canonicalJson(catalog))
     await mkdir(join(stageRoot, 'generated'), { recursive: true })
     await writeFile(join(stageRoot, 'generated/catalog.json'), catalogBytes, { mode: 0o644 })
@@ -725,9 +760,10 @@ async function buildStage(root, source, stageRoot) {
       sha256(lockBytes),
       upstream,
       verifierSha256,
-      { stable: stable.manifest, beta: beta.manifest, stableBytes: stableData.bytes, betaBytes: betaData.bytes },
+      channelEntries,
       inventory,
       catalogBytes,
+      rows.length,
     )
     await writeFile(join(stageRoot, 'PROVENANCE.json'), canonicalJson(provenance), { mode: 0o644 })
     await chmod(join(stageRoot, 'PROVENANCE.json'), 0o644)
@@ -826,12 +862,36 @@ async function installStage(root, stageRoot) {
   }
 }
 
-async function deriveCatalogFromVendor(root, lock, stable, beta) {
+async function readVendoredChannels(vendorRoot) {
+  const directory = join(vendorRoot, '.distribution/channels')
+  const files = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort(compareText)
+  assert(files.length > 0, 'vendored distribution declares no channel manifest')
+  const channels = {}
+  for (const file of files) {
+    const name = file.slice(0, -'.json'.length)
+    assert(SKILL_NAME.test(name), 'vendored channel manifest name is not kebab-case: ' + name)
+    const bytes = await readFile(join(directory, file))
+    const validated = validateChannelManifest(parseStrictJsonBytes(bytes, 'vendored ' + name + ' manifest'), name)
+    channels[name] = {
+      name,
+      path: CHANNEL_DIRECTORY + file,
+      manifest: validated.manifest,
+      skills: validated.skills,
+      set: new Set(validated.skills),
+      bytes,
+    }
+  }
+  validateManifestRelationship(channels)
+  return channels
+}
+
+async function deriveCatalogFromVendor(root, lock, channels) {
   const vendorRoot = join(root, 'vendor/mattpocock-skills')
-  const stableSet = new Set(stable.skills)
+  const channelNames = Object.keys(channels).sort(compareText)
+  const selectedSkillDirectories = [...new Set(channelNames.flatMap((name) => channels[name].skills))].sort(compareText)
   const names = new Map()
   const rows = []
-  for (const skillDirectory of beta.skills) {
+  for (const skillDirectory of selectedSkillDirectories) {
     const skillPath = skillDirectory + '/SKILL.md'
     const absolute = join(vendorRoot, ...skillPath.split('/'))
     const info = await lstat(absolute)
@@ -841,6 +901,8 @@ async function deriveCatalogFromVendor(root, lock, stable, beta) {
     assert(parsed.name === basename(skillDirectory), skillPath + ' declares a mismatched name')
     assert(!names.has(parsed.name), 'duplicate vendored Skill name ' + parsed.name)
     names.set(parsed.name, skillDirectory)
+    const channelMembership = channelNamesForDirectory(channels, skillDirectory)
+    assert(channelMembership.length > 0, 'vendored Skill belongs to no channel: ' + skillDirectory)
     rows.push({
       name: parsed.name,
       description: parsed.description,
@@ -848,14 +910,14 @@ async function deriveCatalogFromVendor(root, lock, stable, beta) {
       invocation: parsed.invocation,
       ...(parsed.metadata === undefined ? {} : { metadata: parsed.metadata }),
       ...(parsed.frontmatterExtensions === undefined ? {} : { frontmatterExtensions: parsed.frontmatterExtensions }),
-      channels: stableSet.has(skillDirectory) ? ['stable', 'beta'] : ['beta'],
+      channels: channelMembership,
       directory: skillDirectory,
       skillPath,
       bodyByteOffset: parsed.bodyByteOffset,
       sha256: sha256(bytes),
     })
   }
-  return catalogFromSkills(lock, rows)
+  return catalogFromSkills(lock, channelNames, rows)
 }
 
 function assertCanonicalObject(actualText, expected, label) {
@@ -884,18 +946,18 @@ export async function verifyCommittedArtifacts(root = repositoryRoot) {
   const actualInventory = await walkInventory(vendorRoot)
   assertCanonicalObject(inventoryText, actualInventory, 'vendor-files.json')
 
-  const stableBytes = await readFile(join(vendorRoot, '.distribution/channels/stable.json'))
-  const betaBytes = await readFile(join(vendorRoot, '.distribution/channels/beta.json'))
   const upstreamBytes = await readFile(join(vendorRoot, '.distribution/upstream.json'))
-  const stable = validateChannelManifest(parseStrictJsonBytes(stableBytes, 'vendored stable manifest'), 'stable')
-  const beta = validateChannelManifest(parseStrictJsonBytes(betaBytes, 'vendored beta manifest'), 'beta')
   const upstream = validateUpstreamManifest(parseStrictJsonBytes(upstreamBytes, 'vendored upstream manifest'))
-  validateManifestRelationship(stable, beta)
-  assert(stable.manifest.upstreamCommit === lock.upstreamCommit, 'stable manifest differs from source lock')
-  assert(beta.manifest.upstreamCommit === lock.upstreamCommit, 'beta manifest differs from source lock')
   assert(upstream.repository === lock.upstreamRepository && upstream.commit === lock.upstreamCommit, 'upstream manifest differs from source lock')
 
-  const expectedCatalog = await deriveCatalogFromVendor(root, lock, stable, beta)
+  const channels = await readVendoredChannels(vendorRoot)
+  const channelNames = Object.keys(channels).sort(compareText)
+  const channelEntries = channelNames.map((name) => channels[name])
+  for (const entry of channelEntries) {
+    assert(entry.manifest.upstreamCommit === lock.upstreamCommit, entry.name + ' manifest differs from source lock')
+  }
+
+  const expectedCatalog = await deriveCatalogFromVendor(root, lock, channels)
   const catalogText = await readFile(join(root, 'generated/catalog.json'), 'utf8')
   assertCanonicalObject(catalogText, expectedCatalog, 'generated/catalog.json')
 
@@ -907,15 +969,19 @@ export async function verifyCommittedArtifacts(root = repositoryRoot) {
     sha256(lockBytes),
     upstream,
     lock.verifierSha256,
-    { stable: stable.manifest, beta: beta.manifest, stableBytes, betaBytes },
+    channelEntries,
     actualInventory,
     Buffer.from(catalogText),
+    expectedCatalog.skills.length,
   )
   assertCanonicalObject(provenanceText, expectedProvenance, 'PROVENANCE.json')
 
+  const channelSkillCounts = {}
+  for (const entry of channelEntries) channelSkillCounts[entry.name] = entry.skills.length
+
   return {
-    stableSkillCount: stable.skills.length,
-    betaSkillCount: beta.skills.length,
+    channelSkillCounts,
+    skillCount: expectedCatalog.skills.length,
     vendorFileCount: actualInventory.fileCount,
     vendorBytes: actualInventory.totalBytes,
     vendorRootSha256: actualInventory.rootSha256,
@@ -952,9 +1018,11 @@ export async function updateSource({ root = repositoryRoot, source, check = fals
       } else {
         await installStage(root, stageRoot)
       }
+      const channelSkillCounts = {}
+      for (const entry of result.provenance.manifests) channelSkillCounts[entry.channel] = entry.skillCount
       return {
-        stableSkillCount: result.provenance.manifests.find((entry) => entry.channel === 'stable').skillCount,
-        betaSkillCount: result.provenance.manifests.find((entry) => entry.channel === 'beta').skillCount,
+        channelSkillCounts,
+        skillCount: result.provenance.catalog.skillCount,
         vendorFileCount: result.inventory.fileCount,
         vendorBytes: result.inventory.totalBytes,
         vendorRootSha256: result.inventory.rootSha256,

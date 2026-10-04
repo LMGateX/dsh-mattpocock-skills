@@ -14,9 +14,9 @@ const MODEL_SKILLS = [
   'diagnosing-bugs',
   'domain-modeling',
   'grilling',
+  'pr',
   'prototype',
   'research',
-  'resolving-merge-conflicts',
   'tdd',
   'wizard',
   'writing-for-agents',
@@ -69,7 +69,6 @@ test('actual DSH registry exposes stable membership and exact lazy definitions',
     assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.stable)
     assert.deepEqual(summaries.filter(isModelInvocable).map((skill) => skill.name), MODEL_SKILLS)
     assert.deepEqual(summaries.filter(isUserInvocable).map((skill) => skill.name), plugin.CATALOG.channels.stable)
-    assert.equal(summaries.find((skill) => skill.name === 'implement-spec'), undefined)
 
     const definition = await mounted.ctx.skills.get('triage')
     const row = plugin.CATALOG.skills.find((skill) => skill.name === 'triage')
@@ -88,13 +87,13 @@ test('actual DSH registry exposes stable membership and exact lazy definitions',
   }
 })
 
-test('actual DSH registry exposes Beta-only implement-spec without model visibility', async () => {
-  const mounted = await mount('beta')
+test('actual DSH registry exposes implement-spec as user-invocable and model-hidden', async () => {
+  const mounted = await mount('stable')
   try {
     const summaries = await mounted.ctx.skills.list()
-    assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.beta)
+    assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.stable)
     assert.deepEqual(summaries.filter(isModelInvocable).map((skill) => skill.name), MODEL_SKILLS)
-    assert.deepEqual(summaries.filter(isUserInvocable).map((skill) => skill.name), plugin.CATALOG.channels.beta)
+    assert.deepEqual(summaries.filter(isUserInvocable).map((skill) => skill.name), plugin.CATALOG.channels.stable)
     const implementSpec = summaries.find((skill) => skill.name === 'implement-spec')
     assert(implementSpec)
     assert.deepEqual(implementSpec.invocation, { modelInvocable: false, userInvocable: true })
@@ -109,7 +108,7 @@ test('actual DSH registry exposes Beta-only implement-spec without model visibil
 test('provider registration is owned and disposed by the Cordis plugin fiber', async () => {
   const mounted = await mount('stable')
   try {
-    assert.equal((await mounted.ctx.skills.list()).length, 25)
+    assert.equal((await mounted.ctx.skills.list()).length, plugin.CATALOG.channels.stable.length)
     const activeGet = mounted.ctx.skills.get('ask-matt')
     await mounted.packageFiber.dispose()
     await assert.rejects(activeGet, (error) => error?.message === 'skill provider "dsh-mattpocock-skills" disposed')

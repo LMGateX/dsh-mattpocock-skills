@@ -60,9 +60,9 @@ test('source lock is closed, pinned, and duplicate-key rejecting', async () => {
     'upstreamRepository',
     'upstreamCommit',
   ])
-  assert.equal(lock.tagObject, '0108f00aa90cde51b290d6c58ac86d7f0b045ba0')
-  assert.equal(lock.commit, 'f0834542c543df9197364127d13383ffea6e43d3')
-  assert.equal(lock.verifierSha256, '8b1b01c562af52ae9c330e63a47aaa7ae52f03ee12d4be69ea36fbefea760155')
+  assert.equal(lock.tagObject, '7eaede65be94dbcea63681dff3c1d139065f2b45')
+  assert.equal(lock.commit, '47cc6fa6afe6c106cc0f197fa516c49d747340af')
+  assert.equal(lock.verifierSha256, '613343111b3dc9d3d6ab8f5c76d1824adba51cec917a29ec75d0d42970ac5d41')
   assert.throws(() => validateSourceLock({ ...lock, extra: true }), /unknown key/)
   assert.throws(() => validateSourceLock({ ...lock, verifierSha256: '0'.repeat(63) }), /verifierSha256/)
   assert.throws(() => validateSourceLock({ ...lock, tag: 'bad..tag' }), /valid Git tag/)
@@ -119,18 +119,18 @@ test('generated catalog has exact channel and invocation semantics', async () =>
   const catalogBytes = await readFile(join(root, 'generated/catalog.json'))
   const catalog = parseStrictJsonBytes(catalogBytes, 'generated/catalog.json')
   assert.equal(catalog.schemaVersion, 1)
-  assert.equal(catalog.channels.stable.length, 25)
-  assert.equal(catalog.channels.beta.length, 26)
-  assert.equal(catalog.skills.length, 26)
-  assert.equal(new Set(catalog.skills.map((skill) => skill.name)).size, 26)
+  assert.deepEqual(Object.keys(catalog.channels), ['stable'])
+  assert.equal(catalog.channels.stable.length, 27)
+  assert.equal(catalog.skills.length, 27)
+  assert.equal(new Set(catalog.skills.map((skill) => skill.name)).size, 27)
   assert.equal(catalog.skills.filter((skill) => skill.invocation.modelInvocable).length, 11)
-  assert.equal(catalog.skills.filter((skill) => !skill.invocation.modelInvocable).length, 15)
+  assert.equal(catalog.skills.filter((skill) => !skill.invocation.modelInvocable).length, 16)
 
   const implementSpec = catalog.skills.find((skill) => skill.name === 'implement-spec')
-  assert.deepEqual(implementSpec.channels, ['beta'])
+  assert.deepEqual(implementSpec.channels, ['stable'])
   assert.deepEqual(implementSpec.invocation, { modelInvocable: false, userInvocable: true })
-  assert.equal(catalog.channels.stable.includes('implement-spec'), false)
-  assert.equal(catalog.channels.beta.includes('implement-spec'), true)
+  assert.equal(catalog.channels.stable.includes('implement-spec'), true)
+  assert.equal(catalog.channels.stable.includes('resolving-merge-conflicts'), false)
 
   for (const name of ['handoff', 'teach']) {
     const skill = catalog.skills.find((entry) => entry.name === name)
@@ -148,11 +148,11 @@ test('generated catalog has exact channel and invocation semantics', async () =>
 test('committed vendor artifacts verify without Git metadata', async () => {
   const result = await verifyCommittedArtifacts(root)
   assert.deepEqual(result, {
-    stableSkillCount: 25,
-    betaSkillCount: 26,
-    vendorFileCount: 81,
-    vendorBytes: 212143,
-    vendorRootSha256: '1e6182fe1e430a5f653be3b33e9340e19ff8a812d0f7bb7bbc44da10fb9c6a50',
+    channelSkillCounts: { stable: 27 },
+    skillCount: 27,
+    vendorFileCount: 83,
+    vendorBytes: 221337,
+    vendorRootSha256: 'dce8b66611b9215d3f6ad3c741e519558a65e1946c74916b0caf463d9813d363',
   })
 })
 
@@ -206,7 +206,7 @@ test('check mode is byte-identical and does not replace outputs', { skip: !hasLo
 
 test('vendored bytes and Git modes match the exact pinned source tree', { skip: !hasLocalSource }, async () => {
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
-  const commit = 'f0834542c543df9197364127d13383ffea6e43d3'
+  const commit = '47cc6fa6afe6c106cc0f197fa516c49d747340af'
   for (const entry of inventory.entries) {
     const sourcePath = entry.path
     const header = execFileSync('git', ['-C', localSource, 'ls-tree', commit, '--', sourcePath], { encoding: 'utf8' }).trim()

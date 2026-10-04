@@ -34,7 +34,7 @@ function parseArgs(argv) {
 try {
   const result = await updateSource(parseArgs(process.argv.slice(2)))
   console.log(result.check ? 'OK: source artifacts are current' : 'OK: source artifacts updated')
-  console.log('OK: stable=' + result.stableSkillCount + ', beta=' + result.betaSkillCount)
+  console.log('OK: ' + Object.entries(result.channelSkillCounts).map(([name, count]) => name + '=' + count).join(', '))
   console.log('OK: vendor=' + result.vendorFileCount + ' files, ' + result.vendorBytes + ' bytes')
   console.log('OK: vendor root SHA-256 ' + result.vendorRootSha256)
 } catch (error) {

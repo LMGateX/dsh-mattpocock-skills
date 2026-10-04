@@ -14,13 +14,14 @@ function sha256(bytes) {
 }
 
 function oneSkillCatalog(row) {
+  const channels = {}
+  for (const channel of Object.keys(CATALOG.channels)) {
+    channels[channel] = row.channels.includes(channel) ? [row.name] : []
+  }
   return {
     schemaVersion: 1,
     distribution: CATALOG.distribution,
-    channels: {
-      stable: row.channels.includes('stable') ? [row.name] : [],
-      beta: row.channels.includes('beta') ? [row.name] : [],
-    },
+    channels,
     skills: [row],
   }
 }
@@ -68,21 +69,17 @@ test('runtime catalog is validated, closed, and deeply frozen', () => {
 test('list is static, channel-exact, immutable, and package-relative', async () => {
   const packageRoot = '/path/that/does/not/exist'
   const stable = createMattPocockSkillProvider('stable', { packageRoot })
-  const beta = createMattPocockSkillProvider('beta', { packageRoot })
   const stableCandidates = await stable.list({ cwd: '/ignored/a' })
   const stableAgain = await stable.list({ cwd: '/ignored/b' })
-  const betaCandidates = await beta.list({})
 
   assert.equal(stable.name, PROVIDER_NAME)
   assert(Object.isFrozen(stable))
   assert(Object.isFrozen(stableCandidates))
-  assert(Object.isFrozen(betaCandidates))
   assert.strictEqual(stableCandidates, stableAgain)
   assert.deepEqual(stableCandidates.map((candidate) => candidate.name), CATALOG.channels.stable)
-  assert.deepEqual(betaCandidates.map((candidate) => candidate.name), CATALOG.channels.beta)
-  assert.deepEqual(betaCandidates.filter((candidate) => !CATALOG.channels.stable.includes(candidate.name)).map((candidate) => candidate.name), ['implement-spec'])
+  assert.throws(() => createMattPocockSkillProvider('nightly', { packageRoot }), /unsupported Matt Pocock Skills channel/)
 
-  for (const candidate of betaCandidates) {
+  for (const candidate of stableCandidates) {
     const row = CATALOG.skills.find((entry) => entry.name === candidate.name)
     assert(row)
     assert.equal(candidate.description, row.description)
@@ -147,7 +144,7 @@ test('provider preserves optional metadata and when-to-use semantics', async () 
       metadata: { owner: 'source' },
       frontmatterExtensions: { 'argument-hint': '[fixture]' },
       invocation: { modelInvocable: true, userInvocable: false },
-      channels: ['stable', 'beta'],
+      channels: ['stable'],
       directory: 'skills/testing/synthetic',
       skillPath: 'skills/testing/synthetic/SKILL.md',
       bodyByteOffset: prefix.length,
@@ -373,7 +370,7 @@ test('malformed framing and invalid UTF-8 bodies fail closed without YAML parsin
       name: 'synthetic',
       description: 'Synthetic test Skill',
       invocation: { modelInvocable: true, userInvocable: true },
-      channels: ['stable', 'beta'],
+      channels: ['stable'],
       directory: 'skills/testing/synthetic',
       skillPath: 'skills/testing/synthetic/SKILL.md',
       bodyByteOffset: 4,

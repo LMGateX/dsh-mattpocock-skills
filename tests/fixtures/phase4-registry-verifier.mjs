@@ -20,16 +20,16 @@ export async function apply(ctx, config) {
   }))
   const names = skills.map((skill) => skill.name)
   const implementSpec = summaries.find((skill) => skill.name === 'implement-spec')
-  const expectedCount = config.channel === 'beta' ? 26 : 25
+  const expectedCount = 27
   if (summaries.length !== expectedCount) throw new Error('unexpected package Skill count: ' + summaries.length)
-  if ((implementSpec !== undefined) !== (config.channel === 'beta')) throw new Error('implement-spec channel mismatch')
+  if (implementSpec === undefined) throw new Error('implement-spec is missing from the promoted channel')
   if (implementSpec !== undefined && (implementSpec.invocation.modelInvocable !== false || implementSpec.invocation.userInvocable !== true)) {
     throw new Error('implement-spec invocation mismatch')
   }
   if (summaries.filter((skill) => skill.invocation.modelInvocable).length !== 11) throw new Error('model-visible count mismatch')
   if (summaries.filter((skill) => skill.invocation.userInvocable).length !== expectedCount) throw new Error('user-invocable count mismatch')
 
-  const definition = await ctx.skills.get(config.channel === 'beta' ? 'implement-spec' : 'triage')
+  const definition = await ctx.skills.get('implement-spec')
   if (definition?.provider !== 'dsh-mattpocock-skills' || definition.resourceBase?.kind !== 'directory' || definition.content.length === 0) {
     throw new Error('lazy definition mismatch')
   }

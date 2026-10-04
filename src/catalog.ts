@@ -12,7 +12,7 @@ export interface CatalogSkill {
   readonly metadata?: Readonly<Record<string, unknown>>
   readonly frontmatterExtensions?: Readonly<Record<string, unknown>>
   readonly invocation: CatalogInvocation
-  readonly channels: readonly ('stable' | 'beta')[]
+  readonly channels: readonly string[]
   readonly directory: string
   readonly skillPath: string
   readonly bodyByteOffset: number
@@ -28,10 +28,12 @@ export interface SkillCatalog {
     commit: string
     upstreamCommit: string
   }>
-  readonly channels: Readonly<{
-    stable: readonly string[]
-    beta: readonly string[]
-  }>
+  /**
+   * Channel name to the sorted Skill names it selects. The set is data-driven: it is
+   * whatever channel manifests the vendored distribution ships, so a new upstream
+   * channel needs no plugin change.
+   */
+  readonly channels: Readonly<Record<string, readonly string[]>>
   readonly skills: readonly CatalogSkill[]
 }
 
@@ -93,17 +95,16 @@ function validateCatalog(value: unknown): SkillCatalog {
   }
 
   assert(isRecord(value.channels), 'channels must be an object')
-  assertKeys(value.channels, ['stable', 'beta'], [], 'channels')
-  assert(Array.isArray(value.channels.stable) && Array.isArray(value.channels.beta), 'channel membership must be arrays')
-  const channelNames = new Map<'stable' | 'beta', string[]>([
-    ['stable', value.channels.stable as string[]],
-    ['beta', value.channels.beta as string[]],
-  ])
-  for (const [channel, names] of channelNames) {
+  const channelNames = new Map<string, readonly string[]>()
+  for (const [channel, names] of Object.entries(value.channels)) {
+    assert(SKILL_NAME.test(channel), 'channels contains an invalid channel name ' + JSON.stringify(channel))
+    assert(Array.isArray(names), channel + ' membership must be an array')
     assert(names.every((entry) => typeof entry === 'string' && SKILL_NAME.test(entry)), channel + ' contains an invalid Skill name')
     assert(new Set(names).size === names.length, channel + ' contains a duplicate Skill name')
     assert(names.every((entry, index) => index === 0 || names[index - 1]! < entry), channel + ' membership is not sorted')
+    channelNames.set(channel, names as readonly string[])
   }
+  assert(channelNames.size > 0, 'channels must declare at least one channel')
 
   assert(Array.isArray(value.skills), 'skills must be an array')
   const skills = value.skills as unknown[]
@@ -129,7 +130,10 @@ function validateCatalog(value: unknown): SkillCatalog {
     assertKeys(raw.invocation, ['modelInvocable', 'userInvocable'], [], label + '.invocation')
     assert(typeof raw.invocation.modelInvocable === 'boolean' && typeof raw.invocation.userInvocable === 'boolean', label + '.invocation is invalid')
     assert(Array.isArray(raw.channels) && raw.channels.length > 0, label + '.channels is invalid')
-    assert(raw.channels.every((channel) => channel === 'stable' || channel === 'beta'), label + '.channels contains an unknown channel')
+    assert(
+      raw.channels.every((channel) => typeof channel === 'string' && channelNames.has(channel)),
+      label + '.channels contains an unknown channel',
+    )
     assert(new Set(raw.channels).size === raw.channels.length, label + '.channels contains a duplicate')
     assertSafeSkillPath(raw.directory, label + '.directory')
     assert(raw.directory.split('/').at(-1) === raw.name, label + '.directory differs from name')
@@ -145,8 +149,6 @@ function validateCatalog(value: unknown): SkillCatalog {
       .map((raw) => (raw as Record<string, unknown>).name)
     assert(JSON.stringify(derived) === JSON.stringify(names), channel + ' membership differs from Skill rows')
   }
-  assert(channelNames.get('stable')!.every((entry) => channelNames.get('beta')!.includes(entry)), 'beta must contain every stable Skill')
-
   return value as unknown as SkillCatalog
 }
 

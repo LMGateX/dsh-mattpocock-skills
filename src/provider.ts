@@ -176,8 +176,8 @@ function candidateFor(row: CatalogSkill, filePath: string, resourcePath: string)
 }
 
 export function createMattPocockSkillProvider(channel: Channel, options: ProviderOptions = {}): SkillProvider {
-  if (channel !== 'stable' && channel !== 'beta') throw new Error('unsupported Matt Pocock Skills channel ' + JSON.stringify(channel))
   const catalog = options.catalog ?? CATALOG
+  if (!Object.hasOwn(catalog.channels, channel)) throw new Error('unsupported Matt Pocock Skills channel ' + JSON.stringify(channel))
   const packageRoot = resolve(options.packageRoot ?? PACKAGE_ROOT)
   const vendorRoot = resolve(packageRoot, 'vendor/mattpocock-skills')
   const readSkillFile = options.readSkillFile ?? ((handle: FileHandle, signal: AbortSignal | undefined) => handle.readFile({ signal }))

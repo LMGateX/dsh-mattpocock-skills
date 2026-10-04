@@ -26,6 +26,7 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'source-lock.json',
   'README.md',
   'README.zh-CN.md',
+  'MIGRATION.md',
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
 ])
@@ -44,12 +45,13 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'PROVENANCE.json',
   'README.md',
   'README.zh-CN.md',
+  'MIGRATION.md',
   'source-lock.json',
   'THIRD_PARTY_NOTICES.md',
   'vendor-files.json',
 ])
 
-const EXPECTED_VERSION = '0.1.0-beta.3'
+const EXPECTED_VERSION = '0.2.0'
 
 const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2',
@@ -68,7 +70,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 16
+const EXPECTED_FIXED_PACKED_FILES = 17
 const EXPECTED_VENDOR_PACKED_FILES = 81
 const EXPECTED_PACKED_FILES = 97
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
@@ -112,8 +114,8 @@ export function expectedPackedFileBytes(path, sourceBytes) {
 }
 
 export function validatePackagePolicy(packageJson) {
-  assert(PACKAGE_FILES_ALLOWLIST.length === EXPECTED_FIXED_PACKED_FILES, 'internal package allowlist count must remain exactly 16')
-  assert(FIXED_PACKED_FILES.length === EXPECTED_FIXED_PACKED_FILES, 'internal fixed package file count must remain exactly 16')
+  assert(PACKAGE_FILES_ALLOWLIST.length === EXPECTED_FIXED_PACKED_FILES, 'internal package allowlist count must remain exactly ' + EXPECTED_FIXED_PACKED_FILES)
+  assert(FIXED_PACKED_FILES.length === EXPECTED_FIXED_PACKED_FILES, 'internal fixed package file count must remain exactly ' + EXPECTED_FIXED_PACKED_FILES)
   assert(packageJson && typeof packageJson === 'object' && !Array.isArray(packageJson), 'package.json must contain an object')
   assert(packageJson.name === '@lmgatex/dsh-mattpocock-skills', 'package name is not the accepted package identity')
   assert(packageJson.version === EXPECTED_VERSION, 'verifier requires the current release version ' + EXPECTED_VERSION)

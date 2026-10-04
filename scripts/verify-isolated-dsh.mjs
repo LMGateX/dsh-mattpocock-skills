@@ -92,7 +92,15 @@ async function requireRegular(path, label) {
   return info
 }
 
-async function verifyInstallation({ kind, specification, home, source, verifier, betaPatch, work, evidence }) {
+/** Channel names declared by a checkout's generated catalog; the set is data-driven. */
+async function readChannels(source) {
+  const catalog = JSON.parse(await readFile(join(source, 'generated', 'catalog.json'), 'utf8'))
+  const channels = Object.keys(catalog.channels).sort()
+  assert(channels.length > 0, 'the generated catalog declares no channel')
+  return channels
+}
+
+async function verifyInstallation({ kind, specification, home, source, verifier, channels, work, evidence }) {
   assert((await readdir(home)).length === 0, kind + ' DSH_HOME was not fresh')
   const env = { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }
   const install = run('dsh', ['plugin', '--profile', 'headless', 'add', specification, '--save-exact'], {
@@ -102,11 +110,11 @@ async function verifyInstallation({ kind, specification, home, source, verifier,
   await writeFile(join(evidence, kind + '-install.log'), install.combined)
 
   const reports = {}
-  for (const channel of ['stable', 'beta']) {
+  for (const channel of channels) {
     const output = join(work, kind + '-' + channel + '-report.json')
     const overlay = join(work, kind + '-' + channel + '-verifier.patch.yml')
     await writeFile(overlay, verifierOverlay(verifier, channel, output), { mode: 0o600 })
-    const patches = channel === 'beta' ? ['--patch', betaPatch, '--patch', overlay] : ['--patch', overlay]
+    const patches = ['--patch', overlay]
     const dump = run('dsh', ['--profile', 'headless', ...patches, '--dump-config'], {
       cwd: source, env, label: kind + ' ' + channel + ' config dump',
     })
@@ -189,8 +197,8 @@ async function main() {
     await mkdir(localHome, { mode: 0o700 })
     await mkdir(tarballHome, { mode: 0o700 })
     const verifier = join(options.source, 'tests', 'fixtures', 'phase4-registry-verifier.mjs')
-    const betaPatch = join(options.source, 'tests', 'fixtures', 'phase4-beta.patch.yml')
-    await Promise.all([requireRegular(verifier, 'registry verifier fixture'), requireRegular(betaPatch, 'Beta patch fixture')])
+    await requireRegular(verifier, 'registry verifier fixture')
+    const channels = await readChannels(options.source)
     const versionEnv = { ...process.env, DSH_HOME: localHome, DSH_TELEMETRY_DISABLED: '1' }
     const dsh = run('dsh', ['--version'], { cwd: options.source, env: versionEnv, label: 'DSH version lookup' }).stdout.trim()
     const requiredDsh = options.expectedDshVersion ?? EXPECTED_DSH_VERSION
@@ -198,20 +206,22 @@ async function main() {
 
     const checkout = await verifyInstallation({
       kind: 'checkout', specification: options.source, home: localHome, source: options.source,
-      verifier, betaPatch, work, evidence: options.evidence,
+      verifier, channels, work, evidence: options.evidence,
     })
     assert(await sha256File(options.tarball) === expectedSha256, 'caller tarball changed before tarball-profile installation')
     assert(await sha256File(privateTarball) === expectedSha256, 'private tarball snapshot changed before installation')
     const tarball = await verifyInstallation({
       kind: 'tarball', specification: privateTarball, home: tarballHome, source: options.source,
-      verifier, betaPatch, work, evidence: options.evidence,
+      verifier, channels, work, evidence: options.evidence,
     })
     assert(await sha256File(privateTarball) === expectedSha256, 'private tarball snapshot changed during isolated verification')
     assert(await sha256File(options.tarball) === expectedSha256, 'caller tarball changed during isolated verification')
 
-    for (const channel of ['stable', 'beta']) {
+    for (const channel of channels) {
       assert(checkout.reports[channel].equals(tarball.reports[channel]), channel + ' checkout/tarball registry reports differ')
     }
+    const channelReports = {}
+    for (const channel of channels) channelReports[channel] = JSON.parse(checkout.reports[channel].toString('utf8'))
     const summary = {
       source: options.source,
       sourceCommit,
@@ -227,10 +237,7 @@ async function main() {
       dsh,
       profile: 'headless',
       homes: { fresh: true, securelyCreatedUnderSystemTmp: true, removedAfterVerification: true },
-      channels: {
-        stable: JSON.parse(checkout.reports.stable.toString('utf8')),
-        beta: JSON.parse(checkout.reports.beta.toString('utf8')),
-      },
+      channels: channelReports,
       checkoutTarballReportsByteIdentical: true,
       modelInvoked: false,
       webStarted: false,

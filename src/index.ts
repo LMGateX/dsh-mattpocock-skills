@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 
+import { CATALOG } from './catalog.js'
 import { createMattPocockSkillProvider } from './provider.js'
 
 export { CATALOG, parseCatalog } from './catalog.js'
@@ -11,9 +12,17 @@ export type { ProviderDiagnostic, ProviderOptions, SkillFileReader } from './pro
 export const name = 'dsh-mattpocock-skills'
 export const inject = ['skills'] as const
 
-export const CHANNELS = ['stable', 'beta'] as const
-export type Channel = (typeof CHANNELS)[number]
-export const DEFAULT_CHANNEL: Channel = 'stable'
+/**
+ * Channels declared by the vendored distribution. Sorting is stable and the set is
+ * closed for one mount: an unknown channel name is rejected rather than silently empty.
+ */
+export const CHANNELS: readonly string[] = Object.freeze(Object.keys(CATALOG.channels).sort())
+
+/** Channel names are data-driven, so the type is a string validated against {@link CHANNELS}. */
+export type Channel = string
+
+/** Channel used when a profile selects none: `stable` when declared, otherwise the first channel. */
+export const DEFAULT_CHANNEL: Channel = CHANNELS.includes('stable') ? 'stable' : CHANNELS[0]!
 
 export interface Config {
   channel: Channel

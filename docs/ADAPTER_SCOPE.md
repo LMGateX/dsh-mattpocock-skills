@@ -12,7 +12,7 @@
 
 | 层次 | 文件/入口 | 职责与处理方式 |
 |---|---|---|
-| 运行时入口 | `src/index.ts` | Stable/Beta 配置，向 `ctx.skills.registerProvider` 注册 provider；保留 |
+| 运行时入口 | `src/index.ts` | 通道配置（通道集从 catalog 派生），向 `ctx.skills.registerProvider` 注册 provider；保留 |
 | 运行时目录 | `src/catalog.ts` | 读取、校验和冻结生成的 Skill 元数据；保留 |
 | 运行时加载 | `src/provider.ts` | `list` 按 channel 返回候选项；`get` 按需返回准确正文、调用元数据和资源目录；保留 |
 | 来源与分发 | `scripts/update-source.mjs`、`scripts/verify-vendor.mjs`、静态 catalog 与 vendor | 固定来源、构建元数据及检查内容完整性；保留，不继续增加无实际需求的机制 |

@@ -9,7 +9,7 @@ export interface CatalogSkill {
     readonly metadata?: Readonly<Record<string, unknown>>;
     readonly frontmatterExtensions?: Readonly<Record<string, unknown>>;
     readonly invocation: CatalogInvocation;
-    readonly channels: readonly ('stable' | 'beta')[];
+    readonly channels: readonly string[];
     readonly directory: string;
     readonly skillPath: string;
     readonly bodyByteOffset: number;
@@ -24,10 +24,12 @@ export interface SkillCatalog {
         commit: string;
         upstreamCommit: string;
     }>;
-    readonly channels: Readonly<{
-        stable: readonly string[];
-        beta: readonly string[];
-    }>;
+    /**
+     * Channel name to the sorted Skill names it selects. The set is data-driven: it is
+     * whatever channel manifests the vendored distribution ships, so a new upstream
+     * channel needs no plugin change.
+     */
+    readonly channels: Readonly<Record<string, readonly string[]>>;
     readonly skills: readonly CatalogSkill[];
 }
 export declare function parseCatalog(text: string): SkillCatalog;

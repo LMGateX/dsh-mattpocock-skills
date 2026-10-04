@@ -2,7 +2,7 @@
 
 ## 范围与证据级别
 
-这是能力层面的首轮静态盘点，不是 26 个 Skills 的端到端认证。对全部 Skill Markdown 做宿主关键词检索，并精读 setup、implement-spec、code-review、research、wayfinder、ask-matt 的阶段边界、router Skills、to-tickets 与 diagnosing-bugs。未命中关键词不能证明完全兼容。
+这是能力层面的首轮静态盘点，不是全部 Skills 的端到端认证。**本次盘点的逐 Skill 行号引自 v1.2.3 时代的 vendor 基线；当前 vendor 已更新到上游 v1.3（27 个 Skills），行号可能已经漂移，结论本身未重跑。**对全部 Skill Markdown 做宿主关键词检索，并精读 setup、implement-spec、code-review、research、wayfinder、ask-matt 的阶段边界、router Skills、to-tickets 与 diagnosing-bugs。未命中关键词不能证明完全兼容。
 
 基线：adapter 提交 `b27f9add6e29267ebe2303bb50729252ed47e1b5`；固定 vendor；当前本地安装的 DSH 实现。宿主版本层面的 API 核对（0.1.2-rc.1 → 0.1.7-alpha.2、peer 范围修复、跨宿主验证）另见 [宿主兼容性核对](HOST_COMPATIBILITY.md)。当前实现的源码事实不自动等同于历史 Trial 当时的运行时，也不证明 owner profile 已加载相应能力。本次没有读取 owner 配置。
 
@@ -12,7 +12,7 @@
 
 | 能力/约定 | 判断 | 证据与最小处理 |
 |---|---|---|
-| Stable/Beta、名称、调用权限 | 契约已验证 | `src/index.ts:14–32`、provider registry tests；Stable 25、Beta 26，implement-spec 用户可调用但不进入模型可调用目录 |
+| 通道集、名称、调用权限 | 契约已验证 | `src/index.ts`、provider registry tests；通道集由 vendor 的 channel manifest 数据驱动，当前为单一 `stable`、27 个 Skills；未知通道名失败关闭。implement-spec 用户可调用但不进入模型可调用目录 |
 | 正文、资源目录、卸载、覆盖优先级 | 契约已验证 | `src/provider.ts:178–251`；返回 SkillDefinition，正文保持原样；project/user 可覆盖 bundled。无需再造 loader |
 | 用户 `/skill` 与上下文注入 | DSH 原生负责 | adapter 不解析消息。与宿主人类命令 `/compact` 分属不同机制，不做通用 slash 文本替换 |
 | 正文中的 “Call the Skill tool” | 原生能力，目标可调用性须匹配 | grill-me:7 → grilling；grill-with-docs:7 → grilling/domain-modeling；DSH 工具名 `skill`，使用精确名称。工具通过 run_code 暴露时调用 SDK，不要求与其他宿主具有相同 API 拼写 |
@@ -61,7 +61,7 @@
 
 ## 源码定位
 
-上述 Skill 行号相对于 `vendor/mattpocock-skills/skills/`，工程类位于 `engineering/`，implement-spec 位于 `in-progress/`，grill-me 位于 `productivity/`。DSH 本次检查根：`<npm 全局前缀>/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/`。
+上述 Skill 行号相对于 v1.2.3 时代基线下的 `vendor/mattpocock-skills/skills/`：当时工程类位于 `engineering/`，implement-spec 位于 `in-progress/`。上游 v1.3 已把 implement-spec 移入 `engineering/`，并把 `in-progress/implement-spec` 从 vendor 中移除。DSH 本次检查根：`<npm 全局前缀>/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/`。
 
 - `dsh-command-compact/lib/index.js:47–97`：参数检查、compactNow 调用和人类命令注册。
 - `dsh-agent-instructions/lib/index.js:16–31,525–578`：默认候选与所有现存候选收集，不是只取 AGENTS.md 丢弃 CLAUDE.md。
