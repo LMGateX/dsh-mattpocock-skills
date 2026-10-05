@@ -30,7 +30,7 @@ export const SOURCE_LOCK_SCHEMA_VERSION = 1
 /** Channel manifest schema emitted by the source distribution. */
 export const CHANNEL_SCHEMA_VERSION = 1
 /** Upstream provenance manifest schema, shared with the distribution's upstream.json. */
-export const UPSTREAM_SCHEMA_VERSION = 3
+export const UPSTREAM_SCHEMA_VERSION = 4
 export const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url))
 
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -44,6 +44,7 @@ const OUTPUT_PATHS = [
 ]
 /** Distribution-owned files copied verbatim; channel manifests are added per discovered channel. */
 const COPIED_METADATA = [
+  'CHANGELOG.md',
   'DISTRIBUTION.md',
   'LICENSE',
   '.distribution/upstream.json',
@@ -257,7 +258,7 @@ function validateChannelManifest(manifest, expectedChannel) {
 
 function validateUpstreamManifest(upstream) {
   assert(isRecord(upstream), 'upstream manifest must contain an object')
-  assertKeys(upstream, ['schemaVersion', 'repository', 'remote', 'branch', 'commit', 'commitDate', 'recordedAt', 'contentPolicy', 'previewSkills', 'upstreamContentSha256'], [], 'upstream manifest')
+  assertKeys(upstream, ['schemaVersion', 'repository', 'remote', 'branch', 'upstreamRelease', 'commit', 'commitDate', 'recordedAt', 'contentPolicy', 'previewSkills', 'upstreamContentSha256'], [], 'upstream manifest')
   assert(upstream.schemaVersion === UPSTREAM_SCHEMA_VERSION, 'unsupported upstream manifest schemaVersion ' + upstream.schemaVersion)
   for (const key of ['repository', 'remote', 'branch', 'commit', 'commitDate', 'recordedAt', 'contentPolicy', 'upstreamContentSha256']) {
     assert(typeof upstream[key] === 'string' && upstream[key].length > 0, 'upstream manifest ' + key + ' is invalid')
@@ -265,6 +266,10 @@ function validateUpstreamManifest(upstream) {
   assert(HEX_OBJECT.test(upstream.commit), 'upstream manifest commit is invalid')
   assert(SHA256.test(upstream.upstreamContentSha256), 'upstream manifest content hash is invalid')
   // Recorded for provenance only; the plugin resolves Skills from the channel manifests.
+  assert(
+    upstream.upstreamRelease === null || (typeof upstream.upstreamRelease === 'string' && upstream.upstreamRelease.length > 0),
+    'upstream manifest upstreamRelease must be a release tag or null'
+  )
   assert(Array.isArray(upstream.previewSkills), 'upstream manifest previewSkills must be an array')
   for (const [index, value] of upstream.previewSkills.entries()) {
     normalizeSkillPath(value, 'upstream manifest previewSkills[' + index + ']')
@@ -600,6 +605,7 @@ function provenanceFromArtifacts(lock, sourceLockSha256, upstream, sourceVerifie
     },
     upstream: {
       repository: upstream.repository,
+      release: upstream.upstreamRelease,
       commit: upstream.commit,
       contentSha256: upstream.upstreamContentSha256,
     },

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "distribution": {
     "repository": "https://github.com/LMGateX/mattpocock-skills-distribution.git",
-    "tag": "v0.2.1",
-    "tagObject": "7e4c7ae9491f7e0241d7887c6da9a2573b4751f7",
-    "commit": "150ec3c09e7083c9ba82c522c0ab916fb6a01f7a",
-    "upstreamCommit": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60"
+    "tag": "v0.3.0",
+    "tagObject": "08a0539bc2aea0087284201969897b82c94cc059",
+    "commit": "b8fe790371e1755aae98dedec512720f1aad2dba",
+    "upstreamCommit": "24fe0ef7737efae15c87225755e9f6f5965e4888"
   },
   "channels": {
     "beta": [
@@ -82,7 +82,7 @@
       "directory": "skills/engineering/ask-matt",
       "skillPath": "skills/engineering/ask-matt/SKILL.md",
       "bodyByteOffset": 151,
-      "sha256": "3f0f34614070aba3d9a7e2bd210718d78b9b942dd0f9af0c5869234fe34e16af"
+      "sha256": "32b3c71d6dbb5a7c15147e8a503a9df28e9a567f45eba6a6bb42aa903225c6ff"
     },
     {
       "name": "code-review",

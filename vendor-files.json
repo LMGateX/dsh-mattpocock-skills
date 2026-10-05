@@ -2,37 +2,44 @@
   "schemaVersion": 1,
   "root": "vendor/mattpocock-skills",
   "hashAlgorithm": "sha256",
-  "fileCount": 84,
-  "totalBytes": 223396,
-  "rootSha256": "e9063234dc3f5ddf4bfd39af244d62a778f3306a20a5fa860b191e21d83b3bec",
+  "fileCount": 85,
+  "totalBytes": 279662,
+  "rootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1",
   "entries": [
     {
       "path": ".distribution/channels/beta.json",
       "kind": "file",
       "mode": "100644",
       "size": 1360,
-      "sha256": "dc591cbb1c7124c5edf18c5b8414653cdac92479624d19b2817c60b4e7e0c27a"
+      "sha256": "353c71b6ffca255ca2d9adbf6732680de10b39df535bb248d5814c26dfd2f560"
     },
     {
       "path": ".distribution/channels/stable.json",
       "kind": "file",
       "mode": "100644",
       "size": 1285,
-      "sha256": "e003a06c2bbe2ae9034e2ea9f01ec3443e866b8183d2a4a1ef96de36656cb473"
+      "sha256": "51ce41f8f475091ab74476fe4d9c42e5d64a4c35efb6303472e32f4c1a25e8ec"
     },
     {
       "path": ".distribution/upstream.json",
       "kind": "file",
       "mode": "100644",
-      "size": 482,
-      "sha256": "4f7f50e3ad8f2be05c1987b1025450794fb82aab3284616a39306d6dafd6d2ca"
+      "size": 513,
+      "sha256": "05356bf020a0cc35fa91b59650be47fa67ddb6e6fc6662e5ac9a21ee120f5fc5"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "kind": "file",
+      "mode": "100644",
+      "size": 55476,
+      "sha256": "d1fc00f3751b6ef35935251dd461fb126381631be277aec1d21edd485b4ae89a"
     },
     {
       "path": "DISTRIBUTION.md",
       "kind": "file",
       "mode": "100644",
-      "size": 4044,
-      "sha256": "2533b33bb13662bfab4ccc2fae8c0dcd88b95166526197219671551789ad1670"
+      "size": 4719,
+      "sha256": "4c2487500d15a4cc8a4e6d281b2b107a9c1a75cce4f82d93aca8a553adf315ce"
     },
     {
       "path": "LICENSE",
@@ -52,8 +59,8 @@
       "path": "skills/engineering/ask-matt/SKILL.md",
       "kind": "file",
       "mode": "100644",
-      "size": 12368,
-      "sha256": "3f0f34614070aba3d9a7e2bd210718d78b9b942dd0f9af0c5869234fe34e16af"
+      "size": 12452,
+      "sha256": "32b3c71d6dbb5a7c15147e8a503a9df28e9a567f45eba6a6bb42aa903225c6ff"
     },
     {
       "path": "skills/engineering/ask-matt/agents/openai.yaml",

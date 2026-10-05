@@ -17,6 +17,8 @@ The pinned distribution publishes **two channels, and only ever adds channels**:
 - `stable` — upstream's promoted set: 27 Skills.
 - `beta` — `stable` plus whatever upstream is previewing under `skills/in-progress/`. Nothing is previewed today, so `beta` resolves to the **same 27 Skills**; it exists so that a profile which selected `beta` keeps working.
 
+This release mirrors upstream **v1.3.1** (commit `24fe0ef`). `PROVENANCE.json` records that mapping so you can tell which upstream version you are running without resolving Git objects, and upstream's own [changelog](vendor/mattpocock-skills/CHANGELOG.md) ships inside the package.
+
 `stable` is the default. It is an unofficial adapter and does not imply endorsement by Matt Pocock.
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.

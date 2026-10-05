@@ -4,8 +4,9 @@ This adapter delivers the upstream Matt Pocock Skills bodies unchanged. Upstream
 document convention, and **no skill will tell you when the old name is gone**. This page lists what
 you have to change by hand. Nothing here runs automatically.
 
-It covers only what you must change. For what changed in the skill set itself, see the upstream
-[v1.3.0 changelog](https://github.com/mattpocock/skills/blob/main/CHANGELOG.md).
+It covers only what you must change. For what changed in the skill set itself, read the vendored
+upstream [changelog](vendor/mattpocock-skills/CHANGELOG.md), or upstream's own
+[v1.3.1 release](https://github.com/mattpocock/skills/releases/tag/v1.3.1).
 
 ## Why you have to act
 
@@ -55,10 +56,17 @@ current template that ships with that skill.
 
 ## What not to do
 
-- **Do not create `CODING_STANDARDS.md`.** Nothing in this distribution writes it. `code-review` only
-  reads it when the repository already has one.
+- **Do not treat `CODING_STANDARDS.md` as a migration step.** The rename does not require one, and a
+  repository that never had one still does not. `retro`, promoted in v1.3, may later suggest a rule
+  there for genuine judgement calls, and `code-review` reads it whenever it exists. Both are ordinary
+  use, not migration work.
 - **Do not migrate the invalid YAML front matter tracked as upstream issue #911.** That regression was
-  introduced and fixed inside the 1.3 development cycle and never shipped in a release.
+  introduced and fixed inside the 1.3 development cycle, so no release ever shipped it.
+- **Do not go looking for `resolving-merge-conflicts`.** v1.3 removed that skill and nothing replaces
+  it: work through a merge or rebase conflict directly. It leaves no file behind in your repository, so
+  there is nothing to delete. The one thing worth checking is your own prose, since a stale
+  `CLAUDE.md`, `AGENTS.md`, or team doc telling the agent to run `/resolving-merge-conflicts` now names
+  a skill that does not exist.
 - **Do not rename the teach workspace glossary**, per the rule above.
 
 ## Checking the result

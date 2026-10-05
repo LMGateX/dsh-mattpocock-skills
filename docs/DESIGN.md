@@ -43,11 +43,12 @@ The initial source baseline is:
 | Item | Value |
 |---|---|
 | Distribution repository | `LMGateX/mattpocock-skills-distribution` |
-| Distribution tag | `v0.2.1` |
-| Annotated tag object | `7e4c7ae9491f7e0241d7887c6da9a2573b4751f7` |
-| Distribution commit | `150ec3c09e7083c9ba82c522c0ab916fb6a01f7a` |
+| Distribution tag | `v0.3.0` |
+| Annotated tag object | `08a0539bc2aea0087284201969897b82c94cc059` |
+| Distribution commit | `b8fe790371e1755aae98dedec512720f1aad2dba` |
 | Matt Pocock upstream | `mattpocock/skills` |
-| Upstream commit | `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` |
+| Upstream release | `v1.3.1` |
+| Upstream commit | `24fe0ef7737efae15c87225755e9f6f5965e4888` |
 | Source verifier SHA-256 | `f62039d108fdbfd0bf56165dd8e35a407cf6c11ab1be361351ea37e8bc401bf7` |
 | Declared channels | `stable` and `beta`, both always published |
 | Stable selection | 27 promoted Skills |
@@ -55,7 +56,7 @@ The initial source baseline is:
 
 The annotated tag is unsigned. Reproducibility therefore relies on the pinned repository, immutable full object IDs, source verification, and the downstream per-file inventory. Signing a later tag is desirable but not required.
 
-Upstream v1.3 is merged to `mattpocock/skills` `main`, but its version bump was still pending on upstream's release branch when this baseline was pinned, so `.claude-plugin/plugin.json` at the pinned commit still reads `1.2.3`. The channel manifest describes the skill set at the pinned commit, not at the newest upstream tag. When upstream publishes v1.3, the pinned commit may differ from the released one; re-pinning is a separate, deliberate sync.
+The pin is the commit upstream's `v1.3.1` tag points at, so the channel manifests describe a published release rather than a moving `main`. The distribution records that release in `upstreamRelease` and refuses to verify while it names a tag that does not point at the pin; `null` is reserved for deliberately pinning ahead of every release. Upstream publishes through changesets, so a release commit carries the version bump, the regenerated `CHANGELOG.md`, and the removal of the consumed `.changeset/` entries.
 
 ## 4. Channel Semantics
 
