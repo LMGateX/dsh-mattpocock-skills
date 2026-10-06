@@ -29,6 +29,10 @@
     "./compatibility": {
       "types": "./lib/types/compatibility/managed-sdk.d.ts",
       "default": "./lib/compatibility/managed-sdk.js"
+    },
+    "./native-subagent": {
+      "types": "./lib/types/compatibility/native-subagent.d.ts",
+      "default": "./lib/compatibility/native-subagent.js"
     }
   },
   "files": [
@@ -82,6 +86,14 @@
     "lib/controls/startup-support.js",
     "lib/types/controls/startup-state.d.ts",
     "lib/types/controls/startup-support.d.ts",
+    "lib/compatibility/native-subagent.js",
+    "lib/types/compatibility/native-subagent.d.ts",
+    "compatibility/native-subagent-0.2.1-alpha.1.js",
+    "compatibility/native-subagent.provenance.json",
+    "lib/compatibility/readiness.js",
+    "lib/types/compatibility/readiness.d.ts",
+    "lib/compatibility/composition.js",
+    "lib/types/compatibility/composition.d.ts",
     "lib/compatibility/managed-sdk.js",
     "lib/compatibility/cli.js",
     "lib/compatibility/host-startup.js",
@@ -154,6 +166,14 @@
     "@deepseek-ai/dsh-llm": "~0.2.1-alpha.1",
     "@deepseek-ai/dsh-typert-protocol": "~0.2.1-alpha.1",
     "@deepseek-ai/dsh-sandbox": "~0.2.1-alpha.1",
+    "@deepseek-ai/cordis-plugin-loader": "~1.0.6-alpha.1",
+    "@deepseek-ai/dsh-agent": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-attachment": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-brand": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-chunked-list": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-scope": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-util-time": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-util-values": "~0.2.1-alpha.1",
     "react": "^18.2.0",
     "zod": "^4.6.5"
   },
@@ -196,7 +216,8 @@
     "@deepseek-ai/dsh-client-ui-chat": "0.2.1-alpha.1",
     "@deepseek-ai/dsh-util-values": "0.2.1-alpha.1",
     "happy-dom": "20.14.5",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.6-alpha.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-session": {
@@ -221,6 +242,30 @@
       "optional": true
     },
     "@deepseek-ai/dsh-sandbox": {
+      "optional": true
+    },
+    "@deepseek-ai/cordis-plugin-loader": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-attachment": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-brand": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-chunked-list": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-scope": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-util-time": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-util-values": {
       "optional": true
     },
     "react": {

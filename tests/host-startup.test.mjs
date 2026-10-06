@@ -345,6 +345,83 @@ test('a real child launched at an incompatible SDK bin retains its version but r
   assert.match(unrelated.observation.preparation.diagnostic, /could not be verified/)
 })
 
+test('optional plugin preparation never overrides current native true or unknown capability', options, async () => {
+  const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
+  let calls = 0
+  const preparation = async () => { calls++; throw new Error('broken optional asset') }
+  const supported = await new HostStartupNode({ observeCompatibilityPreparation: preparation,
+    nativeSource: () => '@lmgatex/dsh-mattpocock-skills/native-subagent-0.2.1-alpha.1' }, () => true).observe()
+  assert.equal(supported.nativeInitialCwdSupported, true)
+  assert.equal(supported.preparation.status, 'ready')
+  assert.match(supported.preparation.diagnostic, /loaded provider origin/)
+  assert.match(supported.preparation.diagnostic, /does not claim the official shared SDK was patched/)
+  const unknown = await new HostStartupNode({ observeCompatibilityPreparation: preparation }, () => null).observe()
+  assert.equal(unknown.nativeInitialCwdSupported, null)
+  assert.equal(unknown.preparation.status, 'uncertain')
+  assert.equal(calls, 0, 'optional inspection must not run before native capability precedence')
+})
+
+test('trusted ready callback reports pending restart through real StartupSupport without changing same-process boot', options, async () => {
+  const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
+  const { StartupSupport } = await import('../src/controls/startup-support.ts')
+  let document = { schemaVersion: 1, revision: 0, desired: { startupCwdEnabled: true }, bootReceipts: [] }
+  const storage = { async read() { return structuredClone(document) }, async compareAndSwap(expected, next) {
+    if (document.revision !== expected) return false
+    document = structuredClone(next); return true
+  } }
+  const control = signal(), seen = []
+  const node = new HostStartupNode({ bootEpoch: 'trusted-plugin-pending', observeCompatibilityPreparation: async received => {
+    seen.push(received); return { status: 'ready', sdkVersion: '0.2.1-alpha.1', diagnostic: 'Same plugin provider ready for next boot only.' }
+  } }, () => false)
+  const support = new StartupSupport(storage, { epoch: node.epoch }, received => node.observe(received))
+  const first = await support.readStatus(control)
+  assert.equal(first.nativeInitialCwdSupported, false)
+  assert.equal(first.enabledNow, false)
+  assert.equal(first.state, 'pending-restart')
+  assert.equal(first.restartNeeded, true)
+  const remounted = new StartupSupport(storage, { epoch: node.epoch }, received => node.observe(received))
+  const again = await remounted.readStatus(control)
+  assert.deepEqual(again.boot, first.boot)
+  assert.equal(again.revision, first.revision)
+  assert(seen.every(received => received === control), 'exact public observer signal is forwarded')
+})
+
+test('missing optional evidence uses legacy readonly inspection but directs ordinary users to updated plugin', options, async t => {
+  const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
+  const root = await sdkFixture(t), before = await sdkImage(root)
+  const result = await new HostStartupNode({ sdkRoot: root, observeCompatibilityPreparation: async () => null }, () => false).observe()
+  assert.equal(result.preparation.status, 'not-prepared')
+  assert.match(result.preparation.diagnostic, /legacy read-only SDK evidence/)
+  assert.match(result.preparation.diagnostic, /updated compatible plugin package/)
+  assert.deepEqual(await sdkImage(root), before)
+})
+
+test('failed or invalid trusted optional observer is not forged into prepared state', options, async () => {
+  const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
+  const failed = await new HostStartupNode({ observeCompatibilityPreparation: async () => { throw new Error('asset missing') } }, () => false).observe()
+  assert.equal(failed.nativeInitialCwdSupported, false)
+  assert.equal(failed.preparation.status, 'failed')
+  assert.match(failed.preparation.diagnostic, /asset missing/)
+  const invalid = await new HostStartupNode({ observeCompatibilityPreparation: async () => ({ status: 'ready', sdkVersion: null, diagnostic: null, userAuthority: true }) }, () => false).observe()
+  assert.equal(invalid.preparation.status, 'failed')
+  assert.match(invalid.preparation.diagnostic, /unexpected|unknown/i)
+})
+
+test('optional preparation cancellation forwards exact signal and rejects instead of returning invented failure', options, async () => {
+  const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
+  const controller = new AbortController()
+  let seen
+  const node = new HostStartupNode({ observeCompatibilityPreparation: async received => {
+    seen = received
+    await new Promise(resolve => received.addEventListener('abort', resolve, { once: true }))
+    return { status: 'ready', sdkVersion: '0.2.1-alpha.1', diagnostic: 'must not return' }
+  } }, () => false)
+  const pending = node.observe(controller.signal)
+  controller.abort(new Error('cancel optional preparation'))
+  await assert.rejects(pending, /cancel optional preparation/)
+  assert.strictEqual(seen, controller.signal)
+})
+
 test('startup request never falsifies changing native health and cwd checks native truth at the final effect', options, async t => {
   const f = await assembly(t, { units: startupUnits(true), bootEpoch: 'native-health', factory: (ports, ctx, owner) => filesystemBoundary(ctx, owner) })
   await f.mounted.ports.authorizeInitialChildCwd(f.exec(), '/fixture/tree')

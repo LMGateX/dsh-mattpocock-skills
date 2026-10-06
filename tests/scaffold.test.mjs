@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { parse } from 'yaml'
+import { createCompatibilityCompositionPatches } from '../lib/compatibility/composition.js'
 import { PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES, EXPECTED_PACKED_FILES, EXPECTED_PEERS, EXPECTED_PEER_META, EXPECTED_CLIENT, validatePackagePolicy } from '../scripts/verify-package.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -32,8 +33,10 @@ test('declares one private installable DSH bundle', async () => {
   validatePackagePolicy(packageJson)
   assert.equal(await pathExists(join(root, 'dsh.plugin.json')), false)
 
-  const patch = parse(await readFile(join(root, 'cordis.patch.yml'), 'utf8'))
-  assert.deepEqual(patch, [
+  const patch = parse(await readFile(join(root, 'cordis.patch.yml'), 'utf8'), { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => ({ __jsExpr: value }) }] })
+  assert.equal(patch.length, 3)
+  assert.deepEqual(patch.slice(0, 2), createCompatibilityCompositionPatches())
+  assert.deepEqual(patch.slice(2), [
     {
       insert: [
         {
@@ -81,12 +84,12 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
   const actual = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort()
-  assert.equal(actual.length, 56)
+  assert.equal(actual.length, 62)
   assert.deepEqual(actual, expected)
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
-  assert.equal(FIXED_PACKED_FILES.length, 69)
+  assert.equal(FIXED_PACKED_FILES.length, 77)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 154)
+  assert.equal(EXPECTED_PACKED_FILES, 162)
 })

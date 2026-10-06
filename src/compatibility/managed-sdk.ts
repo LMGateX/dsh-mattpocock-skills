@@ -23,6 +23,7 @@ interface Recipe { recipeId: string; sdkName: string; sdkVersion: string; upstre
 interface Receipt {
   schemaVersion: 1
   owner: string
+  /** Creator package version: provenance, not a package-upgrade ownership lock. */
   ownerVersion: string
   targetRoot: string
   sdkVersion: string
@@ -80,13 +81,18 @@ async function canonicalRoot(targetRoot: string): Promise<string> {
   if (root !== resolve(targetRoot) || !(await lstat(root)).isDirectory()) throw new Refusal('incompatible', 'SDK root must be a canonical directory without symlinks')
   return root
 }
-async function readReceipt(root: string, spec: Recipe, ownerVersion: string): Promise<Receipt | null> {
+function packageVersion(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 128
+    && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value)
+}
+
+async function readReceipt(root: string, spec: Recipe): Promise<Receipt | null> {
   if (!await exists(join(root, stateName))) return null
   try {
     await safePath(root, stateName, true)
     const raw = await readSafe(root, stateName + '/receipt.json')
     const value = JSON.parse(raw.toString('utf8')) as Receipt
-    if (value.schemaVersion !== 1 || value.owner !== ownerName || value.ownerVersion !== ownerVersion || value.targetRoot !== root || value.sdkVersion !== spec.sdkVersion || value.recipeId !== recipeId || value.recipeSha256 !== recipeDigest || !/^[0-9a-f-]{36}$/.test(value.transactionId) || !['preparing', 'prepared', 'restoring', 'restored'].includes(value.phase) || value.files.length !== spec.files.length) throw new Error('Receipt ownership or identity mismatch')
+    if (value.schemaVersion !== 1 || value.owner !== ownerName || !packageVersion(value.ownerVersion) || value.targetRoot !== root || value.sdkVersion !== spec.sdkVersion || value.recipeId !== recipeId || value.recipeSha256 !== recipeDigest || !/^[0-9a-f-]{36}$/.test(value.transactionId) || !['preparing', 'prepared', 'restoring', 'restored'].includes(value.phase) || value.files.length !== spec.files.length) throw new Error('Receipt ownership or identity mismatch')
     for (const [i, file] of spec.files.entries()) {
       const record = value.files[i]
       if (!record || record.path !== file.path || record.before !== file.sha256 || record.after !== file.patchedSha256 || record.backup !== String(i) + '.original' || !Number.isInteger(record.mode) || record.mode < 0 || record.mode > 0o777) throw new Error('Receipt file metadata mismatch')
@@ -105,9 +111,9 @@ async function snapshot(targetRoot: string, signal?: AbortSignal, ignoreLock = f
   const version = typeof pkg.version === 'string' ? pkg.version : null
   if (pkg.name !== spec.sdkName || version !== spec.sdkVersion) throw new Refusal('incompatible', 'SDK identity or version does not match pinned recipe')
   const ownPkg = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { name: string; version: string }
-  if (ownPkg.name !== ownerName || typeof ownPkg.version !== 'string') throw new Refusal('incompatible', 'Manager package identity unavailable')
+  if (ownPkg.name !== ownerName || !packageVersion(ownPkg.version)) throw new Refusal('incompatible', 'Manager package identity unavailable')
   if (!ignoreLock && await exists(join(root, lockName))) throw new Refusal('uncertain', 'SDK preparation lock exists; no stale-PID guessing or automatic lock removal')
-  const receipt = await readReceipt(root, spec, ownPkg.version)
+  const receipt = await readReceipt(root, spec)
   const bytes: Buffer[] = []
   const modes: number[] = []
   for (const file of spec.files) {
@@ -316,7 +322,7 @@ export async function prepareManagedSdk(targetRoot: string, signal?: AbortSignal
     }
     await syncDirectory(join(data.root, stateName))
     // Journal and every backup are durable before the first compiled-file effect.
-    await readReceipt(data.root, data.spec, data.ownerVersion)
+    await readReceipt(data.root, data.spec)
     for (const [i, file] of data.spec.files.entries()) {
       checkpoint(signal)
       await assertOwnedJournal(data.root, journal)

@@ -659,35 +659,28 @@ export class StartupSettingsController {
   }
   dispose = (): void => { if (this.closed) return; this.closed = true; this.cancel(); this.holds = 0; this.publish({ saved: null, draft: null, busy: null, error: '启动设置已卸载；状态不可用。', notice: null }); this.listeners.clear() }
 }
-const STARTUP_HINT = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页不能代替重启。启用还需要当前 SDK 支持；若 SDK 没有原生支持且兼容准备尚未完成，反复重启也不会生效。'
+const STARTUP_HINT = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页或热重载不能代替进程重启。兼容支持由同一插件包提供；安装或更新插件后，保存下次启动请求，再正常重启 DSH。是否生效以当前运行状态为准；兼容性尚未验证时，反复重启也不会生效。'
 const settingsCard = { border: '1px solid rgba(127,127,127,.3)', borderRadius: '12px', padding: '20px', minWidth: 0, overflowWrap: 'anywhere' as const }
 const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px', minWidth: 0 }
 const settingsActions = { display: 'flex', flexWrap: 'wrap' as const, gap: '8px', marginTop: '16px' }
 const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '12px 0', minWidth: 0 }
 function startupFlag(value: boolean | null): string { return value === null ? '未知（观测不可用）' : value ? '启用' : '禁用' }
-/** Translate the authoritative Host state; disk preparation never overrides loaded capability. */
+/** Translate the authoritative Host state; plugin readiness never overrides loaded capability. */
 function startupStateText(saved: StartupStatus): string {
-  return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '需要兼容准备', unsupported: '当前环境不支持', incompatible: '版本不兼容', failed: '兼容准备失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['state'], string>)[saved.state]
+  return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '插件兼容性尚未验证', unsupported: '增强功能不可用', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['state'], string>)[saved.state]
 }
 function preparationText(saved: StartupStatus): string {
-  return ({ ready: '已就绪', 'not-prepared': '尚未准备', incompatible: '版本不兼容', failed: '准备失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['preparation']['status'], string>)[saved.preparation.status]
+  return ({ ready: '插件实现已就绪（不代表当前已启用）', 'not-prepared': '插件兼容性尚未验证', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['preparation']['status'], string>)[saved.preparation.status]
 }
 function startupExplanation(saved: StartupStatus): { readonly title: string; readonly detail: string } {
   const request = saved.desired.startupCwdEnabled ? '已保存启用请求。' : '已保存关闭请求。'
   if (saved.state === 'enabled') return { title: '已生效', detail: '当前进程已启用；创建新的可继续交互子代理时，可指定工作树作为初始工作目录。' }
-  if (saved.state === 'disabled') return { title: '已关闭', detail: '当前进程未启用此功能；关闭不恢复 SDK 文件，也不改变已有子代理的工作目录。' }
+  if (saved.state === 'disabled') return { title: '已关闭', detail: '当前进程未启用此功能；关闭不卸载运行时能力，也不改变已有子代理的工作目录。' }
   if (saved.state === 'pending-restart') return { title: saved.enabledNow === true ? '当前仍生效：关闭请求待重启' : '尚未生效：待重启', detail: request + '当前进程保留本次启动配置；重启 DSH 后重新核对运行状态，刷新网页无效。' }
-  if (saved.state === 'needs-preparation') return { title: '尚未生效：需要兼容准备', detail: request + '当前 SDK 尚不支持创建子代理时指定工作树；未完成兼容准备时，反复重启也不会生效。需要先完全退出 DSH，再按下方离线步骤准备兼容支持。' }
-  if (saved.state === 'unsupported') return { title: '尚未生效：当前环境不支持', detail: request + '无法确认可用的 SDK 兼容支持；请先核验实际 SDK 目录与版本，普通重启不能解决环境不支持的问题。' }
-  return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + startupStateText(saved), detail: request + '请先核对兼容诊断，不要将保存成功或重启标记当作功能已生效。' }
+  if (saved.state === 'needs-preparation') return { title: '尚未生效：插件兼容性尚未验证', detail: request + '插件兼容性尚未验证，反复重启也不会生效。请安装或更新兼容的插件版本，并查看技术诊断。' }
+  if (saved.state === 'unsupported') return { title: '尚未生效：增强功能不可用', detail: request + '当前无法提供此增强功能，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断；重启本身不能解决兼容性未知的问题。' }
+  return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + startupStateText(saved), detail: request + '此增强功能暂不可用，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断，不要将保存成功或重启标记当作功能已生效。' }
 }
-// Examples deliberately contain no Host-derived path, executable, version or environment value.
-const STARTUP_COMMAND_EXAMPLES = [
-  'dsh-mattpocock-skills-cwd inspect --host-root /absolute/sdk',
-  'dsh-mattpocock-skills-cwd prepare --host-root /absolute/sdk --dsh-stopped',
-  'dsh-mattpocock-skills-cwd restore --host-root /absolute/sdk --dsh-stopped',
-  'dsh-mattpocock-skills-cwd start --host-root /absolute/sdk --dsh-stopped -- [DSH args...]',
-].join('\n')
 /** Permanently separate from the Workspace Policy form, including while that form is unavailable. */
 export function StartupSettingsPanel(props: { readonly remote: StartupRemote }): ReactElement {
   const controller = useMemo(() => new StartupSettingsController(props.remote), [props.remote])
@@ -709,8 +702,8 @@ export function StartupSettingsPanel(props: { readonly remote: StartupRemote }):
           h('strong', null, explanation.title), h('p', null, explanation.detail),
           h('p', null, '当前生效：' + startupFlag(saved.enabledNow)),
           h('p', null, '本次启动请求：' + startupFlag(saved.boot.requested.startupCwdEnabled)),
-          h('p', null, '兼容准备：' + (saved.nativeInitialCwdSupported === true ? '当前已有原生支持，无需离线准备' : preparationText(saved))),
-          h('p', null, '当前 SDK 原生支持：' + (saved.nativeInitialCwdSupported === null ? '未知（观测不可用）' : saved.nativeInitialCwdSupported ? '支持' : '不支持')))),
+          h('p', null, '插件兼容支持：' + (saved.nativeInitialCwdSupported === true ? '当前运行时能力已支持，无需额外兼容准备' : preparationText(saved))),
+          h('p', null, '当前运行时能力：' + (saved.nativeInitialCwdSupported === null ? '未知（观测不可用）' : saved.nativeInitialCwdSupported ? '支持' : '不支持')))),
       h('section', { 'aria-label': '下次启动设置', style: settingsCard },
         h('h4', { style: { marginTop: 0 } }, '下次启动设置'),
         h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '允许创建子代理时指定工作树', checked: draft?.startupCwdEnabled ?? false, disabled: view.busy !== null || draft === null,
@@ -723,15 +716,10 @@ export function StartupSettingsPanel(props: { readonly remote: StartupRemote }):
           h('button', { type: 'button', disabled: view.busy === 'loading', onClick: () => { void controller.refresh() } }, '重新读取启动状态（丢弃草稿）')))),
     h('p', { style: { lineHeight: 1.65 } }, STARTUP_HINT),
     needsPreparation ? h('p', null, saved.state === 'disabled'
-      ? '当前已关闭，不要求兼容准备。若以后启用此功能，需要先完成兼容准备，普通重启不会自动打补丁。'
-      : '需要先完成兼容准备，普通重启不会自动打补丁。完全退出所有使用目标 SDK 的 DSH 进程后，使用下方离线命令检查并准备；本页面不会修改运行中的 SDK。') : null,
-    saved?.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
-      ? h('p', null, '磁盘兼容准备已就绪，但当前 SDK 已加载且原生能力仍不支持；磁盘准备不等于当前生效。请重启 DSH 后重新核对。') : null,
-    h('details', { style: { marginTop: '12px' } }, h('summary', null, '离线兼容准备步骤与命令'),
-      h('ol', null, h('li', null, '确认实际使用的 SDK 绝对目录与版本，先检查兼容状态。'), h('li', null, '首次准备前，完全退出所有使用该 SDK 的 DSH 进程。'), h('li', null, '运行准备命令，确认成功后按原参数重新启动 DSH。'), h('li', null, '回到本页面重新读取，确认当前运行状态已生效。')),
-      h('p', null, '命令仅为示例，不在页面执行。将 /absolute/sdk 替换为已核验的 SDK 绝对目录，将 [DSH args...] 替换为原启动参数。--dsh-stopped 仅声明离线前提，不会替你停止进程。'),
-      h('p', null, '检查命令只读；准备和恢复命令只能在 DSH 完全停止后执行。启动命令会先准备兼容支持再启动 DSH。'),
-      h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, h('code', null, STARTUP_COMMAND_EXAMPLES))),
+      ? '当前已关闭，不要求兼容验证。若以后启用此功能，请使用兼容的插件版本。'
+      : '此增强功能暂不可用，仍可使用普通原生子代理。请安装或更新兼容的插件版本并查看技术诊断；保存或反复重启不会自动解决兼容问题。') : null,
+    saved?.state === 'pending-restart' && saved.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
+      ? h('p', null, '插件实现已就绪，但当前运行时能力尚未启用；实现就绪不等于当前生效。已保存启用请求后，请正常重启 DSH 并重新核对。') : null,
     saved === null ? null : h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术诊断（启动标识、版本与原始状态）'),
       h('p', null, '启动配置修订 ' + saved.revision + ' · 启动标识 ' + saved.boot.epoch),
       h('p', null, '宿主重启标记：' + (saved.restartNeeded ? '是（不代表兼容准备已完成）' : '否（不代表功能已生效）')),

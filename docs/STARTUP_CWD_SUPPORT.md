@@ -10,7 +10,7 @@ The initial desired value is `{ startupCwdEnabled: false }`. A settings save is 
 
 页面把“当前运行状态”与“下次启动设置”分开。勾选后仍需点“保存下次启动请求”；成功回执只确认下次请求已保存，不承诺当前或下次一定生效。协作策略的“保存并应用配置”不保存此启动请求，也不替代它的 SDK 能力前提。
 
-当本次请求和已保存请求均启用，而原生能力不支持、兼容准备尚未完成时，当前功能仍未生效，重启标记可以为“否”：请求已经读到，但能力没有安装。反复重启不能自动完成准备。需完全退出使用目标 SDK 的全部 DSH 进程，核验实际 SDK 目录与版本，再使用随包离线管理器准备；页面自身只读检查、不修改运行中的 SDK。磁盘已准备但进程仍加载旧模块时，应重启后核对实际原生能力。官方原生支持为 true 时，无须 managed 磁盘准备。
+当前未发布源码由同一个插件包提供兼容服务与只读启动准备观测；正常使用不要求寻找 SDK 目录、管理补丁或执行离线命令。已有运行服务在首次安装／HMR 时保持不变，准备就绪且当前公共能力为 false 时显示待真正重启；当前能力未确认、版本不匹配、资产或解析身份漂移时显示实际失败／不确定，普通重启不能修复这些问题。保存只是下次请求，准备就绪不是下次一定启动成功；加载的真实能力 getter 才决定当前启用。现有 0.4.1 Release 与当前 GUI 未因源码变化自动更新。
 
 固定状态与来源使用中文；启动标识、修订、SDK 版本、原始枚举／诊断和命令示例作为技术信息折叠保留，未确认观测始终显示未知，不降成禁用或成功。
 
@@ -46,9 +46,9 @@ Storage must satisfy atomic durable `VersionedStorage` CAS. The existing native 
 
 `save` writes only desired configuration (plus an initially missing technical boot receipt). It never runs a preparer, patches SDK source/compiled files, reverse-patches a foreign SDK, or claims that changing disk can change modules already loaded in a process.
 
-A uniformly bundled offline manager/operator start path may inspect or prepare the actual target SDK **before startup**, with explicit filesystem ownership and version checks. Host supplies only read-only preparation inspection to the core. This observer returns:
+The same-package compatible provider is composed at genuine startup; it does not write the shared SDK. Host supplies read-only same-plugin asset, canonical Loader topology and pinned native identity inspection to the core. Legacy offline SDK maintenance is not the normal user path. This observer returns:
 
-- `nativeInitialCwdSupported: boolean | null`: the currently loaded official capability getter; unknown is not false.
+- `nativeInitialCwdSupported: boolean | null`: the currently loaded public native-manager capability getter (official or the verified plugin-owned provider); unknown is not false.
 - `preparation.status`: `ready | not-prepared | incompatible | failed | uncertain`.
 - `preparation.sdkVersion` and `preparation.diagnostic`: nullable technical display data.
 

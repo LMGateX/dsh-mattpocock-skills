@@ -62,6 +62,14 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/controls/startup-support.js',
   'lib/types/controls/startup-state.d.ts',
   'lib/types/controls/startup-support.d.ts',
+  'lib/compatibility/native-subagent.js',
+  'lib/types/compatibility/native-subagent.d.ts',
+  'compatibility/native-subagent-0.2.1-alpha.1.js',
+  'compatibility/native-subagent.provenance.json',
+  'lib/compatibility/readiness.js',
+  'lib/types/compatibility/readiness.d.ts',
+  'lib/compatibility/composition.js',
+  'lib/types/compatibility/composition.d.ts',
   'lib/compatibility/managed-sdk.js',
   'lib/compatibility/cli.js',
   'lib/compatibility/host-startup.js',
@@ -136,6 +144,14 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/controls/startup-support.js',
   'lib/types/controls/startup-state.d.ts',
   'lib/types/controls/startup-support.d.ts',
+  'lib/compatibility/native-subagent.js',
+  'lib/types/compatibility/native-subagent.d.ts',
+  'compatibility/native-subagent-0.2.1-alpha.1.js',
+  'compatibility/native-subagent.provenance.json',
+  'lib/compatibility/readiness.js',
+  'lib/types/compatibility/readiness.d.ts',
+  'lib/compatibility/composition.js',
+  'lib/types/compatibility/composition.d.ts',
   'lib/compatibility/managed-sdk.js',
   'lib/compatibility/cli.js',
   'lib/compatibility/host-startup.js',
@@ -169,6 +185,14 @@ export const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/dsh-llm': '~0.2.1-alpha.1',
   '@deepseek-ai/dsh-typert-protocol': '~0.2.1-alpha.1',
   '@deepseek-ai/dsh-sandbox': '~0.2.1-alpha.1',
+  '@deepseek-ai/cordis-plugin-loader': '~1.0.6-alpha.1',
+  '@deepseek-ai/dsh-agent': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-attachment': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-brand': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-chunked-list': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-scope': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-util-time': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-util-values': '~0.2.1-alpha.1',
   'react': '^18.2.0',
   'zod': '^4.6.5',
 })
@@ -205,7 +229,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 69
+const EXPECTED_FIXED_PACKED_FILES = 77
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
@@ -269,6 +293,7 @@ export function validatePackagePolicy(packageJson) {
     '.': { types: './lib/types/index.d.ts', default: './lib/index.js' },
     './controls': { types: './lib/types/controls/index.d.ts', default: './lib/controls/index.js' },
     './compatibility': { types: './lib/types/compatibility/managed-sdk.d.ts', default: './lib/compatibility/managed-sdk.js' },
+    './native-subagent': { types: './lib/types/compatibility/native-subagent.d.ts', default: './lib/compatibility/native-subagent.js' },
     './host': { types: './lib/types/host.d.ts', default: './lib/host.js' },
     './client': { types: './lib/types/client.d.ts', default: './lib/client.js' },
     './cordis.patch.yml': './cordis.patch.yml',
@@ -494,6 +519,10 @@ export async function compareCommittedBuild(root) {
     ]
     const clientDifferences = diffFileInventories(committed.filter(entry => clientPaths.has(entry.path)), clientBuilt)
     assert(clientDifferences.length === 0, 'committed lazy-CJS Client differs from independent in-memory build:\n' + clientDifferences.join('\n'))
+    // Guard source spelling is part of the shipped before-import protocol.
+    // The generator is read-only in check mode and imports no SDK runtime.
+    execFileSync(process.execPath, [join(root, 'scripts/build-compatibility-patch.mjs'), '--check'],
+      { cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
     return { files: committed.length, paths: committed.map((entry) => entry.path) }
   } finally {
     assert(isAbsolute(temporary) && temporary.startsWith(join(tmpdir(), 'dsh-package-build-')), 'unexpected scratch build cleanup path')

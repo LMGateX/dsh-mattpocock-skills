@@ -12,7 +12,7 @@ vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader
 const client = registration.factory(name => { assert.equal(name, 'react'); return react })
 const ok = value => ({ ok: true, value })
 const settle = () => new Promise(resolve => setImmediate(resolve))
-const hint = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页不能代替重启。启用还需要当前 SDK 支持；若 SDK 没有原生支持且兼容准备尚未完成，反复重启也不会生效。'
+const hint = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页或热重载不能代替进程重启。兼容支持由同一插件包提供；安装或更新插件后，保存下次启动请求，再正常重启 DSH。是否生效以当前运行状态为准；兼容性尚未验证时，反复重启也不会生效。'
 function status(extra = {}) {
   return { revision: 7, desired: { startupCwdEnabled: true }, boot: { epoch: 'boot-one', requested: { startupCwdEnabled: false } },
     enabledNow: false, nativeInitialCwdSupported: false, preparation: { status: 'ready', sdkVersion: '0.1.2-rc.1', diagnostic: null },
@@ -59,7 +59,7 @@ test('saved enable survives several distinct simulated startup epochs but unprep
     mounted.render(client.StartupSettingsPanel, { remote }); mounted.effects(); await settle()
     const tree = mounted.render(client.StartupSettingsPanel, { remote })
     const visible = text(rows(tree).filter(row => row.props?.role === 'status'))
-    assert.match(visible, /尚未生效：需要兼容准备/)
+    assert.match(visible, /尚未生效：插件兼容性尚未验证/)
     assert.match(visible, /反复重启也不会生效/)
     assert.match(visible, /已保存启用/)
     assert.equal(checkbox(tree).props.checked, true)
@@ -75,12 +75,12 @@ test('startup heading names subagent creation and specified worktree with groupe
   for (const label of ['当前运行状态', '下次启动设置']) assert(rows(tree).some(row => row.props?.['aria-label'] === label), label)
   const normalText = node => Array.isArray(node) ? node.map(normalText).join(' ') : node && typeof node === 'object' ? node.type === 'details' ? '' : normalText(node.props?.children) : node == null ? '' : String(node)
   assert.doesNotMatch(normalText(tree), /Profile|epoch|not-prepared|pending-restart/)
-  assert.match(text(tree), /兼容准备：尚未准备/)
+  assert.match(text(tree), /插件兼容支持：插件兼容性尚未验证/)
   assert(rows(tree).some(row => row.type === 'details' && text(row).includes('技术诊断')))
 })
 
 test('official loaded native support is enabled even without managed preparation and never asks for a patch', async t => {
-  for (const preparation of ['not-prepared', 'failed', 'incompatible']) {
+  for (const preparation of ['not-prepared', 'failed', 'incompatible', 'ready']) {
     const mounted = renderer(); t.after(() => mounted.unmount())
     const remote = { startupStatus: async () => ok(status({ boot: { epoch: 'native', requested: { startupCwdEnabled: true } }, enabledNow: true,
       nativeInitialCwdSupported: true, restartNeeded: false, state: 'enabled', preparation: { status: preparation, sdkVersion: 'native-version', diagnostic: null } })), saveStartupSettings: () => assert.fail('no native patch') }
@@ -89,8 +89,8 @@ test('official loaded native support is enabled even without managed preparation
     assert.match(text(tree), /启动状态：启用/)
     const visible = text(rows(tree).filter(row => row.props?.role === 'status'))
     assert.match(visible, /已生效/)
-    assert.doesNotMatch(visible, /需要兼容准备|兼容准备失败|版本不兼容/)
-    assert.doesNotMatch(text(tree), /需要先完成兼容准备，普通重启不会自动打补丁/)
+    assert.doesNotMatch(visible, /插件兼容性尚未验证|插件兼容验证失败|插件兼容性不匹配/)
+    assert.doesNotMatch(text(tree), /此增强功能暂不可用|dsh-mattpocock-skills-cwd|--host-root/)
   }
 })
 
@@ -118,8 +118,8 @@ test('startup settings always show restart hint and distinguish saved next start
 
 test('preparation failures are not reboot-only success and unknown current capability is explicitly unavailable', async t => {
   for (const [preparation, state, label] of [
-    ['not-prepared', 'needs-preparation', '需要兼容准备'], ['incompatible', 'incompatible', '版本不兼容'],
-    ['failed', 'failed', '兼容准备失败'], ['uncertain', 'uncertain', '状态不确定'],
+    ['not-prepared', 'needs-preparation', '插件兼容性尚未验证'], ['incompatible', 'incompatible', '插件兼容性不匹配'],
+    ['failed', 'failed', '插件兼容验证失败'], ['uncertain', 'uncertain', '状态不确定'],
   ]) {
     const mounted = renderer(); t.after(() => mounted.unmount())
     const remote = { startupStatus: async () => ok(status({ enabledNow: null, nativeInitialCwdSupported: null, state,
@@ -129,12 +129,13 @@ test('preparation failures are not reboot-only success and unknown current capab
     assert.match(text(tree), /当前生效：未知（观测不可用）/)
     assert(!text(tree).includes('当前生效：禁用'))
     assert(text(tree).includes(label))
-    assert.match(text(tree), /需要先完成兼容准备，普通重启不会自动打补丁/)
+    assert.match(text(tree), /仍可使用普通原生子代理/)
+    assert.match(text(tree), /更新兼容的插件版本并查看技术诊断/)
     assert(!text(tree).includes('启动状态：待重启'))
     assert(text(tree).includes(hint))
     const commands = rows(tree).filter(row => row.type === 'pre' && rows(row).some(child => child.type === 'code')).map(text).join(' ')
-    assert(commands.includes('dsh-mattpocock-skills-cwd start --host-root /absolute/sdk --dsh-stopped -- [DSH args...]'))
-    for (const action of ['inspect', 'prepare', 'restore']) assert(commands.includes('dsh-mattpocock-skills-cwd ' + action))
+    assert.equal(commands, '', 'no command block or alternate maintenance workflow')
+    assert.doesNotMatch(text(tree), /dsh-mattpocock-skills-cwd|--host-root|--dsh-stopped/)
     assert(!commands.includes('/untrusted/sdk'))
     assert.match(text(tree), /other-version/)
     assert.match(text(tree), /manager-only observation/)
@@ -150,28 +151,28 @@ test('disabled startup intent stays disabled despite failed or missing optional 
     let tree = mounted.render(client.StartupSettingsPanel, { remote }); mounted.effects(); await settle()
     tree = mounted.render(client.StartupSettingsPanel, { remote })
     assert.match(text(tree), /启动状态：禁用/)
-    assert(!text(tree).includes('启动状态：需要兼容准备'))
-    assert(!text(tree).includes('启动状态：兼容准备失败'))
+    assert(!text(tree).includes('启动状态：插件兼容性尚未验证'))
+    assert(!text(tree).includes('启动状态：插件兼容验证失败'))
     assert.match(text(tree), /当前生效：禁用/)
     assert.match(text(tree), /下次启动（已保存）：禁用/)
-    assert.match(text(tree), /当前已关闭，不要求兼容准备。若以后启用/)
-    assert(text(tree).includes('兼容准备：' + (preparation === 'not-prepared' ? '尚未准备' : '准备失败')) )
+    assert.match(text(tree), /当前已关闭，不要求兼容验证。若以后启用/)
+    assert(text(tree).includes('插件兼容支持：' + (preparation === 'not-prepared' ? '插件兼容性尚未验证' : '插件兼容验证失败')) )
     assert.match(text(tree), /optional preparation diagnostic/)
     assert.equal(checkbox(tree).props.checked, false)
     assert(text(tree).includes(hint))
   }
 })
 
-test('prepared disk and unsupported loaded SDK can legitimately remain pending restart without inventing native support', async t => {
+test('ready plugin implementation and unavailable loaded capability can remain pending restart without inventing support', async t => {
   const mounted = renderer(); t.after(() => mounted.unmount())
   const remote = { startupStatus: async () => ok(status()), saveStartupSettings: async () => { throw new Error('unexpected write') } }
   let tree = mounted.render(client.StartupSettingsPanel, { remote }); mounted.effects(); await settle()
   tree = mounted.render(client.StartupSettingsPanel, { remote })
-  assert.match(text(tree), /当前 SDK 原生支持：不支持/)
-  assert.match(text(tree), /磁盘兼容准备已就绪，但当前 SDK 已加载且原生能力仍不支持/)
+  assert.match(text(tree), /当前运行时能力：不支持/)
+  assert.match(text(tree), /插件实现已就绪，但当前运行时能力尚未启用/)
   assert.match(text(tree), /启动状态：待重启/)
   assert.match(text(tree), /宿主重启标记：是/)
-  assert(!text(tree).includes('普通重启不会自动打补丁'))
+  assert.doesNotMatch(text(tree), /磁盘兼容准备|dsh-mattpocock-skills-cwd|--host-root/)
   assert.match(text(tree), /当前生效：禁用/)
 })
 

@@ -31,7 +31,12 @@ async function fixture(t, { prepare = async () => ({}) } = {}) {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-native-cwd-'))
   const source = join(hostRoot, 'node_modules/@deepseek-ai/dsh-subagent')
   const target = join(temp, 'node_modules/@deepseek-ai/dsh-subagent')
-  await cp(source, target, { recursive: true })
+  const pluginOwned = process.env.DSH_CWD_IMPLEMENTATION === 'plugin-owned' && process.env.DSH_CWD_BASELINE !== '1'
+  if (pluginOwned) {
+    await mkdir(dirname(target), { recursive: true })
+    // The plugin artifact imports the canonical host's public errors and peers.
+    await symlink(source, target)
+  } else await cp(source, target, { recursive: true })
   await writeFile(join(temp, '.dsh-cwd-patch-target'), 'isolated-cwd-patch-target' + String.fromCharCode(10))
   for (const name of await readdir(join(hostRoot, 'node_modules'))) {
     if (name === '@deepseek-ai') {
@@ -61,6 +66,11 @@ async function fixture(t, { prepare = async () => ({}) } = {}) {
           .replace(/\.ts(['"])/g, '.js$1')
         await writeFile(join(target, 'lib/types', file.path.split('/').at(-1).replace('.ts', '.js')), output)
       }
+    } else if (pluginOwned) {
+      // No SDK recipe/manager writes: only the plugin-owned provider is staged.
+      await writeFile(join(temp, 'package.json'), JSON.stringify({ name: '@lmgatex/dsh-mattpocock-skills', type: 'module' }))
+      await mkdir(join(temp, 'compatibility'))
+      await cp(new URL('../compatibility/native-subagent-0.2.1-alpha.1.js', import.meta.url), join(temp, 'compatibility/native-subagent.js'))
     } else if (process.env.DSH_CWD_IMPLEMENTATION === 'managed') {
       // The packaged manager prepares this independent SDK root; all other
       // dependencies remain read-only links to the exact native installation.
@@ -71,7 +81,7 @@ async function fixture(t, { prepare = async () => ({}) } = {}) {
     } else await applyInitialCwdPatch({ targetRoot: temp, mode: 'compiled' })
   }
   const entry = process.env.DSH_CWD_IMPLEMENTATION === 'source' ? 'lib/types/index.js' : 'lib/index.js'
-  const { default: Subagents } = await import(pathToFileURL(join(target, entry)).href)
+  const { default: Subagents } = await import(pathToFileURL(pluginOwned ? join(temp, 'compatibility/native-subagent.js') : join(target, entry)).href)
   const pathA = await realpath(await mkdir(join(temp, 'A'), { recursive: true }))
   const pathB = await realpath(await mkdir(join(temp, 'B'), { recursive: true }))
   await writeFile(join(pathA, 'marker.txt'), 'A native tool')

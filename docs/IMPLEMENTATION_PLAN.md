@@ -22,6 +22,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 
+## 单包兼容接入：实施中，未发行／未安装
+
+接续[最新单包要求](<DESIGN.md#单包兼容支持的交付要求>)：验证固定版本的插件内部兼容服务，通过公开 bundle／loader 生命周期在真正启动时选择唯一提供者，保持当前热重载服务、原始 native 配置、首次 cwd 及原地续用语义。相同 recipe 的旧管理记录跨版本接续，不把维护转回用户。仅有管理器或文案修复不构成完成。
+
+验收沿用公开配置组合／真实 Loader 与 native 创建／续用接口；要求无模型的首次安装热重载、普通重启、用户停用／覆盖、自定义 Profile 拒绝、A/B 工作目录、原始 spawn/fork、冷恢复、权限与路由、版本与制品校验。SDK/Profile/当前 GUI 不由此自动改变，发布与本机安装另行记录；进度见[接入说明](<PLUGIN_MANAGED_COMPATIBILITY.md>)。
+
 ## Current optional controls implementation — 2026-10-06（旧规格历史验收）
 
 **本段为前一阶段旧规格验收，不是本轮新行为完成声明。** Repository-local TypeScript Host/Client/control implementation and mechanical validation were complete for the then-supported seams. The earlier [completion matrix and verification（本地原始记录不公开；参见验证范围）](<VERIFICATION.md#historical-evidence>) distinguishes implemented features from installed-host unsupported guarantees; usage is in [the shipped guide](../CONTROLS.md). This does not satisfy or authorize the historical Phase 5 behavioral campaign, owner activation or private release gates below.
@@ -96,7 +102,7 @@ Run the `implement-spec` campaign from clean fixture repositories. Capture the d
 - Keep existing community Matt Pocock/Superpowers adapters disabled to avoid duplicate providers.
 - Install the verified checkout or tarball into the owner’s `web` profile.
 - Override this bundle row with `channel: beta`.
-- Restart the existing DSH Web profile and refresh `http://127.0.0.1:3080`.
+- After the agreed activation step, restart the selected DSH Web profile and refresh its configured Web URL.
 - Verify slash discovery and one real `/implement-spec` invocation.
 
 **Gate:** active profile resolves this provider, local/project overrides still win, and unrelated profile configuration remains unchanged.

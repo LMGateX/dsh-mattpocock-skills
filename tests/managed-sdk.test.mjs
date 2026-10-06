@@ -26,6 +26,74 @@ async function fixture(t) {
   return root
 }
 
+async function managerVersion(t, version) {
+  const distribution = await mkdtemp(join(tmpdir(), 'dsh-managed-owner-version-'))
+  t.after(() => rm(distribution, { recursive: true, force: true }))
+  await mkdir(join(distribution, 'src/compatibility'), { recursive: true })
+  await mkdir(join(distribution, 'compatibility'))
+  await cp(new URL('../src/compatibility/managed-sdk.ts', import.meta.url), join(distribution, 'src/compatibility/managed-sdk.ts'))
+  await cp(new URL('../compatibility/initial-cwd.recipe.json', import.meta.url), join(distribution, 'compatibility/initial-cwd.recipe.json'))
+  await writeFile(join(distribution, 'package.json'), JSON.stringify({ name: '@lmgatex/dsh-mattpocock-skills', version, type: 'module' }))
+  return await import(pathToFileURL(join(distribution, 'src/compatibility/managed-sdk.ts')).href)
+}
+
+test('a plugin upgrade maintains the same recipe-owned preparation and creator provenance', async t => {
+  const root = await fixture(t)
+  const before = await Promise.all(recipe.files.map(file => readFile(join(root, file.path))))
+  const previous = await managerVersion(t, '0.4.1')
+  const upgraded = await managerVersion(t, '0.4.2')
+  assert.equal((await previous.prepareManagedSdk(root)).status, 'ready')
+  const receiptPath = join(root, '.dsh-mattpocock-initial-cwd/receipt.json')
+  const creatorReceipt = await readFile(receiptPath, 'utf8')
+  assert.equal(JSON.parse(creatorReceipt).ownerVersion, '0.4.1')
+  assert.equal((await upgraded.inspectManagedSdk(root)).status, 'ready')
+  assert.equal((await upgraded.prepareManagedSdk(root)).status, 'ready')
+  assert.equal(await readFile(receiptPath, 'utf8'), creatorReceipt, 'inspection/idempotence must not rewrite creation evidence')
+  assert.equal((await upgraded.restoreManagedSdk(root)).status, 'not-prepared')
+  assert.equal(JSON.parse(await readFile(receiptPath, 'utf8')).ownerVersion, '0.4.1')
+  assert.equal((await upgraded.inspectManagedSdk(root)).status, 'not-prepared')
+  assert.equal((await upgraded.prepareManagedSdk(root)).status, 'ready')
+  assert.equal(JSON.parse(await readFile(receiptPath, 'utf8')).ownerVersion, '0.4.2')
+  assert.equal((await upgraded.restoreManagedSdk(root)).status, 'not-prepared')
+  for (const [i, file] of recipe.files.entries()) assert.deepEqual(await readFile(join(root, file.path)), before[i])
+})
+
+test('cross-version maintenance never adopts foreign, corrupt or mismatched journal metadata', async t => {
+  const previous = await managerVersion(t, '0.4.1')
+  const upgraded = await managerVersion(t, '0.4.2')
+  for (const [field, value] of [
+    ['owner', '@foreign/sdk-patcher'], ['schemaVersion', 2],
+    ['recipeId', 'different-recipe'], ['recipeSha256', '0'.repeat(64)],
+    ['sdkVersion', '0.2.1-alpha.2'], ['targetRoot', '/wrong-sdk-root'],
+    ['ownerVersion', null], ['ownerVersion', ''], ['ownerVersion', '0.4'],
+    ['ownerVersion', '00.4.1'], ['ownerVersion', '0.4.1-01'],
+    ['ownerVersion', '0.4.1+'], ['ownerVersion', '0.4.1\n'],
+  ]) {
+    const root = await fixture(t)
+    assert.equal((await previous.prepareManagedSdk(root)).status, 'ready')
+    const journal = join(root, '.dsh-mattpocock-initial-cwd/receipt.json')
+    const record = JSON.parse(await readFile(journal, 'utf8'))
+    record[field] = value
+    const serialized = JSON.stringify(record)
+    await writeFile(journal, serialized)
+    const before = await Promise.all(recipe.files.map(file => readFile(join(root, file.path))))
+    for (const operation of ['inspectManagedSdk', 'prepareManagedSdk', 'restoreManagedSdk']) {
+      assert.equal((await upgraded[operation](root)).status, 'uncertain', field + ': ' + JSON.stringify(value))
+      assert.equal(await readFile(journal, 'utf8'), serialized, 'failed ownership checks must preserve the journal')
+    }
+    for (const [i, file] of recipe.files.entries()) assert.deepEqual(await readFile(join(root, file.path)), before[i])
+  }
+})
+
+test('valid prerelease and build creator versions retain recipe ownership across package upgrades', async t => {
+  const root = await fixture(t)
+  const previous = await managerVersion(t, '0.4.1-alpha.1+build.7')
+  const upgraded = await managerVersion(t, '0.4.2')
+  assert.equal((await previous.prepareManagedSdk(root)).status, 'ready')
+  assert.equal((await upgraded.inspectManagedSdk(root)).status, 'ready')
+  assert.equal((await upgraded.restoreManagedSdk(root)).status, 'not-prepared')
+})
+
 test('inspection identifies the pinned pristine SDK without changing it', async t => {
   const root = await fixture(t)
   const before = await readdir(root)

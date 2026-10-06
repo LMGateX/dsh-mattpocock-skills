@@ -6,6 +6,60 @@
 
 插件发布版本为 `0.4.1`；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
 
+## 本轮源码收尾：Root 边界与精确制品输入
+
+最新完整根测试 **709／709**，0 failed、0 cancelled、0 skipped；严格 Host／Client 构建、冻结离线 lock、source／lib scratch 字节一致、精确 development 包清单、shipped YAML（30583 bytes）、兼容资产生成器 --check、不可变 vendor 和 whitespace 通过。公开 Loader 组合 **44／44**、准备 **81／81**、实际 native 包装器 **16／16**、普通 Node 解包 **13／13**、真实 Plugin Manager／pnpm 安装启动更新卸载 **9／9** 均通过。独立冻结复核：定向 **141／141**，另加新进程编译入口／YAML 一致性及暖态实际包装检查，复核 Root 身份／映射 shape／512 项边界、普通回退、已运行服务优先与真实 shutdown。固定包文件 77 加不可变 vendor 85，共 162，JS／DTS 62；Client 158187 bytes、6 个浏览器安全模块、唯一 external React。
+
+两个自定义程序元数据反例已经逐项 RED→GREEN；暖态拥有者不重新套用鲜启预算，真实 native 在 513 个新增只读 Root 标签后仍保持同一服务／提供者 Fiber、B child 热 send 与冻结 header，并在根 shutdown 排空。构造器激活观察使用公开 runtime.callback；SDK 构造没有被字段名称错误而遗漏。未知 Root／缺失或数组映射／不同根／超限在兼容导入前保留 stock，exactly-512 正控制保持可用，不宣称任意自定义 resolver 或恶意程序改写都受支持。
+
+为验收同一单次构建制品，解包与真实 Plugin Manager 测试支持工程操作者的成对 `DSH_CONTROLS_TARBALL`／`DSH_CONTROLS_TARBALL_SHA256` 输入：只读普通文件、完整摘要、no-follow 打开、0700 临时根内校验副本、拷贝前后和最终 hash／身份复核。错摘要或缺一项直接失败，不回到自 pack。两个 driver 已对同一探索包通过 13／13 与 9／9；解包 driver 在没有 pnpm 的 PATH 中成功，证实不重建 primary 包。探索包不是最终接受包；最终 clean-source 的单次构建与只读身份／精确 tarball 验证及同字节隔离矩阵随后单独记录，不用这些探索结果提前冒称通过。
+
+以上为未发布的本地开发源码。现有 0.4.1 Release 与当前 GUI 不含此能力；本轮没有推送、发布、改共享 SDK、安装当前 Profile 或重启服务。
+
+## 单包兼容入口与用户流程的前轮证据（历史范围）
+
+上轮完整根测试 **678／678**，0 failed、0 cancelled、0 skipped；frozen-lockfile 离线安装、Host／Client 严格构建、source／lib 字节一致性、精确 development pack 清单、生成器 --check 与 vendor 完整性通过。所有 relevant 测试进程已完成；仍不把根绿项等同实际默认 Web／正常 Plugin Manager 安装及发行包部署。
+
+本轮在开发包中接入正式 `./native-subagent` export、真实包装器、同包资产／完整 MIT 归属、只读准备观测与 Host wiring。闭合开发包清单扩为固定 77 加不可变 vendor 85，共 162 文件；严格构建／scratch 字节核对／development pack 清单 8 项已通过，非 clean-source Release 门禁。Client 重建为 158187 bytes，6 个浏览器安全模块，唯一 external 为 React。
+
+- 实际 Loader／native 包装器与 Host／只读准备组合定向 **103／103**，0 skipped；覆盖来源／能力区分、原 schema 及 volatile 配置、资产失败的实际原生回退和本机原始 SDK 哈希保留。
+- 实际原生 Client 激活加全部 client 测试 **73／73**，0 failed／cancelled／skipped。真实 DOM 新增三条逐一 RED→GREEN 轨迹：所有状态及折叠详情不含 SDK 路径／手工维护命令；独立 StartupSupport→Remote→页面保存，fixture 同 epoch 重挂载／重建不启用，新 epoch 加真实 capability 观测才显示生效，关闭同理；未知／失败不变成已关闭或承诺重启可修复。管理保持 OFF，零 React 警告／错误。fixture epoch 变化不是实际 DSH 重启。
+- [解包启动矩阵](<../tests/packed-native-subagent.test.mjs>) **10／10**，从实际 development tarball 解包，在普通 Node 进程中以真实 SDK entryListSchema 读取 shipped YAML，公开 Loader／applyEntryPatches 激活真实包装器与不可变 Skills，无 registerHooks、NODE_OPTIONS 为空。覆盖 ACTIVE／PENDING stock 三次 HMR 保留、真正 A/B 原生 read／冻结 header／JSONL、原始 spawn／fork 前缀、热 send／公开 selective drain 后冷 send、第二独立 Node 进程恢复同一 child/B header、真实启动文档跨进程请求且管理 OFF、非法 volatile 配置最后有效值、坏资产不执行并保留实际普通原生 create/send。每个 worker 确认零模型调用与参考 SDK 原字节。
+- 已逐一复现 pristine 同版本 native copy、scope copy 与 import/require wrapper export 分歧的 RED，再通过 before-import 公共解析／包身份 gate 修成 GREEN。此 gate 35／35 公开 Loader 回归通过；同时核对 wrapper 与 asset 两个实际 import 位置的 14 个固定直接 peer、公共 Context／Loader，并先保留现有 ACTIVE／PENDING Fiber。普通 Node、固定公开包图之外的任意自定义 resolver／恶意 package.json 重定向不在证明范围。准备观测对应 gate **74／74**，包含两位置全部 14 peer 的副本／包身份及 native-local 解析回归，已纳入上述完整根测试。旧 source fixture 已按真实公开 export／Node 解析补齐，13／13；缺资产改为准确的导入前 stock 保留，未放松 gate 或伪造 wrapper 回退。完整默认 Web／普通 Plugin Manager 流程仍未验收。
+
+本轮源码尚未完成真实默认 Profile／正常安装重启全链路验收；没有发布、推送、当前 Profile 安装或 GUI／共享 SDK 改写。以下为上轮核心矩阵的历史证据，不冒充最新全量结果。
+
+## 本轮真实插件管理器验收与生命周期修复
+
+新增[普通插件管理器矩阵](<../tests/plugin-manager-compatibility.test.mjs>)实际调用公共 `initProfile`、默认 base／Web bundle 层、`PluginManager.installBundle` 的 pnpm 操作、`PluginPackages` 公共运行时解析、`app.boot`／Include 及真实 Timer／Hmr。临时 Profile 没有手工链接 peer，也不使用自制解析 hook；启动末层禁用不相关服务／模型／监听端口，不冒称完整 Web GUI 激活。首次安装、新进程选择、A/B 原生读取、持久冻结 header／第二进程冷恢复、独立 Skills 行开关及连续合成升级的初始结果为 **6 passed／1 failed／0 skipped**，失败已在根测试命令外独立重现，未隐藏或跳过。
+
+失败发生于已加载兼容服务时关闭整个 bundle：真实 SDK 返回 applied，但移除兼容载体并重挂 stock，改变服务身份。Standards 复审另发现 wrapper 与准备观测对完整 provenance 字节的接受不同，尾随空白测试已证实 RED。随后以公开根 Fiber 生命周期和完整 provenance 摘要实施修复；关闭结果以以下真实服务的移除／重挂／消息续用／shutdown、普通安装更新及全量结果为据。合成 `0.4.2`／`0.4.3` 是私有临时测试 manifest，不是源码版本或已发布版本。共享 SDK、当前 GUI 和 Profile 未改变。
+
+上述 RED 已通过逐项真实回归关闭：同一 native manager 改由公开根 Fiber 持有，移除载体不移除进程提供者；公开创建事件仅抑制同 tree／同服务域 canonical stock 的新构造，不更改 SDK 或全局 HMR。实际 SDK Plugin Manager／pnpm 矩阵 **9／9**、包装器实际 native **15／15**、普通 Node development 包 **11／11** 全部通过，0 skipped。三次整个 bundle 关闭／重启用和真实包卸载均保持提供者 token／公开 Impl Fiber 身份、已有 B child 热 send 与冻结 header；根 shutdown 在 child 尚存活时排空原生图。关闭或卸载后的下一真实进程只加载 stock，已有依赖升级的真实结果为 restart-required。manifest 合成升级不改仓库或 Release 版本。
+
+完整 provenance SHA 对尾随空白也拒绝：实际普通 native fallback，生成资产不导入。新 Root 服务域检查与 selector 导入前保留 stock／只读准备 uncertain 对齐，公开 Loader 组合 **39／39**、准备 **81／81** 通过；范围仍限固定 SDK／公开 canonical graph，不宣称任意自定义 resolver 或未知拓扑可用。
+
+最终完整根测试 **701／701**，0 failed、0 cancelled、0 skipped；严格 Host／Client 构建、冻结离线 lock、source／lib scratch 字节核对、精确 development package、shipped YAML（29765 bytes）与同包资产生成器 --check、不可变 vendor 及 whitespace 均通过。构建包保持固定 77 加 vendor 85，共 162 文件。公开新源码／合成测试／provenance 的针对性隐私筛查无本机路径、当前 GUI 地址或秘密标记。上述结果不等于完整 Web／当前 GUI 激活；clean-source 最终制品身份门禁仍需独立完成，未发布、推送、安装当前 Profile、改共享 SDK 或重启服务。
+
+### 自定义程序元数据边界：补充反例与关闭
+
+前轮独立探针确认两个有界差异：刻意构造不同真实 Context 根却令公开映射相同，会在 wrapper 拒绝前关闭 stock；同根映射超过 512 项时，selector／wrapper 接受但准备观测返回 uncertain。二者均不是普通 SDK 默认 Profile 失败，也没有观察到同根大映射的权限扩大。
+
+本轮分别通过公共 Loader 的两条 RED→GREEN 轨迹关闭：鲜启选择器和 wrapper 显式要求同一应用根、有效非数组映射，在枚举时即限制 inherited key union ≤512，并逐项比较映射值身份；缺失／错形状／不同根／超预算保留 stock，先于兼容导入。exactly-512 正控制仍可接受。选择器组合 44／44 回归通过，既有 ACTIVE／PENDING 优先。已运行 manager 的保留判定与新的鲜启预算分开：仅凭捕获的同根、同 tree／canonical plain stock／原构造器身份及实际公开 underlying service token 保留其唯一原生服务，不因无关服务标签增长而允许第二个构造器。实际 native 的大映射 unpatch／恢复／B child 热续用／根 shutdown 回归补齐；其最终结果随本轮全量和精确制品矩阵记录。
+
+## 单包接入的上轮核心矩阵（历史范围）
+
+当前开发实现基于 0.4.1，正式入口尚未接通，不能把本节视作现有 Release、本机安装包或当前 GUI 已含新能力。实施要求与边界见[单包兼容说明](<PLUGIN_MANAGED_COMPATIBILITY.md>)。
+
+- 根测试 **564／564** 通过，0 failed、0 cancelled、0 skipped；严格 Host 构建／scratch 字节一致性通过，JS／DTS 共 58 个。新增启动组合模块进入精确构建允许清单，固定文件 71 加不可变 vendor 85，当前开发包测试精确核对 156 文件；这不是新 Release 制品身份。
+- [公开组合回归](<../tests/compatibility-composition.test.mjs>) **27／27**：实际 Loader／Fiber、导入前选择、热重载保留 ACTIVE／PENDING 原服务、用户覆盖及版本／源字节拒绝。兼容服务在该矩阵是标注的生命周期 fixture，不声称完整 Web 或 cwd。
+- 另行以 plugin-owned 模式运行[真实 native cwd 矩阵](<../tests/host-cwd.test.mjs>) **10／10**，使用插件生成的兼容实现与同一宿主 peer，包含 A/B 读取、实际冻结／持久 header、原始 spawn/fork、冷恢复与省略继承；其中两项是既有离线补丁拒绝回归。无模型调用，不修改参考 SDK。
+- [旧兼容记录回归](<../tests/managed-sdk.test.mjs>) **28／28**，相同所有者与 recipe 跨版本接续，creator 版本来源不被只读或幂等调用改写；外国所有者、身份／配方漂移、不合法版本和原有事务／备份／权限保护保持拒绝。版本样本由隔离 package fixture 模拟，不声称模拟版本已发布。
+- [构建器](<../scripts/build-compatible-subagent.mjs>)两次确定性生成及 --check、语法／共享公开错误类型核对通过；[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>) 136833 bytes，公开来源／变换摘要保存在[provenance](<../compatibility/native-subagent.provenance.json>)。原始 MIT 完整声明已保留，来源标识不是能力 getter。
+- frozen-lockfile 离线安装与 vendor 校验通过；85 文件／279662 bytes、stable／beta 各 27 Skills、既有 vendor root hash 未变。
+
+兼容实现与正式包装／bundle 入口仍未接入，原配置桥接、启动观测、真实默认 Profile 与安装／重启矩阵还待完成。未创建新发布包、推送、安装、改 SDK 或重启当前 GUI。测试中的临时 development pack 随 fixture 清理，不代替 clean-source 正式制品门禁。
+
 ## 未发布的配置页与输入摘要修复（基于 0.4.1）
 
 此节记录开发工作区结果，不把现有 0.4.1 Release 或本机安装包冒称含有这些改动。版本与安装必须由后续发行流程分别确认。
@@ -65,6 +119,7 @@ pnpm exec tsc -p tsconfig.client.json --noEmit
 node scripts/build-client.mjs --out lib/client.js --declaration
 DSH_CONTROLS_HOST_ROOT=/absolute/sdk node --test tests/*.test.mjs
 DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CWD_IMPLEMENTATION=managed node --test tests/host-cwd.test.mjs
+DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CWD_IMPLEMENTATION=plugin-owned node --test tests/host-cwd.test.mjs
 node scripts/verify-vendor.mjs
 # Only from clean committed source; does not publish or install:
 node scripts/verify-package.mjs --prepack

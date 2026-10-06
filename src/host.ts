@@ -47,6 +47,7 @@ import { StartupSupport } from './controls/startup-support.js'
 import { parseStartupDesired, parseStartupDocument } from './controls/startup-state.js'
 import type { StartupStatus } from './controls/startup-state.js'
 import { HostStartupNode } from './compatibility/host-startup.js'
+import { inspectCompatibilityPreparation } from './compatibility/readiness.js'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -491,7 +492,15 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const domain = await ctx.storageDomain.open(defineDomain({ name: 'mattpocock_' + name, version: 1, tables: { records: domainTable<string, T>(z.unknown().transform(parse)) } }))
       domains.push(domain); return domain.table('records')
     }
-    const startupNode = new HostStartupNode({ ...(options.sdkRoot === undefined ? {} : { sdkRoot: options.sdkRoot }), ...options.startup },
+    const startupNode = new HostStartupNode({
+      observeCompatibilityPreparation: signal => inspectCompatibilityPreparation(ctx, signal),
+      nativeSource: () => {
+        const service = ctx.get('subagents') as unknown as Record<symbol, unknown> | undefined
+        const source = service?.[Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')]
+        return source === 'native-subagent-0.2.1-alpha.1' ? source : null
+      },
+      ...(options.sdkRoot === undefined ? {} : { sdkRoot: options.sdkRoot }), ...options.startup,
+    },
       () => initialChildCwdSupported(ctx), lifetime.signal)
     const startup = new StartupSupport(createDomainVersionedStorage(await open('startup_settings', parseStartupDocument), 'state', parseStartupDocument),
       { epoch: startupNode.epoch }, signal => startupNode.observe(signal))

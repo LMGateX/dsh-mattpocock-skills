@@ -24,6 +24,16 @@ This document is the authoritative implementation contract. A later implementati
 - **记录整理已实施，期限仍由用户决定**：主动摘要分页/详情、显式当前范围、历史副本 purge，以及 records/windows/worktrees 三个源域的 checkpoint 和定向源旧历史删除均已有源码接口。副本删除不冒称源删除，源清理保留当前/最新状态、创建作者与技术去重摘要；多域非原子、部分成功和未知修订如实报告。任意字段级删除、全部作用域擦除与自动 TTL 不在本轮接口内；已清理树不默认删除历史。见[历史核心契约](<HISTORY_CORE.md>)。
 - **源码与部署分开**：本轮范围是已接受的源码实施，不只是研究建议；仓库原生补丁与插件代码交付不自动改变安装版 SDK、当前 Profile 或现有 GUI。最终集成结果由完成记录统一登记，不提前宣称全套测试/打包通过。安装启用及发布另行决定，原有不可变 Skill、通道和发布授权边界保持不变。
 
+## 单包兼容支持的交付要求
+
+相关 SDK 兼容支持由同一个插件包承担，不能让用户另行选择、安装或维护补丁、寻找 SDK 路径或执行手工准备命令。只把 recipe／管理器随包提供不算完成自动接入；目标是普通安装／升级、页面保存请求和必要的正常进程重启。当前实现进度与候选边界见[插件自管兼容支持](<PLUGIN_MANAGED_COMPATIBILITY.md>)；候选和源码进度不是发行包或当前 GUI 已生效的声明。
+
+本次源码实施选择版本固定的插件内部兼容服务提供者作为验证方向，不修改共享 SDK 文件、不建立另一套 Cordis／AgentLoop／Session／沙箱运行时，也不反射或接管已有 native continuation 私有字段。通过公开配置组合保证一个服务提供者及同一原生生命周期图；保留原始配置和明确停用／自定义 Profile 的选择。安装、配置热重载与真正启动必须分开，不能借 bundle 重组突然替换当前服务。若这些边界不能证明，则不把候选覆盖加入发行包。
+
+当前未发布源码以公开 Cordis `Context.root`（experimental）、`ctx.plugin()`、`Fiber.dispose()` 和声明的 `internal/plugin` 创建事件验证进程级提供者生命周期：可移除的 bundle 载体不拥有 native manager 的 disposer；同一已验证 Loader tree／共享 isolation 与 intercept 服务域中的唯一提供者由根 Fiber 持有。bundle 移除仍按 SDK 正常机制处理；仅在该进程已有固定提供者时，阻止同一 canonical stock 行的新 Fiber 在原生构造前成为第二个提供者，不拦截其他 tree、分组／隔离／intercept 行、自定义提供者或任意模块解析。鲜启还要求实际应用根身份一致、公开映射可用且 inherited key union 有界（每组 ≤512）；未知输入在导入前保留 stock。对已经固定的服务，保留判定使用同一捕获应用根和准确公开 underlying service token，不把新的鲜启预算反向当成换掉当前 manager 的许可。真实根 shutdown 仍负责原生清理。生命周期替身验证不能代替真实 Plugin Manager、原生消息／持久化／权限与清理回归；候选修复的当前验收范围须独立记录，不能把 carrier 行 UID 与实际服务提供者 Fiber UID 混同。
+
+旧离线管理器保留为诊断／维护接口，不再作为普通用户必经步骤。相同 owner、schema、SDK、recipe 和已核验文件／备份的记录须跨插件版本接续，creator 版本是来源记录而不是要求用户手工解除的升级锁；外部改动、不完整记录、未知版本或所有权不匹配仍保留证据并拒绝写入。不可变 Skill、通道、原有 provider 优先级、公开隐私边界与真实权限保持不变。
+
 ## Scope clarification
 
 The owner-approved [thin-adapter scope](ADAPTER_SCOPE.md) governs subsequent engineering scope: keep native Skill delivery small, freeze expansion of the historical behavioral analyzer, and investigate demonstrated compatibility gaps. Historical campaign results and activation/publication authorization boundaries remain unchanged.

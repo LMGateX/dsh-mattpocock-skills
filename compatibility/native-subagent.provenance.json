@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "owner": "@lmgatex/dsh-mattpocock-skills",
+  "status": "development-integrated-not-released",
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "tag": "dsh-v0.2.1-alpha.1",
+    "commit": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+    "version": "0.2.1-alpha.1"
+  },
+  "sdk": {
+    "name": "@deepseek-ai/dsh",
+    "version": "0.2.1-alpha.1"
+  },
+  "source": {
+    "package": "@deepseek-ai/dsh-subagent",
+    "version": "0.2.1-alpha.1",
+    "publicEntry": "lib/index.js",
+    "originalSha256": "75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541",
+    "patchedSha256": "2ab17b8ee4f1a2d88a91fcc011391a271188dad4b479d571132bf8d71e4a534d"
+  },
+  "recipe": {
+    "id": "initial-cwd-dsh-0.2.1-alpha.1-v1",
+    "manifestSha256": "d37a15a5712b62af03a150b6ef44e906f3dc26aa06924818b53dd5a08158f22d",
+    "fileSha256": "73c68247d58115f77f29bf85bba9a65db51e00bab0609f78fd1eb09b572a3b74",
+    "substitutions": 4
+  },
+  "transformation": {
+    "id": "native-subagent-public-errors-origin-mit-v1",
+    "sharedPublicErrors": [
+      "SubagentError",
+      "SubagentDepthError"
+    ],
+    "replacements": [
+      {
+        "name": "share-public-SubagentError",
+        "beforeSha256": "1bdc8512c9010dd1ed9d365489f5b0707ea948d6709a713f6fba20932e345077",
+        "afterSha256": "5363a2f2cde3c1e11191b112361c5886de947e9a46c94c87863b0e1c16d3bb77"
+      },
+      {
+        "name": "share-public-SubagentDepthError",
+        "beforeSha256": "afcb73cd3f320f789fb0042a62cc303ac2645047aa2ebb111e50b2953dd45636",
+        "afterSha256": "4169d29458490b20a1b2444bb43b2dc18e17e5cb4f94e7d5830d8cb108223dd3"
+      }
+    ],
+    "transformedBodySha256": "42b628362d05a7c16d429c61d656b843e8f337779c3219b4f865497434aa4d78",
+    "origin": {
+      "symbol": "@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin",
+      "value": "native-subagent-0.2.1-alpha.1",
+      "readOnly": true,
+      "capability": false
+    },
+    "preservedRegions": [
+      "continuation-activation",
+      "continuation"
+    ]
+  },
+  "artifact": {
+    "path": "compatibility/native-subagent-0.2.1-alpha.1.js",
+    "sha256": "f6197aa3eb84c4f803e2b6517e70b1b62a804bb4e763abec94ebe961dabd77ba",
+    "bytes": 136833
+  },
+  "externalImports": [
+    "@deepseek-ai/dsh-agent",
+    "@deepseek-ai/dsh-attachment",
+    "@deepseek-ai/dsh-brand",
+    "@deepseek-ai/dsh-chunked-list",
+    "@deepseek-ai/dsh-llm",
+    "@deepseek-ai/dsh-scope",
+    "@deepseek-ai/dsh-session",
+    "@deepseek-ai/dsh-subagent",
+    "@deepseek-ai/dsh-tools",
+    "@deepseek-ai/dsh-typert-protocol",
+    "@deepseek-ai/dsh-util-time",
+    "@deepseek-ai/dsh-util-values",
+    "@deepseek-ai/schemastery",
+    "node:crypto",
+    "node:fs",
+    "node:path",
+    "zod"
+  ],
+  "license": {
+    "spdx": "MIT",
+    "copyright": "Copyright (c) 2026 DeepSeek",
+    "source": "@deepseek-ai/dsh-subagent/LICENSE",
+    "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+    "fullNoticeEmbeddedInArtifact": true
+  }
+}

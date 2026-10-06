@@ -19,3 +19,11 @@ The Matt Pocock Skills files are licensed under the MIT License:
 The complete upstream MIT license will remain alongside the vendored source at `vendor/mattpocock-skills/LICENSE`. The adapter's own license is in the repository root `LICENSE`.
 
 No Matt Pocock endorsement or affiliation is implied.
+
+## DeepSeek Harness compatible SubagentRuntime
+
+The plugin-owned compatible implementation in [native-subagent-0.2.1-alpha.1.js](<compatibility/native-subagent-0.2.1-alpha.1.js>) is derived from the public `@deepseek-ai/dsh-subagent` 0.2.1-alpha.1 entry, pinned to [upstream commit 5badb15009ae1756c3afe0ae0cef1faafc290ccc](https://github.com/deepseek-ai/deepseek-harness/tree/5badb15009ae1756c3afe0ae0cef1faafc290ccc). The source, recipe, reviewed transformations, shared public imports and artifact hashes are recorded in [provenance](<compatibility/native-subagent.provenance.json>).
+
+> Copyright (c) 2026 DeepSeek
+
+This component is licensed under the MIT License. Its complete upstream permission, notice and disclaimer text is embedded at the beginning of the distributed implementation and must be retained. The plugin does not claim DeepSeek endorsement, modify the installed SDK, or replace native permission and continuation ownership.

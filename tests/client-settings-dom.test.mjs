@@ -76,6 +76,133 @@ function normalText(container) {
 async function click(element) { await React.act(async () => element.click()) }
 async function select(element, value) { await React.act(async () => { element.value = value; element.dispatchEvent(new element.ownerDocument.defaultView.Event('change', { bubbles: true })) }) }
 
+test('startup DOM never offers SDK paths or manual maintenance commands, including collapsed details', async t => {
+  let actual = startup()
+  const remote = { startupStatus: async () => ok(copy(actual)), saveStartupSettings: () => assert.fail('read-only rendering') }
+  const { container } = await mount(t, client.StartupSettingsPanel, { remote })
+  for (const [state, preparation, native] of [
+    ['disabled', 'ready', false], ['pending-restart', 'ready', false], ['needs-preparation', 'not-prepared', false],
+    ['unsupported', 'not-prepared', false], ['incompatible', 'incompatible', false], ['failed', 'failed', false],
+    ['uncertain', 'uncertain', null], ['enabled', 'not-prepared', true],
+  ]) {
+    actual = startup({ state, desired: { startupCwdEnabled: state !== 'disabled' },
+      boot: { epoch: 'public-dom-epoch', requested: { startupCwdEnabled: state === 'enabled' } },
+      enabledNow: state === 'enabled' ? true : state === 'uncertain' ? null : false,
+      nativeInitialCwdSupported: native, restartNeeded: state === 'pending-restart',
+      preparation: { status: preparation, sdkVersion: state === 'unsupported' ? null : 'fixture-version', diagnostic: null } })
+    await click(button(container, '重新读取启动状态（丢弃草稿）'))
+    assert.doesNotMatch(container.textContent, /dsh-mattpocock-skills-cwd|--host-root|--dsh-stopped|\/absolute\/sdk|\[DSH args|SDK.*(?:目录|路径)|离线.*(?:步骤|命令|准备)|磁盘兼容准备|当前 SDK 原生支持/, state)
+    assert.match(named(container, '当前运行状态').textContent, /当前运行时能力：/, state)
+    assert.match(normalText(container), /兼容支持由同一插件包提供/, state)
+    assert.match(normalText(container), /刷新网页或热重载不能代替进程重启/, state)
+    assert(container.querySelector('details'), 'raw technical status remains available')
+  }
+})
+
+test('plugin readiness and real DOM saves stay pending in the same Host epoch, enable next boot and disable only after another boot with management off', async t => {
+  const { StartupSupport } = await import('../lib/controls/startup-support.js')
+  const { MemoryVersionedStorage } = await import('../lib/controls/versioned-storage.js')
+  const { parseStartupDocument } = await import('../lib/controls/startup-state.js')
+  const storage = new MemoryVersionedStorage(parseStartupDocument, {
+    schemaVersion: 1, revision: 6, desired: { startupCwdEnabled: false }, bootReceipts: [],
+  })
+  const observation = native => async signal => {
+    assert(signal instanceof AbortSignal)
+    return { nativeInitialCwdSupported: native, preparation: { status: 'ready', sdkVersion: 'pinned-fixture', diagnostic: null } }
+  }
+  let core = new StartupSupport(storage, { epoch: 'host-before-restart' }, observation(false))
+  const f = fixture({ startupStatus: async signal => ok(await core.readStatus(signal)),
+    saveStartupSettings: async (desired, revision, signal) => {
+      f.calls.startup.push({ desired: copy(desired), revision, signal })
+      return ok(await core.save(desired, revision, signal))
+    } })
+  const { container, root } = await mount(t, client.SettingsPage, f.props)
+  const currentText = () => named(container, '当前运行状态').textContent
+  const checkManagement = () => {
+    assert.equal(named(container, '全局协作管理总开关').checked, false)
+    assert.equal(f.calls.policy.length, 0)
+    assert.equal(f.calls.refresh, 0)
+    assert.deepEqual(f.calls.observe, [])
+  }
+  assert.match(currentText(), /当前生效：禁用/)
+  assert.match(currentText(), /插件兼容支持：插件实现已就绪（不代表当前已启用）/)
+  assert.match(currentText(), /当前运行时能力：不支持/)
+  checkManagement()
+  await click(named(container, '允许创建子代理时指定工作树'))
+  await click(button(container, '保存下次启动请求'))
+  assert.equal(f.calls.startup[0].revision, 7)
+  assert.deepEqual(f.calls.startup[0].desired, { startupCwdEnabled: true })
+  assert.match(currentText(), /尚未生效：待重启/)
+  assert.match(currentText(), /当前生效：禁用/)
+  assert.match(currentText(), /本次启动请求：禁用/)
+  assert.match(container.textContent, /host-before-restart/)
+  assert.match(named(container, '下次启动设置').textContent, /下次启动（已保存）：启用/)
+  assert.doesNotMatch(currentText(), /SDK.*已|已生效/)
+  // Reconstruct the public Host seam and remount the browser controller: neither is a process restart.
+  core = new StartupSupport(storage, { epoch: 'host-before-restart' }, observation(false))
+  await React.act(async () => root.render(React.createElement(client.SettingsPage, { ...f.props, remote: { ...f.remote } })))
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(currentText(), /尚未生效：待重启/)
+  assert.match(currentText(), /当前生效：禁用/)
+  assert.match(container.textContent, /host-before-restart/)
+  checkManagement()
+  // Only the trusted fixture supplies a new process epoch and a loaded true capability.
+  core = new StartupSupport(storage, { epoch: 'host-after-restart' }, observation(true))
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(currentText(), /已生效/)
+  assert.match(currentText(), /当前生效：启用/)
+  assert.match(currentText(), /当前运行时能力：支持/)
+  assert.match(container.textContent, /host-after-restart/)
+  checkManagement()
+  await click(named(container, '允许创建子代理时指定工作树'))
+  await click(button(container, '保存下次启动请求'))
+  assert.equal(f.calls.startup[1].revision, 9)
+  assert.deepEqual(f.calls.startup[1].desired, { startupCwdEnabled: false })
+  assert.match(currentText(), /当前仍生效：关闭请求待重启/)
+  assert.match(currentText(), /当前生效：启用/)
+  assert.match(named(container, '下次启动设置').textContent, /下次启动（已保存）：禁用/)
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(currentText(), /当前生效：启用/)
+  core = new StartupSupport(storage, { epoch: 'host-after-disable' }, observation(true))
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(currentText(), /已关闭/)
+  assert.match(currentText(), /当前生效：禁用/)
+  assert.match(currentText(), /当前运行时能力：支持/)
+  assert.match(normalText(container), /不改变已有子代理的工作目录/)
+  assert.equal(f.calls.startup.length, 2)
+  for (const call of f.calls.startup) assert(call.signal instanceof AbortSignal)
+  checkManagement()
+})
+
+test('startup DOM translates authoritative unavailable states as plugin compatibility limits, not a broken ordinary runtime or a reboot remedy', async t => {
+  let actual = startup()
+  const remote = { startupStatus: async () => ok(copy(actual)), saveStartupSettings: () => assert.fail('no configuration or SDK writes') }
+  const { container } = await mount(t, client.StartupSettingsPanel, { remote })
+  for (const [state, preparation, label] of [
+    ['needs-preparation', 'not-prepared', '插件兼容性尚未验证'], ['unsupported', 'not-prepared', '增强功能不可用'],
+    ['incompatible', 'incompatible', '插件兼容性不匹配'], ['failed', 'failed', '插件兼容验证失败'],
+    ['uncertain', 'uncertain', '状态不确定'],
+  ]) {
+    actual = startup({ state, desired: { startupCwdEnabled: true }, boot: { epoch: 'unavailable-epoch', requested: { startupCwdEnabled: true } },
+      enabledNow: state === 'uncertain' ? null : false, nativeInitialCwdSupported: state === 'uncertain' ? null : false,
+      restartNeeded: false, preparation: { status: preparation, sdkVersion: state === 'unsupported' ? null : 'incompatible-fixture', diagnostic: 'public diagnostic' } })
+    await click(button(container, '重新读取启动状态（丢弃草稿）'))
+    assert(named(container, '当前运行状态').textContent.includes(label), state)
+    assert.match(normalText(container), /仍可使用普通原生子代理/, state)
+    assert.match(normalText(container), /(?:安装或)?更新兼容的插件版本/, state)
+    assert.match(normalText(container), /查看技术诊断/, state)
+    assert.doesNotMatch(named(container, '当前运行状态').querySelector('strong').textContent, /待重启|已生效|已关闭/, state)
+    assert.doesNotMatch(named(container, '当前运行状态').textContent, /SDK.*(?:损坏|不兼容)/, state)
+    assert.match(container.textContent, /public diagnostic/, 'original technical observation remains readable')
+    if (state === 'needs-preparation') assert.match(normalText(container), /反复重启也不会生效/)
+  }
+  // Readiness alone must not replace a Host failure/unknown status with pending-restart.
+  actual = { ...actual, state: 'failed', preparation: { status: 'ready', sdkVersion: 'fixture-version', diagnostic: 'state is authoritative' } }
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(named(container, '当前运行状态').textContent, /插件兼容验证失败/)
+  assert.doesNotMatch(named(container, '当前运行状态').textContent, /待重启/)
+})
+
 test('DOM clicks save startup revision seven independently from management revision forty-two', async t => {
   const f = fixture(), { container } = await mount(t, client.SettingsPage, f.props)
   const current = named(container, '当前运行状态')
@@ -186,9 +313,9 @@ test('startup DOM keeps loading and unknown facts distinct from disabled or rest
     preparation: { status: 'failed', sdkVersion: null, diagnostic: 'controlled diagnostic' } }))))
   assert.equal(toggle.disabled, false)
   assert.match(normalText(container), /当前生效：未知（观测不可用）/)
-  assert.match(normalText(container), /兼容准备失败/)
+  assert.match(normalText(container), /插件兼容验证失败/)
   assert.doesNotMatch(normalText(container), /当前生效：禁用|尚未生效：待重启/)
-  assert.match(normalText(container), /刷新网页不能代替重启/)
+  assert.match(normalText(container), /刷新网页或热重载不能代替进程重启/)
 })
 
 test('startup rejected save keeps the DOM draft and marks last confirmation instead of success', async t => {
@@ -235,7 +362,7 @@ test('management rejected save retains DOM draft without claiming it is applied'
   assert.equal(button(container, '保存并应用配置').disabled, true)
 })
 
-for (const preparation of ['not-prepared', 'failed']) {
+for (const preparation of ['not-prepared', 'failed', 'ready']) {
   test('startup native support stays enabled in DOM despite optional preparation ' + preparation, async t => {
     const remote = { startupStatus: async () => ok(startup({ desired: { startupCwdEnabled: true },
       boot: { epoch: 'native-boot', requested: { startupCwdEnabled: true } }, enabledNow: true, nativeInitialCwdSupported: true, state: 'enabled',
@@ -244,8 +371,9 @@ for (const preparation of ['not-prepared', 'failed']) {
     const { container } = await mount(t, client.StartupSettingsPanel, { remote })
     assert.match(named(container, '当前运行状态').textContent, /当前生效：启用/)
     assert.match(normalText(container), /已生效/)
-    assert.match(normalText(container), /当前已有原生支持，无需离线准备/)
-    assert.doesNotMatch(normalText(container), /需要先完成兼容准备|尚未生效|准备失败/)
+    assert.match(normalText(container), /当前运行时能力已支持，无需额外兼容准备/)
+    assert.doesNotMatch(normalText(container), /此增强功能暂不可用|尚未生效|插件兼容验证失败|不代表当前已启用|安装或更新兼容的插件版本/)
+    assert.match(named(container, '当前运行状态').textContent, /当前运行时能力：支持/)
   })
 }
 
@@ -331,10 +459,11 @@ test('native support with a newly saved request shows pending restart without un
   assert.match(current.textContent, /当前生效：禁用/)
   assert.match(current.textContent, /本次启动请求：禁用/)
   assert.match(current.textContent, /待重启/)
-  assert.match(current.textContent, /当前已有原生支持，无需离线准备/)
+  assert.match(current.textContent, /当前运行时能力已支持，无需额外兼容准备/)
   assert.match(named(container, '下次启动设置').textContent, /下次启动（已保存）：启用/)
-  assert(normalText(container).includes('启用还需要当前 SDK 支持；若 SDK 没有原生支持且兼容准备尚未完成，反复重启也不会生效。'))
-  assert.doesNotMatch(normalText(container), /需要先完成兼容准备|普通重启不会自动打补丁/)
+  assert(normalText(container).includes('兼容性尚未验证时，反复重启也不会生效。'))
+  assert.match(normalText(container), /刷新网页或热重载不能代替进程重启/)
+  assert.doesNotMatch(normalText(container), /此增强功能暂不可用|更新兼容的插件版本并查看技术诊断/)
 })
 
 test('settings DOM separates Chinese configuration groups and collapsed technical diagnostics', async t => {
