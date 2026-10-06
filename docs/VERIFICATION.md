@@ -4,9 +4,19 @@
 
 ## 发布版本与上游来源
 
-插件发布版本为 `0.4.0`；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有插件 `v0.3.0` 标签。本次发布包含下述协作实现与修复；公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
+插件发布版本为 `0.4.1`；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
 
-## 当前复审收尾
+## 0.4.1 原生 Client 激活修复
+
+`0.4.0` 的 Client 自行 `$mount` 后，在没有声明 `remote.mattpocockControls` 服务依赖的调用 Context 中读取该命名空间。真实 Cordis 插件 Fiber 因 `cannot get property "remote.mattpocockControls" without inject` 失败；浏览器启动审计随后拒绝该 entry。旧普通对象／根 Context 测试绕过了这层检查，模块可导入与原有 510 项机械测试通过不能解释为真实 Web 启动已验收。
+
+修复保持 bootstrap 挂载 RPC，然后等待声明命名空间依赖的子 Context，再在该生命周期内创建观察器、注册界面和安排清理。不能把自己的尚未创建命名空间直接加到 bootstrap 依赖中，否则 bootstrap 不能开始。子 Context 初始化错误仍向上传播，不吞掉失败冒称 active。
+
+新增 6 项测试使用实际参考 SDK 的 Context、TypertRegistry、Client Remote、SlotRegistry、浏览器 lazy module factory、ClientModuleSystem 与 Loader：原生 Fiber 激活、七类界面／九项工具登记、卸载与重挂载、子作用域错误、浏览器 entry 的 ACTIVE/FAILED 显式审计，以及原生 graph 移除／重新加入。测试以单插件 graph 和已经提供的原生 RPC/Slot 服务为聚焦范围，连接、sidebar 状态和 tab 注册由夹具控制；不执行 DOM/React 挂载，不启动服务器或调用模型，不冒称完整 Web Profile、当前 GUI 或模型行为 campaign 通过。
+
+旧发行包在同一原生 Fiber／浏览器 Loader gate 中为 RED，修复 bundle 为 GREEN。原始失败堆栈及执行记录保留在仓库外；公开仓库只保留合成回归。修复版完整根测试为 **516/516**，原生 Client 激活／生命周期为 **6/6**，原生 managed cwd 为 **10/10**，均无失败、取消或跳过；Host/Client 严格构建通过。清洁源码／精确发行包结果随 Release 的脱敏验证摘要记录。
+
+## 0.4.0 源码阶段收尾（历史范围）
 
 四项验收及公开数据边界见[复审契约](<REVIEW_CLOSEOUT.md>)。原有四项缺陷已修复；独立复审发现的窗口/工作树迟到取消覆盖已确认 CAS 回执，以及窗口 checkpoint/purge 分阶段取消的同类缺口也已关闭。已完成下列机械验证，不把历史阶段结果冒称当前验收，也不承诺绝对没有其他缺陷。
 

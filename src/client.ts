@@ -791,38 +791,42 @@ export const inject = ['slots', 'remote', 'sidebarRight', 'sidebarRightTabs']
 /** Browser plugin activation, governed by Host Loader/package manifest, not DOM insertion. */
 export async function apply(ctx: Context): Promise<void> {
   await ctx.remote.$mount(REMOTE_CONTRIBUTION)
-  const remote = (ctx.remote as typeof ctx.remote & { readonly mattpocockControls: ControlsRemote }).mattpocockControls
-  const observers = new Map<string, SessionObserver>()
-  const observe = (sessionId: string): SessionObserver => {
-    let observer = observers.get(sessionId)
-    if (observer === undefined) { observer = new SessionObserver(sessionId, (id, signal) => remote.readSession(id, signal)); observers.set(sessionId, observer) }
-    return observer
-  }
-  const visibility = new PolicyObserver(() => remote.readPolicy())
-  ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
-  const refreshAll = (): void => { void visibility.refresh(); for (const observer of observers.values()) void observer.refresh() }
-  ctx.effect(() => () => { for (const observer of observers.values()) observer.dispose(); observers.clear() }, 'collaboration: observations')
-  const face = (sessionId: string): SessionFace => ({ observer: observe(sessionId), openDetails: () => {
-    if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
-    const snapshot = observe(sessionId).getSnapshot()
-    if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return
-    ctx.sidebarRight.openTab(TAB_KIND, { preferNewPane: true })
-  } })
-  const definition: SidebarRightTabDefinition = { id: TAB_ID, kind: TAB_KIND, title: () => '协作', keepMounted: false }
-  ctx.effect(() => ctx.sidebarRightTabs.register(definition), 'collaboration: tab type')
-  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config', key: PACKAGE_NAME,
-    inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
-  ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: ROW_KEY,
-    inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
-    id: TAB_ID + ':header', order: 100, inject: face }, HeaderEntry))
-  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
-    id: TAB_ID + ':input', order: 100, inject: face }, InputSummary))
-  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID,
-    inject: (sessionId) => ({ ...face(sessionId), remote }) }, Details))
-  ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({ name: 'sidebar.session.row.leading',
-    id: TAB_ID + ':row', order: 100, inject: () => ({ observe, visibility }) }, WorkspaceBadge))
-  ctx.slots.inject('tool.call.toolview', () => OWN_TOOL_NAMES.map(key => ctx.slots.register({ name: 'tool.call.toolview', key, inject: face }, SourceCard)))
+  // $mount creates the namespace. Requiring it on the bootstrap itself would
+  // prevent apply from running; all consumers instead belong to this child scope.
+  await ctx.inject(['remote.mattpocockControls'], (ctx) => {
+    const remote = (ctx.remote as typeof ctx.remote & { readonly mattpocockControls: ControlsRemote }).mattpocockControls
+    const observers = new Map<string, SessionObserver>()
+    const observe = (sessionId: string): SessionObserver => {
+      let observer = observers.get(sessionId)
+      if (observer === undefined) { observer = new SessionObserver(sessionId, (id, signal) => remote.readSession(id, signal)); observers.set(sessionId, observer) }
+      return observer
+    }
+    const visibility = new PolicyObserver(() => remote.readPolicy())
+    ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
+    const refreshAll = (): void => { void visibility.refresh(); for (const observer of observers.values()) void observer.refresh() }
+    ctx.effect(() => () => { for (const observer of observers.values()) observer.dispose(); observers.clear() }, 'collaboration: observations')
+    const face = (sessionId: string): SessionFace => ({ observer: observe(sessionId), openDetails: () => {
+      if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
+      const snapshot = observe(sessionId).getSnapshot()
+      if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return
+      ctx.sidebarRight.openTab(TAB_KIND, { preferNewPane: true })
+    } })
+    const definition: SidebarRightTabDefinition = { id: TAB_ID, kind: TAB_KIND, title: () => '协作', keepMounted: false }
+    ctx.effect(() => ctx.sidebarRightTabs.register(definition), 'collaboration: tab type')
+    ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config', key: PACKAGE_NAME,
+      inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
+    ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: ROW_KEY,
+      inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
+    ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
+      id: TAB_ID + ':header', order: 100, inject: face }, HeaderEntry))
+    ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
+      id: TAB_ID + ':input', order: 100, inject: face }, InputSummary))
+    ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID,
+      inject: (sessionId) => ({ ...face(sessionId), remote }) }, Details))
+    ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({ name: 'sidebar.session.row.leading',
+      id: TAB_ID + ':row', order: 100, inject: () => ({ observe, visibility }) }, WorkspaceBadge))
+    ctx.slots.inject('tool.call.toolview', () => OWN_TOOL_NAMES.map(key => ctx.slots.register({ name: 'tool.call.toolview', key, inject: face }, SourceCard)))
+  })
 }
 
 /** Existing Host authorization, not a model-supplied permission or business approval. */

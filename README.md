@@ -23,6 +23,10 @@ This release mirrors upstream **v1.3.1** (commit `24fe0ef`). `PROVENANCE.json` r
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.
 
+## 0.4.1 startup fix
+
+Fixes the missing Remote-namespace dependency in the `0.4.0` browser plugin lifecycle, which caused the Web entry to fail activation. Native Client Fiber/Loader activation, failure-audit, unload and graph re-add regressions now cover this boundary instead of checking imports alone. See the [verification scope and previous test blind spot](<docs/VERIFICATION.md>). After upgrading, re-enable any manually disabled plugin entry and restart DSH; installation does not remove disablement or prepare a running SDK.
+
 ## Usage sequence and known limitations
 
 1. **Installation and activation belong to DSH.** This package supplies a native Skill provider and declares `stable` and `beta`, with `stable` as the default. Installation does not automatically change the owner profile or project conventions.

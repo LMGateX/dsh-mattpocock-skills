@@ -23,6 +23,10 @@
 
 **升级须知：** 上游 v1.3 把 `CONTEXT.md` 改名为 `GLOSSARY.md`，且**没有旧名回退**；技能在旧名缺失时**不会报错**，只会静默新建一份空的 `GLOSSARY.md`。已有仓库请先读 [MIGRATION.md](MIGRATION.md)。
 
+## 0.4.1 启动修复
+
+修复 `0.4.0` 在真实浏览器插件生命周期中漏声明自己的 Remote 命名空间依赖、导致 Web entry 激活失败的问题。新增原生 Client Fiber／Loader 激活、失败审计、卸载和 graph 重加入回归；不是仅检查模块导入。验证范围和此前测试盲区见[公开验证摘要](<docs/VERIFICATION.md>)。升级后需重新启用此前手动禁用的插件并重启 DSH；安装不会擅自清除禁用配置，也不会准备运行中的 SDK。
+
 ## 使用顺序与已知限制
 
 1. **安装与启用是 DSH 层的操作。** 本包提供原生 Skill provider，声明 `stable` 与 `beta` 两个通道，默认使用 `stable`。安装不会自动切换 owner Profile，也不会修改项目约定。

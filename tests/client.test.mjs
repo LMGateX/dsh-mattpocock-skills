@@ -42,7 +42,8 @@ function contextFixture() {
     mattpocockControls: { readPolicy: async () => ok(policy), savePolicy: async intent => ok({ ...intent, revision: 5 }),
       listWorkspaces: async () => ok([]), readSession: async id => ok(snapshot(id)), applyInstrument: async () => ok({}),
       historyAction: async () => ok({}), worktreeAction: async () => ok({}) } }
-  const ctx = { remote, effect: callback => { const cleanup = callback(); effects.push(cleanup); return cleanup },
+  const ctx = { remote, inject: (dependencies, callback) => { assert.deepEqual(dependencies, ['remote.mattpocockControls']); return callback(ctx) },
+    effect: callback => { const cleanup = callback(); effects.push(cleanup); return cleanup },
     slots: { inject: (key, callback) => { assert(declarations.has(key), 'unknown native slot'); return callback() },
       register: (options, component) => { assert(declarations.has(options.name)); assert.equal(typeof component, 'function');
         const kind = declarations.get(options.name); if (kind === 'keyed') assert.equal(typeof options.key, 'string'); else assert.equal(typeof options.id, 'string');
