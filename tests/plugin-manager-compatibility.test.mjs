@@ -316,7 +316,7 @@ async function worker(scenario, tarball) {
     assert.equal(result.application, 'applied', JSON.stringify(result))
     assert.equal(result.bundle, pluginName)
     assert.equal(result.changed, true)
-    assert.equal(result.version, '0.4.1')
+    assert.equal(result.version, '0.4.2')
     const installed = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName)
     assert.equal(installed.installed, true)
     assert.equal(installed.enabled, true)
@@ -371,13 +371,13 @@ before(async () => {
   await run('tar', ['-xzf', tarball, '-C', fixtureRoot], { timeout: 60000 })
   const fixture = join(fixtureRoot, 'package'), manifestPath = join(fixture, 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  assert.equal(manifest.version, '0.4.1')
-  for (const version of ['0.4.2', '0.4.3']) {
+  assert.equal(manifest.version, '0.4.2')
+  for (const version of ['0.4.3', '0.4.4']) {
     await writeFile(manifestPath, JSON.stringify({ ...manifest, version }, null, 2) + '\n')
     await run('pnpm', ['pack', '--pack-destination', join(scratch, 'pack')], { cwd: fixture, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
     upgrades.set(version, join(scratch, 'pack', 'lmgatex-dsh-mattpocock-skills-' + version + '.tgz'))
   }
-  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.1')
+  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.2')
   profile = join(scratch, 'home/profiles/web')
   await mkdir(profile, { recursive: true })
 })
@@ -437,7 +437,7 @@ test('actual manager Skills plugin enablement is independent of loaded compatibl
   assert.deepEqual(await child('skills-enable'), { skillsIndependent: true, retainedCompatible: true, unchangedRawStock: true })
 })
 
-for (const version of ['0.4.2', '0.4.3']) {
+for (const version of ['0.4.3', '0.4.4']) {
   test('actual manager installs synthetic upgrade fixture ' + version + ' without swapping loaded compatible service', options, async () => {
     assert.deepEqual(await child('upgrade-' + version, upgrades.get(version)), { syntheticFixtureVersion: version, restartRequired: true, retainedCompatible: true })
     assert.deepEqual(await child('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })

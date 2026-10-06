@@ -2,7 +2,7 @@
 
 > 公开资料边界：带日期的原始研究、工具/测试日志和本机快照仅在本地保留，不随公开仓库分发，也不充当可公开复核的原始证明。当前状态及历史证据范围见 [公开验证说明](<VERIFICATION.md>)。SDK 包相对路径仅定位当时核验的安装产物，不保留本机路径或旧行号。
 
-- **Status:** Accepted; core adapter and Phase 4 verified; Phase 5 closed with a failed campaign; owner activation and release remain unauthorized
+- **Status:** Accepted; core adapter and historical Phase 4 verified; historical Phase 5 remains failed. The owner now authorizes the 0.4.2 push, GitHub Release and local plugin installation after release gates; npm publication, automatic feature enablement and interruption of the current service are not included.
 - **Accepted on:** 2026-09-08
 - **Owner:** LMGateX
 - **Local checkout:** `<working copy of this repository>`
@@ -30,7 +30,7 @@ This document is the authoritative implementation contract. A later implementati
 
 本次源码实施选择版本固定的插件内部兼容服务提供者作为验证方向，不修改共享 SDK 文件、不建立另一套 Cordis／AgentLoop／Session／沙箱运行时，也不反射或接管已有 native continuation 私有字段。通过公开配置组合保证一个服务提供者及同一原生生命周期图；保留原始配置和明确停用／自定义 Profile 的选择。安装、配置热重载与真正启动必须分开，不能借 bundle 重组突然替换当前服务。若这些边界不能证明，则不把候选覆盖加入发行包。
 
-当前未发布源码以公开 Cordis `Context.root`（experimental）、`ctx.plugin()`、`Fiber.dispose()` 和声明的 `internal/plugin` 创建事件验证进程级提供者生命周期：可移除的 bundle 载体不拥有 native manager 的 disposer；同一已验证 Loader tree／共享 isolation 与 intercept 服务域中的唯一提供者由根 Fiber 持有。bundle 移除仍按 SDK 正常机制处理；仅在该进程已有固定提供者时，阻止同一 canonical stock 行的新 Fiber 在原生构造前成为第二个提供者，不拦截其他 tree、分组／隔离／intercept 行、自定义提供者或任意模块解析。鲜启还要求实际应用根身份一致、公开映射可用且 inherited key union 有界（每组 ≤512）；未知输入在导入前保留 stock。对已经固定的服务，保留判定使用同一捕获应用根和准确公开 underlying service token，不把新的鲜启预算反向当成换掉当前 manager 的许可。真实根 shutdown 仍负责原生清理。生命周期替身验证不能代替真实 Plugin Manager、原生消息／持久化／权限与清理回归；候选修复的当前验收范围须独立记录，不能把 carrier 行 UID 与实际服务提供者 Fiber UID 混同。
+0.4.2 发布线以公开 Cordis `Context.root`（experimental）、`ctx.plugin()`、`Fiber.dispose()` 和声明的 `internal/plugin` 创建事件验证进程级提供者生命周期：可移除的 bundle 载体不拥有 native manager 的 disposer；同一已验证 Loader tree／共享 isolation 与 intercept 服务域中的唯一提供者由根 Fiber 持有。bundle 移除仍按 SDK 正常机制处理；仅在该进程已有固定提供者时，阻止同一 canonical stock 行的新 Fiber 在原生构造前成为第二个提供者，不拦截其他 tree、分组／隔离／intercept 行、自定义提供者或任意模块解析。鲜启还要求实际应用根身份一致、公开映射可用且 inherited key union 有界（每组 ≤512）；未知输入在导入前保留 stock。对已经固定的服务，保留判定使用同一捕获应用根和准确公开 underlying service token，不把新的鲜启预算反向当成换掉当前 manager 的许可。真实根 shutdown 仍负责原生清理。生命周期替身验证不能代替真实 Plugin Manager、原生消息／持久化／权限与清理回归；候选修复的当前验收范围须独立记录，不能把 carrier 行 UID 与实际服务提供者 Fiber UID 混同。
 
 旧离线管理器保留为诊断／维护接口，不再作为普通用户必经步骤。相同 owner、schema、SDK、recipe 和已核验文件／备份的记录须跨插件版本接续，creator 版本是来源记录而不是要求用户手工解除的升级锁；外部改动、不完整记录、未知版本或所有权不匹配仍保留证据并拒绝写入。不可变 Skill、通道、原有 provider 优先级、公开隐私边界与真实权限保持不变。
 

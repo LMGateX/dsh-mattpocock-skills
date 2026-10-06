@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "owner": "@lmgatex/dsh-mattpocock-skills",
-  "status": "development-integrated-not-released",
+  "status": "plugin-integrated",
   "upstream": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness",
     "tag": "dsh-v0.2.1-alpha.1",

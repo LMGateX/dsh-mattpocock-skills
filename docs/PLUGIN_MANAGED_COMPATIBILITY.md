@@ -1,10 +1,10 @@
 # 插件自管兼容支持：交付约束与接入核对
 
-状态：单包入口和用户流程已实现并通过真实 SDK 的隔离安装／更新／移除及启动回归；最终 clean-source 开发制品验收在收尾中。本文不声称现有 Release 或当前安装包／GUI 已生效。
+状态：单包入口、用户流程与 clean-source 开发制品验收已完成，进入 0.4.2 授权发布线。正式版本必须另有清洁源码／单次制品身份／同字节矩阵与远端摘要门禁；准确结果见 Release 脱敏附件。本文不声称安装后当前 GUI 立即加载或启用增强能力。
 
 ## 当前源码进度与验收边界
 
-当前未发布开发源码已将版本固定的[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>)、[公开来源与变换记录](<../compatibility/native-subagent.provenance.json>)、[真实包装入口](<../src/compatibility/native-subagent.ts>)与[只读启动准备观测](<../src/compatibility/readiness.ts>)纳入精确文件／exports 清单，并通过[编译后启动选择器](<../src/compatibility/composition.ts>)生成公开 bundle 覆盖。这不是现有 Release 或当前安装能力。
+0.4.2 发布线已将版本固定的[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>)、[公开来源与变换记录](<../compatibility/native-subagent.provenance.json>)、[真实包装入口](<../src/compatibility/native-subagent.ts>)与[只读启动准备观测](<../src/compatibility/readiness.ts>)纳入精确文件／exports 清单，并通过[编译后启动选择器](<../src/compatibility/composition.ts>)生成公开 bundle 覆盖。历史 0.4.1 Release 不含此实现；发行包内容不等于当前进程安装／启用事实。
 
 - 兼容实现保持完整原始 manager／activation 语义，只应用已审阅的首次 cwd 变换、共享公开错误类型及只读来源标识；来源标识不是能力 getter。开发构建器不修改 SDK，普通用户不需要运行它。
 - 独立运行既有[真实 native 目录与续用测试](<../tests/host-cwd.test.mjs>)的 plugin-owned 分支：10／10 通过，包括实际 A/B 文件读取、持久冻结 header、原始 spawn/fork 与冷恢复；其中两项仍是旧离线补丁拒绝测试，不把它们算成插件目录行为证明。无模型调用。
@@ -15,7 +15,7 @@
 
 前轮只读准备观测 74／74 与 Host 启动 14／14 回归通过：公开 Loader／Entry、launch/base/profile/plugin-own native realpath、固定版本／原字节、包内 export／wrapper／资产／provenance 身份吻合才称下次实现准备就绪；从不求值 Entry.disabled 或读取私有选择缓存，不导入／构造／写 SDK。已接到真实 Host mount；当前能力 true／unknown 优先，下次准备与当前启用不混同。未来操作配置未验证，ready 不是下次成功启动保证。
 
-最新真实 Plugin Manager／pnpm 安装、连续合成升级、整个 bundle 关闭／重启用及实际卸载矩阵 9／9 通过。采用真实默认 base／Web bundle 组合与 app.boot／Include／SDK 公共 PluginPackages 解析，末层只禁用不相关监听／模型插件，不是完整 Web／GUI 激活。根 Fiber 持有真实 native manager，载体移除不更换已有服务；公开创建事件仅阻止同一已核验 tree／服务域的 canonical stock 新构造。实际原生包装回归 15／15、解包矩阵 11／11 覆盖三次 unpatch／恢复、冻结 B child 热续用、包实际移除、次进程 stock 选择及根 shutdown 排空；新增 provenance 完整字节摘要拒绝语义不变的尾随空白。导入前组合 39／39、只读准备 81／81 验证 Root 服务域差异不会关掉普通 stock 或伪报 ready。本轮 Root 身份／映射可用性及每组 inherited key union ≤512 的导入前 gate 与准备观测已对齐，并保持已运行提供者 token 和根清理。最新组合 44／44、实际 native 16／16、普通解包 13／13、准备 81／81 和真实插件管理器 9／9 通过，最新完整根测试 709／709，0 skipped；Host／Client、同版 lib／精确 development 包、所有生成器及 vendor 通过。公开材料和冻结编译边界已独立复核，仍待完成 clean-source 最终制品门禁；完整 Web GUI 部署／激活另行决定。没有修改本机 SDK、安装当前 Profile 或 GUI，没有发布新版本；上述局部结果不能替代完整用户流程完成证据。
+最新真实 Plugin Manager／pnpm 安装、连续合成升级、整个 bundle 关闭／重启用及实际卸载矩阵 9／9 通过。采用真实默认 base／Web bundle 组合与 app.boot／Include／SDK 公共 PluginPackages 解析，末层只禁用不相关监听／模型插件，不是完整 Web／GUI 激活。根 Fiber 持有真实 native manager，载体移除不更换已有服务；公开创建事件仅阻止同一已核验 tree／服务域的 canonical stock 新构造。实际原生包装回归 15／15、解包矩阵 11／11 覆盖三次 unpatch／恢复、冻结 B child 热续用、包实际移除、次进程 stock 选择及根 shutdown 排空；新增 provenance 完整字节摘要拒绝语义不变的尾随空白。导入前组合 39／39、只读准备 81／81 验证 Root 服务域差异不会关掉普通 stock 或伪报 ready。本轮 Root 身份／映射可用性及每组 inherited key union ≤512 的导入前 gate 与准备观测已对齐，并保持已运行提供者 token 和根清理。最新组合 44／44、实际 native 16／16、普通解包 13／13、准备 81／81 和真实插件管理器 9／9 通过，最新完整根测试 709／709，0 skipped；Host／Client、同版 lib／精确 development 包、所有生成器及 vendor 通过。公开材料和冻结编译边界已独立复核，随后 clean-source 开发制品与同字节 22 项隔离矩阵也已通过。0.4.2 升版后的正式制品门禁及发布身份另行记录，不复用旧开发包；完整 Web GUI 部署／激活仍不由隔离矩阵冒称通过。以下描述保留当时未发布阶段的证据范围；准确本机安装信息不进入公开仓库。
 
 ## 用户流程是交付目标
 

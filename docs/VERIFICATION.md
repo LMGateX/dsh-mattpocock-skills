@@ -4,9 +4,17 @@
 
 ## 发布版本与上游来源
 
-插件发布版本为 `0.4.1`；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
+本次发布线为 `0.4.2`，历史 `0.4.1` 标签及资产保持不变；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
 
-## 本轮源码收尾：Root 边界与精确制品输入
+## 0.4.2 正式发布门禁
+
+已获得本次 push、GitHub Release 和本机插件安装的明确授权，不包含 npm 发布、自动开关管理／启动请求或中断当前服务。0.4.2 必须从升版后的清洁提交单次构建，使用保留 manifest 的 pack；prepack、精确 tarball 字节／身份及同一归档的 13 项解包与 9 项真实管理器矩阵通过后，才推送 immutable tag 和 Release。源码提交、归档大小与 SHA、同字节结果及下载复核写入脱敏 Release 附件，原始日志／Profile 快照不公开。
+
+此前 clean-source 开发包已通过完整门禁与同字节 22／22，但它仍是 0.4.1 manifest 的开发制品，不能重命名成 0.4.2；下面的 709 根测试等证据属于该阶段，不代替本次升版后重新验证结果。公开兼容支持仍限 SDK 0.2.1-alpha.1／canonical 公共解析图，完整 GUI 运行或任意拓扑不由隔离矩阵保证。
+
+升版后的完整根回归已重新通过 **709／709**，0 failed、0 cancelled、0 skipped；严格 Host／Client、source／lib 字节、公开选择器 YAML、所有生成器 --check 与 vendor 通过。兼容 native 仍为 136833 bytes／`f6197aa3eb84c4f803e2b6517e70b1b62a804bb4e763abec94ebe961dabd77ba`，source recipe／SDK 未改；provenance status 改为跨发布中性的 `plugin-integrated`，完整摘要 `59fa929e71ae38d04dc4730a441b88fe5a97db7ed26fc817eea77883a2dc9b04` 在实际 wrapper／只读观测中继续严格钉住。当前升级矩阵使用合成 0.4.3／0.4.4，不是已发行版本。最终 prepack、tarball 与同字节 22 项结果在清潔提交后随 Release 独立附上，不提前冒称正式资产已上传。
+
+## 前轮源码收尾：Root 边界与精确制品输入（历史）
 
 最新完整根测试 **709／709**，0 failed、0 cancelled、0 skipped；严格 Host／Client 构建、冻结离线 lock、source／lib scratch 字节一致、精确 development 包清单、shipped YAML（30583 bytes）、兼容资产生成器 --check、不可变 vendor 和 whitespace 通过。公开 Loader 组合 **44／44**、准备 **81／81**、实际 native 包装器 **16／16**、普通 Node 解包 **13／13**、真实 Plugin Manager／pnpm 安装启动更新卸载 **9／9** 均通过。独立冻结复核：定向 **141／141**，另加新进程编译入口／YAML 一致性及暖态实际包装检查，复核 Root 身份／映射 shape／512 项边界、普通回退、已运行服务优先与真实 shutdown。固定包文件 77 加不可变 vendor 85，共 162，JS／DTS 62；Client 158187 bytes、6 个浏览器安全模块、唯一 external React。
 
@@ -33,7 +41,7 @@
 
 新增[普通插件管理器矩阵](<../tests/plugin-manager-compatibility.test.mjs>)实际调用公共 `initProfile`、默认 base／Web bundle 层、`PluginManager.installBundle` 的 pnpm 操作、`PluginPackages` 公共运行时解析、`app.boot`／Include 及真实 Timer／Hmr。临时 Profile 没有手工链接 peer，也不使用自制解析 hook；启动末层禁用不相关服务／模型／监听端口，不冒称完整 Web GUI 激活。首次安装、新进程选择、A/B 原生读取、持久冻结 header／第二进程冷恢复、独立 Skills 行开关及连续合成升级的初始结果为 **6 passed／1 failed／0 skipped**，失败已在根测试命令外独立重现，未隐藏或跳过。
 
-失败发生于已加载兼容服务时关闭整个 bundle：真实 SDK 返回 applied，但移除兼容载体并重挂 stock，改变服务身份。Standards 复审另发现 wrapper 与准备观测对完整 provenance 字节的接受不同，尾随空白测试已证实 RED。随后以公开根 Fiber 生命周期和完整 provenance 摘要实施修复；关闭结果以以下真实服务的移除／重挂／消息续用／shutdown、普通安装更新及全量结果为据。合成 `0.4.2`／`0.4.3` 是私有临时测试 manifest，不是源码版本或已发布版本。共享 SDK、当前 GUI 和 Profile 未改变。
+失败发生于已加载兼容服务时关闭整个 bundle：真实 SDK 返回 applied，但移除兼容载体并重挂 stock，改变服务身份。Standards 复审另发现 wrapper 与准备观测对完整 provenance 字节的接受不同，尾随空白测试已证实 RED。随后以公开根 Fiber 生命周期和完整 provenance 摘要实施修复；关闭结果以以下真实服务的移除／重挂／消息续用／shutdown、普通安装更新及全量结果为据。当时合成 `0.4.2`／`0.4.3` 是私有临时测试 manifest，并非当时源码版本或发行版本；后续真实 0.4.2 发版不改变该历史证据范围。共享 SDK、当前 GUI 和 Profile 未改变。
 
 上述 RED 已通过逐项真实回归关闭：同一 native manager 改由公开根 Fiber 持有，移除载体不移除进程提供者；公开创建事件仅抑制同 tree／同服务域 canonical stock 的新构造，不更改 SDK 或全局 HMR。实际 SDK Plugin Manager／pnpm 矩阵 **9／9**、包装器实际 native **15／15**、普通 Node development 包 **11／11** 全部通过，0 skipped。三次整个 bundle 关闭／重启用和真实包卸载均保持提供者 token／公开 Impl Fiber 身份、已有 B child 热 send 与冻结 header；根 shutdown 在 child 尚存活时排空原生图。关闭或卸载后的下一真实进程只加载 stock，已有依赖升级的真实结果为 restart-required。manifest 合成升级不改仓库或 Release 版本。
 

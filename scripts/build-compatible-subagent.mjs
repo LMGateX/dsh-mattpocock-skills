@@ -107,7 +107,7 @@ async function main() {
   const provenance = {
     schemaVersion: 1,
     owner,
-    status: 'development-integrated-not-released',
+    status: 'plugin-integrated',
     upstream: recipe.upstream,
     sdk: { name: recipe.sdkName, version },
     source: { package: subagentPackage.name, version, publicEntry: 'lib/index.js', originalSha256: hash(original), patchedSha256: hash(patched) },

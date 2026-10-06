@@ -22,11 +22,11 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 
-## 单包兼容接入：实施中，未发行／未安装
+## 单包兼容接入：0.4.2 发布与安装门禁
 
 接续[最新单包要求](<DESIGN.md#单包兼容支持的交付要求>)：验证固定版本的插件内部兼容服务，通过公开 bundle／loader 生命周期在真正启动时选择唯一提供者，保持当前热重载服务、原始 native 配置、首次 cwd 及原地续用语义。相同 recipe 的旧管理记录跨版本接续，不把维护转回用户。仅有管理器或文案修复不构成完成。
 
-验收沿用公开配置组合／真实 Loader 与 native 创建／续用接口；要求无模型的首次安装热重载、普通重启、用户停用／覆盖、自定义 Profile 拒绝、A/B 工作目录、原始 spawn/fork、冷恢复、权限与路由、版本与制品校验。SDK/Profile/当前 GUI 不由此自动改变，发布与本机安装另行记录；进度见[接入说明](<PLUGIN_MANAGED_COMPATIBILITY.md>)。
+验收沿用公开配置组合／真实 Loader 与 native 创建／续用接口；要求无模型的首次安装热重载、普通重启、用户停用／覆盖、自定义 Profile 拒绝、A/B 工作目录、原始 spawn/fork、冷恢复、权限与路由、版本与制品校验。单包源码与开发制品已完成验收；当前所有者已授权 0.4.2 的 push、GitHub Release 和本机插件安装。须重新升版、清潔提交并构建一次准确发行包，再复核同字节安装矩阵、远端标签及下载摘要；不覆盖旧资产、不发布到 npm、不自动开管理／启动请求，也不擅自中断当前服务。准确发布与本机安装事实分别记录，公开材料排除本机快照；进度见[接入说明](<PLUGIN_MANAGED_COMPATIBILITY.md>)。
 
 ## Current optional controls implementation — 2026-10-06（旧规格历史验收）
 
