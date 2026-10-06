@@ -43,7 +43,7 @@ interface PublicEntry { options: Row; parent: { tree: PublicTree }; readonly ctx
 /** Overrides are trusted operator-program fixture metadata, not serialized authority. */
 export interface CompatibilityInspectionOptions { readonly pluginRoot?: string }
 class EvidenceError extends Error {
-  constructor(readonly status: StartupPreparation['status'], diagnostic: string) { super(diagnostic) }
+  constructor(readonly status: StartupPreparation['status'], diagnostic: string, readonly reason?: StartupPreparation['reason']) { super(diagnostic) }
 }
 async function canonical(path: string, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted()
@@ -204,6 +204,11 @@ function canonicalTopology(entries: readonly PublicEntry[], stock: PublicEntry, 
     const row = entry.options, raw = rows.find(row => row.id === entry.options.id)
     const exact = (disabled: unknown) => disabled !== null && typeof disabled === 'object' &&
       Object.keys(disabled).length === 1 && (disabled as { __jsExpr?: unknown }).__jsExpr === expression.__jsExpr
+    if (entry === compat && row.disabled === true && raw?.disabled === true && raw.name === row.name &&
+      !row.group && !raw.group && row.isolate === undefined && raw.isolate === undefined &&
+      row.intercept === undefined && raw.intercept === undefined) {
+      throw new EvidenceError('incompatible', 'The plugin-owned worktree compatibility bridge (mattpocock-native-subagent) is explicitly disabled by a component configuration override. Remove or clear that disabled override to restore automatic selection; the feature request does not load a disabled component. The running service is unchanged.', 'compatibility-component-disabled')
+    }
     if (row.group || row.isolate !== undefined || row.intercept !== undefined || !exact(row.disabled) ||
       !raw || raw.name !== row.name || raw.group || raw.isolate !== undefined || raw.intercept !== undefined || !exact(raw.disabled)) {
       throw new EvidenceError('incompatible', 'Overridden, isolated, grouped or noncanonical composition guards cannot guarantee next-boot compatibility')
@@ -318,6 +323,9 @@ export async function inspectCompatibilityPreparation(ctx: PublicContext, signal
   } catch (error) {
     signal?.throwIfAborted()
     return { status: error instanceof EvidenceError ? error.status : 'failed', sdkVersion,
-      diagnostic: message(error) + ' No SDK files were written; use the updated compatible plugin package, not manual SDK patch maintenance.' }
+      ...(error instanceof EvidenceError && error.reason ? { reason: error.reason } : {}),
+      diagnostic: message(error) + (error instanceof EvidenceError && error.reason
+        ? ' No SDK files were written; no provider was forced on.'
+        : ' No SDK files were written; use the updated compatible plugin package, not manual SDK patch maintenance.') }
   }
 }

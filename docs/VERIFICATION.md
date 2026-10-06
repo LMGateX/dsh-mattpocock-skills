@@ -4,9 +4,21 @@
 
 ## 发布版本与上游来源
 
-本次发布线为 `0.4.2`，历史 `0.4.1` 标签及资产保持不变；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
+本次发布线为 `0.4.3`，历史 `0.4.2`／`0.4.1` 标签及资产保持不变；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
 
-## 0.4.2 正式发布门禁
+## 0.4.3 兼容桥产品形态与发行门禁
+
+实现根／子路径独立 en／zh locale metadata，保留原技术 id 与 module ABI。实际 SDK `readPluginMeta`、公共 Loader inventory 三项源码测试通过；禁用行仍有来源说明，读取不执行 provider。真实 Plugin Manager 的 `listBundles`／`listPlugins` 验证根／载体元数据，开发矩阵 9／9 通过；它不是当前 GUI 已更新的证明。
+
+真实 Loader 组件 bool 关闭覆盖、Startup observation codec 和 Client 可见冲突 tracer 逐项 RED→GREEN；恢复仅撤销后置覆盖并重新组合 exact 自动 guards，在隔离 Loader 上仍保留原 stock 服务。真实 React DOM 校验唯一功能 checkbox、内部依赖身份、非版本不匹配恢复方向；另一个 DOM RED→GREEN 确保已支持的当前能力不会被下一启动准备诊断冒称当前阻断。只读诊断不写 Profile、不产生能力授权；旧无 reason transport 仍有效，未知／矛盾 reason 拒绝。
+
+完整根回归已通过 **720／720**，0 failed、0 cancelled、0 skipped；严格 Host／Client、冻结离线 lock、62 项独立重建字节对比、原版兼容资产／provenance、30583-byte 自动 guard YAML 与不可变 vendor 均通过。Client 重建为 160758 bytes、6 个安全浏览器模块，external 仍只有 React。先前一次根回归的唯一失败是旧 scaffold 总数断言（77／162）；已按四个新增 locale 的精确清单更新为 81／166，并重新运行全部测试，不跳过或放松清单。
+
+闭合发行清单仅增加四个精确 locale JSON：固定 81 + vendor 85 = 166 文件，JS／DTS 仍 62；locale 结构与文案由 source 与 extracted archive verifier 精确验证。已获得代码修改、push、新 Release 与同字节安装授权；最终完整根测试、clean-source 单次正式 pack、同归档 22 项矩阵及六项下载复核在提交后按门禁逐项记录于脱敏 Release 附件，尚未由开发 fixture 提前证明。共有 SDK／原版兼容资产／vendor／公开自动组合 guard 未变，不 npm 发布或自动重启。
+
+本机配置恢复是明确授权的单独操作，不是插件静默迁移其他维护者选择；实际生效仍依赖正常运行观测。隔离验收不宣称完整 authenticated GUI／任意自定义 Profile 被证明。
+
+## 0.4.2 正式发布门禁（历史）
 
 已获得本次 push、GitHub Release 和本机插件安装的明确授权，不包含 npm 发布、自动开关管理／启动请求或中断当前服务。0.4.2 必须从升版后的清洁提交单次构建，使用保留 manifest 的 pack；prepack、精确 tarball 字节／身份及同一归档的 13 项解包与 9 项真实管理器矩阵通过后，才推送 immutable tag 和 Release。源码提交、归档大小与 SHA、同字节结果及下载复核写入脱敏 Release 附件，原始日志／Profile 快照不公开。
 

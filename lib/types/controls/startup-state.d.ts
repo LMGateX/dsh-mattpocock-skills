@@ -10,6 +10,8 @@ export interface StartupPreparation {
     readonly status: 'ready' | 'not-prepared' | 'incompatible' | 'failed' | 'uncertain';
     readonly sdkVersion: string | null;
     readonly diagnostic: string | null;
+    /** Optional live observation detail; never a stored setting or capability grant. */
+    readonly reason?: 'compatibility-component-disabled';
 }
 export interface StartupObservation {
     readonly nativeInitialCwdSupported: boolean | null;

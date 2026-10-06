@@ -22,7 +22,15 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 
-## 单包兼容接入：0.4.2 发布与安装门禁
+## 0.4.3 产品形态与发行门禁
+
+本阶段接受范围为代码修改、push、新 GitHub Release 与同字节本机安装。交付根包／子路径独立 locale metadata、一个插件作用域的功能设置、内部兼容桥来源与高级维护控制说明，以及明确组件关闭覆盖的只读原因和恢复自动选择方向。技术 id／specifier、原版资产和 root 生命周期选择规则保持不变；不声称可以隐藏框架通用开关，也不伪造 SDK reset API。
+
+门禁：真实 Loader 关闭覆盖 tracer RED→GREEN；startup transport 兼容旧无 reason 回执，拒绝未知／矛盾 reason；真实 SDK 的根／子路径 metadata 与禁用行读取不执行 provider；Client 及真实 DOM 验证请求与内部依赖区别。随后严格构建、全量回归、四个精确 locale 归档路径、clean-source 一次 pack、同字节实际安装矩阵、隐私检查、新不可变标签／六项公开资产、全部下载复核和原样本机安装。首次 cwd 实际支持仍依赖运行事实，不由 metadata／安装回执推定。
+
+本机已授权的旧关闭覆盖仅撤销该 override 以恢复自动选择，保留启动请求与其他 Profile 字段；不强制开启、改共享 SDK 或自动重启。旧版本／资产不覆盖，npm 不发布，原始日志／快照不公开。
+
+## 单包兼容接入：0.4.2 发布与安装门禁（历史已授权阶段）
 
 接续[最新单包要求](<DESIGN.md#单包兼容支持的交付要求>)：验证固定版本的插件内部兼容服务，通过公开 bundle／loader 生命周期在真正启动时选择唯一提供者，保持当前热重载服务、原始 native 配置、首次 cwd 及原地续用语义。相同 recipe 的旧管理记录跨版本接续，不把维护转回用户。仅有管理器或文案修复不构成完成。
 

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Subagent Working-Directory Compatibility Bridge (Provided by This Plugin)",
+    "description": "An internal compatibility dependency provided by this plugin that adds initial subagent working-directory support to supported DSH versions; not an official DSH component. The feature switch is on this plugin’s settings page; it does not create, merge, or clean up worktrees."
+  }
+}

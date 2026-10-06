@@ -89,6 +89,10 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'CONTROLS.md',
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
+  'locale/en.json',
+  'locale/zh.json',
+  'locale/worktree-bridge/en.json',
+  'locale/worktree-bridge/zh.json',
 ])
 
 export const FIXED_PACKED_FILES = Object.freeze([
@@ -169,9 +173,13 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'source-lock.json',
   'THIRD_PARTY_NOTICES.md',
   'vendor-files.json',
+  'locale/en.json',
+  'locale/zh.json',
+  'locale/worktree-bridge/en.json',
+  'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.4.2'
+const EXPECTED_VERSION = '0.4.3'
 
 export const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2 || ~4.0.5-alpha.1',
@@ -229,7 +237,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 77
+const EXPECTED_FIXED_PACKED_FILES = 81
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
@@ -272,6 +280,36 @@ export function expectedPackedFileBytes(path, sourceBytes) {
   return sourceBytes.subarray(0, sourceBytes.length - 1)
 }
 
+const EXPECTED_LOCALE_META = Object.freeze(Object.fromEntries(Object.entries({
+  "locale/en.json": {
+    "title": "Matt Pocock Skills and Optional Collaboration Controls",
+    "description": "Distributes immutable Matt Pocock Skills with optional collaboration controls and subagent working-directory support configured in this plugin’s settings."
+  },
+  "locale/zh.json": {
+    "title": "Matt Pocock 技能与可选协作管理",
+    "description": "分发不可变的 Matt Pocock 技能，并提供可选协作管理与子代理工作目录增强；功能开关位于本插件设置页。"
+  },
+  "locale/worktree-bridge/en.json": {
+    "title": "Subagent Working-Directory Compatibility Bridge (Provided by This Plugin)",
+    "description": "An internal compatibility dependency provided by this plugin that adds initial subagent working-directory support to supported DSH versions; not an official DSH component. The feature switch is on this plugin’s settings page; it does not create, merge, or clean up worktrees."
+  },
+  "locale/worktree-bridge/zh.json": {
+    "title": "子代理工作目录兼容桥（本插件提供）",
+    "description": "由本插件提供的内部兼容依赖，为受支持的 DSH 补充子代理初始工作目录能力；不是 DSH 官方组件。功能开关在本插件设置页；不创建、合并或清理工作树。"
+  }
+}).map(([path, meta]) => [path, Object.freeze(meta)])))
+
+export function validatePackageLocale(path, value) {
+  assert(Object.hasOwn(EXPECTED_LOCALE_META, path), 'unexpected locale metadata path ' + path)
+  assert(value && typeof value === 'object' && !Array.isArray(value) && sameJson(Object.keys(value).sort(), ['meta']), 'locale dictionary must contain only metadata: ' + path)
+  assert(value.meta && typeof value.meta === 'object' && !Array.isArray(value.meta) && sameJson(Object.keys(value.meta).sort(), ['description', 'title']), 'locale metadata must contain exactly title and description: ' + path)
+  for (const field of ['title', 'description']) assert(typeof value.meta[field] === 'string' && value.meta[field] === EXPECTED_LOCALE_META[path][field], 'locale metadata ' + field + ' differs from the accepted display text: ' + path)
+}
+
+async function requirePackageLocales(root) {
+  for (const path of Object.keys(EXPECTED_LOCALE_META)) validatePackageLocale(path, parseStrictJsonBytes(await readFile(join(root, path)), path))
+}
+
 export function validatePackagePolicy(packageJson) {
   assert(PACKAGE_FILES_ALLOWLIST.length === EXPECTED_FIXED_PACKED_FILES, 'internal package allowlist count must remain exactly ' + EXPECTED_FIXED_PACKED_FILES)
   assert(FIXED_PACKED_FILES.length === EXPECTED_FIXED_PACKED_FILES, 'internal fixed package file count must remain exactly ' + EXPECTED_FIXED_PACKED_FILES)
@@ -298,6 +336,10 @@ export function validatePackagePolicy(packageJson) {
     './client': { types: './lib/types/client.d.ts', default: './lib/client.js' },
     './cordis.patch.yml': './cordis.patch.yml',
     './package.json': './package.json',
+    './locale/en.json': './locale/en.json',
+    './locale/zh.json': './locale/zh.json',
+    './native-subagent/locale/en.json': './locale/worktree-bridge/en.json',
+    './native-subagent/locale/zh.json': './locale/worktree-bridge/zh.json',
   }
   // Subpath order is immaterial; conditional targets must still put types first.
   assert(packageJson.exports && sameJson(Object.keys(packageJson.exports).sort(), Object.keys(exports).sort())
@@ -739,6 +781,7 @@ export async function runPrepack({ root = repositoryRoot } = {}) {
   const source = requireCleanSourceCommit(root)
   const packageJson = await readPackageJson(root)
   const packagePolicy = validatePackagePolicy(packageJson.value)
+  await requirePackageLocales(root)
   const vendor = await verifyCommittedArtifacts(root)
   const build = await compareCommittedBuild(root)
   const inventory = await readVendorInventory(root)
@@ -772,6 +815,7 @@ export async function runTarball({ root = repositoryRoot, tarballPath, checksumP
   const source = requireCleanSourceCommit(root)
   const packageJson = await readPackageJson(root)
   const packagePolicy = validatePackagePolicy(packageJson.value)
+  await requirePackageLocales(root)
   const sourceVendor = await verifyCommittedArtifacts(root)
   const build = await compareCommittedBuild(root)
   const inventory = await readVendorInventory(root)
@@ -814,6 +858,7 @@ export async function runTarball({ root = repositoryRoot, tarballPath, checksumP
     await compareFixedExtractedFiles(root, extractedRoot)
     const extractedPackage = await readPackageJson(extractedRoot)
     validatePackagePolicy(extractedPackage.value)
+    await requirePackageLocales(extractedRoot)
     const vendor = await verifyCommittedArtifacts(extractedRoot)
     const targets = await requirePackageTargets(extractedRoot, extractedPackage.value)
     await requireForbiddenPathsAbsent(extractedRoot)

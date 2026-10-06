@@ -160,6 +160,38 @@ test('missing package export is not same-plugin preparation', options, async t =
   assert.match((await f.inspect()).diagnostic, /wrapper export/)
 })
 
+test('clearing only the carrier disable overlay restores the exact automatic guards without forcing current capability', options, async t => {
+  const f = await fixture(t, { overlay: [{ id: 'mattpocock-native-subagent', disabled: true }] }), before = await image(f.root)
+  assert.equal((await f.inspect()).reason, 'compatibility-component-disabled')
+  const restored = sdk.applyEntryPatches(base(), composition.createCompatibilityCompositionPatches(), () => {})
+  await f.loader.root.update(restored); await f.loader.await()
+  const expressions = composition.createCompatibilityCompositionExpressions()
+  assert.deepEqual(f.stock.options.disabled, expressions.stock)
+  assert.deepEqual(f.loader.resolve('mattpocock-native-subagent').options.disabled, expressions.compat)
+  const prepared = await f.inspect()
+  assert.equal(prepared.status, 'ready'); assert.equal(prepared.reason, undefined)
+  assert.strictEqual(f.stock.fiber, f.originalFiber)
+  assert.strictEqual(f.ctx.get('subagents')[sdk.symbols.original], f.service)
+  assert.deepEqual(await image(f.root), before)
+})
+
+test('explicit compatibility component disabled overlay explains how to restore automatic provider selection', options, async t => {
+  const f = await fixture(t, { overlay: [{ id: 'mattpocock-native-subagent', disabled: true }] })
+  const compat = f.loader.resolve('mattpocock-native-subagent'), before = await image(f.root)
+  assert.equal(compat.options.disabled, true)
+  const prepared = await f.inspect()
+  assert.equal(prepared.status, 'incompatible')
+  assert.equal(prepared.reason, 'compatibility-component-disabled')
+  assert.match(prepared.diagnostic, /mattpocock-native-subagent/)
+  assert.match(prepared.diagnostic, /(?:remove|clear|撤销|移除)[\s\S]*disabled/i)
+  assert.match(prepared.diagnostic, /(?:automatic[\s\S]*selection|自动选择)/i)
+  assert.doesNotMatch(prepared.diagnostic, /(?:updat\w*|upgrad\w*|更新|升级)[\s\S]*(?:SDK|plugin|插件)|disabled\s*:\s*false/i)
+  assert.equal(compat.options.disabled, true, 'inspection must not force-enable the component')
+  assert.strictEqual(f.stock.fiber, f.originalFiber)
+  assert.strictEqual(f.ctx.get('subagents')[sdk.symbols.original], f.service)
+  assert.deepEqual(await image(f.root), before)
+})
+
 for (const [label, overlay] of [
   ['stock boolean false', [{ id: 'subagent', disabled: false }]],
   ['stock boolean true', [{ id: 'subagent', disabled: true }]],

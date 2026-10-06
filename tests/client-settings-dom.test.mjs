@@ -76,6 +76,23 @@ function normalText(container) {
 async function click(element) { await React.act(async () => element.click()) }
 async function select(element, value) { await React.act(async () => { element.value = value; element.dispatchEvent(new element.ownerDocument.defaultView.Event('change', { bubbles: true })) }) }
 
+test('real DOM distinguishes disabled dependency from version mismatch and retains loaded capability precedence', async t => {
+  let actual = startup({ state: 'incompatible', desired: { startupCwdEnabled: true }, boot: { epoch: 'bridge-dom', requested: { startupCwdEnabled: true } }, preparation: { status: 'incompatible', sdkVersion: '0.2.1-alpha.1', diagnostic: 'Clear disabled override', reason: 'compatibility-component-disabled' } })
+  const remote = { startupStatus: async () => ok(copy(actual)), saveStartupSettings: () => assert.fail('read-only conflict diagnosis') }
+  const { container } = await mount(t, client.StartupSettingsPanel, { remote })
+  const visible = named(container, '当前运行状态')
+  assert.match(visible.textContent, /兼容桥被配置禁用/)
+  assert.match(visible.textContent, /撤销.*关闭覆盖.*恢复自动选择/)
+  assert.doesNotMatch(visible.textContent, /插件兼容性不匹配|请更新|安装或更新/)
+  assert.equal(container.querySelectorAll('input[type=checkbox]').length, 1)
+  assert.match(normalText(container), /不是 DSH 官方组件/)
+  actual = { ...actual, state: 'enabled', enabledNow: true, nativeInitialCwdSupported: true }
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(visible.textContent, /已生效/)
+  assert.doesNotMatch(visible.textContent, /尚未生效|当前生效：禁用/)
+  assert.doesNotMatch(normalText(container), /当前阻断是/)
+})
+
 test('startup DOM never offers SDK paths or manual maintenance commands, including collapsed details', async t => {
   let actual = startup()
   const remote = { startupStatus: async () => ok(copy(actual)), saveStartupSettings: () => assert.fail('read-only rendering') }
@@ -128,7 +145,7 @@ test('plugin readiness and real DOM saves stay pending in the same Host epoch, e
   assert.match(currentText(), /插件兼容支持：插件实现已就绪（不代表当前已启用）/)
   assert.match(currentText(), /当前运行时能力：不支持/)
   checkManagement()
-  await click(named(container, '允许创建子代理时指定工作树'))
+  await click(named(container, '允许本插件创建子代理时指定工作树'))
   await click(button(container, '保存下次启动请求'))
   assert.equal(f.calls.startup[0].revision, 7)
   assert.deepEqual(f.calls.startup[0].desired, { startupCwdEnabled: true })
@@ -154,7 +171,7 @@ test('plugin readiness and real DOM saves stay pending in the same Host epoch, e
   assert.match(currentText(), /当前运行时能力：支持/)
   assert.match(container.textContent, /host-after-restart/)
   checkManagement()
-  await click(named(container, '允许创建子代理时指定工作树'))
+  await click(named(container, '允许本插件创建子代理时指定工作树'))
   await click(button(container, '保存下次启动请求'))
   assert.equal(f.calls.startup[1].revision, 9)
   assert.deepEqual(f.calls.startup[1].desired, { startupCwdEnabled: false })
@@ -207,7 +224,7 @@ test('DOM clicks save startup revision seven independently from management revis
   const f = fixture(), { container } = await mount(t, client.SettingsPage, f.props)
   const current = named(container, '当前运行状态')
   assert.match(current.textContent, /当前生效：禁用/)
-  await click(named(container, '允许创建子代理时指定工作树'))
+  await click(named(container, '允许本插件创建子代理时指定工作树'))
   assert.match(named(container, '下次启动设置').textContent, /草稿：启用（未保存）/)
   await click(button(container, '保存下次启动请求'))
   assert.equal(f.calls.startup.length, 1)
@@ -260,7 +277,7 @@ test('policy failure leaves the independently mounted startup DOM editable and s
   const f = fixture({ readPolicy: async () => { throw new Error('controlled policy unavailable') } })
   const { container } = await mount(t, client.SettingsPage, f.props)
   assert.match(named(container, '工作区协作管理').textContent, /协作配置不可用/)
-  const startupToggle = named(container, '允许创建子代理时指定工作树')
+  const startupToggle = named(container, '允许本插件创建子代理时指定工作树')
   assert.equal(startupToggle.disabled, false)
   await click(startupToggle)
   await click(button(container, '保存下次启动请求'))
@@ -304,7 +321,7 @@ test('startup DOM keeps loading and unknown facts distinct from disabled or rest
   let finishRead
   const remote = { startupStatus: () => new Promise(resolve => { finishRead = resolve }), saveStartupSettings: () => { throw new Error('unexpected startup save') } }
   const { container } = await mount(t, client.StartupSettingsPanel, { remote })
-  const toggle = named(container, '允许创建子代理时指定工作树')
+  const toggle = named(container, '允许本插件创建子代理时指定工作树')
   assert.equal(toggle.disabled, true)
   assert.equal(button(container, '保存下次启动请求').disabled, true)
   assert.match(named(container, '当前运行状态').textContent, /未知/)
@@ -325,7 +342,7 @@ test('startup rejected save keeps the DOM draft and marks last confirmation inst
     return new Promise((_resolve, reject) => { rejectSave = reject })
   } }
   const { container } = await mount(t, client.StartupSettingsPanel, { remote })
-  const toggle = named(container, '允许创建子代理时指定工作树')
+  const toggle = named(container, '允许本插件创建子代理时指定工作树')
   await click(toggle)
   await click(button(container, '保存下次启动请求'))
   assert.equal(toggle.disabled, true)
@@ -380,7 +397,7 @@ for (const preparation of ['not-prepared', 'failed', 'ready']) {
 test('unknown startup wire enum fails closed in DOM rather than becoming false or successful', async t => {
   const remote = { startupStatus: async () => ok(startup({ state: 'future-state' })), saveStartupSettings: () => { throw new Error('must not save malformed facts') } }
   const { container } = await mount(t, client.StartupSettingsPanel, { remote })
-  assert.equal(named(container, '允许创建子代理时指定工作树').disabled, true)
+  assert.equal(named(container, '允许本插件创建子代理时指定工作树').disabled, true)
   assert.equal(button(container, '保存下次启动请求').disabled, true)
   assert.match(named(container, '当前运行状态').textContent, /未知|不可用/)
   assert.doesNotMatch(named(container, '当前运行状态').textContent, /当前生效：禁用|当前生效：启用|已生效|已关闭/)

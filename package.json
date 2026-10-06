@@ -1,6 +1,6 @@
 {
   "name": "@lmgatex/dsh-mattpocock-skills",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "Matt Pocock 技能分发与可选协作管理插件（可复现构建）",
   "type": "module",
@@ -30,6 +30,10 @@
       "types": "./lib/types/compatibility/managed-sdk.d.ts",
       "default": "./lib/compatibility/managed-sdk.js"
     },
+    "./locale/en.json": "./locale/en.json",
+    "./locale/zh.json": "./locale/zh.json",
+    "./native-subagent/locale/en.json": "./locale/worktree-bridge/en.json",
+    "./native-subagent/locale/zh.json": "./locale/worktree-bridge/zh.json",
     "./native-subagent": {
       "types": "./lib/types/compatibility/native-subagent.d.ts",
       "default": "./lib/compatibility/native-subagent.js"
@@ -112,7 +116,11 @@
     "MIGRATION.md",
     "CONTROLS.md",
     "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "locale/en.json",
+    "locale/zh.json",
+    "locale/worktree-bridge/en.json",
+    "locale/worktree-bridge/zh.json"
   ],
   "keywords": [
     "deepseek-harness",

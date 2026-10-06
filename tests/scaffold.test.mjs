@@ -88,8 +88,11 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   assert.deepEqual(actual, expected)
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
-  assert.equal(FIXED_PACKED_FILES.length, 77)
+  assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), [
+    'locale/en.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json', 'locale/zh.json',
+  ])
+  assert.equal(FIXED_PACKED_FILES.length, 81)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 162)
+  assert.equal(EXPECTED_PACKED_FILES, 166)
 })

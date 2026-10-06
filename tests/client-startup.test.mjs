@@ -40,6 +40,24 @@ function renderer() {
   }
 }
 
+test('component-disabled override is a visible dependency conflict, not version mismatch or a second feature switch', async t => {
+  const mounted = renderer(); t.after(() => mounted.unmount())
+  const actual = status({ state: 'incompatible', restartNeeded: false, boot: { epoch: 'blocked', requested: { startupCwdEnabled: true } }, preparation: { status: 'incompatible', sdkVersion: '0.2.1-alpha.1', diagnostic: 'Remove the disabled override; restore automatic selection', reason: 'compatibility-component-disabled' } })
+  const remote = { startupStatus: async () => ok(actual), saveStartupSettings: () => assert.fail('diagnosis must not write configuration') }
+  mounted.render(client.StartupSettingsPanel, { remote }); mounted.effects(); await settle()
+  const tree = mounted.render(client.StartupSettingsPanel, { remote })
+  const visible = text(rows(tree).filter(row => row.props?.role === 'status'))
+  assert.match(visible, /兼容桥被配置禁用/)
+  assert.match(visible, /撤销.*关闭覆盖.*恢复自动选择/)
+  assert.doesNotMatch(visible, /版本不匹配|插件兼容性不匹配|安装或更新|请更新/)
+  assert.match(text(tree), /子代理工作目录兼容桥（本插件提供）/)
+  assert.match(text(tree), /不是 DSH 官方组件/)
+  assert.match(text(tree), /高级维护控制.*不是第二个功能开关/)
+  assert.equal(rows(tree).filter(row => row.type === 'input' && row.props.type === 'checkbox').length, 1)
+  assert.match(text(tree), /只控制本插件/)
+  assert.equal(checkbox(tree).props.checked, true)
+})
+
 test('saved enable survives several distinct simulated startup epochs but unprepared capability is explained beside current state', async t => {
   const { StartupSupport } = await import('../lib/controls/startup-support.js')
   const { MemoryVersionedStorage } = await import('../lib/controls/versioned-storage.js')

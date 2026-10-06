@@ -89,6 +89,42 @@ async function nativeGraph(ctx, load, dir, resume, parentId = 'manager-parent') 
     async dispose() { release.resolve({ kind: 'reject' }); await ctx.subagents.drainContinuableDescendants([handle.agent]); await handle.dispose() } }
 }
 
+async function assertPackageMetadata(ctx, carrierDisabled = false) {
+  const expected = {
+  "root": {
+    "title": {
+      "en": "Matt Pocock Skills and Optional Collaboration Controls",
+      "zh": "Matt Pocock 技能与可选协作管理"
+    },
+    "description": {
+      "en": "Distributes immutable Matt Pocock Skills with optional collaboration controls and subagent working-directory support configured in this plugin’s settings.",
+      "zh": "分发不可变的 Matt Pocock 技能，并提供可选协作管理与子代理工作目录增强；功能开关位于本插件设置页。"
+    }
+  },
+  "bridge": {
+    "title": {
+      "en": "Subagent Working-Directory Compatibility Bridge (Provided by This Plugin)",
+      "zh": "子代理工作目录兼容桥（本插件提供）"
+    },
+    "description": {
+      "en": "An internal compatibility dependency provided by this plugin that adds initial subagent working-directory support to supported DSH versions; not an official DSH component. The feature switch is on this plugin’s settings page; it does not create, merge, or clean up worktrees.",
+      "zh": "由本插件提供的内部兼容依赖，为受支持的 DSH 补充子代理初始工作目录能力；不是 DSH 官方组件。功能开关在本插件设置页；不创建、合并或清理工作树。"
+    }
+  }
+}
+  const bundle = (await ctx.pluginManager.listBundles()).find(row => row.name === pluginName)
+  const rows = await ctx.pluginManager.listPlugins()
+  const root = rows.find(row => row.moduleName === pluginName)
+  const bridge = rows.find(row => row.moduleName === pluginName + '/native-subagent')
+  for (const [row, metadata] of [[bundle, expected.root], [root, expected.root], [bridge, expected.bridge]]) {
+    assert(row, 'actual public manager must list installed package and carrier metadata')
+    assert.deepEqual(row.meta?.title, metadata.title)
+    assert.deepEqual(row.meta?.description, metadata.description)
+    assert.equal(row.meta?.error, undefined)
+  }
+  if (carrierDisabled) assert.equal(bridge.enabled, false, 'disabled carrier row still exposes display metadata without activation')
+}
+
 async function worker(scenario, tarball) {
   const dir = process.cwd(), home = dirname(dirname(dir)), anchor = join(hostRoot, 'package.json')
   const sdkRequire = createRequire(anchor), profileRequire = createRequire(join(dir, 'package.json'))
@@ -151,6 +187,7 @@ async function worker(scenario, tarball) {
       return owner.fiber
     }
     if (scenario === 'fresh' || scenario === 'disable-compatible' || scenario === 'remove-compatible' || scenario === 'off-next' || scenario === 'skills-enable' || scenario === 'native' || scenario === 'cold-native' || scenario.startsWith('upgrade-')) {
+      await assertPackageMetadata(ctx)
       const stock = entry('subagent'), compatible = entry('mattpocock-native-subagent')
       assert.equal(ctx.subagents[origin], 'native-subagent-0.2.1-alpha.1', JSON.stringify({ logs, stockState: stock.fiber?.state, compatibleState: compatible.fiber?.state, sameTree: stock.parent === compatible.parent, treeRoot: stock.parent?.root }))
       assert.equal(stock.fiber, undefined)
@@ -316,10 +353,11 @@ async function worker(scenario, tarball) {
     assert.equal(result.application, 'applied', JSON.stringify(result))
     assert.equal(result.bundle, pluginName)
     assert.equal(result.changed, true)
-    assert.equal(result.version, '0.4.2')
+    assert.equal(result.version, '0.4.3')
     const installed = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName)
     assert.equal(installed.installed, true)
     assert.equal(installed.enabled, true)
+    await assertPackageMetadata(ctx, true)
     assert.equal(token(ctx.subagents), initial, 'actual manager live install retains canonical service')
     assert.equal(entry('subagent').fiber.uid, uid, 'actual manager live HMR retains Fiber')
     assert.equal(entry('mattpocock-native-subagent').fiber, undefined)
@@ -371,13 +409,13 @@ before(async () => {
   await run('tar', ['-xzf', tarball, '-C', fixtureRoot], { timeout: 60000 })
   const fixture = join(fixtureRoot, 'package'), manifestPath = join(fixture, 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  assert.equal(manifest.version, '0.4.2')
-  for (const version of ['0.4.3', '0.4.4']) {
+  assert.equal(manifest.version, '0.4.3')
+  for (const version of ['0.4.4', '0.4.5']) {
     await writeFile(manifestPath, JSON.stringify({ ...manifest, version }, null, 2) + '\n')
     await run('pnpm', ['pack', '--pack-destination', join(scratch, 'pack')], { cwd: fixture, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
     upgrades.set(version, join(scratch, 'pack', 'lmgatex-dsh-mattpocock-skills-' + version + '.tgz'))
   }
-  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.2')
+  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.3')
   profile = join(scratch, 'home/profiles/web')
   await mkdir(profile, { recursive: true })
 })
@@ -396,7 +434,7 @@ async function child(scenario, tar = tarball) {
     "import { createHash } from 'node:crypto'",
     'const hostRoot = ' + JSON.stringify(hostRoot), 'const pluginName = ' + JSON.stringify(pluginName),
     "const origin = Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')",
-    'const nativeHash = ' + JSON.stringify(nativeHash), nativeGraph.toString(), worker.toString(),
+    'const nativeHash = ' + JSON.stringify(nativeHash), nativeGraph.toString(), assertPackageMetadata.toString(), worker.toString(),
     'console.log("MANAGER_RESULT:" + JSON.stringify(await worker(' + JSON.stringify(scenario) + ', ' + JSON.stringify(tar) + ')))',
   ].join('\n')
   const workerPath = join(scratch, 'worker-' + scenario + '.mjs')
@@ -437,7 +475,7 @@ test('actual manager Skills plugin enablement is independent of loaded compatibl
   assert.deepEqual(await child('skills-enable'), { skillsIndependent: true, retainedCompatible: true, unchangedRawStock: true })
 })
 
-for (const version of ['0.4.3', '0.4.4']) {
+for (const version of ['0.4.4', '0.4.5']) {
   test('actual manager installs synthetic upgrade fixture ' + version + ' without swapping loaded compatible service', options, async () => {
     assert.deepEqual(await child('upgrade-' + version, upgrades.get(version)), { syntheticFixtureVersion: version, restartRequired: true, retainedCompatible: true })
     assert.deepEqual(await child('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })

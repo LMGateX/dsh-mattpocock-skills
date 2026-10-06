@@ -667,9 +667,11 @@ const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 
 function startupFlag(value: boolean | null): string { return value === null ? '未知（观测不可用）' : value ? '启用' : '禁用' }
 /** Translate the authoritative Host state; plugin readiness never overrides loaded capability. */
 function startupStateText(saved: StartupStatus): string {
+  if (saved.state === 'incompatible' && saved.preparation.reason === 'compatibility-component-disabled') return '兼容桥被配置禁用'
   return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '插件兼容性尚未验证', unsupported: '增强功能不可用', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['state'], string>)[saved.state]
 }
 function preparationText(saved: StartupStatus): string {
+  if (saved.preparation.reason === 'compatibility-component-disabled') return '兼容桥被配置禁用（需要恢复自动选择）'
   return ({ ready: '插件实现已就绪（不代表当前已启用）', 'not-prepared': '插件兼容性尚未验证', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['preparation']['status'], string>)[saved.preparation.status]
 }
 function startupExplanation(saved: StartupStatus): { readonly title: string; readonly detail: string } {
@@ -677,6 +679,7 @@ function startupExplanation(saved: StartupStatus): { readonly title: string; rea
   if (saved.state === 'enabled') return { title: '已生效', detail: '当前进程已启用；创建新的可继续交互子代理时，可指定工作树作为初始工作目录。' }
   if (saved.state === 'disabled') return { title: '已关闭', detail: '当前进程未启用此功能；关闭不卸载运行时能力，也不改变已有子代理的工作目录。' }
   if (saved.state === 'pending-restart') return { title: saved.enabledNow === true ? '当前仍生效：关闭请求待重启' : '尚未生效：待重启', detail: request + '当前进程保留本次启动配置；重启 DSH 后重新核对运行状态，刷新网页无效。' }
+  if (saved.preparation.reason === 'compatibility-component-disabled') return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + '兼容桥被配置禁用', detail: request + '功能请求已保留，但内部依赖被组件配置关闭。请撤销兼容桥的关闭覆盖，恢复自动选择；不要把组件强制开启当作恢复默认。保存功能请求或反复重启都不会撤销该覆盖。当前进程与已有子代理不会被替换。' }
   if (saved.state === 'needs-preparation') return { title: '尚未生效：插件兼容性尚未验证', detail: request + '插件兼容性尚未验证，反复重启也不会生效。请安装或更新兼容的插件版本，并查看技术诊断。' }
   if (saved.state === 'unsupported') return { title: '尚未生效：增强功能不可用', detail: request + '当前无法提供此增强功能，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断；重启本身不能解决兼容性未知的问题。' }
   return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + startupStateText(saved), detail: request + '此增强功能暂不可用，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断，不要将保存成功或重启标记当作功能已生效。' }
@@ -692,8 +695,9 @@ export function StartupSettingsPanel(props: { readonly remote: StartupRemote }):
   const needsPreparation = saved !== null && saved.nativeInitialCwdSupported !== true && (saved.preparation.status !== 'ready' || ['needs-preparation', 'unsupported', 'incompatible', 'failed'].includes(saved.state))
   return h('section', { 'aria-label': '子代理创建时的工作树设置', style: settingsCard },
     h('h3', { style: { marginTop: 0 } }, '创建子代理（subagent）时指定工作树（worktree）'),
-    h('p', null, '全局启动配置 · 让新建、可继续交互的子代理从指定工作树目录开始工作。不改变 DSH 自身启动目录或已有会话，不负责创建、合并或清理工作树。'),
-    h('p', null, '独立启动配置；不受工作区策略、管理总开关或技能分发开关控制。'),
+    h('p', null, '本插件的启动配置（不是 DSH 的全局开关）· 让新建、可继续交互的子代理从指定工作树目录开始工作。不改变 DSH 自身启动目录或已有会话，不负责创建、合并或清理工作树。'),
+    h('p', null, '独立启动配置；只控制本插件显式指定初始工作目录的子代理派发，不是 DSH 全部子代理 API 的总开关；不受工作区策略、管理总开关或技能分发开关控制。'),
+    h('p', null, '子代理工作目录兼容桥（本插件提供）是内部实现依赖，不是 DSH 官方组件。框架插件列表中的组件开关是高级维护控制，不是第二个功能开关；正常使用只需在这里设置功能请求。'),
     saved !== null && view.error !== null ? h('p', { role: 'alert' }, '以下为上次确认的启动状态；保存后的持久配置尚未确认，不能当作当前配置回执。') : null,
     h('div', { style: settingsGrid },
       h('section', { 'aria-label': '当前运行状态', style: { ...settingsCard, background: 'rgba(127,127,127,.05)' } },
@@ -706,18 +710,24 @@ export function StartupSettingsPanel(props: { readonly remote: StartupRemote }):
           h('p', null, '当前运行时能力：' + (saved.nativeInitialCwdSupported === null ? '未知（观测不可用）' : saved.nativeInitialCwdSupported ? '支持' : '不支持')))),
       h('section', { 'aria-label': '下次启动设置', style: settingsCard },
         h('h4', { style: { marginTop: 0 } }, '下次启动设置'),
-        h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '允许创建子代理时指定工作树', checked: draft?.startupCwdEnabled ?? false, disabled: view.busy !== null || draft === null,
-          onChange: (event: ChangeEvent<HTMLInputElement>) => controller.setDesired(event.target.checked) }), '允许创建子代理时指定工作树'),
+        h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '允许本插件创建子代理时指定工作树', checked: draft?.startupCwdEnabled ?? false, disabled: view.busy !== null || draft === null,
+          onChange: (event: ChangeEvent<HTMLInputElement>) => controller.setDesired(event.target.checked) }), '允许本插件创建子代理时指定工作树'),
         saved === null ? h('p', null, '已保存配置与草稿尚未确认。') : h('div', null,
           h('p', null, '下次启动（已保存）：' + startupFlag(saved.desired.startupCwdEnabled)),
           h('p', null, '草稿：' + startupFlag(draft?.startupCwdEnabled ?? null) + (dirty ? '（未保存）' : '（与已保存一致）'))),
         h('div', { style: settingsActions },
           h('button', { type: 'button', disabled: view.busy !== null || !dirty, onClick: () => { void controller.save() } }, view.busy === 'saving' ? '正在保存…' : '保存下次启动请求'),
           h('button', { type: 'button', disabled: view.busy === 'loading', onClick: () => { void controller.refresh() } }, '重新读取启动状态（丢弃草稿）')))),
-    h('p', { style: { lineHeight: 1.65 } }, STARTUP_HINT),
+    h('p', { style: { lineHeight: 1.65 } }, saved?.preparation.reason === 'compatibility-component-disabled'
+      ? saved.nativeInitialCwdSupported === true
+        ? '当前运行时能力已支持，组件关闭覆盖不会抹除当前能力，但可能阻断下次启动的兼容选择。需要继续使用兼容桥时，撤销关闭覆盖以恢复自动选择；保存功能请求或刷新网页不会代替这一配置恢复。'
+        : '此设置在 DSH 启动时读取；保存不改变当前进程。当前阻断是兼容桥的关闭覆盖，不是版本不匹配；先恢复自动选择，再正常重启并核对实际运行状态。刷新网页或反复重启不会撤销配置覆盖。'
+      : STARTUP_HINT),
     needsPreparation ? h('p', null, saved.state === 'disabled'
       ? '当前已关闭，不要求兼容验证。若以后启用此功能，请使用兼容的插件版本。'
-      : '此增强功能暂不可用，仍可使用普通原生子代理。请安装或更新兼容的插件版本并查看技术诊断；保存或反复重启不会自动解决兼容问题。') : null,
+      : saved.preparation.reason === 'compatibility-component-disabled'
+        ? '内部依赖被配置禁用；撤销该组件的关闭覆盖以恢复自动选择，而不是强制开启或重新安装。普通原生子代理与已有会话不受此诊断操作影响。'
+        : '此增强功能暂不可用，仍可使用普通原生子代理。请安装或更新兼容的插件版本并查看技术诊断；保存或反复重启不会自动解决兼容问题。') : null,
     saved?.state === 'pending-restart' && saved.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
       ? h('p', null, '插件实现已就绪，但当前运行时能力尚未启用；实现就绪不等于当前生效。已保存启用请求后，请正常重启 DSH 并重新核对。') : null,
     saved === null ? null : h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术诊断（启动标识、版本与原始状态）'),

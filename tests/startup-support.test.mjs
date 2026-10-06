@@ -14,6 +14,12 @@ const ready = { status: 'ready', sdkVersion: '0.2.1-alpha.1', diagnostic: null }
 const observe = async () => ({ nativeInitialCwdSupported: true, preparation: ready })
 
 // Pre-agreed public seams: StartupSupport + codecs, and actual native DomainFacility.
+test('startup observation preserves an explicit component-disabled reason without treating it as authority', () => {
+  const observation = { nativeInitialCwdSupported: false, preparation: { status: 'incompatible', sdkVersion: null, diagnostic: 'component override disabled', reason: 'compatibility-component-disabled' } }
+  assert.deepEqual(parseStartupObservation(observation), observation)
+  assert.throws(() => parseStartupObservation({ ...observation, preparation: { ...observation.preparation, reason: 'invented-authority' } }), { code: 'invalid-input' })
+  assert.throws(() => parseStartupObservation({ ...observation, preparation: { ...observation.preparation, status: 'ready' } }), { code: 'invalid-input' })
+})
 test('startup cwd support defaults off even on a natively capable process', async () => {
   const storage = new MemoryVersionedStorage(parseStartupDocument)
   const core = new StartupSupport(storage, { epoch: 'process-A' }, observe)

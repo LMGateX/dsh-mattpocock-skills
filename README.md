@@ -23,7 +23,13 @@ This release mirrors upstream **v1.3.1** (commit `24fe0ef`). `PROVENANCE.json` r
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.
 
-## 0.4.2 single-package compatibility
+## 0.4.3 worktree compatibility bridge presentation
+
+The framework component list now displays **子代理工作目录兼容桥（本插件提供）** / **Subagent Working-Directory Compatibility Bridge (Provided by This Plugin)** with its origin and dependency description. The technical row id and module path remain stable for existing profiles; “native-subagent” is an ABI identifier, not a claim of official DSH ownership. There is one business setting: allowing **this plugin** to dispatch a newly created continuable child with an explicit initial worktree directory. The framework row toggle is an advanced component-maintenance control, not a second feature setting.
+
+A persisted component-disable override now has a distinct read-only diagnosis and recovery direction: clear that override to restore automatic selection. Saving the feature request, forcing the row on, reinstalling, or repeatedly restarting does not mean the default selection rule has been restored. The plugin does not silently migrate operator component choices or unload a manager when the feature is off. Loaded capability remains authoritative; normal restart and actual-state checks still apply. No shared SDK files or upstream Skill bodies are changed.
+
+## 0.4.2 single-package compatibility (historical release)
 
 This release line includes the plugin-owned, hash-pinned initial-cwd provider for SDK `0.2.1-alpha.1` and its canonical public package graph. No shared SDK files are patched and users maintain no separate patch or launcher. Install/update the plugin, save the independent next-boot request, normally restart DSH when necessary, then check the actual loaded capability. Existing ACTIVE/PENDING providers and continuable children are retained; whole-bundle removal/re-add cannot construct a second canonical manager, while genuine root shutdown still drains it. Unknown identity or unsupported topology keeps ordinary-native behavior. The optional management and startup request remain off by default. Exact release identity and verification results are attached to the GitHub Release; installation is not a claim of current GUI activation.
 
