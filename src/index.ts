@@ -30,7 +30,7 @@ export interface Config {
 
 export const Config: Schema<Config> = Schema.object({
   channel: Schema.union([...CHANNELS]).default(DEFAULT_CHANNEL),
-}).description('Select the Matt Pocock Skills distribution channel')
+}).description('选择 Matt Pocock 技能分发渠道')
 
 /** Register one immutable bundled Skill provider for the selected channel. */
 export function apply(ctx: Context, config: Config = { channel: DEFAULT_CHANNEL }): void {

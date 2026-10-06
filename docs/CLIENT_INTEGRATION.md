@@ -53,6 +53,19 @@ Inspected SDK artifact contracts (package-relative locators, not public source-f
 - Native openTab has no background/no-focus mode; it selects and expands. Local sidebar layout persistence is not a business ledger.
 - Ordinary chat messages are not rewritten. Only mattpocock_record, mattpocock_window, mattpocock_resource, mattpocock_controls, mattpocock_execute, mattpocock_assign, mattpocock_history, mattpocock_worktree and mattpocock_delegate get source cards. Preparing/start/result are distinguished; public argsRaw/content/error fields are preserved without serializing lazy argument-reader internals. Disabling timeline annotation still preserves the actual Tool record.
 
+## 配置页分区、中文文案与保存语义
+
+配置页按独立职责分区：
+
+1. **创建子代理（subagent）时指定工作树（worktree）**：全局启动配置，分为“当前运行状态”和“下次启动设置”。勾选是草稿请求，不是能力安装或当前已生效。宿主报告的实际状态直接翻译，不再被磁盘准备状态覆盖；SDK 未准备且没有原生支持时，明确提示“尚未生效：需要兼容准备”，反复普通重启不能解决。官方原生支持已可用时，不要求额外打兼容补丁。
+2. **协作管理**：管理总开关、工作区／全局默认范围，以及“协作功能”“参考上限”“界面显示位置”。所有固定字段、来源、状态与限制说明使用中文，底层协议键、继承删除与 CAS 不改。
+3. **保存前预览**：展示中文有效值／来源差异，原始策略与变更放入折叠技术详情。按钮根据总开关更改显示“保存并启用协作管理”“保存并关闭协作管理”或“保存并应用配置”。真实宿主保存回执确认后才显示已保存并应用；不需要另找一个启用草稿的按钮。失败或回执未确认时保留草稿并要求重新读取核对。
+4. **会话状态查看**：在配置表之后单独选择已有会话。查看不修改配置，不授予权限，不自动打开侧栏或唤醒模型。
+
+“保存下次启动请求”仅写启动文档，“保存并应用配置”仅写协作策略；两者分别使用各自读取到的修订，不互相借用。启动启用仍需实际 SDK 支持和真正的进程重启；保存不会修改运行中的 SDK。固定界面文本中文化不翻译任务自定义状态、真实标识符、命令参数或原始程序诊断，后者作为技术数据保留。
+
+配置卡片采用可换行的响应式网格与操作条。输入区摘要的盒子通过宿主 composer 宽度／边距变量和回退值居中，内部文本居中、长名称换行，并保留 96px 最大高度与纵向滚动。右侧详情与工具卡只约束自身宽度和换行，不接管原生会话布局；紧凑标题入口保留宽度上限，避免挤占会话标题。原生装饰与 dock 的显示条件保持不变。
+
 ## Settings and explicit writes
 
 The page starts with the Host's first listed workspace and offers a separate global-default selection. Boolean leaves have inherit/on/off. Removing a leaf restores inheritance. T/S reference values accept positive safe integers only; unset effective references remain unconfigured, never example numbers or hard dispatch seats. Exceeding a reference or unknown execution coverage does not itself require another UI approval. The management total switch is explicitly global and does not affect Skill delivery.
@@ -114,8 +127,8 @@ Generation fencing and true AbortSignal cancellation cover superseded reads, Ses
 
 [Client tests](<../tests/client.test.mjs>) cover the closed graph, private-module inlining, native keyed/list registration and cleanup against the actual SlotCore, sparse policy inheritance/CAS conflict, late A/B reads, unknown failures, generations/cancellation, default-off list gate, user-only grants, source preservation and owned Tool keys. Descriptor tests require readSession and historyAction cancellation so an AbortSignal cannot accidentally be sent as a JSON parameter. Mounted Remote/renderer fixtures additionally cover history pagination/filter/detail/retention actions, explicit source-row selector/CAS/cut handling, partial or uncertain source acknowledgements, source revision unknown disabling, cleaned/discarded current bindings, business row CAS, advisory windows, aggregate read failures and delayed responses after Session changes.
 
-This is not visual acceptance, a screenshot/DOM audit, actual Web renderer mounting, profile installation, model evaluation or a claim that missing seams became available. The main integration task owns final build/declaration generation, packed-artifact verification and runtime authorization probes. Live GUI/profile activation and model trials remain separately unauthorized.
+The original element-tree fixtures are not visual acceptance or actual Web renderer mounting. The additional [real DOM regressions](<../tests/client-settings-dom.test.mjs>) mount the shipped browser-module factory with real React/ReactDOM in Happy DOM and controlled Remote receipts: Chinese groups and controls, actual input/change/click events, independent startup/policy CAS, sparse inheritance, unknown/loading/failure, native-support precedence, Session cancellation and role-qualified keys, plus centered composer-root style contracts. React warnings are checked through mount, update and disposal. Happy DOM is not a graphical browser: these checks do not measure rendered pixels, certify wide/narrow viewport visuals, mount the complete Web Profile or establish live GUI acceptance. Build/artifact identity, installation, SDK preparation and model evaluations remain separate evidence.
 
-### Observed repository-only verification
+### Historical repository-only verification before the current settings changes
 
 The latest independent client type check passed. The closed memory-only build reported 121,314 bytes, five browser-safe private TypeScript modules and React as its only external request. All 36 client mechanical tests passed with zero failures and zero skips, including same-text declaration reproduction. These are measurements of the current sources, not a released/installed artifact identity; the main artifact verifier must recompute and bind the final package bytes. No final bundle/declaration was emitted by this delegated client task.

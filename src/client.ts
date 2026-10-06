@@ -160,7 +160,7 @@ function useObservation(observer: SessionObserver): Observation<ClientSessionSna
   useEffect(() => observer.retain(), [observer])
   return useSyncExternalStore(observer.subscribe, observer.getSnapshot, observer.getSnapshot)
 }
-const panelStyle = { boxSizing: 'border-box' as const, padding: '16px', height: '100%', overflow: 'auto', minHeight: 0 }
+const panelStyle = { boxSizing: 'border-box' as const, padding: '16px', height: '100%', width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'auto', minHeight: 0, overflowWrap: 'anywhere' as const, textAlign: 'left' as const }
 function diagnostic(message: string): ReactElement { return h('p', { role: 'status' }, message) }
 function pretty(value: unknown): ReactElement { return h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(value, null, 2)) }
 
@@ -221,23 +221,26 @@ export function compactInstrumentSummary(view: ClientSessionSnapshot): { readonl
 export function HeaderEntry(props: HeaderProps): ReactElement | null {
   const observation = useObservation(props.observer)
   if (props.observer.getDisplay()?.header === false) return null
-  if (observation.status === 'unknown') return h('span', { title: observation.error ?? 'No committed snapshot', role: 'status' }, '协作 · 状态未知')
+  if (observation.status === 'unknown') return h('span', { title: observation.error ?? '尚无已确认的状态快照', role: 'status', style: { display: 'inline-block', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, '协作 · 状态未知')
   const view = observation.value
   if (!view.policy.display.header) return null
   const summary = compactInstrumentSummary(view)
-  const style = { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(60vw, 680px)', minWidth: 0, overflow: 'hidden', fontSize: '11px' }
-  const content = [h('span', { key: 'identity' }, '协作'), ...summary.parts.map((part, index) => h('span', { key: index, style: { maxWidth: index === 1 ? '220px' : '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, part))]
+  const style = { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', fontSize: '11px' }
+  const content = [h('span', { key: 'identity', style: { flexShrink: 0 } }, '协作'), ...summary.parts.map((part, index) => h('span', { key: index, style: { minWidth: 0, maxWidth: index === 1 ? '220px' : '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, part))]
   return view.policy.display.rightPanel ? h('button', { type: 'button', onClick: props.openDetails, title: summary.detail, 'aria-label': summary.detail, style }, ...content)
     : h('span', { title: summary.detail + ' · 右侧详情入口已关闭', 'aria-label': summary.detail, style }, ...content)
+}
+function countingScopeText(scope: InstrumentSnapshot['summary']['countingScope']): string {
+  return ({ instance: '当前实例统计', assignment: '当前分配范围统计' } satisfies Record<InstrumentSnapshot['summary']['countingScope'], string>)[scope] ?? '统计范围未知'
 }
 export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
   if (observation.status !== 'ready' || !observation.value.policy.display.inputSummary) return null
   const view = observation.value
-  return h('section', { 'aria-label': '协作进度摘要', style: { maxHeight: '96px', overflow: 'auto' } },
-    view.records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + String(view.records.summary.totalTickets) + ' · ' + view.records.summary.countingScope),
-    h('span', null, ' · ' + windowSummary(view.windows, view.health).join(' · ')),
-    view.records?.summary.statusCounts.map(axis => h('div', { key: axis.workflowId + ':' + axis.axisKey }, axis.workflowId + ' / ' + axis.label + ' (' + axis.counting + ') · ' + axis.statuses.map(status => status.label + ' ' + status.count).join(' · '))))
+  return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, maxHeight: '96px', overflowY: 'auto', overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
+    view.records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + String(view.records.summary.totalTickets) + ' · ' + countingScopeText(view.records.summary.countingScope)),
+    h('span', null, windowSummary(view.windows, view.health).join(' · ')),
+    view.records?.summary.statusCounts.map(axis => h('div', { key: axis.workflowId + ':' + axis.axisKey }, axis.workflowId + ' / ' + axis.label + '（' + (axis.counting === 'exclusive' ? '互斥统计' : '可重叠统计') + '） · ' + axis.statuses.map(status => status.label + ' ' + status.count).join(' · '))))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
@@ -287,7 +290,7 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
 export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & { readonly remote: ControlsRemote }): ReactElement {
   const observation = useObservation(props.observer)
   const tab = props.useTabInfo()
-  if (props.observer.sessionId !== props.sessionId) return diagnostic('Session 选择与观察归属不一致；状态未知。')
+  if (props.observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
   if (observation.status === 'unknown') return h('section', { style: panelStyle }, diagnostic('当前状态未知：' + (observation.error ?? '读取中')), h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取'))
   const view = observation.value
   if (!view.policy.display.rightPanel) return h('section', { style: panelStyle }, diagnostic('右侧显示已关闭；账本和模型消费不受影响。'))
@@ -304,11 +307,11 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
       h('h4', null, '待用户裁决 ' + view.records.summary.pendingUserDecisionCount + ' · 待落实 ' + view.records.summary.awaitingImplementationCount),
       view.records.decisions.map(decision => h(DecisionEditor, { key: props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId, decision, records: view.records!, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))),
     h('h4', null, '双窗口（实例范围，观测/参考）'), h(WindowProjection, { view }),
-    h(WorktreeBindingsPanel, { key: props.sessionId, view, remote: props.remote, refresh: props.observer.refresh }),
+    h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
     h('details', null, h('summary', null, '旧资源记录（仅只读，不提供创建/实际退役入口）'), ResourceProjection({ view })),
     h('h4', null, '能力与健康（观测标签）'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health }),
-    h(HistoryPanel, { key: props.sessionId, sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }),
-    h(PolicyDelegation, { key: props.sessionId, view, remote: props.remote, refresh: props.observer.refresh }),
+    h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }),
+    h(PolicyDelegation, { key: props.sessionId + ':policy-grants', view, remote: props.remote, refresh: props.observer.refresh }),
     h('details', null, h('summary', null, '有效策略及来源'), pretty(view.policy)))
 }
 
@@ -504,7 +507,7 @@ export function HistoryPanel(props: { readonly sessionId: string; readonly insta
       h('button', { type: 'button', disabled: busy || plan.request === null, onClick: purgeSource }, '删除此对象截至本版本的源旧历史（保当前）'))
   }
   const changeFilter = (set: (value: string) => void, value: string): void => { lifetime.generation++; lifetime.controller?.abort(); set(value); setPage(null); setDetails({}); setBusy(false); setMessage(null) }
-  if (lifetime.sessionId !== props.sessionId || lifetime.instanceId !== props.instance.instrumentInstanceId) return diagnostic('所选 Session 历史状态未知；等待重新选择查询。')
+  if (lifetime.sessionId !== props.sessionId || lifetime.instanceId !== props.instance.instrumentInstanceId) return diagnostic('所选会话 历史状态未知；等待重新选择查询。')
   return h('section', { 'aria-label': '主动历史查询' }, h('h4', null, '会话历史（按需查询）'),
     diagnostic('主动查询历史不等于自动注入；摘要页不包含正文，详情按行展开。已清理工作树仍可查。'),
     diagnostic('永久删除此条历史副本不可恢复，不等于 Git 删除、工作树磁盘清理，也不声称删除源事件或原生会话历史；仅提供单条显式操作。'),
@@ -576,23 +579,23 @@ export function settingsSessionChoices(workspaces: readonly WorkspaceChoice[], w
 }
 /** Explicit selected-session read projection on the settings page, independent of sidebar placement. */
 export function SettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObserver; readonly remote?: ControlsRemote }): ReactElement {
-  if (props.observer.sessionId !== props.sessionId) return diagnostic('Session 选择与观察归属不一致；状态未知。')
+  if (props.observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
   return h(ObservedSettingsInspection, props)
 }
 export function ObservedSettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObserver; readonly remote?: ControlsRemote }): ReactElement {
   const observation = useObservation(props.observer)
-  if (observation.status !== 'ready') return h('section', { 'aria-label': '设置页 Session 仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
-    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取所选 Session'))
+  if (observation.status !== 'ready') return h('section', { 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
+    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取所选会话'))
   const view = observation.value
-  return h('section', { 'aria-label': '设置页 Session 仪器', style: { maxHeight: '50vh', overflow: 'auto' } },
-    h('h4', null, '所选 Session ' + props.sessionId + ' · 当前投影与显式登记'),
-    diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Owner ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
-    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新所选 Session'),
+  return h('section', { 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } },
+    h('h4', null, '所选会话 ' + props.sessionId + ' · 当前投影与显式登记'),
+    diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · 主会话 ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
+    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新所选会话'),
     h('h4', null, '票进度与待裁决'), view.records === null ? diagnostic('票/事项账本未知') : pretty(view.records),
     h('h4', null, '独立 T/S（观测/参考）'), h(WindowProjection, { view }),
-    props.remote ? h(WorktreeBindingsPanel, { key: props.sessionId, view, remote: props.remote, refresh: props.observer.refresh }) : null,
+    props.remote ? h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('details', null, h('summary', null, '旧资源记录（仅只读）'), ResourceProjection({ view })),
-    props.remote ? h(HistoryPanel, { key: props.sessionId, sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,
+    props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('h4', null, '能力、健康观测与有效策略'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health, policy: view.policy }))
 }
 export interface StartupSettingsView {
@@ -649,19 +652,34 @@ export class StartupSettingsController {
       const receipt = parseStartupStatus(remoteValue(await this.remote.saveStartupSettings(desired, expectedRevision, controller.signal)))
       if (this.closed || generation !== this.generation) return
       if (receipt.desired.startupCwdEnabled !== desired.startupCwdEnabled || receipt.revision < expectedRevision) throw new Error('Host startup save receipt does not confirm the submitted configuration')
-      this.publish({ saved: receipt, draft: parseStartupDesired(receipt.desired), busy: null, error: null, notice: '已保存下次启动配置修订 ' + receipt.revision + '；当前进程不会立即改变。' })
+      this.publish({ saved: receipt, draft: parseStartupDesired(receipt.desired), busy: null, error: null, notice: '已保存下次启动请求修订 ' + receipt.revision + '；当前进程不会立即改变。' })
     } catch (error) {
       if (!this.closed && generation === this.generation) this.publish({ ...this.state, busy: null, error: '保存结果未确认：' + errorText(error) + '。配置可能已写入；请重新读取启动状态核对。', notice: null })
     }
   }
   dispose = (): void => { if (this.closed) return; this.closed = true; this.cancel(); this.holds = 0; this.publish({ saved: null, draft: null, busy: null, error: '启动设置已卸载；状态不可用。', notice: null }); this.listeners.clear() }
 }
-const STARTUP_HINT = '此项为启动时配置。启用或禁用后，需要重启 DSH 才会生效；当前运行状态不会立即改变。刷新网页不能代替重启。'
+const STARTUP_HINT = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页不能代替重启。启用还需要当前 SDK 支持；若 SDK 没有原生支持且兼容准备尚未完成，反复重启也不会生效。'
+const settingsCard = { border: '1px solid rgba(127,127,127,.3)', borderRadius: '12px', padding: '20px', minWidth: 0, overflowWrap: 'anywhere' as const }
+const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px', minWidth: 0 }
+const settingsActions = { display: 'flex', flexWrap: 'wrap' as const, gap: '8px', marginTop: '16px' }
+const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '12px 0', minWidth: 0 }
 function startupFlag(value: boolean | null): string { return value === null ? '未知（观测不可用）' : value ? '启用' : '禁用' }
+/** Translate the authoritative Host state; disk preparation never overrides loaded capability. */
 function startupStateText(saved: StartupStatus): string {
-  if (saved.state === 'disabled') return '禁用'
-  if (saved.preparation.status !== 'ready') return ({ 'not-prepared': '需要兼容准备', incompatible: '版本不兼容', failed: '兼容准备失败', uncertain: '状态不确定' })[saved.preparation.status]
-  return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '需要兼容准备', unsupported: '当前 SDK 原生能力不支持', incompatible: '版本不兼容', failed: '兼容准备失败', uncertain: '状态不确定' })[saved.state]
+  return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '需要兼容准备', unsupported: '当前环境不支持', incompatible: '版本不兼容', failed: '兼容准备失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['state'], string>)[saved.state]
+}
+function preparationText(saved: StartupStatus): string {
+  return ({ ready: '已就绪', 'not-prepared': '尚未准备', incompatible: '版本不兼容', failed: '准备失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['preparation']['status'], string>)[saved.preparation.status]
+}
+function startupExplanation(saved: StartupStatus): { readonly title: string; readonly detail: string } {
+  const request = saved.desired.startupCwdEnabled ? '已保存启用请求。' : '已保存关闭请求。'
+  if (saved.state === 'enabled') return { title: '已生效', detail: '当前进程已启用；创建新的可继续交互子代理时，可指定工作树作为初始工作目录。' }
+  if (saved.state === 'disabled') return { title: '已关闭', detail: '当前进程未启用此功能；关闭不恢复 SDK 文件，也不改变已有子代理的工作目录。' }
+  if (saved.state === 'pending-restart') return { title: saved.enabledNow === true ? '当前仍生效：关闭请求待重启' : '尚未生效：待重启', detail: request + '当前进程保留本次启动配置；重启 DSH 后重新核对运行状态，刷新网页无效。' }
+  if (saved.state === 'needs-preparation') return { title: '尚未生效：需要兼容准备', detail: request + '当前 SDK 尚不支持创建子代理时指定工作树；未完成兼容准备时，反复重启也不会生效。需要先完全退出 DSH，再按下方离线步骤准备兼容支持。' }
+  if (saved.state === 'unsupported') return { title: '尚未生效：当前环境不支持', detail: request + '无法确认可用的 SDK 兼容支持；请先核验实际 SDK 目录与版本，普通重启不能解决环境不支持的问题。' }
+  return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + startupStateText(saved), detail: request + '请先核对兼容诊断，不要将保存成功或重启标记当作功能已生效。' }
 }
 // Examples deliberately contain no Host-derived path, executable, version or environment value.
 const STARTUP_COMMAND_EXAMPLES = [
@@ -677,37 +695,85 @@ export function StartupSettingsPanel(props: { readonly remote: StartupRemote }):
   const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const saved = view.saved; const draft = view.draft
   const dirty = saved !== null && draft !== null && saved.desired.startupCwdEnabled !== draft.startupCwdEnabled
-  return h('section', { 'aria-label': '全局 Profile 启动配置', style: { borderBottom: '1px solid currentColor', paddingBottom: '16px', marginBottom: '16px' } },
-    h('h3', null, '全局 Profile · 首次工作树目录启动'),
-    diagnostic('独立启动配置；不受工作区策略、管理总开关或 Skills 开关控制。'),
-    h('label', { style: { display: 'block', margin: '8px 0' } }, h('input', { type: 'checkbox', checked: draft?.startupCwdEnabled ?? false, disabled: view.busy !== null || draft === null,
-      onChange: (event: ChangeEvent<HTMLInputElement>) => { const checked = event.target.checked; controller.setDesired(checked) } }), '下次启动启用首次指定工作树目录（草稿）'),
-    diagnostic(STARTUP_HINT),
-    saved !== null && view.error !== null ? diagnostic('以下为上次确认的启动状态；保存后的持久配置尚未确认，不能当作当前配置回执。') : null,
-    saved === null ? diagnostic(view.error ?? '启动状态不可用：读取中；当前生效与下次配置均未知。') : h('div', null,
-      diagnostic('当前生效：' + startupFlag(saved.enabledNow)),
-      diagnostic('本次启动请求：' + startupFlag(saved.boot.requested.startupCwdEnabled) + ' · 启动 epoch ' + saved.boot.epoch),
-      diagnostic('下次启动（已保存）：' + startupFlag(saved.desired.startupCwdEnabled)),
-      diagnostic('草稿：' + startupFlag(draft?.startupCwdEnabled ?? null) + (dirty ? '（未保存）' : '（与已保存一致）')),
-      diagnostic('启动配置修订 ' + saved.revision + ' · 原生首次目录支持：' + (saved.nativeInitialCwdSupported === null ? '未知（观测不可用）' : saved.nativeInitialCwdSupported ? '支持' : '不支持')),
-      diagnostic('宿主重启标记：' + (saved.restartNeeded ? '是（不代表兼容准备已完成）' : '否')),
-      diagnostic('启动状态：' + startupStateText(saved)),
-      diagnostic('兼容准备：' + saved.preparation.status + ' · SDK 版本：' + (saved.preparation.sdkVersion ?? '未知（观测不可用）')),
-      saved.preparation.diagnostic === null ? null : diagnostic('准备诊断：' + saved.preparation.diagnostic),
-      saved.preparation.status !== 'ready' || ['needs-preparation', 'unsupported', 'incompatible', 'failed'].includes(saved.state)
-        ? diagnostic(saved.state === 'disabled'
-          ? '当前已关闭，不要求兼容准备。若以后启用首次目录功能，需要先完成兼容准备，普通重启不会自动打补丁。'
-          : '需要先完成兼容准备，普通重启不会自动打补丁。请先退出 DSH，在完全停止后使用随包离线管理程序检查兼容性；未确认准备成功前不承诺下次启动能够启用。') : null,
-      saved.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
-        ? diagnostic('磁盘兼容准备已就绪，但当前 SDK 已加载且原生能力仍不支持；磁盘准备不等于当前生效。网页刷新不会替换已加载的 SDK，启用请求需重启 DSH 后重新核对。') : null,
-      diagnostic('配置差异：本次请求 ' + startupFlag(saved.boot.requested.startupCwdEnabled) + ' → 下次已保存 ' + startupFlag(saved.desired.startupCwdEnabled) + ' → 草稿 ' + startupFlag(draft?.startupCwdEnabled ?? null))),
-    h('details', null, h('summary', null, '随包离线兼容管理命令（示例，不在 GUI 执行）'),
-      diagnostic('首次准备需完全退出所有使用该 SDK 的 DSH 进程；--dsh-stopped 是离线前提，不是强制停止命令。将 /absolute/sdk 替换为已核验的 SDK 绝对目录，将 [DSH args...] 替换为原 DSH 启动参数；此处不推断目录或环境。start 会先兼容准备再启动；inspect 只读，prepare/restore 只在线下操作。'),
+  const explanation = saved === null ? null : startupExplanation(saved)
+  const needsPreparation = saved !== null && saved.nativeInitialCwdSupported !== true && (saved.preparation.status !== 'ready' || ['needs-preparation', 'unsupported', 'incompatible', 'failed'].includes(saved.state))
+  return h('section', { 'aria-label': '子代理创建时的工作树设置', style: settingsCard },
+    h('h3', { style: { marginTop: 0 } }, '创建子代理（subagent）时指定工作树（worktree）'),
+    h('p', null, '全局启动配置 · 让新建、可继续交互的子代理从指定工作树目录开始工作。不改变 DSH 自身启动目录或已有会话，不负责创建、合并或清理工作树。'),
+    h('p', null, '独立启动配置；不受工作区策略、管理总开关或技能分发开关控制。'),
+    saved !== null && view.error !== null ? h('p', { role: 'alert' }, '以下为上次确认的启动状态；保存后的持久配置尚未确认，不能当作当前配置回执。') : null,
+    h('div', { style: settingsGrid },
+      h('section', { 'aria-label': '当前运行状态', style: { ...settingsCard, background: 'rgba(127,127,127,.05)' } },
+        h('h4', { style: { marginTop: 0 } }, '当前运行状态'),
+        saved === null || explanation === null ? diagnostic(view.error ?? '启动状态不可用：读取中；当前生效与下次配置均未知。') : h('div', { role: 'status', 'aria-live': 'polite' },
+          h('strong', null, explanation.title), h('p', null, explanation.detail),
+          h('p', null, '当前生效：' + startupFlag(saved.enabledNow)),
+          h('p', null, '本次启动请求：' + startupFlag(saved.boot.requested.startupCwdEnabled)),
+          h('p', null, '兼容准备：' + (saved.nativeInitialCwdSupported === true ? '当前已有原生支持，无需离线准备' : preparationText(saved))),
+          h('p', null, '当前 SDK 原生支持：' + (saved.nativeInitialCwdSupported === null ? '未知（观测不可用）' : saved.nativeInitialCwdSupported ? '支持' : '不支持')))),
+      h('section', { 'aria-label': '下次启动设置', style: settingsCard },
+        h('h4', { style: { marginTop: 0 } }, '下次启动设置'),
+        h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '允许创建子代理时指定工作树', checked: draft?.startupCwdEnabled ?? false, disabled: view.busy !== null || draft === null,
+          onChange: (event: ChangeEvent<HTMLInputElement>) => controller.setDesired(event.target.checked) }), '允许创建子代理时指定工作树'),
+        saved === null ? h('p', null, '已保存配置与草稿尚未确认。') : h('div', null,
+          h('p', null, '下次启动（已保存）：' + startupFlag(saved.desired.startupCwdEnabled)),
+          h('p', null, '草稿：' + startupFlag(draft?.startupCwdEnabled ?? null) + (dirty ? '（未保存）' : '（与已保存一致）'))),
+        h('div', { style: settingsActions },
+          h('button', { type: 'button', disabled: view.busy !== null || !dirty, onClick: () => { void controller.save() } }, view.busy === 'saving' ? '正在保存…' : '保存下次启动请求'),
+          h('button', { type: 'button', disabled: view.busy === 'loading', onClick: () => { void controller.refresh() } }, '重新读取启动状态（丢弃草稿）')))),
+    h('p', { style: { lineHeight: 1.65 } }, STARTUP_HINT),
+    needsPreparation ? h('p', null, saved.state === 'disabled'
+      ? '当前已关闭，不要求兼容准备。若以后启用此功能，需要先完成兼容准备，普通重启不会自动打补丁。'
+      : '需要先完成兼容准备，普通重启不会自动打补丁。完全退出所有使用目标 SDK 的 DSH 进程后，使用下方离线命令检查并准备；本页面不会修改运行中的 SDK。') : null,
+    saved?.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
+      ? h('p', null, '磁盘兼容准备已就绪，但当前 SDK 已加载且原生能力仍不支持；磁盘准备不等于当前生效。请重启 DSH 后重新核对。') : null,
+    h('details', { style: { marginTop: '12px' } }, h('summary', null, '离线兼容准备步骤与命令'),
+      h('ol', null, h('li', null, '确认实际使用的 SDK 绝对目录与版本，先检查兼容状态。'), h('li', null, '首次准备前，完全退出所有使用该 SDK 的 DSH 进程。'), h('li', null, '运行准备命令，确认成功后按原参数重新启动 DSH。'), h('li', null, '回到本页面重新读取，确认当前运行状态已生效。')),
+      h('p', null, '命令仅为示例，不在页面执行。将 /absolute/sdk 替换为已核验的 SDK 绝对目录，将 [DSH args...] 替换为原启动参数。--dsh-stopped 仅声明离线前提，不会替你停止进程。'),
+      h('p', null, '检查命令只读；准备和恢复命令只能在 DSH 完全停止后执行。启动命令会先准备兼容支持再启动 DSH。'),
       h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, h('code', null, STARTUP_COMMAND_EXAMPLES))),
-    view.error === null || saved === null ? null : diagnostic(view.error),
-    view.notice === null ? null : diagnostic(view.notice),
-    h('button', { type: 'button', disabled: view.busy !== null || !dirty, onClick: () => { void controller.save() } }, '保存下次启动配置'),
-    h('button', { type: 'button', onClick: () => { void controller.refresh() } }, '重新读取启动状态（丢弃草稿）'))
+    saved === null ? null : h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术诊断（启动标识、版本与原始状态）'),
+      h('p', null, '启动配置修订 ' + saved.revision + ' · 启动标识 ' + saved.boot.epoch),
+      h('p', null, '宿主重启标记：' + (saved.restartNeeded ? '是（不代表兼容准备已完成）' : '否（不代表功能已生效）')),
+      h('p', null, '启动状态：' + startupStateText(saved)),
+      h('p', null, 'SDK 版本：' + (saved.preparation.sdkVersion ?? '未知（观测不可用）')),
+      saved.preparation.diagnostic === null ? null : h('p', null, '原始准备诊断：' + saved.preparation.diagnostic), pretty(saved)),
+    view.error === null || saved === null ? null : h('p', { role: 'alert' }, view.error),
+    view.notice === null ? null : diagnostic(view.notice))
+}
+const FEATURE_LABELS = { binding: '工作树绑定', lifecycle: '子代理生命周期观测', windows: '任务与子代理参考窗口', ticketProgress: '任务票进度', pendingDecisions: '待裁决事项' } satisfies Record<typeof FEATURE_NAMES[number], string>
+const DISPLAY_LABELS = { header: '会话标题栏', inputSummary: '输入区摘要', rightPanel: '右侧协作面板', sessionList: '会话列表提醒', timeline: '工具记录标注' } satisfies Record<typeof DISPLAY_NAMES[number], string>
+const CAPACITY_LABELS = { ticketWindowSize: '任务票参考上限（T）', runningSubagentLimit: '运行中子代理参考上限（S）' }
+const SOURCE_LABELS = { workspace: '工作区覆盖', global: '全局默认', 'safe-initial': '安全初始值' } satisfies Record<EffectivePolicy['sources'][PolicyField], string>
+const POLICY_FIELD_LABELS: Readonly<Record<PolicyField | 'extensionEnabled', string>> = {
+  extensionEnabled: '全局协作管理总开关', 'binding.enabled': FEATURE_LABELS.binding, 'lifecycle.enabled': FEATURE_LABELS.lifecycle,
+  'windows.enabled': FEATURE_LABELS.windows, 'ticketProgress.enabled': FEATURE_LABELS.ticketProgress, 'pendingDecisions.enabled': FEATURE_LABELS.pendingDecisions,
+  'windows.ticketWindowSize': CAPACITY_LABELS.ticketWindowSize, 'windows.runningSubagentLimit': CAPACITY_LABELS.runningSubagentLimit,
+  'display.header': DISPLAY_LABELS.header, 'display.inputSummary': DISPLAY_LABELS.inputSummary, 'display.rightPanel': DISPLAY_LABELS.rightPanel,
+  'display.sessionList': DISPLAY_LABELS.sessionList, 'display.timeline': DISPLAY_LABELS.timeline,
+}
+function policyFeatureText(value: EffectivePolicy['features'][typeof FEATURE_NAMES[number]]): string {
+  const state = ({ configured: '已配置（仅意图）', disabled: '未启用', unsupported: '条件不满足' } satisfies Record<typeof value.status, string>)[value.status]
+  const reasons = { 'extension-disabled': '管理总开关已关闭', 'feature-disabled': '此功能已关闭', 'workspace-unverified': '工作区未核验', 'window-capacity-unset': '参考上限未配置' } satisfies Record<Exclude<typeof value.reason, null>, string>
+  return state + (value.reason === null ? '' : ' · ' + reasons[value.reason])
+}
+function policyImpactText(value: unknown): string {
+  if (typeof value === 'boolean') return value ? '启用' : '禁用'
+  if (value === null) return '未配置'
+  if (typeof value === 'number') return String(value)
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const row = value as { readonly value: boolean | number | null | EffectivePolicy['features'][typeof FEATURE_NAMES[number]]; readonly source: EffectivePolicy['sources'][PolicyField] }
+    const label = row.value !== null && typeof row.value === 'object' ? policyFeatureText(row.value) : policyImpactText(row.value)
+    return label + '（' + (SOURCE_LABELS[row.source] ?? '未知来源') + '）'
+  }
+  return '未知（详见原始诊断）'
+}
+function unsupportedSeatsDetails(): ReactElement {
+  return h('details', null, h('summary', null, '显示限制（宿主暂未提供对应接口）'),
+    h('ul', null, h('li', null, '独立的第二行会话标题：宿主没有可追加的全宽标题栏位置。'),
+      h('li', null, '会话列表常驻徽标：当前装饰只在空闲时显示，详情只在鼠标悬停时显示。'),
+      h('li', null, '后台打开协作面板：宿主打开标签页时会选中并展开，暂不支持不切换焦点的后台打开。')),
+    h('details', null, h('summary', null, '原始接口诊断'), pretty(UNSUPPORTED_SEATS)))
 }
 export function SettingsPage(props: PluginConfigViewProps & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObserver }): ReactElement {
   const [saved, setSaved] = useState<PolicySnapshot | null>(null)
@@ -724,53 +790,75 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       const snapshot = parsePolicySnapshot(remoteValue(policy)); const rows = decodeWorkspaces(remoteValue(list))
       if (!active) return
       setSaved(snapshot); setDraft(intentOf(snapshot)); setWorkspaces(rows); setWorkspace(rows[0]?.workspaceId ?? null); setInspection(null); setMessage(null)
-    }).catch(error => { if (active) setMessage(errorText(error)) })
+    }).catch(error => { if (active) setMessage('协作配置不可用：' + errorText(error)) })
     return () => { active = false }
   }, [props.remote, reload])
-  if (props.view === 'summary') return h('span', null, '工作区策略与 session 仪器；显式保存、稀疏覆盖。')
-  if (saved === null || draft === null) return h('section', null, h(StartupSettingsPanel, { remote: props.remote }), diagnostic(message ?? '读取已保存策略…'), h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取'))
+  if (props.view === 'summary') return h('span', null, '子代理工作树启动设置、协作管理与会话仪器；配置分别保存。')
+  const pageStyle = { display: 'grid', gap: '24px', minWidth: 0, width: '100%', maxWidth: '1080px', margin: '0 auto', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
+  if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle }, h(StartupSettingsPanel, { remote: props.remote }),
+    h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
   const selected = workspaces.find(row => row.workspaceId === workspace)
   const sessionChoices = settingsSessionChoices(workspaces, workspace)
   const selectedInspection = inspection !== null && sessionChoices.ids.includes(inspection) ? inspection : null
   const preview = resolvePolicy({ ...draft, workspaceOverrides: workspace === null ? {} : draft.workspaceOverrides, revision: saved.revision }, workspace ?? 'global-preview', workspace === null || selected?.verified === true)
+  const impact = policyDraftImpact(saved, draft, workspace, workspace === null || selected?.verified === true)
   const change = (field: PolicyField, value: boolean | number | undefined): void => {
-    try { setDraft(setPolicyLeaf(draft, workspace, field, value)); setMessage(null) } catch (error) { setMessage(errorText(error)) }
+    try { setDraft(setPolicyLeaf(draft, workspace, field, value)); setMessage(null) } catch (error) { setMessage('配置值无效：' + errorText(error)) }
   }
   const save = async (): Promise<void> => {
     setBusy(true); setMessage(null)
-    try { const snapshot = await savePolicyDraft(props.remote, draft, saved.revision); setSaved(snapshot); setDraft(intentOf(snapshot)); props.refreshAll(); setMessage('已保存修订 ' + snapshot.revision) }
-    catch (error) { setMessage(errorText(error)) } finally { setBusy(false) }
+    try {
+      const snapshot = await savePolicyDraft(props.remote, draft, saved.revision)
+      setSaved(snapshot); setDraft(intentOf(snapshot)); props.refreshAll()
+      setMessage('已保存并应用配置（修订 ' + snapshot.revision + '）；协作管理' + (snapshot.extensionEnabled ? '已启用' : '已关闭') + '，无需额外启用按钮。功能可用性仍以宿主能力与会话观测为准；上述工作树启动配置独立保存。')
+    } catch (error) { setMessage('保存结果未确认：' + errorText(error) + '。请重新读取协作配置核对，草稿未作为成功回执。') } finally { setBusy(false) }
   }
-  const booleanField = (field: PolicyField, label: string): ReactElement => {
+  const booleanField = (field: PolicyField, label: string, effective: string): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
-    return h('label', { key: field, style: { display: 'block', margin: '8px 0' } }, label + ' ', h('select', { value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
-      onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
-    h('option', { value: 'inherit' }, '继承'), h('option', { value: 'on' }, '开'), h('option', { value: 'off' }, '关')), h('small', null, ' 来源：' + preview.sources[field]))
+    return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 180px' } }, label),
+      h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
+        onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
+        h('option', { value: 'inherit' }, '继承'), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
+      h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
   }
   const dirty = JSON.stringify(draft) !== JSON.stringify(intentOf(saved))
-  return h('section', { 'aria-label': '工作区协作配置' },
+  const saveLabel = busy ? '正在保存…' : saved.extensionEnabled !== draft.extensionEnabled ? draft.extensionEnabled ? '保存并启用协作管理' : '保存并关闭协作管理' : '保存并应用配置'
+  return h('section', { 'aria-label': '插件配置', style: pageStyle },
     h(StartupSettingsPanel, { remote: props.remote }),
-    h('h3', null, '工作区策略'),
-    h('label', null, '编辑范围 ', h('select', { value: workspace ?? '', disabled: busy, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
-      ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
-    h('label', null, '按 Session 查看仪器（导航，不授予权限） ', h('select', { 'aria-label': '选择查看 Session', value: selectedInspection ?? '', onChange: (event: ChangeEvent<HTMLSelectElement>) => setInspection(event.target.value || null) },
-      h('option', { value: '' }, '选择 Session 查看'), ...sessionChoices.ids.map(id => h('option', { key: id, value: id }, id)))),
-    sessionChoices.unknown ? diagnostic('Session 导航未知或不完整；不能据此断言没有 Session。') : sessionChoices.ids.length === 0 ? diagnostic('当前导航没有列出的 Session（不是实例/ACL 结论）。') : null,
-    selectedInspection === null ? null : h(SettingsInspection, { key: selectedInspection, sessionId: selectedInspection, observer: props.observe(selectedInspection), remote: props.remote }),
-    diagnostic('配置修订 ' + saved.revision + '；查看 Session 不更新草稿保存修订。'),
-    h('label', null, h('input', { type: 'checkbox', checked: draft.extensionEnabled, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, extensionEnabled: event.target.checked }) }), '全局管理总开关（不影响 Skills）'),
-    h('fieldset', { disabled: busy }, h('legend', null, '功能意图'), FEATURE_NAMES.map(name => booleanField((name + '.enabled') as PolicyField, name))),
-    h('fieldset', { disabled: busy }, h('legend', null, 'T/S 参考上限（不是硬名额；留空继承，无默认猜值）'),
-      (['ticketWindowSize', 'runningSubagentLimit'] as const).map(name => { const field = ('windows.' + name) as PolicyField; return h('label', { key: name }, name + ' ', h('input', { type: 'number', min: 1, step: 1, value: ownLeaf(draft, workspace, field) ?? '',
-        onChange: (event: ChangeEvent<HTMLInputElement>) => change(field, event.target.value === '' ? undefined : Number(event.target.value)) }), h('small', null, ' 有效 ' + (preview.windows[name] ?? '未配置') + ' · ' + preview.sources[field])) })),
-    h('fieldset', { disabled: busy }, h('legend', null, '独立显示位置（不关闭功能/账本/消费）'), DISPLAY_NAMES.map(name => booleanField(('display.' + name) as PolicyField, name))),
-    !Object.values(preview.display).some(Boolean) ? diagnostic('全部入口关闭：待裁决不再有常驻 GUI 提醒；仍可明确保存。') : null,
-    h('h4', null, '有效策略与影响预览（意图，不代表已执行）'), pretty(preview), pretty(policyDraftImpact(saved, draft, workspace, workspace === null || selected?.verified === true)), diagnostic('缩容不释放正在执行的 S；已有事实和义务保留，实际执行状态以 session 投影为准。'),
-    h('h4', null, '不支持的席位'), UNSUPPORTED_SEATS.map(row => h('p', { key: row.key }, row.key + ': unsupported — ' + row.reason)),
-    h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, '显式保存草稿'),
-    h('button', { type: 'button', disabled: busy, onClick: () => { setDraft(intentOf(saved)); setMessage(null) } }, '放弃草稿'),
-    h('button', { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取（丢弃草稿）'), message === null ? null : diagnostic(message))
+    h('section', { 'aria-label': '工作区协作管理', style: settingsCard },
+      h('h3', { style: { marginTop: 0 } }, '协作管理'),
+      h('p', null, '这些设置由插件独立保存并应用，不需要再保存一次“草稿”或另行启用。管理总开关不影响技能分发，也不控制上述子代理工作树启动设置。'),
+      h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '全局协作管理总开关', checked: draft.extensionEnabled, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, extensionEnabled: event.target.checked }); setMessage(null) } }), '全局协作管理总开关'),
+      h('label', { style: settingsField }, '配置编辑范围', h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
+        ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
+      h('p', null, '选择“继承”或将参考上限留空，即删除当前范围的覆盖，沿用全局默认或安全初始值。'),
+      h('div', { style: settingsGrid },
+        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '协作功能'), FEATURE_NAMES.map(name => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name])))),
+        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '参考上限'), h('p', null, 'T/S 仅提供规模参考，不是硬名额；留空继承，不猜测默认数值。'),
+          (['ticketWindowSize', 'runningSubagentLimit'] as const).map(name => { const field = ('windows.' + name) as PolicyField; return h('label', { key: name, style: settingsField },
+            h('span', null, CAPACITY_LABELS[name]), h('input', { 'aria-label': CAPACITY_LABELS[name], type: 'number', min: 1, step: 1, style: { width: '100px', maxWidth: '100%' }, value: ownLeaf(draft, workspace, field) ?? '',
+              onChange: (event: ChangeEvent<HTMLInputElement>) => change(field, event.target.value === '' ? undefined : Number(event.target.value)) }),
+            h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + (preview.windows[name] ?? '未配置') + ' · 来源：' + SOURCE_LABELS[preview.sources[field]])) })),
+        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '界面显示位置'), h('p', null, '只控制入口显示；隐藏不关闭功能，不删除记录，也不免除现有义务。'), DISPLAY_NAMES.map(name => booleanField(('display.' + name) as PolicyField, DISPLAY_LABELS[name], preview.display[name] ? '显示' : '隐藏')))),
+      !Object.values(preview.display).some(Boolean) ? diagnostic('全部入口关闭：待裁决不再有常驻页面提醒；仍可明确保存。') : null,
+      h('section', { 'aria-label': '保存前预览', style: { marginTop: '20px' } },
+        h('h4', null, '保存前预览'), h('p', null, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。预览仅代表配置意图，不代表执行结果。'),
+        impact.changes.length === 0 ? h('p', null, dirty ? '保存将更新稀疏覆盖；当前编辑范围的有效值未改变。' : '没有待保存的更改。') : h('ul', null, impact.changes.map(row => h('li', { key: row.field }, (POLICY_FIELD_LABELS[row.field as keyof typeof POLICY_FIELD_LABELS] ?? '未知配置项') + '：' + policyImpactText(row.before) + ' → ' + policyImpactText(row.after)))),
+        h('p', null, '缩小参考上限不会释放正在执行的子代理；已有事实和义务保留，实际执行状态以会话观测为准。'),
+        h('div', { style: settingsActions }, h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, saveLabel),
+          h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(intentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
+          h('button', { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取协作配置（丢弃草稿）')),
+        message === null ? null : diagnostic(message)),
+      h('details', { style: { marginTop: '16px' } }, h('summary', null, '技术详情（原始有效策略与变更）'), pretty(preview), pretty(impact)),
+      unsupportedSeatsDetails()),
+    h('section', { 'aria-label': '会话状态查看', style: settingsCard },
+      h('h3', { style: { marginTop: 0 } }, '会话状态查看'), h('p', null, '仅查看已存在会话，不修改草稿、不授予权限、不唤醒模型，也不自动打开侧栏。'),
+      h('label', { style: settingsField }, '选择会话', h('select', { 'aria-label': '选择查看会话', value: selectedInspection ?? '', style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => setInspection(event.target.value || null) },
+        h('option', { value: '' }, '选择会话查看'), ...sessionChoices.ids.map(id => h('option', { key: id, value: id }, id)))),
+      sessionChoices.unknown ? diagnostic('会话导航未知或不完整；不能据此断言没有会话。') : sessionChoices.ids.length === 0 ? h('p', null, '当前导航没有列出的会话（不是实例或权限结论）。') : null,
+      selectedInspection === null ? null : h(SettingsInspection, { key: selectedInspection, sessionId: selectedInspection, observer: props.observe(selectedInspection), remote: props.remote })))
 }
+
 
 /** Read only public call material; never serialize the lazy argument reader's internals. */
 export function sourceRecord(props: ToolCallViewProps): unknown {
@@ -782,7 +870,7 @@ export function sourceRecord(props: ToolCallViewProps): unknown {
 export function SourceCard(props: ToolCallViewProps & SessionFace): ReactElement {
   const observation = useObservation(props.observer)
   const annotate = observation.status === 'ready' && observation.value.policy.display.timeline
-  return h('section', { 'aria-label': '协作工具记录' }, h('strong', null, props.toolName),
+  return h('section', { 'aria-label': '协作工具记录', style: { boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px', overflowWrap: 'anywhere', textAlign: 'left' } }, h('strong', null, props.toolName),
     annotate ? diagnostic('来源记录 · call ' + props.callId + ' · 历史快照；当前事实以实例账本为准。') : null,
     pretty(sourceRecord(props)), annotate && observation.value.policy.display.rightPanel ? h('button', { type: 'button', onClick: props.openDetails }, '打开当前实例') : null)
 }

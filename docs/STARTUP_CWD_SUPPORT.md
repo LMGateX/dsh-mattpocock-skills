@@ -4,6 +4,16 @@ This feature controls only whether the plugin may request an **explicit initial 
 
 The initial desired value is `{ startupCwdEnabled: false }`. A settings save is an operator action, not a model tool.
 
+## 中文界面与生效前提
+
+界面名称为“创建子代理（subagent）时指定工作树（worktree）”：只让新建、可继续交互的子代理从明确指定的工作树目录开始，不改变 DSH 自身启动目录、已有子代理目录，也不负责创建／合并／清理 Git 工作树。
+
+页面把“当前运行状态”与“下次启动设置”分开。勾选后仍需点“保存下次启动请求”；成功回执只确认下次请求已保存，不承诺当前或下次一定生效。协作策略的“保存并应用配置”不保存此启动请求，也不替代它的 SDK 能力前提。
+
+当本次请求和已保存请求均启用，而原生能力不支持、兼容准备尚未完成时，当前功能仍未生效，重启标记可以为“否”：请求已经读到，但能力没有安装。反复重启不能自动完成准备。需完全退出使用目标 SDK 的全部 DSH 进程，核验实际 SDK 目录与版本，再使用随包离线管理器准备；页面自身只读检查、不修改运行中的 SDK。磁盘已准备但进程仍加载旧模块时，应重启后核对实际原生能力。官方原生支持为 true 时，无须 managed 磁盘准备。
+
+固定状态与来源使用中文；启动标识、修订、SDK 版本、原始枚举／诊断和命令示例作为技术信息折叠保留，未确认观测始终显示未知，不降成禁用或成功。
+
 ## Public seam
 
 [StartupSupport](<../src/controls/startup-support.ts>) has one trusted constructor and two operations:
