@@ -12,8 +12,24 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./controls": {
+      "types": "./lib/types/controls/index.d.ts",
+      "default": "./lib/controls/index.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./host": {
+      "types": "./lib/types/host.d.ts",
+      "default": "./lib/host.js"
+    },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./compatibility": {
+      "types": "./lib/types/compatibility/managed-sdk.d.ts",
+      "default": "./lib/compatibility/managed-sdk.js"
+    }
   },
   "files": [
     "lib/index.js",
@@ -22,6 +38,57 @@
     "lib/types/index.d.ts",
     "lib/types/catalog.d.ts",
     "lib/types/provider.d.ts",
+    "lib/controls/index.js",
+    "lib/controls/policy.js",
+    "lib/controls/state.js",
+    "lib/controls/storage.js",
+    "lib/controls/validation.js",
+    "lib/types/controls/index.d.ts",
+    "lib/types/controls/policy.d.ts",
+    "lib/types/controls/state.d.ts",
+    "lib/types/controls/storage.d.ts",
+    "lib/types/controls/validation.d.ts",
+    "lib/controls/instrument-state.js",
+    "lib/controls/instrument-storage.js",
+    "lib/controls/instruments.js",
+    "lib/controls/versioned-storage.js",
+    "lib/types/controls/instrument-state.d.ts",
+    "lib/types/controls/instrument-storage.d.ts",
+    "lib/types/controls/instruments.d.ts",
+    "lib/types/controls/versioned-storage.d.ts",
+    "lib/host.js",
+    "lib/runtime.js",
+    "lib/client.js",
+    "lib/types/host.d.ts",
+    "lib/types/runtime.d.ts",
+    "lib/types/client.d.ts",
+    "lib/controls/windows.js",
+    "lib/controls/resources.js",
+    "lib/controls/git-worktrees.js",
+    "lib/controls/consumption.js",
+    "lib/controls/remote-contract.js",
+    "lib/controls/runtime-state.js",
+    "lib/controls/history.js",
+    "lib/controls/worktree-bindings.js",
+    "lib/types/controls/history.d.ts",
+    "lib/types/controls/worktree-bindings.d.ts",
+    "lib/types/controls/windows.d.ts",
+    "lib/types/controls/resources.d.ts",
+    "lib/types/controls/git-worktrees.d.ts",
+    "lib/types/controls/consumption.d.ts",
+    "lib/types/controls/remote-contract.d.ts",
+    "lib/types/controls/runtime-state.d.ts",
+    "lib/controls/startup-state.js",
+    "lib/controls/startup-support.js",
+    "lib/types/controls/startup-state.d.ts",
+    "lib/types/controls/startup-support.d.ts",
+    "lib/compatibility/managed-sdk.js",
+    "lib/compatibility/cli.js",
+    "lib/compatibility/host-startup.js",
+    "lib/types/compatibility/managed-sdk.d.ts",
+    "lib/types/compatibility/cli.d.ts",
+    "lib/types/compatibility/host-startup.d.ts",
+    "compatibility/initial-cwd.recipe.json",
     "cordis.patch.yml",
     "generated/catalog.json",
     "vendor/mattpocock-skills/",
@@ -31,6 +98,7 @@
     "README.md",
     "README.zh-CN.md",
     "MIGRATION.md",
+    "CONTROLS.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],
@@ -58,19 +126,109 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "entry": "./lib/client.js",
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-api-gateway"
+      ]
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-skill": "^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/cordis": "^4.0.2 || ~4.0.5-alpha.1",
+    "@deepseek-ai/dsh-skill": "^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1 || ~0.2.1-alpha.1",
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "@deepseek-ai/dsh-session": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-workspace": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-storage-domain": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-subagent": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-llm": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "~0.2.1-alpha.1",
+    "@deepseek-ai/dsh-sandbox": "~0.2.1-alpha.1",
+    "react": "^18.2.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-skill": "0.1.7-alpha.2",
+    "@deepseek-ai/cordis": "4.0.5-alpha.1",
+    "@deepseek-ai/dsh-skill": "0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "3.18.4",
     "@types/node": "24.13.3",
     "typescript": "5.9.3",
-    "yaml": "2.9.0"
+    "yaml": "2.9.0",
+    "@deepseek-ai/dsh-agent": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-session-query": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-session": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-workspace": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-storage-domain": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-subagent": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-typert-registry": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-fs": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-subprocess": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-api-gateway": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-ui-tool": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-package-manifest": "0.2.1-alpha.1",
+    "react": "18.3.1",
+    "@types/react": "18.3.1",
+    "zod": "4.6.5",
+    "@deepseek-ai/dsh-client-ui-chat": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-util-values": "0.2.1-alpha.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-session": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-workspace": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-storage-domain": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subagent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-sandbox": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "bin": {
+    "dsh-mattpocock-skills-cwd": "./lib/compatibility/cli.js"
   }
 }

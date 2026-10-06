@@ -1,13 +1,28 @@
 # DSH Matt Pocock Skills — Accepted Design
 
+> 公开资料边界：带日期的原始研究、工具/测试日志和本机快照仅在本地保留，不随公开仓库分发，也不充当可公开复核的原始证明。当前状态及历史证据范围见 [公开验证说明](<VERIFICATION.md>)。SDK 包相对路径仅定位当时核验的安装产物，不保留本机路径或旧行号。
+
 - **Status:** Accepted; core adapter and Phase 4 verified; Phase 5 closed with a failed campaign; owner activation and release remain unauthorized
 - **Accepted on:** 2026-09-08
 - **Owner:** LMGateX
 - **Local checkout:** `<working copy of this repository>`
-- **Private plugin repository:** `https://github.com/LMGateX/dsh-mattpocock-skills`
+- **Public plugin repository:** `https://github.com/LMGateX/dsh-mattpocock-skills`
 - **Private source distribution:** `https://github.com/LMGateX/mattpocock-skills-distribution`
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
+
+## 最新认可的协作扩展范围（2026-10-06）
+
+本节是已接受的源码实施设计。参考窗口、创建绑定、当前投影、分页历史、源旧历史清理与 Host/Client 接口已有仓库实现；当前复审修复已通过机械源码／构建／测试验收，clean-source 制品门禁与交付身份另行随制品记录，见[公开验证状态](<VERIFICATION.md>)。历史阶段的本地验证记录不代表当前最终验收。本节优先于旧协作扩展中的硬容量与重资源处置规格；旧验收记录不充当本轮完成结果。
+
+- **T/S 是参考上限**：展示占用、参考值和超出情况，引导 agent 安排工作；超限或统计未知本身不拒绝派发，不另要求批准。执行事实仍如实记录，不以模型自报冒充程序事实。
+- **工作树核心是创建绑定工具**：主 agent 自行准备工作树，在创建可续聊子代理时传入 worktree；工具使其成为实际工作目录，随后同 child 身份/历史/目录继续。
+- **仪器只记录真实绑定关系与状态**：帮助 agent 看见哪些树与哪些子代理/任务有关。分支/树的创建、合并、删除，以及是否该清理由 agent 按 Skills 和用户约定决定；不再增加资源处置审批系统。
+- **已落地的创建接口**：首次 continuable 创建可选 cwd 的原生源码/编译补丁已独立交付，省略保持继承；原 manager 负责生命周期，插件执行可信路径预检查、持久意图、原生调用及实际 header 核对。明确 cwd 在原生副作用边界再次核验现有权限，不新增业务批准；未补丁安装版按公开能力 getter 明确 unsupported。见[宿主补丁交付](<../host-patches/README.md>)与[工作树绑定契约](<WORKTREE_BINDINGS.md>)。
+- **持久化、当前注入与历史查询分开**：研究和设计覆盖全部仪器，不只工作树；保存历史不等于持续注入全部历史，退出注入不等于删除数据。主会话通过主动历史接口查询本 session 权限范围内的保留记录；摘要分页与按需详情明示来源覆盖，不冒称已返回全部正文。
+- **工作树退出条件**：只有已被清理的树退出持续注入；废弃但未清理的树仍提示待处置。本 session 已清理树的历史仍可主动查，不能因树清理而默认删除记录。模型登记清理与程序物理回执分别标来源，不新增原生续用闭合审批。
+- **记录整理已实施，期限仍由用户决定**：主动摘要分页/详情、显式当前范围、历史副本 purge，以及 records/windows/worktrees 三个源域的 checkpoint 和定向源旧历史删除均已有源码接口。副本删除不冒称源删除，源清理保留当前/最新状态、创建作者与技术去重摘要；多域非原子、部分成功和未知修订如实报告。任意字段级删除、全部作用域擦除与自动 TTL 不在本轮接口内；已清理树不默认删除历史。见[历史核心契约](<HISTORY_CORE.md>)。
+- **源码与部署分开**：本轮范围是已接受的源码实施，不只是研究建议；仓库原生补丁与插件代码交付不自动改变安装版 SDK、当前 Profile 或现有 GUI。最终集成结果由完成记录统一登记，不提前宣称全套测试/打包通过。安装启用及发布另行决定，原有不可变 Skill、通道和发布授权边界保持不变。
 
 ## Scope clarification
 
@@ -17,20 +32,20 @@ The owner-approved [thin-adapter scope](ADAPTER_SCOPE.md) governs subsequent eng
 
 Build a small, reproducible DeepSeek Harness Profile Bundle that exposes the selected Matt Pocock Skills channel through DSH's native Skill Registry. The adapter owns DSH packaging, channel selection, invocation metadata mapping, provenance, verification, and evaluation. It does not own or rewrite the upstream Skill instructions.
 
-The initial package is private and intended for the owner's DSH profiles. Public release and npm publication are deferred.
+The plugin source repository is public. The package retains `private: true` to prevent npm publication; public source visibility is not authorization for installation, activation, deployment or a release. Local research, raw logs, conversation/approval records and installation snapshots must remain private and excluded from public commits. The source distribution privacy policy is unchanged.
 
 ## 2. Locked Decisions
 
-1. **Package identity:** use `@lmgatex/dsh-mattpocock-skills`. The npm scope is provisional until a matching npmjs account or organization is controlled; private GitHub and local installs do not depend on npmjs ownership.
-2. **Repository visibility:** both the source distribution and plugin repositories remain private until the owner explicitly changes visibility.
+1. **Package identity:** use `@lmgatex/dsh-mattpocock-skills`. The npm scope is provisional until a matching npmjs account or organization is controlled; GitHub and local installs do not depend on npmjs ownership.
+2. **Repository visibility:** the plugin repository is public by accepted policy. Do not commit private research, raw transcripts/logs, local installation metadata or user-specific conversation records to it. The source distribution remains private under its existing policy; this amendment changes neither its visibility nor immutable source provenance. `package.private: true` prevents npm publication, not public GitHub visibility.
 3. **One package, manifest-driven channels:** ship one package whose channel set is exactly the channel manifests the pinned distribution declares. Runtime code must not hard-code channel names, channel counts, or the relationship between channels. *(Amended on the `v0.2.1` baseline: the distribution always publishes `stable` and `beta`, where `beta` is `stable` plus whatever upstream paths it previews. While nothing is previewed the two resolve to the same set, so a profile that selected either keeps working. The distribution owns that policy and its verifier rejects a reduced channel set.)*
 4. **Default channel:** `stable`, which the distribution always declares.
-5. **Owner's Web profile:** any declared channel may be selected, and no selection is required, because `implement-spec` is in the promoted set. *(Amended on the `v0.2.1` baseline. The earlier instruction to configure `beta` in order to get `implement-spec` is obsolete; `beta` remains supported for compatibility.)*
+5. **Web profiles:** any declared channel may be selected, and no selection is required, because `implement-spec` is in the promoted set. *(Amended on the `v0.2.1` baseline. The earlier instruction to configure `beta` in order to get `implement-spec` is obsolete; `beta` remains supported for compatibility.)*
 6. **Vendored union:** vendor the union of every declared channel once; each channel is a manifest-driven selection from that union.
 7. **Unchanged Skill sources:** preserve selected upstream-owned files byte-for-byte. Do not apply DSH wording substitutions or delete source resources.
 8. **Provider shape:** use a custom immutable provider backed by a generated static catalog, not a runtime recursive scanner and not `ctx.skills.register()`.
 9. **Precedence:** every packaged candidate uses `source: 'bundled'` and DSH's `BUNDLED_SKILL_RANK` (currently 600), so project and user Skills override the package.
-10. **Host only:** ship one Host Cordis plugin row. Do not ship a browser client plugin; existing DSH Web Skill UI and slash invocation consume the Host registry.
+10. **Core Host-only; optional workspace-controls exception:** the immutable Skill provider remains one Host Cordis plugin row, consumed by existing DSH Web Skill UI and slash invocation. *(Accepted scope amendment, 2026-10-05: the separately enabled workspace controls described in [WORKSPACE_WORKFLOW_CONTROLS.md](WORKSPACE_WORKFLOW_CONTROLS.md) must provide plugin-page configuration and session-bound instruments for worktree lifecycle, dual windows, ticket progress and pending decisions. A client settings/configuration module may be needed for that optional extension; this exception does not add a client to the current artifact or change core Skill delivery. The accepted design subsequently included workspace-first policy editing with sparse overrides and explicit saves; concrete client seats, schema and enforcement mechanics remain design proposals.)*
 11. **Offline runtime:** no install-time fetch, postinstall updater, runtime network access, mutable source cache, or file watcher.
 12. **No legacy manifest initially:** do not ship `dsh.plugin.json`. The authoritative activation mechanism is `package.json#dsh.bundle.patch` plus `cordis.patch.yml`.
 13. **Real behavioral evaluation:** the first usable release must run the `implement-spec` evaluation. The campaign definition, harness and raw records are evaluation material kept outside this repository.
@@ -93,7 +108,7 @@ The package manifest declares an installable Profile Bundle:
 
 The bundle patch inserts exactly one globally mounted Host row. Its final identifier must be unique and stable. The row loads the package and sets `channel: stable`. A profile-owned later patch may set any declared channel name.
 
-Installation is through DSH's profile package manager, for example a local checkout, private Git commit, or prebuilt tarball. Activation occurs on the next Profile boot.
+Installation is through DSH's profile package manager, for example a local checkout, Git commit, or prebuilt tarball. Activation occurs on the next Profile boot.
 
 ### 5.2 Plugin Contract
 
@@ -253,7 +268,7 @@ If a repeatable evaluation proves a generic Skill failure, first determine wheth
 
 ## 10. Build and Distribution
 
-Author in TypeScript and commit the prebuilt `lib/` output. Private GitHub installation must not require `prepare`, `postinstall`, or pnpm build approval.
+Author in TypeScript and commit the prebuilt `lib/` output. GitHub installation must not require `prepare`, `postinstall`, or pnpm build approval.
 
 The package file allowlist includes only runtime code and types, the bundle patch, generated catalog, vendored selected files and provenance, the immutable `source-lock.json`, licenses/notices, and user documentation. Source maintenance scripts may be included only if every advertised package script remains runnable from the packed artifact; otherwise they remain source-only and are not advertised as installed-package commands.
 
@@ -270,7 +285,7 @@ Before any release:
 
 Phase 4 produces a private development-verification artifact, not a release. Its scope, accepted command, isolation boundary, and recorded evidence are fixed in [PHASE4_ARTIFACT_VERIFICATION.md](PHASE4_ARTIFACT_VERIFICATION.md).
 
-The initial private repository may use Git commits or locally packed tarballs without publishing to npmjs.
+The public source repository may use Git commits or locally packed tarballs without publishing to npmjs. Raw local evidence is not included merely to satisfy a clean-tree verification gate.
 
 ## 11. Compatibility and Precedence
 
@@ -313,7 +328,7 @@ The initial implementation does not provide:
 - multiple npm packages or npm dist-tags for channels
 - runtime source directories supplied by users
 - custom slash syntax or alternate invocation forms
-- custom Web presentation
+- custom Web presentation for the core Skill provider (optional session instruments/configuration are the owner-approved exception in §15)
 - modifications to the Matt Pocock source distribution
 - compatibility claims for untested future DSH versions
 
@@ -327,3 +342,11 @@ When implementation reveals a conflict with this design:
 4. Update this document and relevant evaluation or implementation plan in the same approved change.
 
 Test failures may refine mechanics. They do not silently authorize changing locked decisions.
+
+## 15. Accepted extensions — workspace workflow controls (2026-10-05)
+
+The accepted extension specifies plugin-page global/per-workspace policy for worktree binding, lifecycle and dual windows, plus session-visible ticket progress with task-defined business states and persistent pending-decision indicators. Business status vocabulary and summaries are task-defined, without preset workflow stages or forced mapping to fixed progress categories; partial completion is preserved when the task declares it. All instruments belong to durable owner-session instances, not workspace-wide business state; managed descendants contribute to their owner instance. Independent sessions in the same workspace must not mix ticket/decision/window state. The current design adopts per-instance T/S under workspace policy, replacing the earlier workspace-shared quota recommendation; shared real-resource safety remains separate. The accepted design includes Skills/management separation, workspace-first policy editing, sparse inheritance, explicit revisioned saves and impact/convergence display. Rolling refill, ticketless research and automatic parent consumption remain required; execution state uses program receipts, not message text. Accepted clarification (2026-10-06): business judgment about decisions, completion/delivery, pause/cancel/reopen belongs to Skills, user-agent agreements, documents and the model. Instruments accept explicit business updates, persist/display them and mechanically apply ticket-slot intent without independent semantic evidence gates, business-policy evaluation or extra approval prompts; T can change from these updates, while S still requires real program release receipts. A subsequent accepted clarification requires enabled dual windows to be a mandatory cooperation mechanism with necessary agent guidance and an explicit functional off switch; worktree lifecycle may guide resource handling. [INSTRUMENT_GUIDANCE.md](INSTRUMENT_GUIDANCE.md) separates minimal enabled-feature protocol from project-tuned business preferences and documents that no instrument prompt is model-validated yet. Hard enforcement needs supported host entrances, not prose alone. [WORKSPACE_WORKFLOW_CONTROLS.md](WORKSPACE_WORKFLOW_CONTROLS.md) is the requirements entry; [SESSION_INSTRUMENTS.md](SESSION_INSTRUMENTS.md) defines the new business/scope contracts. Concrete UI placement, schema/defaults and enforcement mechanisms remain proposals, not delivered features.
+
+This is an opt-in extension of compatibility scope, not a rewrite of the immutable provider or a general issue-tracker replacement. Historical Host-only build/evaluation records remain records of their original baseline. No implementation, active GUI/profile modification, new model campaign, installation or publication is authorized merely by adding this requirements document.
+
+Subsequent explicit owner authorization (2026-10-06): begin phased implementation, using TypeScript. The first stage is the unmounted policy/session-ownership/persistence core and isolated mechanical tests, documented in [CONTROLS_CORE.md](CONTROLS_CORE.md). This authorizes local plugin engineering, not live GUI/profile modification, model campaigns, installation or release.

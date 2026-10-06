@@ -16,7 +16,25 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@deepseek-ai/*": [
+        "./node_modules/@deepseek-ai/*/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/*/types": [
+        "./node_modules/@deepseek-ai/*/lib/types/types.d.ts"
+      ],
+      "zod": [
+        "./node_modules/zod/index.d.ts"
+      ]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/client.ts"
+  ]
 }

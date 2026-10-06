@@ -5,7 +5,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { repositoryRoot, runTarball } from './verify-package.mjs'
+import { EXPECTED_PACKED_FILES, repositoryRoot, runTarball } from './verify-package.mjs'
 
 const version = JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')).version
 const temporary = await mkdtemp(join(tmpdir(), 'dsh-package-e2e-'))
@@ -32,10 +32,10 @@ try {
     root: repositoryRoot, tarballPath: tarball, checksumPath: checksum, sizePath: size,
     sourceCommitPath: sourceCommit, pnpmVersionPath: pnpmVersion,
   })
-  if (result.members.expectedFiles !== 97 || result.members.files !== 97 || result.members.symlinks !== 0) {
+  if (result.members.expectedFiles !== EXPECTED_PACKED_FILES || result.members.files !== EXPECTED_PACKED_FILES || result.members.symlinks !== 0) {
     throw new Error('unexpected disposable package inventory: ' + JSON.stringify(result.members))
   }
-  console.log('OK: disposable pnpm pack passed exact 97-file archive verification')
+  console.log('OK: disposable pnpm pack passed exact ' + EXPECTED_PACKED_FILES + '-file archive verification')
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

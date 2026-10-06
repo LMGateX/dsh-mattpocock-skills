@@ -1,0 +1,102 @@
+--- a/node_modules/@deepseek-ai/dsh-subagent/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-subagent/lib/index.js
+@@ -1692,6 +1692,8 @@
+ 			...request.toolFilter !== void 0 ? { toolFilter: request.toolFilter } : {}
+ 		});
+ 		const delegatedPolicies = captureDelegatedPolicyOverrides(parent);
++		const requestedCwd = spec.cwd;
++		const childCwd = requestedCwd === void 0 ? parent.session.header.cwd : assertUsableCwd("subagent", "start cwd", requestedCwd);
+ 		const releaseHold = this.activations.holdOwnership(parent, childId);
+ 		try {
+ 			const prepared = await this.host.prepareContinuable(spec.provider, {
+@@ -1716,13 +1718,14 @@
+ 						this.activations.assertChildIdAvailable(childId);
+ 						if (persisted !== void 0) throw new SubagentError(`subagent "${childId}" already exists`, "DUPLICATE_CHILD");
+ 					}
++					if (requestedCwd !== void 0) assertUsableCwd("subagent", "start cwd", requestedCwd);
+ 					const activation = await this.activations.materialize({
+ 						childId,
+ 						provider: spec.provider,
+ 						parent,
+ 						create: {
+ 							seed,
+-							meta: childSessionMeta(parent, childDepth, prepared.seed !== void 0),
++							meta: { ...childSessionMeta(parent, childDepth, prepared.seed !== void 0), ...childCwd !== void 0 ? { cwd: childCwd } : {} },
+ 							inheritedEventCount,
+ 							delegatedPolicies,
+ 							descriptor
+@@ -2824,6 +2827,7 @@
+ 		});
+ 		providers = /* @__PURE__ */ new Map();
+ 		continuations;
++		get initialCwdSupported() { return this.continuations !== void 0; }
+ 		/**
+ 		* The contained lifecycle-edge publisher. Built here because scoped dispatch
+ 		* keys its carrier by this exact service instance, whose own context filter
+--- a/node_modules/@deepseek-ai/dsh-subagent/lib/types/continuation.js
++++ b/node_modules/@deepseek-ai/dsh-subagent/lib/types/continuation.js
+@@ -65,6 +65,7 @@
+     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+ });
+ import { randomUUID } from 'node:crypto';
++import { assertUsableCwd } from './out-of-process.js';
+ import { brandString } from '@deepseek-ai/dsh-brand';
+ import { ReasoningEffortId, contentHasImage, createUserMessage } from '@deepseek-ai/dsh-llm';
+ import { SessionLogOffset } from '@deepseek-ai/dsh-session';
+@@ -126,6 +127,8 @@
+         // Capture before the first await: a later parent switch belongs to the
+         // parent's future, not to this child.
+         const delegatedPolicies = captureDelegatedPolicyOverrides(parent);
++        const requestedCwd = spec.cwd;
++        const childCwd = requestedCwd === undefined ? parent.session.header.cwd : assertUsableCwd('subagent', 'start cwd', requestedCwd);
+         // An idle continuation-managed parent must not settle while a caller is
+         // still creating its child. A turn-scoped delegation does not need this,
+         // but the service is also callable outside a turn.
+@@ -153,13 +156,14 @@
+                         throw new SubagentError(`subagent "${childId}" already exists`, 'DUPLICATE_CHILD');
+                     }
+                 }
++                if (requestedCwd !== undefined) assertUsableCwd('subagent', 'start cwd', requestedCwd);
+                 const activation = await this.activations.materialize({
+                     childId,
+                     provider: spec.provider,
+                     parent,
+                     create: {
+                         seed,
+-                        meta: childSessionMeta(parent, childDepth, prepared.seed !== undefined),
++                        meta: { ...childSessionMeta(parent, childDepth, prepared.seed !== undefined), ...childCwd !== undefined ? { cwd: childCwd } : {} },
+                         inheritedEventCount,
+                         delegatedPolicies,
+                         descriptor,
+--- a/node_modules/@deepseek-ai/dsh-subagent/lib/types/types.d.ts
++++ b/node_modules/@deepseek-ai/dsh-subagent/lib/types/types.d.ts
+@@ -34,6 +34,8 @@
+      * before child materialization without a second identity handshake.
+      */
+     readonly childId?: SessionId;
++    /** Host-authorized existing absolute initial cwd. Omit to inherit; resume never rebinds. */
++    readonly cwd?: string;
+     /**
+      * The delegation request. The manager reserves the stable child id, resolves
+      * the durable descriptor, and composes the child itself.
+--- a/node_modules/@deepseek-ai/dsh-subagent/lib/types/index.js
++++ b/node_modules/@deepseek-ai/dsh-subagent/lib/types/index.js
+@@ -78,6 +78,7 @@
+         });
+         providers = new Map();
+         continuations;
++        get initialCwdSupported() { return this.continuations !== undefined; }
+         /**
+          * The contained lifecycle-edge publisher. Built here because scoped dispatch
+          * keys its carrier by this exact service instance, whose own context filter
+--- a/node_modules/@deepseek-ai/dsh-subagent/lib/types/index.d.ts
++++ b/node_modules/@deepseek-ai/dsh-subagent/lib/types/index.d.ts
+@@ -115,6 +115,8 @@
+     }>>, "plain">;
+     private providers;
+     private continuations;
++    /** Initial cwd binding is supported only while the native continuation manager is available. */
++    get initialCwdSupported(): boolean;
+     /**
+      * The contained lifecycle-edge publisher. Built here because scoped dispatch
+      * keys its carrier by this exact service instance, whose own context filter

@@ -36,7 +36,7 @@ Use a new empty directory. The accepted command is invoked once:
 
 ~~~bash
 umask 077
-export ARTIFACT_DIR=/tmp/dsh-mattpocock-phase4-accepted
+export ARTIFACT_DIR=/absolute/external-artifacts/phase4-accepted
 export TARBALL="$ARTIFACT_DIR/lmgatex-dsh-mattpocock-skills-0.0.0-development.tgz"
 test "$(pnpm --version)" = 11.8.0
 mkdir --mode=700 "$ARTIFACT_DIR"  # must fail if any file, directory, or symlink already exists
@@ -94,7 +94,7 @@ The registry fixture lists the actual booted registry, records every Skill's nam
 
 Phase 4 completed at `2026-09-08T10:51:08Z` against source commit `7adf8b352153dff8beea42f9f4ba002502d3c504`. The accepted private development artifact is:
 
-- Path: `/tmp/dsh-mattpocock-phase4-accepted/lmgatex-dsh-mattpocock-skills-0.0.0-development.tgz`
+- Archive basename: `lmgatex-dsh-mattpocock-skills-0.0.0-development.tgz` (the historical local storage path is withheld; identity and results below are unchanged).
 - Size: `98,347` bytes
 - SHA-256: `309c4dbcf7c02797b1ce1c3406a1805dc35c54c6493908a65b85c0faefd84d22`
 - Artifact directory mode: `0700`; tarball and identity-record mode: `0444`

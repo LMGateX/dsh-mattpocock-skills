@@ -1,0 +1,2 @@
+# Unified diff context keeps upstream whitespace verbatim; it is patch data.
+host-patches/*.patch -whitespace

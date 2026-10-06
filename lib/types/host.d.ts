@@ -1,0 +1,224 @@
+import type { Context } from '@deepseek-ai/cordis';
+import type { AuthorizedGitRunner } from './controls/git-worktrees.js';
+import type { Agent } from '@deepseek-ai/dsh-agent';
+import type { SessionEvent, SessionHeader, UserMessage } from '@deepseek-ai/dsh-session';
+import type { ToolExecution, ToolExecutionResult, ToolRunContext, ToolGuard } from '@deepseek-ai/dsh-tools';
+import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry';
+import type { ControlsStorage } from './controls/storage.js';
+import type { ControlsAuthority, TrustedSession } from './controls/index.js';
+import type { InstrumentStorage } from './controls/instrument-storage.js';
+import type { InstrumentCommand } from './controls/instrument-state.js';
+import type { PolicyIntent, PolicySnapshot } from './controls/policy.js';
+import type { WindowStorage, TicketWindowCommand } from './controls/windows.js';
+import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js';
+import type { VersionedStorage } from './controls/versioned-storage.js';
+import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow } from './controls/remote-contract.js';
+import { StartupSupport } from './controls/startup-support.js';
+import type { StartupStatus } from './controls/startup-state.js';
+declare module '@deepseek-ai/dsh-llm' {
+    interface MessageSourceMap {
+        'mattpocock-controls-notification': {
+            readonly kind: 'mattpocock-controls-notification';
+            readonly form: 'notice';
+            readonly summary: string;
+            readonly notificationId: string;
+            readonly ownerSessionId: string;
+            readonly instrumentInstanceId: string;
+            readonly businessRevision: number;
+            readonly authorPrincipalId: string;
+        };
+        'mattpocock-controls': {
+            readonly kind: 'mattpocock-controls';
+            readonly form: 'snapshot';
+            readonly sections: readonly {
+                readonly name: string;
+                readonly text: string;
+            }[];
+        };
+    }
+}
+export declare function makeSnapshotMessage(text: string): UserMessage;
+export declare const HOST_CAPABILITIES: {
+    readonly nativeInitialChildCwd: "unsupported";
+    readonly allNativeWakeAdmission: "unsupported";
+    readonly multiRootGitWriteScopes: "unsupported";
+    readonly managedToolRouting: "supported";
+    readonly nativeLifecycleObservation: "supported";
+    readonly dynamicContext: "supported";
+};
+export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChildCwd'> & {
+    readonly nativeInitialChildCwd: 'supported' | 'unsupported';
+};
+export interface ContinuableChildRequest {
+    readonly provider: 'spawn' | 'fork';
+    readonly label: string;
+    readonly prompt: string;
+    readonly childId: string;
+    readonly cwd?: string;
+}
+export interface SessionFacts {
+    readonly header: SessionHeader;
+    /** Only this session's owned suffix; never a fork-inherited descriptor. */
+    readonly events: readonly SessionEvent[];
+    readonly live: boolean;
+}
+export type HostEvent = ({
+    readonly kind: 'agent-status';
+    readonly sessionId: string;
+    readonly status: 'idle' | 'running';
+} | {
+    readonly kind: 'agent-disposed';
+    readonly sessionId: string;
+} | {
+    readonly kind: 'subagent-start';
+    readonly sessionId: string;
+    readonly runId: string;
+    readonly provider: string;
+    readonly local: boolean;
+} | {
+    readonly kind: 'subagent-end';
+    readonly sessionId: string;
+    readonly runId: string;
+    readonly provider: string;
+    readonly local: boolean;
+    readonly stopReason: string;
+}) & {
+    readonly actualAgent?: Agent;
+};
+/** The core is supplied by the package composition, not fabricated by this adapter. */
+export interface RuntimeFacade {
+    readPolicy(caller: HostCaller, signal: AbortSignal): Promise<PolicySnapshot>;
+    savePolicy(caller: HostCaller, intent: PolicyIntent, expectedRevision: number, signal: AbortSignal): Promise<PolicySnapshot>;
+    readSession(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<unknown>;
+    applyInstrument(caller: HostCaller, sessionId: string, command: InstrumentCommand, signal: AbortSignal): Promise<unknown>;
+    applyTicketWindow(caller: HostCaller, sessionId: string, command: TicketWindowCommand, signal: AbortSignal): Promise<unknown>;
+    resourceAction(caller: HostCaller, sessionId: string, request: ResourceAction, signal: AbortSignal): Promise<unknown>;
+    historyAction?(caller: HostCaller, sessionId: string, input: HostJson, signal: AbortSignal): Promise<unknown>;
+    worktreeAction?(caller: HostCaller, sessionId: string, input: HostJson, signal: AbortSignal): Promise<unknown>;
+    delegate?(caller: HostCaller, input: HostJson, exec: ToolRunContext): Promise<unknown>;
+    created(caller: HostCaller, signal: AbortSignal, actualAgent: Agent): Promise<void>;
+    observe(event: HostEvent): Promise<void>;
+    /** Admitted-step consumption; must return freshly owned, attributed messages. */
+    preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[]): Promise<readonly UserMessage[]>;
+    postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>): Promise<readonly UserMessage[]>;
+    executeManaged?(caller: HostCaller, request: HostJson, exec: ToolRunContext): Promise<unknown>;
+    assign?(caller: HostCaller, request: HostJson, signal: AbortSignal): Promise<unknown>;
+    serializePolicyPermission?<T>(effect: () => Promise<T>): Promise<T>;
+    notificationCommitted?(ownerSessionId: string, notificationId: string, messageId: string): Promise<void>;
+    context?(caller: HostCaller): string;
+    dispose(): Promise<void>;
+}
+export interface OwnerNotificationInput {
+    readonly notificationId: string;
+    readonly ownerSessionId: string;
+    readonly instrumentInstanceId: string;
+    readonly businessRevision: number;
+    readonly authorPrincipalId: string;
+}
+export interface OwnerNotificationResult {
+    readonly status: 'accepted' | 'offline' | 'unavailable';
+    readonly messageId: string | null;
+}
+export interface HostPorts {
+    readonly controlsStorage: ControlsStorage;
+    readonly instrumentStorage: InstrumentStorage;
+    readonly windowStorage: WindowStorage;
+    readonly resourceStorage: ResourceStorage;
+    readonly authority: ControlsAuthority;
+    readonly operatorPrincipal: string;
+    readonly capabilities: HostCapabilities;
+    readonly resourceLifecycle: ResourceLifecycle;
+    /** Background startup notification retries await registration; factories must not await their flush. */
+    readonly notificationObserverReady?: Promise<void>;
+    /** Host-owned startup configuration and real native health; never a policy write port. */
+    startupStatus?(signal?: AbortSignal): Promise<StartupStatus>;
+    gitRunnerForSession(sessionId: string, signal: AbortSignal): AuthorizedGitRunner;
+    makeSnapshotMessage(text: string): UserMessage;
+    /** Program-only proof on the exact live model surface; preparation/log existence is not visibility. */
+    snapshotVisible?(caller: HostCaller, actualAgent: Agent, message: UserMessage): boolean;
+    notifyOwner(input: OwnerNotificationInput, signal: AbortSignal): Promise<OwnerNotificationResult>;
+    executeNative(exec: ToolExecution, name: 'subagent' | 'subagent_fork' | 'send_message', args: unknown): Promise<ToolExecutionResult>;
+    /** Technical scope preflight before runtime records intent; creates no native child or durable facts. */
+    authorizeInitialChildCwd?(exec: ToolRunContext, cwd: string): Promise<void>;
+    /** Returns native inbox acceptance only; runtime verifies actual session facts separately. */
+    createContinuable?(exec: ToolRunContext, request: ContinuableChildRequest): Promise<{
+        readonly childId: string;
+        readonly messageId: string;
+    }>;
+    installNativeGuard(guard: ToolGuard): () => void;
+    installManagedGuard(guard: ToolGuard): () => void;
+    liveAgent(sessionId: string): Agent | undefined;
+    liveAgents(): readonly Agent[];
+    nativeActivity(sessionId: string): Promise<{
+        readonly known: boolean;
+        readonly reason: string | null;
+        readonly liveAgents: readonly Agent[];
+    }>;
+    openRuntimeStorage<T extends {
+        readonly revision: number;
+    }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>;
+    openUnitStorage<T extends {
+        readonly revision: number;
+    }>(suffix: string, parse: (value: unknown) => T): Promise<VersionedStorage<T>>;
+    readPolicyGrants(): Promise<PolicyGrants>;
+    sessionFacts(sessionId: string, signal?: AbortSignal): Promise<SessionFacts>;
+    /** Native acceptance/live facts are not durability; false never certifies persistence. */
+    flushSession?(sessionId: string, signal: AbortSignal): Promise<boolean>;
+    /** Authority checks are repeated at effect boundaries; never wire-supplied principals. */
+    authorizeCaller(caller: HostCaller, sessionId?: string): Promise<void>;
+}
+export interface HostOptions {
+    createRuntime(ports: HostPorts): Promise<RuntimeFacade>;
+    /** Explicit trusted launch configuration; not a Remote/GUI/model path. */
+    readonly sdkRoot?: string;
+    /** Program-only test/embedding seam; production uses the actual process epoch. */
+    readonly startup?: {
+        readonly bootEpoch?: string;
+    };
+}
+export interface HostMount {
+    readonly service: MattPocockControlsService;
+    readonly ports: HostPorts;
+    dispose(): Promise<void>;
+}
+export declare function operatorCaller(ctx: Context): HostCaller;
+export declare function agentCaller(ctx: Context, agent: Agent | undefined): HostCaller;
+/** Header classification distinguishes ordinary forks from delegated children. */
+export declare function classifySession(facts: SessionFacts, retained?: TrustedSession): 'owner' | TrustedSession | undefined;
+export declare function createHostAuthority(ctx: Context, storage: ControlsStorage, grants: VersionedStorage<PolicyGrants>): {
+    readonly authority: ControlsAuthority;
+    readonly sessionFacts: HostPorts['sessionFacts'];
+    readonly authorizeCaller: HostPorts['authorizeCaller'];
+    readonly operatorPrincipal: string;
+};
+/** A source-mode binding plus a strict descriptor contribution; no monkeypatch. */
+export declare class MattPocockControlsService extends TypertRemoteService {
+    private readonly runtime;
+    private readonly ports;
+    private readonly grants;
+    private readonly startup;
+    private readonly lifecycle;
+    constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, startup: StartupSupport, lifecycle: {
+        readonly signal: AbortSignal;
+        track<T>(work: () => Promise<T>): Promise<T>;
+    });
+    private run;
+    startupStatus(suppliedSignal?: AbortSignal): Promise<StartupStatus>;
+    saveStartupSettings(desired: unknown, expectedRevision: unknown, suppliedSignal?: AbortSignal): Promise<StartupStatus>;
+    readPolicy(): Promise<PolicySnapshot>;
+    savePolicy(intent: unknown, expectedRevision: unknown): Promise<PolicySnapshot>;
+    listWorkspaces(): Promise<readonly WorkspaceRow[]>;
+    readSession(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<HostJson>;
+    applyInstrument(sessionId: unknown, command: unknown): Promise<HostJson>;
+    applyTicketWindow(sessionId: unknown, command: unknown): Promise<HostJson>;
+    historyAction(sessionId: unknown, request: unknown, suppliedSignal?: AbortSignal): Promise<HostJson>;
+    worktreeAction(sessionId: unknown, request: unknown): Promise<HostJson>;
+    resourceAction(sessionId: unknown, request: unknown): Promise<HostJson>;
+    grantPolicy(sessionId: unknown, enabled: unknown, expectedRevision: unknown): Promise<PolicyGrants>;
+}
+export declare function hostRemoteContribution(): TypertContribution;
+/** Fixed Git argv execution; subprocess alone is not a sandbox or permission decision. */
+export declare function createAuthorizedGitRunner(ctx: Context, rawSessionId: string, outerSignal: AbortSignal): AuthorizedGitRunner;
+/** Mount actual SDK registrations over independently owned single-table domains. */
+export declare function mountHost(ctx: Context, options: HostOptions): Promise<HostMount>;

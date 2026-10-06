@@ -1,0 +1,63 @@
+--- a/packages/subagent/subagent/src/continuation.ts
++++ b/packages/subagent/subagent/src/continuation.ts
+@@ -14,6 +14,7 @@
+  */
+ 
+ import { randomUUID } from 'node:crypto'
++import { assertUsableCwd } from './out-of-process.ts'
+ import type { Context } from '@deepseek-ai/cordis'
+ import type { Agent } from '@deepseek-ai/dsh-agent'
+ import { brandString } from '@deepseek-ai/dsh-brand'
+@@ -129,6 +130,10 @@
+     // Capture before the first await: a later parent switch belongs to the
+     // parent's future, not to this child.
+     const delegatedPolicies = captureDelegatedPolicyOverrides(parent)
++    const requestedCwd = spec.cwd
++    const childCwd = requestedCwd === undefined
++      ? parent.session.header.cwd
++      : assertUsableCwd('subagent', 'start cwd', requestedCwd)
+ 
+     // An idle continuation-managed parent must not settle while a caller is
+     // still creating its child. A turn-scoped delegation does not need this,
+@@ -158,13 +163,15 @@
+             throw new SubagentError(`subagent "${childId}" already exists`, 'DUPLICATE_CHILD')
+           }
+         }
++        if (requestedCwd !== undefined) assertUsableCwd('subagent', 'start cwd', requestedCwd)
+         const activation = await this.activations.materialize({
+           childId,
+           provider: spec.provider,
+           parent,
+           create: {
+             seed,
+-            meta: childSessionMeta(parent, childDepth, prepared.seed !== undefined),
++            meta: { ...childSessionMeta(parent, childDepth, prepared.seed !== undefined),
++              ...childCwd !== undefined ? { cwd: childCwd } : {} },
+             inheritedEventCount,
+             delegatedPolicies,
+             descriptor,
+--- a/packages/subagent/subagent/src/types.ts
++++ b/packages/subagent/subagent/src/types.ts
+@@ -40,6 +40,8 @@
+    * before child materialization without a second identity handshake.
+    */
+   readonly childId?: SessionId
++  /** Host-authorized existing absolute initial cwd. Omit to inherit; resume never rebinds. */
++  readonly cwd?: string
+   /**
+    * The delegation request. The manager reserves the stable child id, resolves
+    * the durable descriptor, and composes the child itself.
+--- a/packages/subagent/subagent/src/index.ts
++++ b/packages/subagent/subagent/src/index.ts
+@@ -202,6 +202,11 @@
+   })
+   private providers = new Map<string, SubagentProvider>()
+   private continuations: SubagentContinuationManager | undefined
++
++  /** Initial cwd binding is supported only while the native continuation manager is available. */
++  get initialCwdSupported(): boolean {
++    return this.continuations !== undefined
++  }
+   /**
+    * The contained lifecycle-edge publisher. Built here because scoped dispatch
+    * keys its carrier by this exact service instance, whose own context filter

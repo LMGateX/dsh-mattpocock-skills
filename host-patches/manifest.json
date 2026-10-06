@@ -1,0 +1,136 @@
+{
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "tag": "dsh-v0.2.1-alpha.1",
+    "commit": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+    "version": "0.2.1-alpha.1"
+  },
+  "source": [
+    {
+      "path": "packages/subagent/subagent/src/continuation.ts",
+      "sha256": "b9224fd93929a54701b22e500837805091132f8d6a7f30c358ae0c58cd4e12de",
+      "replacements": [
+        {
+          "before": "import { randomUUID } from 'node:crypto'",
+          "after": "import { randomUUID } from 'node:crypto'\nimport { assertUsableCwd } from './out-of-process.ts'"
+        },
+        {
+          "before": "    const delegatedPolicies = captureDelegatedPolicyOverrides(parent)",
+          "after": "    const delegatedPolicies = captureDelegatedPolicyOverrides(parent)\n    const requestedCwd = spec.cwd\n    const childCwd = requestedCwd === undefined\n      ? parent.session.header.cwd\n      : assertUsableCwd('subagent', 'start cwd', requestedCwd)"
+        },
+        {
+          "before": "            meta: childSessionMeta(parent, childDepth, prepared.seed !== undefined),",
+          "after": "            meta: { ...childSessionMeta(parent, childDepth, prepared.seed !== undefined),\n              ...childCwd !== undefined ? { cwd: childCwd } : {} },"
+        },
+        {
+          "before": "        const activation = await this.activations.materialize({",
+          "after": "        if (requestedCwd !== undefined) assertUsableCwd('subagent', 'start cwd', requestedCwd)\n        const activation = await this.activations.materialize({"
+        }
+      ],
+      "patchedSha256": "e0dc217253a2b6689dff8597da2aad9f3399575df157a94bc6270bb91b723987"
+    },
+    {
+      "path": "packages/subagent/subagent/src/types.ts",
+      "sha256": "08b6a2f78cc95e117ca745a079cb7d77a15fb3a66292f900a0e3fe280cd09411",
+      "replacements": [
+        {
+          "before": "  readonly childId?: SessionId",
+          "after": "  readonly childId?: SessionId\n  /** Host-authorized existing absolute initial cwd. Omit to inherit; resume never rebinds. */\n  readonly cwd?: string"
+        }
+      ],
+      "patchedSha256": "e2633e45de0119d3069e8b02d7366c375e3beb3f6e76e2eae3df687f1aa1fc5d"
+    },
+    {
+      "path": "packages/subagent/subagent/src/index.ts",
+      "sha256": "54c7dec76cb1a57b97308ededc552f72e89bb5a6542293ac2d97e5f4a0fd8535",
+      "replacements": [
+        {
+          "before": "  private continuations: SubagentContinuationManager | undefined",
+          "after": "  private continuations: SubagentContinuationManager | undefined\n\n  /** Initial cwd binding is supported only while the native continuation manager is available. */\n  get initialCwdSupported(): boolean {\n    return this.continuations !== undefined\n  }"
+        }
+      ],
+      "patchedSha256": "fdb184066f032fbe13722be2af1dc37ddbbcc1252ce52014aa9d1bc366b9f406"
+    }
+  ],
+  "compiled": [
+    {
+      "path": "node_modules/@deepseek-ai/dsh-subagent/lib/index.js",
+      "sha256": "75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541",
+      "replacements": [
+        {
+          "before": "\t\tconst delegatedPolicies = captureDelegatedPolicyOverrides(parent);",
+          "after": "\t\tconst delegatedPolicies = captureDelegatedPolicyOverrides(parent);\n\t\tconst requestedCwd = spec.cwd;\n\t\tconst childCwd = requestedCwd === void 0 ? parent.session.header.cwd : assertUsableCwd(\"subagent\", \"start cwd\", requestedCwd);"
+        },
+        {
+          "before": "meta: childSessionMeta(parent, childDepth, prepared.seed !== void 0),",
+          "after": "meta: { ...childSessionMeta(parent, childDepth, prepared.seed !== void 0), ...childCwd !== void 0 ? { cwd: childCwd } : {} },"
+        },
+        {
+          "before": "\t\tcontinuations;",
+          "after": "\t\tcontinuations;\n\t\tget initialCwdSupported() { return this.continuations !== void 0; }"
+        },
+        {
+          "before": "\t\t\t\t\tconst activation = await this.activations.materialize({",
+          "after": "\t\t\t\t\tif (requestedCwd !== void 0) assertUsableCwd(\"subagent\", \"start cwd\", requestedCwd);\n\t\t\t\t\tconst activation = await this.activations.materialize({"
+        }
+      ],
+      "patchedSha256": "2ab17b8ee4f1a2d88a91fcc011391a271188dad4b479d571132bf8d71e4a534d"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-subagent/lib/types/continuation.js",
+      "sha256": "194cb51d6b58346b3a85310e9a4831a5e29db60035c2b5205adfbb1ffc9a0be6",
+      "replacements": [
+        {
+          "before": "import { randomUUID } from 'node:crypto';",
+          "after": "import { randomUUID } from 'node:crypto';\nimport { assertUsableCwd } from './out-of-process.js';"
+        },
+        {
+          "before": "        const delegatedPolicies = captureDelegatedPolicyOverrides(parent);",
+          "after": "        const delegatedPolicies = captureDelegatedPolicyOverrides(parent);\n        const requestedCwd = spec.cwd;\n        const childCwd = requestedCwd === undefined ? parent.session.header.cwd : assertUsableCwd('subagent', 'start cwd', requestedCwd);"
+        },
+        {
+          "before": "meta: childSessionMeta(parent, childDepth, prepared.seed !== undefined),",
+          "after": "meta: { ...childSessionMeta(parent, childDepth, prepared.seed !== undefined), ...childCwd !== undefined ? { cwd: childCwd } : {} },"
+        },
+        {
+          "before": "                const activation = await this.activations.materialize({",
+          "after": "                if (requestedCwd !== undefined) assertUsableCwd('subagent', 'start cwd', requestedCwd);\n                const activation = await this.activations.materialize({"
+        }
+      ],
+      "patchedSha256": "71a863e310561865ae338e3cb059ef7ca4e651264f07c0557bb3a4587609cc95"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-subagent/lib/types/types.d.ts",
+      "sha256": "e5cadbdece5be5c323334fd71cff23db6c193ca2f3f59e378d514ae9d9923a65",
+      "replacements": [
+        {
+          "before": "    readonly childId?: SessionId;",
+          "after": "    readonly childId?: SessionId;\n    /** Host-authorized existing absolute initial cwd. Omit to inherit; resume never rebinds. */\n    readonly cwd?: string;"
+        }
+      ],
+      "patchedSha256": "8cc407b19dffeb63e165a1757b6006b75b867b96d176dd202980a9d4d4efc8a1"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-subagent/lib/types/index.js",
+      "sha256": "6680967f2c94033cb285e4eab38bcd25d0a16c3f838b70026ef22777bb8acef7",
+      "replacements": [
+        {
+          "before": "        continuations;",
+          "after": "        continuations;\n        get initialCwdSupported() { return this.continuations !== undefined; }"
+        }
+      ],
+      "patchedSha256": "55f7b3a06fbc75d7803b5fbe3ae22a332510d692bf42282981b29fca3b60c906"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-subagent/lib/types/index.d.ts",
+      "sha256": "66770cf4c38caa2868dec3b5283bce7370ca38e4ed5088c9c3cdaf38bfb57f57",
+      "replacements": [
+        {
+          "before": "    private continuations;",
+          "after": "    private continuations;\n    /** Initial cwd binding is supported only while the native continuation manager is available. */\n    get initialCwdSupported(): boolean;"
+        }
+      ],
+      "patchedSha256": "2cb310cc85128cd9f6cd36909fe510fd2ed89d79589a5c73e9842550d12caf63"
+    }
+  ]
+}

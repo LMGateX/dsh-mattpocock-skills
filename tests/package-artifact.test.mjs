@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url'
 
 import {
   diffFileInventories,
+  EXPECTED_PEERS,
+  EXPECTED_PEER_META,
+  EXPECTED_CLIENT,
+  PACKAGE_FILES_ALLOWLIST,
   expectedPackedFileBytes,
   parseChecksumText,
   parseCliArgs,
@@ -45,16 +49,12 @@ test('package policy accepts the current private source-only manifest', () => {
     name: '@lmgatex/dsh-mattpocock-skills',
     version: '0.3.0',
     private: true,
-    files: 17,
-    peerDependencies: [
-      '@deepseek-ai/cordis',
-      '@deepseek-ai/dsh-skill',
-      '@deepseek-ai/schemastery',
-    ],
+    files: PACKAGE_FILES_ALLOWLIST.length,
+    peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
   })
 })
 
-test('package policy rejects release, lifecycle, publication, client, and allowlist drift', () => {
+test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
     [{ ...packageJson, version: '1.0.0' }, /0\.3\.0/],
     [{ ...packageJson, private: false }, /private/],
@@ -63,6 +63,16 @@ test('package policy rejects release, lifecycle, publication, client, and allowl
     [{ ...packageJson, dependencies: {} }, /dependencies/],
     [{ ...packageJson, dsh: { ...packageJson.dsh, client: './client.js' } }, /client/],
     [{ ...packageJson, files: [...packageJson.files, 'scripts/'] }, /allowlist/],
+    [{ ...packageJson, files: [...packageJson.files, 'docs/'] }, /allowlist/],
+    [{ ...packageJson, exports: { ...packageJson.exports, './runtime': './lib/runtime.js' } }, /exports/],
+    [{ ...packageJson, exports: { ...packageJson.exports, './host': { types: './src/host.ts', default: './lib/host.js' } } }, /exports/],
+    [{ ...packageJson, dsh: { ...packageJson.dsh, client: { ...EXPECTED_CLIENT, platform: 'desktop' } } }, /client/],
+    [{ ...packageJson, dsh: { ...packageJson.dsh, client: { ...EXPECTED_CLIENT, inject: EXPECTED_CLIENT.inject.slice(1) } } }, /client/],
+    [{ ...packageJson, dsh: { ...packageJson.dsh, client: { ...EXPECTED_CLIENT, inject: [...EXPECTED_CLIENT.inject, 'react'] } } }, /client/],
+    [{ ...packageJson, peerDependencies: { ...EXPECTED_PEERS, '@deepseek-ai/dsh-session': '*' } }, /peer dependency/],
+    [{ ...packageJson, peerDependenciesMeta: undefined }, /optional peer metadata/],
+    [{ ...packageJson, peerDependenciesMeta: { ...EXPECTED_PEER_META, '@deepseek-ai/dsh-session': { optional: false } } }, /optional peer metadata/],
+    [{ ...packageJson, peerDependenciesMeta: { ...EXPECTED_PEER_META, '@deepseek-ai/cordis': { optional: true } } }, /optional peer metadata/],
   ]
   for (const [manifest, pattern] of cases) assert.throws(() => validatePackagePolicy(manifest), pattern)
 })

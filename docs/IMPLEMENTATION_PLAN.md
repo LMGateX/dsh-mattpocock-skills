@@ -1,8 +1,32 @@
 # Implementation Plan and Gates
 
+> 公开资料边界：带日期的原始研究、工具/测试日志和本机快照仅在本地保留，不随公开仓库分发，也不充当可公开复核的原始证明。当前状态及历史证据范围见 [公开验证说明](<VERIFICATION.md>)。SDK 包相对路径仅定位当时核验的安装产物，不保留本机路径或旧行号。
+
 This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is intentionally phased so provenance and package behavior are testable before the plugin is enabled in the owner's active Web profile.
 
-> **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. The current baseline is source distribution `v0.3.0`, mirroring upstream release `v1.3.1`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
+> **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.0`, mirroring upstream release `v1.3.1`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
+
+## 最新协作功能实施（2026-10-06）
+
+已接受范围包含工作树绑定与全仪器持久化/当前注入/历史查询的源码实施。本阶段以 [DESIGN 最新要求](<DESIGN.md>)为准，取代下方旧硬容量/重资源处置控制的行为规格。
+
+源码已包含参考 T/S、宿主首次 cwd 源码/编译补丁、持久工作树关系、全仪器有界当前投影、摘要分页/按需详情、显式副本与源旧历史整理，以及 Host/Client 工具与操作入口。当前复审修复、严格构建和公开接口机械回归已完成；清洁提交对应的开发制品校验与不可变身份记录独立随交付保存。当前结果及验收边界见[公开验证说明](<VERIFICATION.md>)，不以历史本地记录代替本轮结果。源码交付不自动完成安装或正式发布。
+
+| 已实现源码范围 | 当前契约与操作说明 |
+|---|---|
+| 参考窗口、真实程序事实与当前消费去重 | [使用指南](<../CONTROLS.md>)、[消费模块](<../src/controls/consumption.ts>) |
+| 首次目录能力与可信技术授权 | [宿主补丁交付](<../host-patches/README.md>)、[宿主接口](<HOST_INTEGRATION.md>) |
+| 持久意图、实际绑定、discarded/cleaned 与源 checkpoint/旧版本删除 | [工作树绑定](<WORKTREE_BINDINGS.md>) |
+| 历史副本、主动查询、三源域整理及非原子部分结果 | [历史核心](<HISTORY_CORE.md>) |
+| 九项模型工具、客户端历史与源清理操作 | [中文使用指南](<../CONTROLS.md#6-工具与实际权限>) |
+
+源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
+
+## Current optional controls implementation — 2026-10-06（旧规格历史验收）
+
+**本段为前一阶段旧规格验收，不是本轮新行为完成声明。** Repository-local TypeScript Host/Client/control implementation and mechanical validation were complete for the then-supported seams. The earlier [completion matrix and verification（本地原始记录不公开；参见验证范围）](<VERIFICATION.md#historical-evidence>) distinguishes implemented features from installed-host unsupported guarantees; usage is in [the shipped guide](../CONTROLS.md). This does not satisfy or authorize the historical Phase 5 behavioral campaign, owner activation or private release gates below.
+
+Current shape: immutable Skill provider plus optional lazy runtime, revisioned workspace policy, durable owner-scoped instruments, independent rolling T/S, safe resource retention, actual consumption, durable owner notices and native UI. Current host gaps remain complete native activity/wake admission, initial independent continuable cwd, cold-resume closure and multi-root Git writes. Preserve unknown/fail-closed/retention rather than inventing enforcement.
 
 ## Phase 0 — Repository Baseline
 
@@ -87,3 +111,9 @@ Run the `implement-spec` campaign from clean fixture repositories. Capture the d
 ## Completion Definition
 
 The first implementation is complete only when deterministic tests, isolated DSH installs, the real behavioral evaluation, active-profile verification, clean worktrees, and private remote synchronization all pass. Documentation must describe observed behavior rather than intended but untested behavior.
+
+## Optional workspace controls — phased implementation (2026-10-06)
+
+The accepted extensions are specified in [WORKSPACE_WORKFLOW_CONTROLS.md](WORKSPACE_WORKFLOW_CONTROLS.md): workspace policy editing, session-instance lifecycle/dual-window instruments, task-defined ticket progress and persistent pending decisions. [SESSION_INSTRUMENTS.md](SESSION_INSTRUMENTS.md) records accepted GUI principles, owner-session/descendant identity, per-instance T/S, model-led business updates versus program execution facts, nonjudgmental ticket-slot handling, decision attribution and isolation/recovery tests. Accepted clarification excludes plugin-owned business correctness/approval gates: the model decides when to register or resolve matters and when tickets complete/pause/cancel, then updates instruments; deterministic T accounting is not semantic certification. Enabled dual windows still require deterministic admission plus minimal agent protocol injection, with explicit off behavior; optional user project instruction tuning and unvalidated-prompt handling are described in [INSTRUMENT_GUIDANCE.md](INSTRUMENT_GUIDANCE.md). Mechanism-only tests and separately authorized model-behavior tests are distinct gates. These are not completed phases or changed historical outcomes. Individual refill, ticketless research, program-only execution receipts and automatic state consumption remain required; [REACTIVE_WINDOW_INSTRUMENTATION.md](REACTIVE_WINDOW_INSTRUMENTATION.md) identifies existing same-model-step hooks. Before implementation, settle concrete client seats/schema/defaults, supported binding/admission/retirement seams and instance authorization; then run the isolated no-model matrices including two sessions in one workspace, custom states and offline/stale decision handling. Live GUI/profile changes and real-model trials remain separate decisions.
+
+The accepted phased implementation begins as follows. Phase 1 uses the existing strict TypeScript ESM build for policy inheritance/revisioned saves, owner-session identity, atomic persistence and isolated recovery tests. It does not mount new host tools, admissions or GUI. Concrete first-stage interface, unset-capacity handling, storage ownership and test evidence are recorded in [CONTROLS_CORE.md](CONTROLS_CORE.md); The second phase continues: Phase 2 implements unmounted task-defined ticket progress and pending-decision records, per-instance event persistence, actual-author/assignment checks and independent viewer revisions; see [INSTRUMENT_RECORDS.md](INSTRUMENT_RECORDS.md). Later window/admission, resource and host/client integration stages remain pending. Historical release and evaluation gates are unchanged.

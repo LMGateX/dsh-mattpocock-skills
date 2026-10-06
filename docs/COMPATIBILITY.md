@@ -4,7 +4,7 @@
 
 这是能力层面的首轮静态盘点，不是全部 Skills 的端到端认证。**本次盘点的逐 Skill 行号引自 v1.2.3 时代的 vendor 基线；当前 vendor 已更新到上游 v1.3（27 个 Skills），行号可能已经漂移，结论本身未重跑。**对全部 Skill Markdown 做宿主关键词检索，并精读 setup、implement-spec、code-review、research、wayfinder、ask-matt 的阶段边界、router Skills、to-tickets 与 diagnosing-bugs。未命中关键词不能证明完全兼容。
 
-基线：adapter 提交 `b27f9add6e29267ebe2303bb50729252ed47e1b5`；固定 vendor；当前本地安装的 DSH 实现。宿主版本层面的 API 核对（0.1.2-rc.1 → 0.1.7-alpha.2、peer 范围修复、跨宿主验证）另见 [宿主兼容性核对](HOST_COMPATIBILITY.md)。当前实现的源码事实不自动等同于历史 Trial 当时的运行时，也不证明 owner profile 已加载相应能力。本次没有读取 owner 配置。
+基线：adapter 提交 `b27f9add6e29267ebe2303bb50729252ed47e1b5`；固定 vendor；当时核验的 DSH 安装产物。宿主版本层面的 API 核对（0.1.2-rc.1 → 0.1.7-alpha.2、peer 范围修复、跨宿主验证）另见 [宿主兼容性核对](HOST_COMPATIBILITY.md)。当前实现的源码事实不自动等同于历史 Trial 当时的运行时，也不证明 owner profile 已加载相应能力。本次没有读取 owner 配置。
 
 标记：**契约已验证**＝本次确定性测试；**原生能力**＝代码或工具声明支持；**条件支持**＝依赖项目配置、权限或其他工具；**存在差异**＝正文与当前实现具体不一致；**未验证**＝不能作支持/不支持结论。
 

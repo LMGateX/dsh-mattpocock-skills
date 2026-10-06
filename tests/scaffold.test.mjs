@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { parse } from 'yaml'
+import { PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES, EXPECTED_PACKED_FILES, EXPECTED_PEERS, EXPECTED_PEER_META, EXPECTED_CLIENT, validatePackagePolicy } from '../scripts/verify-package.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
@@ -22,33 +23,13 @@ test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.name, '@lmgatex/dsh-mattpocock-skills')
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
-  assert.equal(packageJson.dsh?.client, undefined)
+  assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
   assert.equal(packageJson.dependencies, undefined)
   assert.equal(packageJson.scripts, undefined)
-  assert.deepEqual(packageJson.peerDependencies, {
-    '@deepseek-ai/cordis': '^4.0.2',
-    '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1',
-    '@deepseek-ai/schemastery': '^3.18.2',
-  })
-  assert.deepEqual(packageJson.files, [
-    'lib/index.js',
-    'lib/catalog.js',
-    'lib/provider.js',
-    'lib/types/index.d.ts',
-    'lib/types/catalog.d.ts',
-    'lib/types/provider.d.ts',
-    'cordis.patch.yml',
-    'generated/catalog.json',
-    'vendor/mattpocock-skills/',
-    'PROVENANCE.json',
-    'vendor-files.json',
-    'source-lock.json',
-    'README.md',
-    'README.zh-CN.md',
-    'MIGRATION.md',
-    'LICENSE',
-    'THIRD_PARTY_NOTICES.md',
-  ])
+  assert.deepEqual(packageJson.peerDependencies, EXPECTED_PEERS)
+  assert.deepEqual(packageJson.peerDependenciesMeta, EXPECTED_PEER_META)
+  assert.deepEqual(packageJson.files, PACKAGE_FILES_ALLOWLIST)
+  validatePackagePolicy(packageJson)
   assert.equal(await pathExists(join(root, 'dsh.plugin.json')), false)
 
   const patch = parse(await readFile(join(root, 'cordis.patch.yml'), 'utf8'))
@@ -77,4 +58,35 @@ test('exports the closed channel set declared by the vendored distribution', asy
   assert.deepEqual(plugin.Config({ channel: 'stable' }), { channel: 'stable' })
   assert.deepEqual(plugin.Config({ channel: 'beta' }), { channel: 'beta' })
   assert.throws(() => plugin.Config({ channel: 'nightly' }))
+})
+
+test('Skills-only context mounts exactly one provider without eager optional Host dependencies', async () => {
+  const plugin = await import('../lib/index.js')
+  const factories = []
+  const context = { logger() { return { warn() {} } }, skills: { registerProvider(factory) { factories.push(factory) } } }
+  assert.equal(Object.hasOwn(context, 'inject'), false)
+  assert.equal(plugin.apply(context, { channel: 'stable' }), undefined)
+  assert.equal(factories.length, 1)
+  assert.equal(typeof factories[0], 'function')
+})
+
+test('prebuilt allowlist covers actual root and controls TypeScript modules exactly', async () => {
+  const entries = await readdir(join(root, 'src'), { recursive: true, withFileTypes: true })
+  const sources = entries.filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
+    .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
+  assert.equal(sources.filter(path => !path.includes('/')).length, 6)
+  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 19)
+  const expected = sources.flatMap(path => [
+    'lib/' + path.replace(/\.ts$/, '.js'),
+    'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
+  ]).sort()
+  const actual = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort()
+  assert.equal(actual.length, 56)
+  assert.deepEqual(actual, expected)
+  assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
+  const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
+  assert.equal(FIXED_PACKED_FILES.length, 69)
+  assert.equal(inventory.entries.length, 85)
+  assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
+  assert.equal(EXPECTED_PACKED_FILES, 154)
 })

@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, posix, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -18,6 +18,57 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/index.d.ts',
   'lib/types/catalog.d.ts',
   'lib/types/provider.d.ts',
+  'lib/controls/index.js',
+  'lib/controls/policy.js',
+  'lib/controls/state.js',
+  'lib/controls/storage.js',
+  'lib/controls/validation.js',
+  'lib/types/controls/index.d.ts',
+  'lib/types/controls/policy.d.ts',
+  'lib/types/controls/state.d.ts',
+  'lib/types/controls/storage.d.ts',
+  'lib/types/controls/validation.d.ts',
+  'lib/controls/instrument-state.js',
+  'lib/controls/instrument-storage.js',
+  'lib/controls/instruments.js',
+  'lib/controls/versioned-storage.js',
+  'lib/types/controls/instrument-state.d.ts',
+  'lib/types/controls/instrument-storage.d.ts',
+  'lib/types/controls/instruments.d.ts',
+  'lib/types/controls/versioned-storage.d.ts',
+  'lib/host.js',
+  'lib/runtime.js',
+  'lib/client.js',
+  'lib/types/host.d.ts',
+  'lib/types/runtime.d.ts',
+  'lib/types/client.d.ts',
+  'lib/controls/windows.js',
+  'lib/controls/resources.js',
+  'lib/controls/git-worktrees.js',
+  'lib/controls/consumption.js',
+  'lib/controls/remote-contract.js',
+  'lib/controls/runtime-state.js',
+  'lib/controls/history.js',
+  'lib/controls/worktree-bindings.js',
+  'lib/types/controls/history.d.ts',
+  'lib/types/controls/worktree-bindings.d.ts',
+  'lib/types/controls/windows.d.ts',
+  'lib/types/controls/resources.d.ts',
+  'lib/types/controls/git-worktrees.d.ts',
+  'lib/types/controls/consumption.d.ts',
+  'lib/types/controls/remote-contract.d.ts',
+  'lib/types/controls/runtime-state.d.ts',
+  'lib/controls/startup-state.js',
+  'lib/controls/startup-support.js',
+  'lib/types/controls/startup-state.d.ts',
+  'lib/types/controls/startup-support.d.ts',
+  'lib/compatibility/managed-sdk.js',
+  'lib/compatibility/cli.js',
+  'lib/compatibility/host-startup.js',
+  'lib/types/compatibility/managed-sdk.d.ts',
+  'lib/types/compatibility/cli.d.ts',
+  'lib/types/compatibility/host-startup.d.ts',
+  'compatibility/initial-cwd.recipe.json',
   'cordis.patch.yml',
   'generated/catalog.json',
   'vendor/mattpocock-skills/',
@@ -27,6 +78,7 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'README.md',
   'README.zh-CN.md',
   'MIGRATION.md',
+  'CONTROLS.md',
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
 ])
@@ -40,12 +92,64 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/catalog.d.ts',
   'lib/types/index.d.ts',
   'lib/types/provider.d.ts',
+  'lib/controls/index.js',
+  'lib/controls/policy.js',
+  'lib/controls/state.js',
+  'lib/controls/storage.js',
+  'lib/controls/validation.js',
+  'lib/types/controls/index.d.ts',
+  'lib/types/controls/policy.d.ts',
+  'lib/types/controls/state.d.ts',
+  'lib/types/controls/storage.d.ts',
+  'lib/types/controls/validation.d.ts',
+  'lib/controls/instrument-state.js',
+  'lib/controls/instrument-storage.js',
+  'lib/controls/instruments.js',
+  'lib/controls/versioned-storage.js',
+  'lib/types/controls/instrument-state.d.ts',
+  'lib/types/controls/instrument-storage.d.ts',
+  'lib/types/controls/instruments.d.ts',
+  'lib/types/controls/versioned-storage.d.ts',
+  'lib/host.js',
+  'lib/runtime.js',
+  'lib/client.js',
+  'lib/types/host.d.ts',
+  'lib/types/runtime.d.ts',
+  'lib/types/client.d.ts',
+  'lib/controls/windows.js',
+  'lib/controls/resources.js',
+  'lib/controls/git-worktrees.js',
+  'lib/controls/consumption.js',
+  'lib/controls/remote-contract.js',
+  'lib/controls/runtime-state.js',
+  'lib/controls/history.js',
+  'lib/controls/worktree-bindings.js',
+  'lib/types/controls/history.d.ts',
+  'lib/types/controls/worktree-bindings.d.ts',
+  'lib/types/controls/windows.d.ts',
+  'lib/types/controls/resources.d.ts',
+  'lib/types/controls/git-worktrees.d.ts',
+  'lib/types/controls/consumption.d.ts',
+  'lib/types/controls/remote-contract.d.ts',
+  'lib/types/controls/runtime-state.d.ts',
+  'lib/controls/startup-state.js',
+  'lib/controls/startup-support.js',
+  'lib/types/controls/startup-state.d.ts',
+  'lib/types/controls/startup-support.d.ts',
+  'lib/compatibility/managed-sdk.js',
+  'lib/compatibility/cli.js',
+  'lib/compatibility/host-startup.js',
+  'lib/types/compatibility/managed-sdk.d.ts',
+  'lib/types/compatibility/cli.d.ts',
+  'lib/types/compatibility/host-startup.d.ts',
+  'compatibility/initial-cwd.recipe.json',
   'LICENSE',
   'package.json',
   'PROVENANCE.json',
   'README.md',
   'README.zh-CN.md',
   'MIGRATION.md',
+  'CONTROLS.md',
   'source-lock.json',
   'THIRD_PARTY_NOTICES.md',
   'vendor-files.json',
@@ -53,10 +157,40 @@ export const FIXED_PACKED_FILES = Object.freeze([
 
 const EXPECTED_VERSION = '0.3.0'
 
-const EXPECTED_PEERS = Object.freeze({
-  '@deepseek-ai/cordis': '^4.0.2',
-  '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1',
+export const EXPECTED_PEERS = Object.freeze({
+  '@deepseek-ai/cordis': '^4.0.2 || ~4.0.5-alpha.1',
+  '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1 || ~0.2.1-alpha.1',
   '@deepseek-ai/schemastery': '^3.18.2',
+  '@deepseek-ai/dsh-session': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-workspace': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-storage-domain': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-subagent': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-tools': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-llm': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-typert-protocol': '~0.2.1-alpha.1',
+  '@deepseek-ai/dsh-sandbox': '~0.2.1-alpha.1',
+  'react': '^18.2.0',
+  'zod': '^4.6.5',
+})
+
+// Host capabilities are optional extension seams, not unconditional core support.
+export const EXPECTED_PEER_META = Object.freeze(Object.fromEntries(
+  Object.keys(EXPECTED_PEERS).slice(3).map(name => [name, Object.freeze({ optional: true })]),
+))
+
+export const EXPECTED_CLIENT = Object.freeze({
+  entry: './lib/client.js',
+  platform: 'web',
+  inject: Object.freeze([
+    '@deepseek-ai/dsh-client-ui-renderer',
+    '@deepseek-ai/dsh-client-ui-session',
+    '@deepseek-ai/dsh-client-ui-conversation',
+    '@deepseek-ai/dsh-client-ui-sidebar-right',
+    '@deepseek-ai/dsh-client-ui-workspace',
+    '@deepseek-ai/dsh-client-ui-plugin-manager',
+    '@deepseek-ai/dsh-client-ui-tool',
+    '@deepseek-ai/dsh-api-gateway',
+  ]),
 })
 
 const FORBIDDEN_PACKED_PATHS = Object.freeze([
@@ -66,13 +200,14 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'docs',
   'node_modules',
   'tsconfig.json',
+  'tsconfig.client.json',
   'pnpm-lock.yaml',
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 17
+const EXPECTED_FIXED_PACKED_FILES = 69
 const EXPECTED_VENDOR_PACKED_FILES = 85
-const EXPECTED_PACKED_FILES = 102
+export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
 const EXPECTED_PNPM_VERSION = '11.8.0'
 
@@ -116,6 +251,8 @@ export function expectedPackedFileBytes(path, sourceBytes) {
 export function validatePackagePolicy(packageJson) {
   assert(PACKAGE_FILES_ALLOWLIST.length === EXPECTED_FIXED_PACKED_FILES, 'internal package allowlist count must remain exactly ' + EXPECTED_FIXED_PACKED_FILES)
   assert(FIXED_PACKED_FILES.length === EXPECTED_FIXED_PACKED_FILES, 'internal fixed package file count must remain exactly ' + EXPECTED_FIXED_PACKED_FILES)
+  assert(new Set(PACKAGE_FILES_ALLOWLIST).size === PACKAGE_FILES_ALLOWLIST.length && new Set(FIXED_PACKED_FILES).size === FIXED_PACKED_FILES.length, 'duplicate internal package allowlist paths')
+  assert(sameJson(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort(), FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort()), 'prebuilt module exact allowlists disagree')
   assert(packageJson && typeof packageJson === 'object' && !Array.isArray(packageJson), 'package.json must contain an object')
   assert(packageJson.name === '@lmgatex/dsh-mattpocock-skills', 'package name is not the accepted package identity')
   assert(packageJson.version === EXPECTED_VERSION, 'verifier requires the current release version ' + EXPECTED_VERSION)
@@ -126,8 +263,23 @@ export function validatePackagePolicy(packageJson) {
   assert(packageJson.packageManager === 'pnpm@11.8.0', 'package manager pin is invalid')
   assert(sameJson(packageJson.files, PACKAGE_FILES_ALLOWLIST), 'package files allowlist differs from the accepted Phase 4 allowlist')
   assert(sameJson(packageJson.peerDependencies, EXPECTED_PEERS), 'peer dependency policy differs from the tested host seams')
+  assert(sameJson(packageJson.peerDependenciesMeta, EXPECTED_PEER_META), 'optional peer metadata differs from the accepted capability seams')
+  assert(sameJson(packageJson.exports?.['./controls'], { types: './lib/types/controls/index.d.ts', default: './lib/controls/index.js' }), 'controls export target is invalid')
+  const exports = {
+    '.': { types: './lib/types/index.d.ts', default: './lib/index.js' },
+    './controls': { types: './lib/types/controls/index.d.ts', default: './lib/controls/index.js' },
+    './compatibility': { types: './lib/types/compatibility/managed-sdk.d.ts', default: './lib/compatibility/managed-sdk.js' },
+    './host': { types: './lib/types/host.d.ts', default: './lib/host.js' },
+    './client': { types: './lib/types/client.d.ts', default: './lib/client.js' },
+    './cordis.patch.yml': './cordis.patch.yml',
+    './package.json': './package.json',
+  }
+  // Subpath order is immaterial; conditional targets must still put types first.
+  assert(packageJson.exports && sameJson(Object.keys(packageJson.exports).sort(), Object.keys(exports).sort())
+    && Object.entries(exports).every(([name, target]) => sameJson(packageJson.exports[name], target)), 'package exports differ from the closed runtime entry targets')
+  assert(sameJson(packageJson.bin, { 'dsh-mattpocock-skills-cwd': './lib/compatibility/cli.js' }), 'compatibility CLI must be the one closed bin target')
   assert(packageJson.dsh?.bundle?.patch === './cordis.patch.yml', 'DSH bundle patch target is invalid')
-  assert(packageJson.dsh?.client === undefined, 'custom DSH client entry is forbidden')
+  assert(sameJson(packageJson.dsh?.client, EXPECTED_CLIENT), 'optional DSH client graph differs from the accepted web integration')
   for (const key of ['scripts', 'dependencies', 'optionalDependencies', 'bundledDependencies', 'bundleDependencies', 'publishConfig']) {
     assert(!Object.hasOwn(packageJson, key), 'package.json must not declare ' + key)
   }
@@ -295,28 +447,56 @@ async function walkRegularFiles(root) {
   return records
 }
 
-async function compareCommittedBuild(root) {
+export async function compareCommittedBuild(root) {
+  root = resolve(root)
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-package-build-'))
   const builtRoot = join(temporary, 'lib')
+  const clientPaths = new Set(['client.js', 'types/client.d.ts'])
   try {
+    // Rebase the repository's SDK compiled-type paths when extending outside it.
+    // Host tsc never emits the independent browser lazy-CJS entry/declaration.
+    const sourceConfig = parseStrictJsonBytes(await readFile(join(root, 'tsconfig.json')), 'tsconfig.json')
+    const paths = Object.fromEntries(Object.entries(sourceConfig.compilerOptions.paths ?? {})
+      .map(([name, targets]) => [name, targets.map(target => resolve(root, sourceConfig.compilerOptions.baseUrl ?? '.', target))]))
+    const scratchConfig = join(temporary, 'tsconfig.host.json')
+    await writeFile(scratchConfig, JSON.stringify({
+      extends: join(root, 'tsconfig.json'),
+      compilerOptions: { paths, typeRoots: (sourceConfig.compilerOptions.typeRoots ?? ['node_modules/@types']).map(path => resolve(root, path)),
+        outDir: builtRoot, declarationDir: join(builtRoot, 'types') },
+      include: [join(root, 'src/**/*.ts')],
+      exclude: [join(root, 'src/client.ts')],
+    }))
     const previousUmask = process.umask(0o022)
     try {
-      execFileSync('pnpm', [
-        'exec', 'tsc', '-p', join(root, 'tsconfig.json'),
-        '--outDir', builtRoot,
-        '--declarationDir', join(builtRoot, 'types'),
-      ], { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+      execFileSync('pnpm', ['exec', 'tsc', '-p', scratchConfig],
+        { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
     } catch (error) {
       const detail = error.stderr?.toString().trim() || error.stdout?.toString().trim() || error.message
-      throw new Error('scratch TypeScript build failed: ' + detail, { cause: error })
+      throw new Error('scratch Host TypeScript build failed: ' + detail, { cause: error })
     } finally {
       process.umask(previousUmask)
     }
+    // tsc preserves the CLI shebang but creates scratch files without execute bits.
+    // The one closed package.bin target is executable in both reproducible trees.
+    await chmod(join(builtRoot, 'compatibility/cli.js'), 0o755)
     const [committed, built] = await Promise.all([walkRegularFiles(join(root, 'lib')), walkRegularFiles(builtRoot)])
-    const differences = diffFileInventories(committed, built)
-    assert(differences.length === 0, 'committed lib differs from scratch build:\n' + differences.join('\n'))
+    const expectedPaths = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).map(path => path.slice(4)).sort()
+    assert(sameJson(committed.map(entry => entry.path).sort(), expectedPaths), 'committed lib does not match the exact prebuilt module allowlist')
+    assert(!built.some(entry => clientPaths.has(entry.path)), 'Host tsc must not emit standalone Client artifacts')
+    const differences = diffFileInventories(committed.filter(entry => !clientPaths.has(entry.path)), built)
+    assert(differences.length === 0, 'committed Host lib differs from scratch build:\n' + differences.join('\n'))
+    const { buildClient } = await import(pathToFileURL(join(root, 'scripts/build-client.mjs')).href)
+    const client = await buildClient({ root, declaration: true })
+    assert(sameJson(client.externals, ['react']), 'Client value externals must remain baseline React only')
+    const clientBuilt = [
+      { path: 'client.js', mode: 0o644, bytes: Buffer.from(client.code) },
+      { path: 'types/client.d.ts', mode: 0o644, bytes: Buffer.from(client.declaration) },
+    ]
+    const clientDifferences = diffFileInventories(committed.filter(entry => clientPaths.has(entry.path)), clientBuilt)
+    assert(clientDifferences.length === 0, 'committed lazy-CJS Client differs from independent in-memory build:\n' + clientDifferences.join('\n'))
     return { files: committed.length, paths: committed.map((entry) => entry.path) }
   } finally {
+    assert(isAbsolute(temporary) && temporary.startsWith(join(tmpdir(), 'dsh-package-build-')), 'unexpected scratch build cleanup path')
     await rm(temporary, { recursive: true, force: true })
   }
 }
@@ -344,7 +524,7 @@ function inventoryMode(mode) {
   throw new Error('unsupported inventory mode ' + JSON.stringify(mode))
 }
 
-async function expectedTarMembers(root, inventory) {
+export async function expectedTarMembers(root, inventory) {
   const expected = new Map()
   for (const path of FIXED_PACKED_FILES) {
     const absolute = join(root, ...path.split('/'))
@@ -503,7 +683,7 @@ function collectExportTargets(value, result = []) {
 }
 
 async function requirePackageTargets(extractedRoot, packageJson) {
-  const targets = new Set([packageJson.main, packageJson.types, packageJson.dsh.bundle.patch, ...collectExportTargets(packageJson.exports)])
+  const targets = new Set([packageJson.main, packageJson.types, packageJson.dsh.bundle.patch, packageJson.dsh.client.entry, ...collectExportTargets(packageJson.exports), ...Object.values(packageJson.bin)])
   for (const target of targets) {
     assert(typeof target === 'string' && target.startsWith('./'), 'package target must be package-relative: ' + JSON.stringify(target))
     const normalized = posix.normalize(target.slice(2))
