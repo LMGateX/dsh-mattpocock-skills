@@ -99,9 +99,10 @@ export interface RuntimeFacade {
     delegate?(caller: HostCaller, input: HostJson, exec: ToolRunContext): Promise<unknown>;
     created(caller: HostCaller, signal: AbortSignal, actualAgent: Agent): Promise<void>;
     observe(event: HostEvent): Promise<void>;
-    /** Admitted-step consumption; must return freshly owned, attributed messages. */
-    preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[]): Promise<readonly UserMessage[]>;
-    postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>): Promise<readonly UserMessage[]>;
+    /** Admitted-step consumption; must return freshly owned, attributed messages. `stepKey` identifies
+     * the admitted model step (turn:step), so one step's repeated assembly passes stay one delivery step. */
+    preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[], stepKey?: string): Promise<readonly UserMessage[]>;
+    postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>, stepKey?: string): Promise<readonly UserMessage[]>;
     executeManaged?(caller: HostCaller, request: HostJson, exec: ToolRunContext): Promise<unknown>;
     assign?(caller: HostCaller, request: HostJson, signal: AbortSignal): Promise<unknown>;
     serializePolicyPermission?<T>(effect: () => Promise<T>): Promise<T>;

@@ -154,9 +154,10 @@ export interface RuntimeFacade {
   delegate?(caller: HostCaller, input: HostJson, exec: ToolRunContext): Promise<unknown>
   created(caller: HostCaller, signal: AbortSignal, actualAgent: Agent): Promise<void>
   observe(event: HostEvent): Promise<void>
-  /** Admitted-step consumption; must return freshly owned, attributed messages. */
-  preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[]): Promise<readonly UserMessage[]>
-  postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>): Promise<readonly UserMessage[]>
+  /** Admitted-step consumption; must return freshly owned, attributed messages. `stepKey` identifies
+   * the admitted model step (turn:step), so one step's repeated assembly passes stay one delivery step. */
+  preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[], stepKey?: string): Promise<readonly UserMessage[]>
+  postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>, stepKey?: string): Promise<readonly UserMessage[]>
   executeManaged?(caller: HostCaller, request: HostJson, exec: ToolRunContext): Promise<unknown>
   assign?(caller: HostCaller, request: HostJson, signal: AbortSignal): Promise<unknown>
   serializePolicyPermission?<T>(effect: () => Promise<T>): Promise<T>
@@ -814,10 +815,14 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       }).catch(error => ctx.logger.warn('controls notification durability failed', error))
     }))
     disposers.push(ctx.on('agent/created', async ({ agent, signal }) => { await track(() => active.created(agentCaller(ctx, agent), signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal, agent)); return undefined }))
-    disposers.push(ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecision> => {
+    // The host may assemble one model request several times (and a PTC step may complete several
+    // nested dispatches); all of them share the same turn:step identity, which is the delivery step.
+    let admittedStep = '0:0'
+    disposers.push(ctx.on('agent/pre-step', async ({ agent, signal, turn, step }, next): Promise<PreStepDecision> => {
       const decision = await next()
       if (decision.kind === 'reject') return decision
-      const messages = await track(() => active.preStep(agentCaller(ctx, agent), signal, decision.messages)); signal.throwIfAborted()
+      admittedStep = turn + ':' + step
+      const messages = await track(() => active.preStep(agentCaller(ctx, agent), signal, decision.messages, admittedStep)); signal.throwIfAborted()
       return messages.length === 0 ? decision : { ...decision, messages: [...decision.messages, ...messages] }
     }))
     if (active.postExecute) disposers.push(ctx.on('tools/post-execute', async (exec, result, next) => {
@@ -828,7 +833,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       // call. Aborts (including the post-program drain after a PTC run aborts) pass the
       // decision through unchanged.
       try {
-        const contexts = await track(() => active.postExecute!(agentCaller(ctx, exec.agent), exec, result))
+        const contexts = await track(() => active.postExecute!(agentCaller(ctx, exec.agent), exec, result, admittedStep))
         return contexts.length === 0 ? decision : { ...decision, additionalContexts: [...decision.additionalContexts ?? [], ...contexts] }
       } catch (error) {
         // Cancellation keeps the exact caller reason: swallowing an abort would misreport the

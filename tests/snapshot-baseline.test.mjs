@@ -14,8 +14,8 @@ async function ready(t, configure = () => {}) {
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   return f
 }
-const propose = (f, control = signal(), messages = []) => f.ctx.waterfall('agent/pre-step', {
-  agent: f.root, messages, turn: 1, step: 1, signal: control,
+const propose = (f, control = signal(), messages = [], step = 1) => f.ctx.waterfall('agent/pre-step', {
+  agent: f.root, messages, turn: 1, step, signal: control,
 }, async () => ({ kind: 'enter', messages }))
 const snapshots = decision => decision.messages.filter(message => message.source.kind === 'mattpocock-controls')
 const body = message => message.content[0].text
@@ -34,8 +34,9 @@ test('an outer pre-step rejection does not consume unchanged instrument state on
   assert.ok(prepared, 'the inner Host prepared a real snapshot before outer rejection')
   assert.deepEqual(f.root.session.deriveMessages(), [])
   reject = false
-  const retry = snapshots(await propose(f))
-  assert.equal(retry.length, 1, 'unchanged state must retry until it reaches the effective input')
+  assert.equal(snapshots(await propose(f)).length, 0, 'one admitted step installs one identical snapshot')
+  const retry = snapshots(await propose(f, signal(), [], 2))
+  assert.equal(retry.length, 1, 'unchanged state must retry at the next admitted step until it reaches the effective input')
   assert.equal(body(retry[0]), body(prepared))
   assert.notEqual(retry[0].id, prepared.id, 'a retry is a newly attributed native message')
 })
@@ -77,11 +78,11 @@ test('a rejected accepted tool batch does not become delivered state on the next
   assert.equal(prepared[0], contexts[0])
   assert.deepEqual(f.root.session.deriveMessages(), [])
   reject = false
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(body(retry[0]), body(contexts[0]))
   f.root.session.append('user/message', retry[0], { surfaceOp: 'append' })
-  assert.equal(snapshots(await propose(f)).length, 0)
+  assert.equal(snapshots(await propose(f, signal(), [], 2)).length, 0)
 })
 
 test('an outer rewrite with the prepared id but a different body cannot consume the exact baseline', async t => {
@@ -98,7 +99,7 @@ test('an outer rewrite with the prepared id but a different body cannot consume 
   assert.equal(f.root.session.deriveMessages()[0].id, prepared.id)
   assert.notEqual(body(f.root.session.deriveMessages()[0]), body(prepared))
   rewrite = false
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(body(retry[0]), body(prepared))
 })
@@ -109,7 +110,7 @@ test('a source-spoofed message with the prepared id and body is not the owned ba
   f.root.session.append('user/message', { ...first, source: { kind: 'user' } }, { surfaceOp: 'append' })
   assert.equal(f.root.session.deriveMessages()[0].id, first.id)
   assert.equal(body(f.root.session.deriveMessages()[0]), body(first))
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(retry[0].source.kind, 'mattpocock-controls')
 })
@@ -122,14 +123,14 @@ test('Agent replacement and native Session replacement reinstall even when copie
   const formerAgent = f.root
   f.root = { ...formerAgent }
   f.agents.set(f.root.id, f.root)
-  const replacement = snapshots(await propose(f))
+  const replacement = snapshots(await propose(f, signal(), [], 2))
   assert.equal(replacement.length, 1, 'another live Agent does not inherit preparation identity')
   f.root.session.append('user/message', replacement[0], { surfaceOp: 'append' })
-  assert.equal(snapshots(await propose(f)).length, 0)
+  assert.equal(snapshots(await propose(f, signal(), [], 2)).length, 0)
   const formerSession = f.root.session
   f.root.session = Session.create(f.root.id, formerSession.ownEvents(), formerSession.header)
   assert.ok(f.root.session.deriveMessages().some(message => message.id === replacement[0].id))
-  const restored = snapshots(await propose(f))
+  const restored = snapshots(await propose(f, signal(), [], 3))
   assert.equal(restored.length, 1, 'a replacement Session cannot reuse the old live-session proof')
   assert.equal(body(restored[0]), body(replacement[0]))
   assert.equal(f.mounted.ports.snapshotVisible(caller('child'), f.root, restored[0]), false)
@@ -148,7 +149,7 @@ test('a successfully acquired degraded snapshot retries honest unknown facts aft
   assert.match(body(prepared), /"records":null/)
   assert.match(body(prepared), /"status":"unknown"/)
   reject = false
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(body(retry[0]), body(prepared))
   assert.match(body(retry[0]), /synthetic records temporarily unavailable/)
@@ -217,7 +218,7 @@ test('a committed native message projection keeping the id but changing content 
   assert.equal(f.root.session.deriveMessages()[0].id, first.id)
   assert.equal(body(f.root.session.deriveMessages()[0]), 'synthetic projected body')
   assert.equal(body(f.root.session.ownEvents()[event.seq].data), body(first), 'event log content itself remains unchanged')
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(body(retry[0]), body(first))
 })
@@ -234,7 +235,7 @@ test('late Host abort after snapshot preparation retains unchanged state for a n
   assert.ok(prepared)
   assert.deepEqual(f.root.session.deriveMessages(), [])
   abort = false
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(body(retry[0]), body(prepared))
 })
@@ -248,10 +249,10 @@ test('native compaction replacing a visible snapshot reinstalls fresh bounded st
   f.root.session.append('user/message', summary, { surfaceOp: { op: 'replace', startSeq: appended.seq, endSeq: appended.seq }, sourceEventSeqs: [appended.seq] })
   assert.ok(f.root.session.ownEvents().some(event => event.type === 'user/message' && event.data.id === first.id))
   assert.ok(!f.root.session.deriveMessages().some(message => message.id === first.id))
-  const retry = snapshots(await propose(f))
+  const retry = snapshots(await propose(f, signal(), [], 2))
   assert.equal(retry.length, 1)
   assert.equal(body(retry[0]), body(first))
   assert.ok(body(retry[0]).length <= 24000)
   f.root.session.append('user/message', retry[0], { surfaceOp: 'append' })
-  assert.equal(snapshots(await propose(f)).length, 0)
+  assert.equal(snapshots(await propose(f, signal(), [], 2)).length, 0)
 })

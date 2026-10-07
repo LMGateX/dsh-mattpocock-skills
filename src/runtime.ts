@@ -310,18 +310,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const scheduleNotification=(ownerSessionId:string,retryAccepted=false):void=>{void flushNotifications(ownerSessionId,retryAccepted).catch(()=>undefined)}
   const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
-  // One step may produce many tool results (a run_code can complete several nested dispatches in the
-  // same step), and a message queued during that step is not yet visible to the host visibility oracle,
-  // so an unchanged snapshot would be installed once per tool result. Delivery is therefore also
-  // accounted per step, independently of host visibility.
-  let stepSerial=0
-  const deliveredInStep=new Map<string,{readonly step:number;readonly text:string}>()
+  // The host may assemble one admitted model request several times, and a PTC step may complete
+  // several nested dispatches; all of them share one turn:step identity. A message queued during
+  // that step is not yet visible to the host visibility oracle, so an unchanged snapshot would be
+  // installed once per assembly pass or nested result. Delivery is therefore also accounted per
+  // admitted step, independently of host visibility.
+  let stepSerial=0,currentStepKey='serial:0'
+  const deliveredInStep=new Map<string,{readonly step:string;readonly text:string}>()
   // A persistent association or policy-storage failure must not append the same notice at every
   // step and every tool result: the notice reuses the snapshot baseline and visibility rule.
   const failureReason=(error:unknown):string=>error instanceof ControlsError?error.code:error instanceof ResourceError?error.code:'internal-error'
   const installSnapshot=(caller:HostCaller,acceptedMessages:readonly UserMessage[],text:string,baselineKey:string):readonly UserMessage[]=>{
     const delivered=deliveredInStep.get(baselineKey)
-    if(delivered!==undefined&&delivered.step===stepSerial&&delivered.text===text)return []
+    if(delivered!==undefined&&delivered.step===currentStepKey&&delivered.text===text)return []
     const agent=ports.liveAgent(caller.sessionId!),baseline=baselines.get(baselineKey)
     if(agent&&baseline&&baseline.text===text&&baseline.agent===agent&&baseline.session===agent.session){
       if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
@@ -330,7 +331,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const message=ports.makeSnapshotMessage(text)
     if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
     else baselines.delete(baselineKey)
-    deliveredInStep.set(baselineKey,{step:stepSerial,text})
+    deliveredInStep.set(baselineKey,{step:currentStepKey,text})
     return [message]
   }
   const deliverFailure=(caller:HostCaller,acceptedMessages:readonly UserMessage[],error:unknown):readonly UserMessage[]=>installSnapshot(caller,acceptedMessages,
@@ -484,11 +485,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-native-execution-observed'))
       }
     },
-    async preStep(caller,signal,acceptedMessages){stepSerial+=1;return prepare(caller,signal,acceptedMessages)},
+    async preStep(caller,signal,acceptedMessages,stepKey){currentStepKey=stepKey??('serial:'+(++stepSerial));return prepare(caller,signal,acceptedMessages)},
     // Every tool result may carry this plugin's current projection or its honest unknown
     // diagnostic, so the hook stays unrestricted; the refresh gate inside prepare keeps an
     // unchanged projection from being rebuilt per call.
-    async postExecute(caller,exec,_result){return prepare(caller,exec.signal)},
+    async postExecute(caller,exec,_result,stepKey){if(stepKey!==undefined)currentStepKey=stepKey;return prepare(caller,exec.signal)},
     context(caller){return caller.sessionId!==null&&cachedSessions.has(caller.sessionId)?'Collaboration instruments: use mattpocock_record for current records, mattpocock_history for scoped history, mattpocock_worktree for recorded bindings. Fresh bounded state is sent when changed or its exact baseline is missing from the effective input; old chat messages are not deleted.':''},
     async executeManaged(caller,input:HostJson,exec:ToolRunContext){
       const r=record(input,'managed execution',['nativeTool','arguments','workflowId','localTicketId'])

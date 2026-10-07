@@ -991,29 +991,32 @@ test('an unretained session reports one stable unavailable notice', async t => {
   assert.doesNotMatch(text, /srv\/secret/)
   assert.match(text, /Instrument context unavailable: internal-error/)
 })
-test('an unchanged snapshot is installed once per step even while the host cannot see it yet', async t => {
+test('one admitted step installs an identical snapshot once even while the host cannot see it yet', async t => {
   const f = await ready(t)
-  // A run_code can complete several nested dispatches inside one step, and a message queued during
-  // that step is not yet visible to the host visibility oracle, so delivery is also accounted per step.
+  // The host may assemble one admitted request several times and a PTC step may complete several
+  // nested dispatches; every pass shares the same turn:step identity, and a message queued during
+  // that step is not yet visible to the host visibility oracle.
   f.ports.snapshotVisible = () => false
-  const opened = await f.runtime.preStep(caller('root'), signal())
+  const opened = await f.runtime.preStep(caller('root'), signal(), [], '93:4')
   assert.equal(opened.length, 1)
-  const first = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'nested dispatch A' })
-  const second = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'nested dispatch B' })
-  assert.equal(first.length, 0, 'the identical snapshot is not queued again in the same step')
+  const reassembled = await f.runtime.preStep(caller('root'), signal(), [], '93:4')
+  assert.equal(reassembled.length, 0, 'the identical snapshot is not queued again for the same admitted step')
+  const first = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'nested dispatch A' }, '93:4')
+  const second = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'nested dispatch B' }, '93:4')
+  assert.equal(first.length, 0)
   assert.equal(second.length, 0)
-  const nextStep = await f.runtime.preStep(caller('root'), signal())
-  assert.equal(nextStep.length, 1, 'a later step may re-offer it while the host still reports it as not visible')
+  const nextStep = await f.runtime.preStep(caller('root'), signal(), [], '94:1')
+  assert.equal(nextStep.length, 1, 'a later admitted step may re-offer it while the host still reports it as not visible')
 })
 
-test('a state change inside the same step is still delivered once and then suppressed', async t => {
+test('a state change inside one admitted step is delivered once and then suppressed', async t => {
   const f = await ready(t)
   f.ports.snapshotVisible = () => false
-  assert.equal((await f.runtime.preStep(caller('root'), signal())).length, 1)
+  assert.equal((await f.runtime.preStep(caller('root'), signal(), [], '95:1')).length, 1)
   await f.apply('put-ticket', { localTicketId: 'T9', value: ticket() })
-  const changed = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write' })
+  const changed = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write' }, '95:1')
   assert.equal(changed.length, 1)
   assert.match(changed[0].content[0].text, /T9/)
-  const repeat = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write again' })
+  const repeat = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write again' }, '95:1')
   assert.equal(repeat.length, 0)
 })
