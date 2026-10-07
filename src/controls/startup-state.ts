@@ -9,7 +9,7 @@ export interface StartupPreparation {
   readonly sdkVersion: string | null
   readonly diagnostic: string | null
   /** Optional live observation detail; never a stored setting or capability grant. */
-  readonly reason?: 'compatibility-component-disabled'
+  readonly reason?: 'compatibility-component-disabled' | 'compatibility-component-forced-enabled'
 }
 export interface StartupObservation {
   readonly nativeInitialCwdSupported: boolean | null
@@ -52,12 +52,12 @@ export function parseStartupObservation(value: unknown): StartupObservation {
   const status = statuses.find(status => status === prep.status)
   if (!status) invalid('unsupported startup preparation status')
   const reason = prep.reason
-  if (Object.hasOwn(prep, 'reason') && (reason !== 'compatibility-component-disabled' || status !== 'incompatible')) {
+  if (Object.hasOwn(prep, 'reason') && ((reason !== 'compatibility-component-disabled' && reason !== 'compatibility-component-forced-enabled') || status !== 'incompatible')) {
     invalid('unsupported startup preparation reason or reason/status combination')
   }
   return freeze({ nativeInitialCwdSupported: raw.nativeInitialCwdSupported === null ? null : boolean(raw.nativeInitialCwdSupported, 'nativeInitialCwdSupported'),
     preparation: { status, sdkVersion: nullableText(prep.sdkVersion, 'sdkVersion'), diagnostic: nullableText(prep.diagnostic, 'diagnostic'),
-      ...(reason === 'compatibility-component-disabled' ? { reason } : {}) } })
+      ...(reason === 'compatibility-component-disabled' || reason === 'compatibility-component-forced-enabled' ? { reason } : {}) } })
 }
 /** Strict transport decoder. It validates JSON facts, not a second UI projection. */
 export function parseStartupStatus(value: unknown): StartupStatus {

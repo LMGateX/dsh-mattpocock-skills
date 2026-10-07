@@ -1,3 +1,5 @@
+import { inspectCanonicalPeerBindings } from './peer-bindings.js'
+
 /**
  * Bounded public Loader composition for the pinned 0.2.1-alpha.1 topology.
  * These patches are data, not a live service replacement or an SDK disk patch.
@@ -45,6 +47,8 @@ interface ExpressionContext extends PublicContext {}
 // This entire function is serialized. Keep it closed: no module imports, captured
 // constants, helper references or registration required before plugin import.
 function F(ctx: ExpressionContext, provider: 'stock' | 'compat'): boolean {
+  // Replaced by the exact closed proof when serializing; never a process-wide hook.
+  const canonicalPeerBindings = null as unknown as typeof inspectCanonicalPeerBindings
   const entry = ctx[Symbol.for('cordis.entry')] as PublicEntry | undefined
   const tree = entry?.parent?.tree
   if (!tree || !Array.isArray(tree.root.data)) return provider === 'compat'
@@ -206,30 +210,7 @@ function F(ctx: ExpressionContext, provider: 'stock' | 'compat'): boolean {
         if (artifactRelative === '..' || artifactRelative.startsWith('..' + path.sep) || path.isAbsolute(artifactRelative)) {
           throw new Error('compatibility artifact is outside its package')
         }
-        const ownArtifact = module.createRequire(artifactPath)
-        const nativePeers = module.createRequire(fs.realpathSync(filename))
-        // These are the pinned generated artifact's direct external imports.
-        // Identity, not version equality, keeps native errors, schemas, scope,
-        // Agent/Session and Remote lifecycle namespaces on the same module graph.
-        const peers = ['@deepseek-ai/dsh-subagent', '@deepseek-ai/schemastery', '@deepseek-ai/dsh-scope',
-          '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-util-time', '@deepseek-ai/dsh-typert-protocol',
-          '@deepseek-ai/dsh-attachment', 'zod', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-agent',
-          '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-brand', '@deepseek-ai/dsh-util-values', '@deepseek-ai/dsh-chunked-list']
-        for (const peer of peers) {
-          const canonicalPeer = fs.realpathSync(nativePeers.resolve(peer))
-          const canonicalPackage = fs.realpathSync(nativePeers.resolve(peer + '/package.json'))
-          if (fs.realpathSync(ownWrapper.resolve(peer)) !== canonicalPeer || fs.realpathSync(ownArtifact.resolve(peer)) !== canonicalPeer ||
-              fs.realpathSync(ownWrapper.resolve(peer + '/package.json')) !== canonicalPackage ||
-              fs.realpathSync(ownArtifact.resolve(peer + '/package.json')) !== canonicalPackage) {
-            throw new Error('compatibility imports a different shared native peer')
-          }
-        }
-        if (fs.realpathSync(ownWrapper.resolve('@deepseek-ai/cordis')) !== fs.realpathSync(nativePeers.resolve('@deepseek-ai/cordis')) ||
-            fs.realpathSync(ownWrapper.resolve('@deepseek-ai/cordis/package.json')) !== fs.realpathSync(nativePeers.resolve('@deepseek-ai/cordis/package.json')) ||
-            fs.realpathSync(ownWrapper.resolve('@deepseek-ai/cordis-plugin-loader')) !== fs.realpathSync(installation.resolve('@deepseek-ai/cordis-plugin-loader')) ||
-            fs.realpathSync(ownWrapper.resolve('@deepseek-ai/cordis-plugin-loader/package.json')) !== fs.realpathSync(installation.resolve('@deepseek-ai/cordis-plugin-loader/package.json'))) {
-          throw new Error('compatibility wrapper imports a different public context or loader')
-        }
+        canonicalPeerBindings(tree.context, fs.realpathSync(filename), wrapperPath, artifactPath, profile.installAnchor)
         const digest = crypto.createHash('sha256').update(read(filename, 524288)).digest('hex')
         if (digest === '75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541') choice = 'compat'
         // An already supported pinned native image remains the preferred stock
@@ -244,7 +225,11 @@ function F(ctx: ExpressionContext, provider: 'stock' | 'compat'): boolean {
 }
 
 export function createCompatibilityCompositionExpressions() {
-  const expression = (provider: 'stock' | 'compat') => ({ __jsExpr: '(' + F.toString() + ')(ctx,' + JSON.stringify(provider) + ')' })
+  const marker = 'const canonicalPeerBindings = null;'
+  const source = F.toString()
+  if (source.split(marker).length !== 2) throw new Error('Serialized native peer proof marker is not unique')
+  const closed = source.replace(marker, 'const canonicalPeerBindings = (' + inspectCanonicalPeerBindings.toString() + ');')
+  const expression = (provider: 'stock' | 'compat') => ({ __jsExpr: '(' + closed + ')(ctx,' + JSON.stringify(provider) + ')' })
   return { stock: expression('stock'), compat: expression('compat') }
 }
 

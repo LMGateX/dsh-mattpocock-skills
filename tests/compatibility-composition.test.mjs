@@ -7,14 +7,14 @@ import { tmpdir } from 'node:os'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join, isAbsolute } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
 
 // Accepted seam: actual public applyEntryPatches -> Loader.root.update -> Fiber.
 // No SDK writes, profile boot, network, AgentLoop, or model requests.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for public Loader regression' }
-let api, sdk, lifecycleStubSource
+let api, bindings, sdk, lifecycleStubSource
 const observation = { mounts: [], disposals: [] }
 if (hostRoot) {
   assert(isAbsolute(hostRoot))
@@ -39,11 +39,14 @@ if (hostRoot) {
         observation.compatImports = (observation.compatImports ?? 0) + 1
         return { url: stubUrl, shortCircuit: true }
       }
-      if (specifier === '@deepseek-ai/dsh-subagent' && context.conditions.includes('import')) return { url: observation.stockModuleUrl ?? stockUrl, shortCircuit: true }
+      // Only the explicitly marked pending-native lifecycle fixture substitutes
+      // an import. Ordinary canonical proof uses the real ESM resolver unchanged.
+      if (observation.stockModuleUrl && specifier === '@deepseek-ai/dsh-subagent' && context.conditions.includes('import')) return { url: observation.stockModuleUrl, shortCircuit: true }
+      if (context.parentURL?.includes('/dsh-mattpocock-skills/src/compatibility/') && specifier === './peer-bindings.js') return { url: new URL('./peer-bindings.ts', context.parentURL).href, shortCircuit: true }
       return next(specifier, context)
     },
     load(url, context, next) {
-      if (new URL(url).pathname.endsWith('/src/compatibility/composition.ts')) return { format: 'module', shortCircuit: true,
+      if (['composition.ts', 'peer-bindings.ts'].some(name => new URL(url).pathname.endsWith('/dsh-mattpocock-skills/src/compatibility/' + name))) return { format: 'module', shortCircuit: true,
         source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText }
       return next(url, context)
     },
@@ -51,6 +54,7 @@ if (hostRoot) {
   observation.stockUrl = stockUrl
   observation.cordisUrl = pathToFileURL(require.resolve('@deepseek-ai/cordis')).href
   api = await import('../src/compatibility/composition.ts')
+  bindings = await import('../src/compatibility/peer-bindings.ts')
 }
 function base() { return [{ id: 'subagent', name: '@deepseek-ai/dsh-subagent', config: { maxDepth: 3, maxActiveSubagents: 2 } }] }
 function compose(data = base(), overlays = []) {
@@ -339,19 +343,23 @@ test('a wrapper with its own pristine duplicate native peer keeps the canonical 
   assert.equal(observation.mounts.length, mounts)
 })
 
-test('a wrapper with a duplicate shared scope peer cannot claim the canonical native lifecycle graph', options, async t => {
+test('a wrapper-local scope shadow is unused: selection binds the artifact to the native-owned scope URL', options, async t => {
   const layout = await publicProfile(t, { duplicateShared: true }), mounts = observation.mounts.length
   const nativeRequire = createRequire(new URL(observation.stockUrl))
   const own = createRequire(join(layout.pluginRoot, 'lib/compatibility/native-subagent.js'))
   assert.notEqual(await realpath(nativeRequire.resolve('@deepseek-ai/dsh-scope')), await realpath(own.resolve('@deepseek-ai/dsh-scope')))
   const f = await fixture(t, layout)
+  const selected = bindings.inspectCanonicalPeerBindings(f.ctx, fileURLToPath(observation.stockUrl),
+    join(layout.pluginRoot, 'lib/compatibility/native-subagent.js'), join(layout.pluginRoot, 'compatibility/native-subagent-0.2.1-alpha.1.js'), layout.profile.installAnchor)
+  assert.equal(selected['@deepseek-ai/dsh-scope'], pathToFileURL(nativeRequire.resolve('@deepseek-ai/dsh-scope')).href, 'bound native URL excludes the unused wrapper shadow')
   await f.update(compose().rows)
-  assertActive(f.loader.resolve('subagent'))
-  assert.equal(f.loader.resolve('mattpocock-native-subagent').fiber === undefined, true)
-  assert.equal(observation.mounts.length, mounts)
+  assert.equal(f.loader.resolve('subagent').fiber, undefined)
+  assertActive(f.loader.resolve('mattpocock-native-subagent'))
+  assert.equal(f.ctx.subagents.fixtureOnly, true, 'lifecycle-only fixture is not evidence of cwd support')
+  assert.equal(observation.mounts.length, mounts + 1)
 })
 
-test('matching require entry with a different import-conditioned shared package keeps stock', options, async t => {
+test('a non-direct shadow with different import conditions is ignored because no artifact bare import uses it', options, async t => {
   const layout = await publicProfile(t, { duplicateShared: true })
   const shared = join(layout.pluginRoot, 'node_modules/@deepseek-ai/dsh-scope')
   const manifest = JSON.parse(readFileSync(join(shared, 'package.json'), 'utf8'))
@@ -362,9 +370,28 @@ test('matching require entry with a different import-conditioned shared package 
   assert.equal(await realpath(native.resolve('@deepseek-ai/dsh-scope')), await realpath(own.resolve('@deepseek-ai/dsh-scope')))
   assert.notEqual(await realpath(native.resolve('@deepseek-ai/dsh-scope/package.json')), await realpath(own.resolve('@deepseek-ai/dsh-scope/package.json')))
   const f = await fixture(t, layout)
+  const selected = bindings.inspectCanonicalPeerBindings(f.ctx, fileURLToPath(observation.stockUrl),
+    join(layout.pluginRoot, 'lib/compatibility/native-subagent.js'), join(layout.pluginRoot, 'compatibility/native-subagent-0.2.1-alpha.1.js'), layout.profile.installAnchor)
+  assert.equal(selected['@deepseek-ai/dsh-scope'], pathToFileURL(native.resolve('@deepseek-ai/dsh-scope')).href)
+  assert.notEqual(selected['@deepseek-ai/dsh-scope'], pathToFileURL(join(shared, 'lib/index.js')).href)
+  await f.update(compose().rows)
+  assert.equal(f.loader.resolve('subagent').fiber, undefined)
+  assertActive(f.loader.resolve('mattpocock-native-subagent'))
+  assert.equal(f.ctx.subagents.fixtureOnly, true)
+})
+
+for (const name of ['@deepseek-ai/cordis', '@deepseek-ai/cordis-plugin-loader', '@deepseek-ai/dsh-util-values']) test('real wrapper bare import ' + name + ' shadow retains stock before compatibility import', options, async t => {
+  const layout = await publicProfile(t), own = join(layout.pluginRoot, 'lib/node_modules', name)
+  await mkdir(join(layout.pluginRoot, 'lib/node_modules/@deepseek-ai'), { recursive: true })
+  await cp(join(hostRoot, 'node_modules', name), own, { recursive: true, dereference: true })
+  const native = createRequire(new URL(observation.stockUrl)), wrapper = createRequire(join(layout.pluginRoot, 'lib/compatibility/native-subagent.js'))
+  assert.notEqual(await realpath(native.resolve(name)), await realpath(wrapper.resolve(name)))
+  const f = await fixture(t, layout), mounts = observation.mounts.length, imports = observation.compatImports ?? 0
   await f.update(compose().rows)
   assertActive(f.loader.resolve('subagent'))
-  assert.equal(f.loader.resolve('mattpocock-native-subagent').fiber === undefined, true)
+  assert.equal(f.loader.resolve('mattpocock-native-subagent').fiber, undefined)
+  assert.equal(observation.compatImports ?? 0, imports)
+  assert.equal(observation.mounts.length, mounts)
 })
 
 test('import-conditioned wrapper export cannot substitute another module behind a matching default', options, async t => {
@@ -450,6 +477,30 @@ async function sourceFixture(t, { version = '0.2.1-alpha.1', drift = false, appV
   await writeFile(join(pluginRoot, 'compatibility/native-subagent-0.2.1-alpha.1.js'), '// fixture artifact resolver anchor')
   return root
 }
+
+for (const escape of ['ancestor', 'sibling']) test('serialized composition refuses native-owned peer manifest ' + escape + ' escape before compatibility import', options, async t => {
+  const root = await sourceFixture(t), peer = join(root, 'node_modules/@deepseek-ai/dsh-subagent')
+  const scope = join(peer, 'lib/node_modules/@deepseek-ai/dsh-scope')
+  await mkdir(join(peer, 'lib/node_modules/@deepseek-ai'), { recursive: true })
+  await cp(join(hostRoot, 'node_modules/@deepseek-ai/dsh-scope'), scope, { recursive: true, dereference: true })
+  const pkg = JSON.parse(readFileSync(join(scope, 'package.json'), 'utf8'))
+  const outside = escape === 'ancestor' ? join(root, 'escaped-scope-package.json') : join(root, 'sibling-manifest/package.json')
+  if (escape === 'sibling') await mkdir(join(root, 'sibling-manifest'))
+  await writeFile(outside, JSON.stringify(pkg))
+  await symlink(outside, join(scope, 'escaped-package.json'))
+  pkg.exports['./package.json'] = './escaped-package.json'
+  await writeFile(join(scope, 'package.json'), JSON.stringify(pkg))
+  const before = readFileSync(join(scope, 'package.json')), outsideBefore = readFileSync(outside)
+  const f = await fixture(t, { profile: { dir: root, installAnchor: join(root, 'package.json') }, baseUrl: pathToFileURL(root + '/').href })
+  const imports = observation.compatImports ?? 0, mounts = observation.mounts.length
+  await f.update(compose().rows)
+  assertActive(f.loader.resolve('subagent'))
+  assert.equal(f.loader.resolve('mattpocock-native-subagent').fiber, undefined)
+  assert.equal(observation.compatImports ?? 0, imports)
+  assert.equal(observation.mounts.length, mounts)
+  assert.deepEqual(readFileSync(join(scope, 'package.json')), before)
+  assert.deepEqual(readFileSync(outside), outsideBefore)
+})
 
 test('source digest control has valid public wrapper and shared peer evidence before drift', options, async t => {
   const root = await sourceFixture(t)

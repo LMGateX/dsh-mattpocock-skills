@@ -20,6 +20,26 @@ test('startup observation preserves an explicit component-disabled reason withou
   assert.throws(() => parseStartupObservation({ ...observation, preparation: { ...observation.preparation, reason: 'invented-authority' } }), { code: 'invalid-input' })
   assert.throws(() => parseStartupObservation({ ...observation, preparation: { ...observation.preparation, status: 'ready' } }), { code: 'invalid-input' })
 })
+test('forced-enabled observation is an incompatible diagnosis, not a capability or stored setting', () => {
+  const observation = { nativeInitialCwdSupported: false, preparation: { status: 'incompatible', sdkVersion: null,
+    diagnostic: 'Clear only the forced-enable override to restore automatic selection', reason: 'compatibility-component-forced-enabled' } }
+  assert.deepEqual(parseStartupObservation(observation), observation)
+  const receipt = { revision: 3, desired: { startupCwdEnabled: true }, boot: { epoch: 'forced-override', requested: { startupCwdEnabled: true } },
+    enabledNow: false, ...observation, restartNeeded: false, state: 'incompatible' }
+  assert.deepEqual(parseStartupStatus(JSON.parse(JSON.stringify(receipt))), receipt)
+  const { reason, ...legacy } = observation.preparation
+  assert.deepEqual(parseStartupObservation({ ...observation, preparation: legacy }), { ...observation, preparation: legacy })
+  for (const reason of ['compatibility-component-disabled', 'compatibility-component-forced-enabled']) {
+    for (const status of ['ready', 'not-prepared', 'failed', 'uncertain']) {
+      assert.throws(() => parseStartupObservation({ ...observation, preparation: { ...observation.preparation, reason, status } }), { code: 'invalid-input' })
+    }
+  }
+  for (const reason of ['unknown', null, undefined]) {
+    assert.throws(() => parseStartupObservation({ ...observation, preparation: { ...observation.preparation, reason } }), { code: 'invalid-input' })
+    assert.throws(() => parseStartupStatus({ ...receipt, preparation: { ...observation.preparation, reason } }), { code: 'invalid-input' })
+  }
+  assert.throws(() => parseStartupDesired({ startupCwdEnabled: true, reason }), { code: 'invalid-input' })
+})
 test('startup cwd support defaults off even on a natively capable process', async () => {
   const storage = new MemoryVersionedStorage(parseStartupDocument)
   const core = new StartupSupport(storage, { epoch: 'process-A' }, observe)
@@ -86,6 +106,27 @@ test('loaded capability is the current truth and preparation errors never masque
     assert.equal(actual.state, state)
     assert.deepEqual(parseStartupStatus(JSON.parse(JSON.stringify(actual))), actual)
     assert.throws(() => parseStartupStatus({ ...actual, unexpected: true }), { code: 'invalid-input' })
+  }
+})
+
+test('forced-enable diagnosis preserves loaded capability precedence and the same-epoch boot request', async () => {
+  const preparation = { status: 'incompatible', sdkVersion: null, diagnostic: 'Clear only forced override', reason: 'compatibility-component-forced-enabled' }
+  for (const [bootOn, desiredOn, native, enabledNow, state] of [
+    [true, true, false, false, 'incompatible'], [true, true, null, null, 'incompatible'],
+    [true, true, true, true, 'enabled'], [true, false, true, true, 'pending-restart'],
+    [false, true, true, false, 'pending-restart'], [false, false, false, false, 'disabled'],
+  ]) {
+    const document = { schemaVersion: 1, revision: 3, desired: { startupCwdEnabled: desiredOn },
+      bootReceipts: [{ epoch: 'forced-process', requested: { startupCwdEnabled: bootOn } }] }
+    const storage = new MemoryVersionedStorage(parseStartupDocument, document)
+    const make = () => new StartupSupport(storage, { epoch: 'forced-process' }, async () => ({ nativeInitialCwdSupported: native, preparation }))
+    const actual = await make().readStatus()
+    assert.equal(actual.enabledNow, enabledNow)
+    assert.equal(actual.state, state)
+    assert.equal(actual.restartNeeded, bootOn !== desiredOn)
+    assert.deepEqual(parseStartupStatus(JSON.parse(JSON.stringify(actual))), actual)
+    assert.deepEqual((await make().readStatus()).boot, document.bootReceipts[0])
+    assert.deepEqual(await storage.read(), document, 'diagnosis and same-epoch remount do not rewrite desired or boot capture')
   }
 })
 

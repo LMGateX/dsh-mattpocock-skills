@@ -11,7 +11,7 @@ export interface StartupPreparation {
     readonly sdkVersion: string | null;
     readonly diagnostic: string | null;
     /** Optional live observation detail; never a stored setting or capability grant. */
-    readonly reason?: 'compatibility-component-disabled';
+    readonly reason?: 'compatibility-component-disabled' | 'compatibility-component-forced-enabled';
 }
 export interface StartupObservation {
     readonly nativeInitialCwdSupported: boolean | null;

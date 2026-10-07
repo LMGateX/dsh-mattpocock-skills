@@ -22,7 +22,15 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 
-## 0.4.3 产品形态与发行门禁
+## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
+
+本阶段授权为既有 Profile 旧依赖接入与组件强制开启覆盖的代码修复和真实 SDK／Loader／Plugin Manager 验证。新版本 push／Release／同字节本机安装另行确认；不沿用只针对 0.4.3 的发布安装授权，不自动重启 GUI，也不静默清除当前 Profile 的布尔覆盖。
+
+保持固定原版执行资产字节，通过开发构建器生成完整 17 个静态 import 字面量清单；14 个非 builtin 接入既有公共 Loader 的 canonical native ESM 路径，3 个 builtin 不变。仅重写已核验的字面量，普通 ESM 导入确定性 data URL；不改 SDK、其他插件依赖、全局 resolver 或 native manager 逻辑。包装器真正静态导入、原生入口、peer manifest 所有权、版本和实际模块身份仍严格一致，不以版本相等代替共享身份。
+
+门禁已观测：旧 Profile 协议 tracer RED→GREEN；真实旧协议包只读接入的 canonical binding 与实际 Manager 安装／新启动 A/B／续用通过；Manager 关→开保存 disabled:false，诊断 forced-enabled 与 disabled 区分，已有 Fiber／服务／B child 与冻结 header 不变。源码准备／串行组合 manifest 越界 tracer RED→GREEN。当前全量根测试 761／761，0 skipped；组合 49／49、只读准备 87／87、Manager 11／11。精确候选包装边界为 83 固定文件 + 85 vendor = 168 文件、64 JS／声明；完整 import 清单与 asset／MIT／manager 区域不变。严格构建、开发包及 vendor 已通过；清洁提交的双轴复审、一次准确制品及同字节矩阵须另有完成记录，不能把源码矩阵当发行包或当前 GUI 激活证明。
+
+## 0.4.3 产品形态与发行门禁（历史已授权阶段）
 
 本阶段接受范围为代码修改、push、新 GitHub Release 与同字节本机安装。交付根包／子路径独立 locale metadata、一个插件作用域的功能设置、内部兼容桥来源与高级维护控制说明，以及明确组件关闭覆盖的只读原因和恢复自动选择方向。技术 id／specifier、原版资产和 root 生命周期选择规则保持不变；不声称可以隐藏框架通用开关，也不伪造 SDK reset API。
 

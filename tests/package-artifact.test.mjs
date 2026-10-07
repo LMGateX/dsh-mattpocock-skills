@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -46,9 +47,9 @@ function validMembers() {
   ]
 }
 
-test('0.4.3 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.4.3' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.4.3')
+test('0.4.4 package policy admits exactly four metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.4.4' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.4.4')
   assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
     'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
   ])
@@ -58,7 +59,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.4.3',
+    version: '0.4.4',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
@@ -67,7 +68,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
-    [{ ...packageJson, version: '1.0.0' }, /0\.4\.3/],
+    [{ ...packageJson, version: '1.0.0' }, /0\.4\.4/],
     [{ ...packageJson, private: false }, /private/],
     [{ ...packageJson, scripts: { prepare: 'tsc' } }, /scripts/],
     [{ ...packageJson, publishConfig: { access: 'public' } }, /publishConfig/],
@@ -104,15 +105,34 @@ test('locale metadata verification rejects unknown structure and changed public 
   ]) assert.throws(() => validatePackageLocale('locale/worktree-bridge/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 81 fixed files, 85 vendor files and unchanged 62 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 81)
-  assert.equal(EXPECTED_PACKED_FILES, 166)
-  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 62)
+test('exact package inventory contains 83 fixed files, 85 vendor files and 64 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 83)
+  assert.equal(EXPECTED_PACKED_FILES, 168)
+  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 64)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 166)
+  assert.equal(members.size, 168)
   for (const path of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
+})
+
+test('peer-binding support adds only its exact JS and declaration paths to the closed package inventory', () => {
+  const expected = ['lib/compatibility/peer-bindings.js', 'lib/types/compatibility/peer-bindings.d.ts']
+  assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.includes('peer-bindings')), expected)
+  assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.includes('peer-bindings')), expected)
+  assert.deepEqual(packageJson.files.filter(path => path.includes('peer-bindings')), expected)
+  assert.equal(packageJson.exports['./peer-bindings'], undefined, 'internal support must not add a public entry')
+  for (const files of [packageJson.files.filter(path => path !== expected[0]), [...packageJson.files, 'lib/compatibility/*.js']]) {
+    assert.throws(() => validatePackagePolicy({ ...packageJson, files }), /allowlist/)
+  }
+})
+
+test('native artifact remains byte-identical while peer-binding provenance has its exact new identity', async () => {
+  const artifact = await readFile(resolve(root, 'compatibility/native-subagent-0.2.1-alpha.1.js'))
+  const provenance = await readFile(resolve(root, 'compatibility/native-subagent.provenance.json'))
+  assert.equal(artifact.length, 136833)
+  assert.equal(createHash('sha256').update(artifact).digest('hex'), 'f6197aa3eb84c4f803e2b6517e70b1b62a804bb4e763abec94ebe961dabd77ba')
+  assert.equal(createHash('sha256').update(provenance).digest('hex'), '3b990850e2e8cb82579b258743e0403bcfcbbd54eedbf9a8c55547ef0bafbf75')
 })
 
 test('archive paths require normalized package-relative portable names', () => {

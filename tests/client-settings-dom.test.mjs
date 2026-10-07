@@ -93,6 +93,42 @@ test('real DOM distinguishes disabled dependency from version mismatch and retai
   assert.doesNotMatch(normalText(container), /当前阻断是/)
 })
 
+test('real DOM forced-enable recovery is clear-only and never downgrades loaded capability or unknown status', async t => {
+  let actual = startup({ state: 'incompatible', desired: { startupCwdEnabled: true },
+    boot: { epoch: 'forced-dom', requested: { startupCwdEnabled: true } }, preparation: { status: 'incompatible',
+      sdkVersion: '0.2.1-alpha.1', diagnostic: 'Clear only forced-enable override', reason: 'compatibility-component-forced-enabled' } })
+  const remote = { startupStatus: async () => ok(copy(actual)), saveStartupSettings: () => assert.fail('diagnosis must not write or reset configuration') }
+  const { container } = await mount(t, client.StartupSettingsPanel, { remote })
+  const visible = named(container, '当前运行状态')
+  assert.match(visible.textContent, /兼容桥被强制开启/)
+  assert.match(visible.textContent, /自动选择.*被.*替换/)
+  assert.match(visible.textContent, /仅撤销.*强制开启覆盖.*恢复自动选择/)
+  assert.match(visible.textContent, /功能请求已保留/)
+  assert.doesNotMatch(visible.textContent, /兼容桥被配置禁用|插件兼容性不匹配|请更新|安装或更新|已生效/)
+  assert.match(normalText(container), /其他.*兼容.*冲突.*仍.*存在/)
+  assert.equal(named(container, '允许本插件创建子代理时指定工作树').checked, true)
+  assert.equal(container.querySelectorAll('input[type=checkbox]').length, 1)
+  assert.equal(container.querySelectorAll('button').length, 2, 'no reset button or second enable control')
+  actual = { ...actual, enabledNow: null, nativeInitialCwdSupported: null }
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(visible.textContent, /运行状态未知：兼容桥被强制开启/)
+  assert.match(visible.textContent, /当前生效：未知（观测不可用）/)
+  assert.doesNotMatch(visible.textContent, /当前生效：禁用/)
+  actual = { ...actual, state: 'enabled', enabledNow: true, nativeInitialCwdSupported: true }
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(visible.textContent, /已生效/)
+  assert.doesNotMatch(visible.textContent, /尚未生效|当前生效：禁用|插件兼容性不匹配/)
+  assert.match(normalText(container), /当前运行时能力已支持.*不会抹除当前能力/)
+  assert.doesNotMatch(normalText(container), /当前阻断是/)
+  actual = { ...actual, state: 'pending-restart', desired: { startupCwdEnabled: false }, restartNeeded: true }
+  await click(button(container, '重新读取启动状态（丢弃草稿）'))
+  assert.match(visible.textContent, /当前仍生效：关闭请求待重启/)
+  assert.match(visible.textContent, /当前生效：启用/)
+  assert.equal(named(container, '允许本插件创建子代理时指定工作树').checked, false)
+  assert.match(visible.textContent, /本次启动请求：启用/)
+  assert.match(container.textContent, /启动标识 forced-dom/)
+})
+
 test('startup DOM never offers SDK paths or manual maintenance commands, including collapsed details', async t => {
   let actual = startup()
   const remote = { startupStatus: async () => ok(copy(actual)), saveStartupSettings: () => assert.fail('read-only rendering') }

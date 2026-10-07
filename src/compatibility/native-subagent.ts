@@ -7,7 +7,11 @@ import OriginalSubagent from '@deepseek-ai/dsh-subagent'
 import type { Config as NativeConfig } from '@deepseek-ai/dsh-subagent'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { createHash } from 'node:crypto'
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync, realpathSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import { inspectCanonicalPeerBindings, bindCompatibleSubagentSource } from './peer-bindings.js'
+import type { ImportBindingInventory } from './peer-bindings.js'
 
 const version = '0.2.1-alpha.1'
 const artifactPath = 'compatibility/native-subagent-0.2.1-alpha.1.js'
@@ -23,12 +27,11 @@ function boundedRead(url: URL, limit: number): Buffer {
 
 // Verify owned bytes and pinned provenance before importing executable code. The
 // stock public constructor is the fallback, never an invented capability getter.
-let Native: typeof OriginalSubagent = OriginalSubagent
-let assetFailure: unknown
+async function loadNative(ctx: Context): Promise<{ Native: typeof OriginalSubagent; assetFailure?: unknown }> {
 try {
   const bytes = boundedRead(artifactUrl, 524288)
   const provenanceBytes = boundedRead(new URL('../../compatibility/native-subagent.provenance.json', import.meta.url), 65536)
-  if (createHash('sha256').update(provenanceBytes).digest('hex') !== '59fa929e71ae38d04dc4730a441b88fe5a97db7ed26fc817eea77883a2dc9b04') {
+  if (createHash('sha256').update(provenanceBytes).digest('hex') !== '3b990850e2e8cb82579b258743e0403bcfcbbd54eedbf9a8c55547ef0bafbf75') {
     throw new Error('compatibility provenance integrity mismatch')
   }
   const metadata = JSON.parse(provenanceBytes.toString('utf8'))
@@ -47,13 +50,20 @@ try {
       metadata.transformation?.origin?.readOnly !== true || metadata.transformation?.origin?.capability !== false) {
     throw new Error('compatibility asset integrity or provenance mismatch')
   }
-  const candidate = (await import(artifactUrl.href)).default as typeof OriginalSubagent
+  const profile = ctx.get('profileContext') as { installAnchor?: string } | undefined
+  if (!profile?.installAnchor) throw new Error('canonical native launch anchor unavailable')
+  const wrapper = fileURLToPath(import.meta.url)
+  const nativePath = realpathSync(createRequire(wrapper).resolve('@deepseek-ai/dsh-subagent'))
+  const peers = inspectCanonicalPeerBindings(ctx, nativePath, wrapper, fileURLToPath(artifactUrl), profile.installAnchor)
+  const bound = bindCompatibleSubagentSource(bytes.toString('utf8'), metadata.transformation.importBindings as ImportBindingInventory, peers)
+  const candidate = (await import(bound)).default as typeof OriginalSubagent
   if (typeof candidate !== 'function' || (candidate.prototype as unknown as Record<symbol, unknown>)[origin] !== 'native-subagent-' + version) {
     throw new Error('compatibility constructor origin mismatch')
   }
-  Native = candidate
+  return { Native: candidate }
 } catch (error) {
-  assetFailure = error
+  return { Native: OriginalSubagent, assetFailure: error }
+}
 }
 
 const rootedProvidersKey = Symbol.for('@lmgatex/dsh-mattpocock-skills/native-subagent-root-providers-v1')
@@ -135,6 +145,12 @@ export async function apply(ctx: Context): Promise<void> {
   // Context.root is a public, experimental Cordis lifetime seam. The removable
   // carrier must neither own this provider nor return its disposer as an effect.
   // The factory has no Config schema: config already holds native-validated refs.
+  const { Native, assetFailure } = await loadNative(ctx)
+  // Importing verified peers must never turn a late competing service into a replacement.
+  if (ctx.get('subagents') || stock.fiber && stock.fiber.uid !== null) return
+  if (entry.parent !== tree.root || stock.parent !== tree.root || !stock.disabled ||
+    !plainRootRow(entry.options as unknown as Record<string, unknown>) || !plainRootRow(stock.options as unknown as Record<string, unknown>) ||
+    !sharesRootScope(ctx, applicationRoot) || !sharesRootScope(tree.context, applicationRoot)) throw new Error('native compatibility topology changed while binding')
   const provider = applicationRoot.plugin({
     name: 'mattpocock-native-subagent-provider',
     apply(rootedCtx: Context) {

@@ -1,6 +1,14 @@
 # 插件自管兼容支持：交付约束与接入核对
 
-状态：单包入口、用户流程与 clean-source 开发制品验收已完成，进入 0.4.2 授权发布线。正式版本必须另有清洁源码／单次制品身份／同字节矩阵与远端摘要门禁；准确结果见 Release 脱敏附件。本文不声称安装后当前 GUI 立即加载或启用增强能力。
+状态：0.4.4 候选修复的源码与真实 SDK 矩阵已完成，尚未发布／安装。0.4.2／0.4.3 发布线为下文历史记录。正式版本必须另有清洁源码／单次制品身份／同字节矩阵与远端摘要门禁；准确结果见各版本 Release 脱敏附件。本文不声称安装后当前 GUI 立即加载或启用增强能力。
+
+## 0.4.4 候选：既有 Profile 接入与精确诊断
+
+旧 Profile 可仍独立解析旧协议依赖。兼容实现现在由[共享 canonical 绑定证明](<../src/compatibility/peer-bindings.ts>)沿当前公共 `Loader.internal.resolveSync` 的实际 native importer 选择依赖，不要求迁移其他插件依赖。固定资产和 provenance 摘要通过后，仅绑定[生成清单](<../compatibility/native-subagent.provenance.json>)中的 14 个非 builtin 字面量；3 个 builtin、MIT 和 manager／activation 区域不变。确定性 data URL 仍由普通 ESM 导入，保留相同 canonical SDK 错误类型、Typert 基类和模块缓存身份。解析格式、规范 file URL、首个所属 package manifest 与 native 包边界均严格核验；版本相同但实际身份不同仍拒绝。
+
+宿主组件开关保存 `disabled:false`，不是恢复原先自动组合 guard。[只读准备](<../src/compatibility/readiness.ts>)以 `compatibility-component-forced-enabled` 区分这种覆盖与普通 `disabled:true`，界面只说明撤销该字段、保留请求并恢复自动选择。插件不伪造宿主 reset API，也不静默清除覆盖或换掉当前服务。实际已加载能力仍优先；仅清除覆盖不等于当前进程立即具备首次 cwd。
+
+当前源码验收为全量 761／761、0 skipped；[绑定实际 SDK 身份](<../tests/canonical-peer-bindings.test.mjs>)5／5、[完整导入清单](<../tests/compatible-import-inventory.test.mjs>)18／18、组合 49／49、准备 87／87、实际 Plugin Manager 11／11。后者包括关→开覆盖／已有服务与 B child 连续性，以及真实旧协议包只读接入的 Manager 安装／新启动、A/B 文件读取、继承／冻结持久 header／热续用；独立旧 importer 仍不变。真实原生提供者与普通解包合计 30／30，通过 full native spawn/fork／冷恢复等既有路径。测试只写自有隔离目录，无模型、无监听；不是当前已部署 GUI 激活证明。候选 clean-source 一次制品与同字节矩阵、复审、发布和安装另行报告；本机路径、Profile 快照和原始证据不进入公开材料。
 
 ## 当前源码进度与验收边界
 

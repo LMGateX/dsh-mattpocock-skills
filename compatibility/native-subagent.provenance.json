@@ -53,7 +53,114 @@
     "preservedRegions": [
       "continuation-activation",
       "continuation"
-    ]
+    ],
+    "importBindings": {
+      "id": "canonical-native-url-v1",
+      "sites": [
+        {
+          "offset": 1274,
+          "length": 27,
+          "specifier": "@deepseek-ai/dsh-subagent",
+          "literal": "\"@deepseek-ai/dsh-subagent\""
+        },
+        {
+          "offset": 1317,
+          "length": 26,
+          "specifier": "@deepseek-ai/schemastery",
+          "literal": "\"@deepseek-ai/schemastery\""
+        },
+        {
+          "offset": 1373,
+          "length": 24,
+          "specifier": "@deepseek-ai/dsh-scope",
+          "literal": "\"@deepseek-ai/dsh-scope\""
+        },
+        {
+          "offset": 1438,
+          "length": 24,
+          "specifier": "@deepseek-ai/dsh-tools",
+          "literal": "\"@deepseek-ai/dsh-tools\""
+        },
+        {
+          "offset": 1504,
+          "length": 28,
+          "specifier": "@deepseek-ai/dsh-util-time",
+          "literal": "\"@deepseek-ai/dsh-util-time\""
+        },
+        {
+          "offset": 1591,
+          "length": 34,
+          "specifier": "@deepseek-ai/dsh-typert-protocol",
+          "literal": "\"@deepseek-ai/dsh-typert-protocol\""
+        },
+        {
+          "offset": 1659,
+          "length": 29,
+          "specifier": "@deepseek-ai/dsh-attachment",
+          "literal": "\"@deepseek-ai/dsh-attachment\""
+        },
+        {
+          "offset": 1715,
+          "length": 5,
+          "specifier": "zod",
+          "literal": "\"zod\""
+        },
+        {
+          "offset": 1864,
+          "length": 22,
+          "specifier": "@deepseek-ai/dsh-llm",
+          "literal": "\"@deepseek-ai/dsh-llm\""
+        },
+        {
+          "offset": 1915,
+          "length": 13,
+          "specifier": "node:crypto",
+          "literal": "\"node:crypto\""
+        },
+        {
+          "offset": 1963,
+          "length": 24,
+          "specifier": "@deepseek-ai/dsh-agent",
+          "literal": "\"@deepseek-ai/dsh-agent\""
+        },
+        {
+          "offset": 2034,
+          "length": 26,
+          "specifier": "@deepseek-ai/dsh-session",
+          "literal": "\"@deepseek-ai/dsh-session\""
+        },
+        {
+          "offset": 2090,
+          "length": 24,
+          "specifier": "@deepseek-ai/dsh-brand",
+          "literal": "\"@deepseek-ai/dsh-brand\""
+        },
+        {
+          "offset": 2150,
+          "length": 30,
+          "specifier": "@deepseek-ai/dsh-util-values",
+          "literal": "\"@deepseek-ai/dsh-util-values\""
+        },
+        {
+          "offset": 2255,
+          "length": 31,
+          "specifier": "@deepseek-ai/dsh-chunked-list",
+          "literal": "\"@deepseek-ai/dsh-chunked-list\""
+        },
+        {
+          "offset": 2336,
+          "length": 9,
+          "specifier": "node:fs",
+          "literal": "\"node:fs\""
+        },
+        {
+          "offset": 2383,
+          "length": 11,
+          "specifier": "node:path",
+          "literal": "\"node:path\""
+        }
+      ]
+    }
   },
   "artifact": {
     "path": "compatibility/native-subagent-0.2.1-alpha.1.js",

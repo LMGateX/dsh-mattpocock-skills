@@ -5,14 +5,14 @@ import { readFileSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
 
 // Public Loader.entries/Entry.parent.tree.root.data and real StartupSupport only.
 // Fixture writes and symlink targets belong to scratch; SDK remains read-only.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for readonly plugin readiness probes' }
-let sdk, api, composition, HostStartupNode, StartupSupport
+let sdk, api, bindings, composition, HostStartupNode, StartupSupport
 if (hostRoot) {
   assert(isAbsolute(hostRoot))
   const require = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
@@ -22,7 +22,6 @@ if (hostRoot) {
   registerHooks({
     resolve(specifier, context, next) {
       if (context.parentURL?.includes('/dsh-mattpocock-skills/src/') && specifier.startsWith('.') && specifier.endsWith('.js')) specifier = specifier.slice(0, -3) + '.ts'
-      if (context.conditions.includes('import') && (specifier === '@deepseek-ai/dsh-subagent' || specifier.includes('/dsh-plugin-readiness-') && specifier.endsWith('/node_modules/@deepseek-ai/dsh-subagent/lib/index.js'))) return { url: pathToFileURL(require.resolve('@deepseek-ai/dsh-subagent')).href, shortCircuit: true }
       return next(specifier, context)
     },
     load(url, context, next) {
@@ -32,6 +31,7 @@ if (hostRoot) {
     },
   })
   api = await import('../src/compatibility/readiness.ts')
+  bindings = await import('../src/compatibility/peer-bindings.ts')
   composition = await import('../src/compatibility/composition.ts')
   ;({ HostStartupNode } = await import('../src/compatibility/host-startup.ts'))
   ;({ StartupSupport } = await import('../src/controls/startup-support.ts'))
@@ -65,9 +65,15 @@ async function fixture(t, { metadata = true, appVersion = '0.2.1-alpha.1', nativ
     const destination = join(root, 'node_modules', name)
     await mkdir(dirname(join(destination, 'package.json')), { recursive: true })
     await cp(manifestPath, join(destination, 'package.json'))
-    const entryPath = entry.slice(dirname(manifestPath).length + 1)
-    await mkdir(dirname(join(destination, entryPath)), { recursive: true })
-    await cp(entry, join(destination, entryPath))
+    const internal = sdk.ModuleLoader.fromInternal(), parent = pathToFileURL(nativeResolver.resolve('@deepseek-ai/dsh-subagent')).href
+    const esm = internal.version === 'v2' ? internal.resolveSync(parent, { specifier: name, attributes: {} }) : internal.resolveSync(name, parent, {})
+    // Binding observes the actual import target, which can differ from require
+    // (e.g. Schemastery/Zod). Both copied entries stay owned by this scratch tree.
+    for (const selected of new Set([entry, fileURLToPath(esm.url)])) {
+      const entryPath = selected.slice(dirname(manifestPath).length + 1)
+      await mkdir(dirname(join(destination, entryPath)), { recursive: true })
+      await cp(selected, join(destination, entryPath))
+    }
   }
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   pkg.exports['./native-subagent'] = { default: './lib/compatibility/native-subagent.js' }
@@ -75,6 +81,8 @@ async function fixture(t, { metadata = true, appVersion = '0.2.1-alpha.1', nativ
   await writeFile(join(pluginRoot, 'package.json'), JSON.stringify(pkg))
   const wrapper = ts.transpileModule(await readFile(new URL('../src/compatibility/native-subagent.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText
   await writeFile(join(pluginRoot, 'lib/compatibility/native-subagent.js'), wrapper)
+  const bindingHelper = ts.transpileModule(await readFile(new URL('../src/compatibility/peer-bindings.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText
+  await writeFile(join(pluginRoot, 'lib/compatibility/peer-bindings.js'), bindingHelper)
   for (const file of [api.COMPATIBLE_SUBAGENT_METADATA.artifactPath, api.COMPATIBLE_SUBAGENT_METADATA.provenancePath]) {
     await mkdir(dirname(join(pluginRoot, file)), { recursive: true })
     await cp(new URL('../' + file, import.meta.url), join(pluginRoot, file))
@@ -88,8 +96,11 @@ async function fixture(t, { metadata = true, appVersion = '0.2.1-alpha.1', nativ
   ctx.provide('llm', { prepareCall() { throw new Error('model forbidden') }, stream() { throw new Error('model forbidden') } })
   const loader = new sdk.Loader(scopeContext(ctx), { baseUrl: pathToFileURL(root + '/').href })
   loader.builtins.noop = { apply() {} }
+  // Live stock is the genuine SDK constructor through the public builtin seam;
+  // scratch canonical imports remain unmodified evidence, never executable here.
+  loader.builtins['fixture-stock'] = sdk.default
   await ctx.fiber.await()
-  await loader.root.update(base()); await loader.await()
+  await loader.root.update(base().map(row => ({ ...row, name: 'cordis:fixture-stock' }))); await loader.await()
   const stock = loader.resolve('subagent'), originalFiber = stock.fiber, service = ctx.get('subagents')?.[sdk.symbols.original]
   assert(originalFiber, logs.flatMap(log => log.args ?? []).map(value => value?.stack ?? String(value)).join('\n'))
   const rows = sdk.applyEntryPatches(base(), [...composition.createCompatibilityCompositionPatches(), ...overlay], () => {})
@@ -97,6 +108,11 @@ async function fixture(t, { metadata = true, appVersion = '0.2.1-alpha.1', nativ
   t.after(async () => { await loader.root.update([]); await loader.await(); await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }) })
   return { root, pluginRoot, peer, ctx, loader, stock, originalFiber, service,
     inspect: signal => api.inspectCompatibilityPreparation(ctx, signal, { pluginRoot }) }
+}
+function canonicalBindings(f) {
+  return bindings.inspectCanonicalPeerBindings(f.ctx, join(f.peer, 'lib/index.js'),
+    join(f.pluginRoot, 'lib/compatibility/native-subagent.js'),
+    join(f.pluginRoot, api.COMPATIBLE_SUBAGENT_METADATA.artifactPath), join(f.root, 'package.json'))
 }
 function store() {
   let value = { schemaVersion: 1, revision: 0, desired: { startupCwdEnabled: true }, bootReceipts: [] }
@@ -118,7 +134,7 @@ test('first-install public Loader inspection reports next-boot ready without eva
   try {
     const control = new AbortController().signal
     const prepared = await f.inspect(control)
-    assert.equal(prepared.status, 'ready')
+    assert.equal(prepared.status, 'ready', prepared.diagnostic)
     assert.match(prepared.diagnostic, /next genuine.*boot/)
     let seen
     const node = new HostStartupNode({ bootEpoch: 'same-readiness-process', observeCompatibilityPreparation: async signal => { seen = signal; return f.inspect(signal) } }, () => false)
@@ -172,6 +188,44 @@ test('clearing only the carrier disable overlay restores the exact automatic gua
   assert.equal(prepared.status, 'ready'); assert.equal(prepared.reason, undefined)
   assert.strictEqual(f.stock.fiber, f.originalFiber)
   assert.strictEqual(f.ctx.get('subagents')[sdk.symbols.original], f.service)
+  assert.deepEqual(await image(f.root), before)
+})
+
+test('forced-enabled carrier is diagnosed from readonly raw options without evaluating guards; clearing only its override preserves stock and current false', options, async t => {
+  const f = await fixture(t), compat = f.loader.resolve('mattpocock-native-subagent')
+  // An operator snapshot, not a live enabling operation: test only readonly
+  // diagnosis here. Actual Manager false-write/HMR is covered in its own suite.
+  compat.options.disabled = false
+  f.loader.root.data.find(row => row.id === 'mattpocock-native-subagent').disabled = false
+  const before = await image(f.root), storage = store(), storedBefore = await storage.read()
+  Object.defineProperty(f.stock, 'disabled', { configurable: true, get() { assert.fail('inspector executed stock guard') } })
+  Object.defineProperty(compat, 'disabled', { configurable: true, get() { assert.fail('inspector executed forced carrier guard') } })
+  try {
+    const prepared = await f.inspect()
+    assert.equal(prepared.status, 'incompatible')
+    assert.equal(prepared.reason, 'compatibility-component-forced-enabled')
+    assert.match(prepared.diagnostic, /(?:remove|clear)[\s\S]*only[\s\S]*override/i)
+    assert.match(prepared.diagnostic, /automatic selection/)
+    assert.match(prepared.diagnostic, /Other Profile compatibility conflicts/)
+    assert.doesNotMatch(prepared.diagnostic, /disabled\s*:\s*false|reset.*API|upgrad.*SDK/i)
+    assert.equal(compat.options.disabled, false)
+    assert.strictEqual(f.stock.fiber, f.originalFiber)
+    assert.strictEqual(f.ctx.get('subagents')[sdk.symbols.original], f.service)
+    assert.equal(compat.fiber, undefined)
+    assert.deepEqual(await image(f.root), before)
+    assert.deepEqual(await storage.read(), storedBefore)
+  } finally { delete f.stock.disabled; delete compat.disabled }
+  await f.loader.root.update(sdk.applyEntryPatches(base(), composition.createCompatibilityCompositionPatches(), () => {})); await f.loader.await()
+  assert.equal((await f.inspect()).status, 'ready')
+  assert.strictEqual(f.stock.fiber, f.originalFiber)
+  assert.strictEqual(f.ctx.get('subagents')[sdk.symbols.original], f.service)
+  assert.deepEqual(compat.options.disabled, composition.createCompatibilityCompositionExpressions().compat)
+  const node = new HostStartupNode({ bootEpoch: 'clear-only-readiness', observeCompatibilityPreparation: signal => f.inspect(signal) }, () => f.ctx.get('subagents')?.initialCwdSupported === true)
+  const status = await new StartupSupport(storage, { epoch: node.epoch }, signal => node.observe(signal)).readStatus()
+  assert.equal(status.nativeInitialCwdSupported, false, 'the live public stock getter remains authoritative')
+  assert.equal(status.enabledNow, false)
+  assert.equal(status.state, 'pending-restart')
+  assert.deepEqual((await storage.read()).desired, storedBefore.desired)
   assert.deepEqual(await image(f.root), before)
 })
 
@@ -254,43 +308,49 @@ test('plugin-own native peer ambiguity is unknown even when both copies have pri
   await symlink(otherPeer, join(f.pluginRoot, 'node_modules/@deepseek-ai/dsh-subagent'))
   const result = await f.inspect()
   assert.equal(result.status, 'uncertain')
-  assert.match(result.diagnostic, /different native peers/)
+  assert.match(result.diagnostic, /different canonical native importer|different native peer/)
 })
 
-test('a pristine wrapper-lib scope copy cannot advertise ready for the next true boot', options, async t => {
+test('a wrapper-lib scope shadow is ignored because artifact imports bind to the native URL', options, async t => {
   const f = await fixture(t)
   assert.equal((await f.inspect()).status, 'ready')
   const target = join(f.pluginRoot, 'lib/node_modules/@deepseek-ai/dsh-scope')
   await mkdir(dirname(target), { recursive: true })
   await cp(join(f.root, 'node_modules/@deepseek-ai/dsh-scope'), target, { recursive: true })
   const before = await image(f.root), result = await f.inspect()
-  assert.equal(result.status, 'uncertain')
-  assert.match(result.diagnostic, /dsh-scope|shared native peer/)
+  assert.equal(result.status, 'ready', result.diagnostic)
+  const selected = canonicalBindings(f)['@deepseek-ai/dsh-scope']
+  assert.equal(selected, pathToFileURL(join(f.root, 'node_modules/@deepseek-ai/dsh-scope/lib/index.js')).href, 'the unused shadow is not the bound URL')
   assert.strictEqual(f.stock.fiber, f.originalFiber)
   assert.deepEqual(await image(f.root), before)
 })
 
-test('a pristine artifact-local scope copy cannot advertise ready for next true boot', options, async t => {
+test('an artifact-local scope shadow is ignored by the bound native import graph', options, async t => {
   const f = await fixture(t)
   assert.equal((await f.inspect()).status, 'ready')
   const target = join(f.pluginRoot, 'compatibility/node_modules/@deepseek-ai/dsh-scope')
   await mkdir(dirname(target), { recursive: true })
   await cp(join(f.root, 'node_modules/@deepseek-ai/dsh-scope'), target, { recursive: true })
   const result = await f.inspect()
-  assert.equal(result.status, 'uncertain')
-  assert.match(result.diagnostic, /dsh-scope|shared native peer/)
+  assert.equal(result.status, 'ready', result.diagnostic)
+  const selected = canonicalBindings(f)['@deepseek-ai/dsh-scope']
+  assert.equal(selected, pathToFileURL(join(f.root, 'node_modules/@deepseek-ai/dsh-scope/lib/index.js')).href, 'the unused shadow is not the bound URL')
   assert.strictEqual(f.stock.fiber, f.originalFiber)
 })
 
-test('native index local peer realm is the proof anchor, not the parent Loader resolver', options, async t => {
+test('a native-index peer added after proof refuses readiness when cached ESM and new native-owned manifest disagree', options, async t => {
   const f = await fixture(t)
   assert.equal((await f.inspect()).status, 'ready')
   const target = join(f.peer, 'lib/node_modules/@deepseek-ai/dsh-scope')
   await mkdir(dirname(target), { recursive: true })
   await cp(join(f.root, 'node_modules/@deepseek-ai/dsh-scope'), target, { recursive: true })
   const result = await f.inspect()
-  assert.equal(result.status, 'uncertain')
-  assert.match(result.diagnostic, /dsh-scope|shared native peer/)
+  assert.equal(result.status, 'uncertain', result.diagnostic)
+  assert.match(result.diagnostic, /escaped.*(?:native-owned|selected) package/)
+  const internal = f.loader.internal, parent = pathToFileURL(join(f.peer, 'lib/index.js')).href
+  const esm = internal.version === 'v2' ? internal.resolveSync(parent, { specifier: '@deepseek-ai/dsh-scope', attributes: {} }) : internal.resolveSync('@deepseek-ai/dsh-scope', parent, {})
+  assert.equal(esm.url, pathToFileURL(join(f.root, 'node_modules/@deepseek-ai/dsh-scope/lib/index.js')).href, 'actual ESM still binds the previously selected parent')
+  assert.equal(createRequire(join(f.peer, 'lib/index.js')).resolve('@deepseek-ai/dsh-scope/package.json'), join(target, 'package.json'), 'new local manifest cannot own that ESM URL')
   assert.strictEqual(f.stock.fiber, f.originalFiber)
 })
 
@@ -304,6 +364,32 @@ for (const name of ['@deepseek-ai/cordis', '@deepseek-ai/cordis-plugin-loader'])
   assert.equal(result.status, 'uncertain')
   assert.match(result.diagnostic, /cordis|loader/)
   assert.strictEqual(f.stock.fiber, f.originalFiber)
+})
+
+for (const escape of ['import', 'manifest-ancestor', 'manifest-sibling']) test('native-owned peer ' + escape + ' escape refuses canonical binding, even with pristine bytes', options, async t => {
+  const f = await fixture(t), target = join(f.peer, 'lib/node_modules/@deepseek-ai/dsh-scope')
+  await mkdir(dirname(target), { recursive: true })
+  await cp(join(f.root, 'node_modules/@deepseek-ai/dsh-scope'), target, { recursive: true })
+  const pkg = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'))
+  if (escape === 'import') {
+    const outside = join(f.root, 'escaped-scope.js')
+    await cp(join(target, 'lib/index.js'), outside)
+    await symlink(outside, join(target, 'lib/escaped.js'))
+    pkg.exports['.'] = { import: './lib/escaped.js', default: './lib/index.js' }
+  } else {
+    const outside = escape === 'manifest-ancestor' ? join(f.root, 'escaped-scope-package.json') : join(f.root, 'sibling-manifest/package.json')
+    await mkdir(dirname(outside), { recursive: true })
+    await writeFile(outside, JSON.stringify(pkg))
+    await symlink(outside, join(target, 'escaped-package.json'))
+    pkg.exports['./package.json'] = './escaped-package.json'
+  }
+  await writeFile(join(target, 'package.json'), JSON.stringify(pkg))
+  const before = await image(f.root), result = await f.inspect()
+  assert.equal(result.status, 'uncertain', result.diagnostic)
+  assert.match(result.diagnostic, /escaped.*(?:native-owned|selected) package/)
+  assert.strictEqual(f.stock.fiber, f.originalFiber)
+  assert.strictEqual(f.ctx.get('subagents')[sdk.symbols.original], f.service)
+  assert.deepEqual(await image(f.root), before)
 })
 
 test('profile-local wrapper ambiguity remains unknown even when the native peer agrees', options, async t => {
@@ -345,7 +431,7 @@ test('native import-only export override cannot use pristine require image to ad
   assert.strictEqual(f.stock.fiber, f.originalFiber)
 })
 
-for (const location of ['lib', 'compatibility']) test(location + '-local peer manifest is unknown even if its require entry realpath is canonical', options, async t => {
+for (const location of ['lib', 'compatibility']) test(location + '-local non-direct peer manifest is ignored: its hypothetical bare import is not used', options, async t => {
   const f = await fixture(t), canonicalPeer = join(f.root, 'node_modules/@deepseek-ai/dsh-scope')
   const target = join(f.pluginRoot, location, 'node_modules/@deepseek-ai/dsh-scope')
   const pkg = JSON.parse(await readFile(join(canonicalPeer, 'package.json'), 'utf8'))
@@ -359,8 +445,8 @@ for (const location of ['lib', 'compatibility']) test(location + '-local peer ma
   assert.equal(importer.resolve('@deepseek-ai/dsh-scope'), canonical.resolve('@deepseek-ai/dsh-scope'), 'canonical CJS entry alone is insufficient ESM identity evidence')
   assert.notEqual(importer.resolve('@deepseek-ai/dsh-scope/package.json'), canonical.resolve('@deepseek-ai/dsh-scope/package.json'))
   const result = await f.inspect()
-  assert.equal(result.status, 'uncertain')
-  assert.match(result.diagnostic, /dsh-scope|shared native peer/)
+  assert.equal(result.status, 'ready', result.diagnostic)
+  assert.equal(canonicalBindings(f)['@deepseek-ai/dsh-scope'], pathToFileURL(join(canonicalPeer, 'lib/index.js')).href)
 })
 
 for (const target of ['native', 'wrapper']) for (const condition of ['require', 'module', 'browser', 'node', 'custom']) test(target + ' unknown ' + condition + ' export condition does not prove next-boot readiness', options, async t => {
@@ -387,13 +473,16 @@ test('pinned string or types/default public exports support ordinary ESM readine
 })
 
 const directPeers = hostRoot ? JSON.parse(readFileSync(new URL('../compatibility/native-subagent.provenance.json', import.meta.url), 'utf8')).externalImports.filter(name => !name.startsWith('node:') && name !== '@deepseek-ai/dsh-scope') : []
-for (const location of ['lib', 'compatibility']) for (const name of directPeers) test(location + '-local pristine ' + name + ' copy cannot share canonical native identity', options, async t => {
+for (const location of ['lib', 'compatibility']) for (const name of directPeers) test(location + '-local pristine ' + name + ' shadow is rejected only when it is a real bare wrapper/native-anchor import', options, async t => {
   const f = await fixture(t), target = join(f.pluginRoot, location, 'node_modules', name)
+  const realBareImport = name === '@deepseek-ai/dsh-subagent' || location === 'lib' && name === '@deepseek-ai/dsh-util-values'
+  const selectedBefore = realBareImport ? undefined : canonicalBindings(f)[name]
   await mkdir(dirname(target), { recursive: true })
   await cp(join(f.root, 'node_modules', name), target, { recursive: true })
   const result = await f.inspect()
-  assert.equal(result.status, 'uncertain')
-  assert(result.diagnostic.includes(name))
+  assert.equal(result.status, realBareImport ? 'uncertain' : 'ready', result.diagnostic)
+  if (realBareImport) assert.match(result.diagnostic, /native importer|public peer/)
+  else assert.equal(canonicalBindings(f)[name], selectedBefore, 'the non-direct shadow never supplies a bound import')
   assert.strictEqual(f.stock.fiber, f.originalFiber)
 })
 

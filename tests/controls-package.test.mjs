@@ -14,7 +14,7 @@ import { verifyCommittedArtifacts } from '../scripts/lib/source-ingestion.mjs'
 // runPrepack/runTarball or claim a release-ready source commit/artifact.
 test('scratch TypeScript build matches all current runtime code and declarations', async () => {
   const result = await compareCommittedBuild(repositoryRoot)
-  assert.equal(result.files, 62)
+  assert.equal(result.files, 64)
   assert(result.paths.includes('compatibility/composition.js'))
   assert(result.paths.includes('types/compatibility/composition.d.ts'))
   for (const path of ['host.js', 'runtime.js', 'client.js', 'types/host.d.ts', 'types/runtime.d.ts', 'types/client.d.ts']) assert(result.paths.includes(path))

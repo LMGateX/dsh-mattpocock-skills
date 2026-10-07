@@ -7,6 +7,7 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { inspectCanonicalPeerBindings } from './peer-bindings.js'
 import type { StartupPreparation } from '../controls/startup-state.js'
 import { COMPAT_SUBAGENT_ID, COMPAT_SUBAGENT_NAME, STOCK_SUBAGENT_ID, STOCK_SUBAGENT_NAME,
   createCompatibilityCompositionExpressions } from './composition.js'
@@ -16,7 +17,7 @@ export const COMPATIBLE_SUBAGENT_METADATA = Object.freeze({
   artifactPath: 'compatibility/native-subagent-0.2.1-alpha.1.js',
   artifactSha256: 'f6197aa3eb84c4f803e2b6517e70b1b62a804bb4e763abec94ebe961dabd77ba',
   provenancePath: 'compatibility/native-subagent.provenance.json',
-  provenanceSha256: '59fa929e71ae38d04dc4730a441b88fe5a97db7ed26fc817eea77883a2dc9b04',
+  provenanceSha256: '3b990850e2e8cb82579b258743e0403bcfcbbd54eedbf9a8c55547ef0bafbf75',
   nativeSha256: '75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541',
   wrapperPath: 'lib/compatibility/native-subagent.js',
   originSymbol: '@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin',
@@ -109,40 +110,12 @@ function publicExport(value: unknown, label: string): string | null {
 }
 /** Proof anchors are the executable module files, not their parent package or
  * Loader base. A lib/node_modules peer can differ while package-root lookup agrees. */
-async function inspectPeerIdentities(nativePath: string, wrapperPath: string, artifactPath: string,
-  installation: ReturnType<typeof createRequire>, signal?: AbortSignal): Promise<void> {
-  const native = createRequire(nativePath), wrapper = createRequire(wrapperPath), artifact = createRequire(artifactPath)
-  const samePeer = async (name: string, expected: ReturnType<typeof createRequire>,
-    importers: readonly ReturnType<typeof createRequire>[]): Promise<void> => {
-    signal?.throwIfAborted()
-    const entry = await canonical(expected.resolve(name), signal)
-    signal?.throwIfAborted()
-    const manifest = await canonical(expected.resolve(name + '/package.json'), signal)
-    signal?.throwIfAborted()
-    for (const importer of importers) {
-      const actualEntry = await canonical(importer.resolve(name), signal)
-      signal?.throwIfAborted()
-      const actualManifest = await canonical(importer.resolve(name + '/package.json'), signal)
-      signal?.throwIfAborted()
-      if (actualEntry !== entry || actualManifest !== manifest) {
-        throw new EvidenceError('uncertain', 'Plugin wrapper/artifact and canonical native importer resolve different native peers: ' + name)
-      }
-    }
-  }
-  try {
-    for (const peer of metadata.externalImports) {
-      await samePeer(peer, native, [wrapper, artifact])
-      signal?.throwIfAborted()
-    }
-    await samePeer('@deepseek-ai/cordis', native, [wrapper])
-    signal?.throwIfAborted()
-    await samePeer('@deepseek-ai/cordis-plugin-loader', installation, [wrapper])
-    signal?.throwIfAborted()
-  } catch (error) {
-    signal?.throwIfAborted()
-    if (error instanceof EvidenceError) throw error
-    throw new EvidenceError('uncertain', 'Shared native peer identity is unavailable: ' + message(error))
-  }
+async function inspectPeerIdentities(ctx: PublicContext, nativePath: string, wrapperPath: string, artifactPath: string,
+  installationAnchor: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+  try { inspectCanonicalPeerBindings(ctx, nativePath, wrapperPath, artifactPath, installationAnchor) }
+  catch (error) { throw new EvidenceError('uncertain', 'Canonical native ESM peer binding is unavailable: ' + message(error)) }
+  signal?.throwIfAborted()
 }
 /** Root ownership is eligible only when the actual carrier and containing
  * Loader tree already share that root's complete public service/config realm.
@@ -204,10 +177,14 @@ function canonicalTopology(entries: readonly PublicEntry[], stock: PublicEntry, 
     const row = entry.options, raw = rows.find(row => row.id === entry.options.id)
     const exact = (disabled: unknown) => disabled !== null && typeof disabled === 'object' &&
       Object.keys(disabled).length === 1 && (disabled as { __jsExpr?: unknown }).__jsExpr === expression.__jsExpr
-    if (entry === compat && row.disabled === true && raw?.disabled === true && raw.name === row.name &&
+    if (entry === compat && typeof row.disabled === 'boolean' && raw?.disabled === row.disabled && raw.name === row.name &&
       !row.group && !raw.group && row.isolate === undefined && raw.isolate === undefined &&
       row.intercept === undefined && raw.intercept === undefined) {
-      throw new EvidenceError('incompatible', 'The plugin-owned worktree compatibility bridge (mattpocock-native-subagent) is explicitly disabled by a component configuration override. Remove or clear that disabled override to restore automatic selection; the feature request does not load a disabled component. The running service is unchanged.', 'compatibility-component-disabled')
+      const forced = row.disabled === false
+      throw new EvidenceError('incompatible', forced
+        ? 'The plugin-owned worktree compatibility bridge (mattpocock-native-subagent) is force-enabled by a component override, replacing its automatic selection guard. Remove only that override to restore automatic selection; the saved feature request, running service and existing children remain unchanged. Other Profile compatibility conflicts may still require diagnosis.'
+        : 'The plugin-owned worktree compatibility bridge (mattpocock-native-subagent) is explicitly disabled by a component configuration override. Remove or clear that disabled override to restore automatic selection; the feature request does not load a disabled component. The running service is unchanged.',
+        forced ? 'compatibility-component-forced-enabled' : 'compatibility-component-disabled')
     }
     if (row.group || row.isolate !== undefined || row.intercept !== undefined || !exact(row.disabled) ||
       !raw || raw.name !== row.name || raw.group || raw.isolate !== undefined || raw.intercept !== undefined || !exact(raw.disabled)) {
@@ -317,7 +294,7 @@ export async function inspectCompatibilityPreparation(ctx: PublicContext, signal
     signal?.throwIfAborted()
     const artifact = await ownedPath(pluginRoot, metadata.artifactPath, signal)
     signal?.throwIfAborted()
-    await inspectPeerIdentities(nativePath, wrapper, artifact, installation, signal)
+    await inspectPeerIdentities(tree.context, nativePath, wrapper, artifact, profile.installAnchor, signal)
     signal?.throwIfAborted()
     return { status: 'ready', sdkVersion, diagnostic: 'This same plugin package has a verified compatible provider for the next genuine DSH boot. The running service and shared SDK were not changed; fully restart normally to select it. Implementation readiness does not validate future operator configuration or promise boot success.' }
   } catch (error) {

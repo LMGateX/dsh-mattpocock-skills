@@ -3,7 +3,7 @@ import { before, after, test } from 'node:test'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, readdir, readFile, writeFile, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, writeFile, realpath, rm, symlink, lstat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -125,6 +125,36 @@ async function assertPackageMetadata(ctx, carrierDisabled = false) {
   if (carrierDisabled) assert.equal(bridge.enabled, false, 'disabled carrier row still exposes display metadata without activation')
 }
 
+async function prepareOldProtocolShadow(dir) {
+  const peer = '@deepseek-ai/dsh-typert-protocol', target = join(dir, 'node_modules', peer)
+  assert(isAbsolute(dir) && dir.includes('dsh-manager-public-proof-'), 'old peer fixture belongs only to owned scratch Profile')
+  try { await lstat(target); assert.fail('old protocol fixture must not overwrite a pnpm-managed peer') }
+  catch (error) { if (error.code !== 'ENOENT') throw error }
+  await mkdir(dirname(target), { recursive: true })
+  const oldRoot = process.env.DSH_CONTROLS_OLD_TYPERT_ROOT
+  if (oldRoot) {
+    assert(isAbsolute(oldRoot))
+    const manifest = JSON.parse(await readFile(join(oldRoot, 'package.json'), 'utf8'))
+    assert.equal(manifest.name, peer)
+    assert.equal(manifest.version, '0.1.0-rc.6')
+    await symlink(await realpath(oldRoot), target, 'dir')
+  } else {
+    // Resolve-only old-version sentinel, not historical SDK behavior or a release.
+    await mkdir(join(target, 'lib'), { recursive: true })
+    await writeFile(join(target, 'package.json'), JSON.stringify({ name: peer, version: '0.1.0-rc.6', type: 'module',
+      exports: { '.': { default: './lib/index.js' }, './package.json': './package.json' } }))
+    await writeFile(join(target, 'lib/index.js'), 'export const profileOldPeer = true;')
+  }
+  const manifestPath = join(target, 'package.json'), entryPath = join(target, 'lib/index.js')
+  const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+  const beforeManifest = digest(await readFile(manifestPath)), beforeEntry = digest(await readFile(entryPath))
+  return { peer, entryPath, manifestPath, realOld: Boolean(oldRoot),
+    async unchanged() {
+      assert.equal(digest(await readFile(manifestPath)), beforeManifest, 'old Profile peer manifest remains unchanged')
+      assert.equal(digest(await readFile(entryPath)), beforeEntry, 'old Profile peer entry remains unchanged')
+    } }
+}
+
 async function worker(scenario, tarball) {
   const dir = process.cwd(), home = dirname(dirname(dir)), anchor = join(hostRoot, 'package.json')
   const sdkRequire = createRequire(anchor), profileRequire = createRequire(join(dir, 'package.json'))
@@ -139,6 +169,7 @@ async function worker(scenario, tarball) {
   const native = await load('@deepseek-ai/dsh-subagent')
   const { provideCmdline } = await load('@deepseek-ai/dsh-cmdline')
   const readyListeners = new Set()
+  const oldShadow = scenario === 'old-profile' ? await prepareOldProtocolShadow(dir) : undefined
   app.initProfile(dir, app.PROFILE_TEMPLATES.web.bundles)
   const profile = app.loadProfileDirectory('manager-proof', dir, anchor)
   assert.deepEqual(profile.skippedBundles, [])
@@ -169,7 +200,7 @@ async function worker(scenario, tarball) {
       new app.PluginPackages(ctx, { resolution })
       new TypertRegistry(ctx); new SkillRegistry(ctx)
       ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model forbidden') }, stream() { modelCalls++; throw new Error('model forbidden') } })
-      if (scenario === 'native' || scenario === 'cold-native' || scenario === 'disable-compatible' || scenario === 'remove-compatible') graph = await nativeGraph(ctx, load, dir, scenario === 'cold-native', scenario === 'disable-compatible' ? 'bundle-parent' : scenario === 'remove-compatible' ? 'remove-parent' : 'manager-parent')
+      if (scenario === 'native' || scenario === 'cold-native' || scenario === 'disable-compatible' || scenario === 'remove-compatible' || scenario === 'bridge-toggle' || scenario === 'old-profile') graph = await nativeGraph(ctx, load, dir, scenario === 'cold-native', scenario === 'disable-compatible' ? 'bundle-parent' : scenario === 'remove-compatible' ? 'remove-parent' : 'manager-parent')
       await ctx.plugin(Timer)
       await ctx.plugin(Hmr, { root: [], base: dir, ignored: [], debounce: 1 })
       await ctx.plugin(PluginManager, { fallbackRegistries: [], idleTimeoutMs: 30000 })
@@ -186,7 +217,7 @@ async function worker(scenario, tarball) {
       assert(owner, 'public Impl record exposes actual provider-owning Fiber')
       return owner.fiber
     }
-    if (scenario === 'fresh' || scenario === 'disable-compatible' || scenario === 'remove-compatible' || scenario === 'off-next' || scenario === 'skills-enable' || scenario === 'native' || scenario === 'cold-native' || scenario.startsWith('upgrade-')) {
+    if (scenario === 'fresh' || scenario === 'disable-compatible' || scenario === 'remove-compatible' || scenario === 'off-next' || scenario === 'skills-enable' || scenario === 'native' || scenario === 'cold-native' || scenario === 'bridge-toggle' || scenario === 'old-profile' || scenario.startsWith('upgrade-')) {
       await assertPackageMetadata(ctx)
       const stock = entry('subagent'), compatible = entry('mattpocock-native-subagent')
       assert.equal(ctx.subagents[origin], 'native-subagent-0.2.1-alpha.1', JSON.stringify({ logs, stockState: stock.fiber?.state, compatibleState: compatible.fiber?.state, sameTree: stock.parent === compatible.parent, treeRoot: stock.parent?.root }))
@@ -197,11 +228,37 @@ async function worker(scenario, tarball) {
       const wrapperRequire = createRequire(wrapper)
       for (const peer of ['@deepseek-ai/cordis', '@deepseek-ai/cordis-plugin-loader', '@deepseek-ai/dsh-subagent',
         '@deepseek-ai/dsh-agent', '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-scope']) {
-        assert.equal(await realpath(wrapperRequire.resolve(peer)), await realpath(sdkRequire.resolve(peer)), 'fresh installed peer identity: ' + peer)
+        if (oldShadow && peer === oldShadow.peer) {
+          assert.equal(await realpath(wrapperRequire.resolve(peer)), await realpath(oldShadow.entryPath))
+          assert.notEqual(await realpath(wrapperRequire.resolve(peer)), await realpath(sdkRequire.resolve(peer)))
+        } else assert.equal(await realpath(wrapperRequire.resolve(peer)), await realpath(sdkRequire.resolve(peer)), 'fresh installed peer identity: ' + peer)
       }
-      const generated = await import(pathToFileURL(join(dir, 'node_modules', pluginName, 'compatibility/native-subagent-0.2.1-alpha.1.js')).href)
+      const pluginRoot = join(dir, 'node_modules', pluginName)
+      const artifactPath = join(pluginRoot, 'compatibility/native-subagent-0.2.1-alpha.1.js')
+      const assetBytes = await readFile(artifactPath)
+      const provenanceBytes = await readFile(join(pluginRoot, 'compatibility/native-subagent.provenance.json'))
+      const provenance = JSON.parse(provenanceBytes.toString('utf8'))
+      const { COMPATIBLE_SUBAGENT_METADATA } = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/readiness.js')).href)
+      assert.equal(createHash('sha256').update(assetBytes).digest('hex'), COMPATIBLE_SUBAGENT_METADATA.artifactSha256)
+      assert.equal(createHash('sha256').update(provenanceBytes).digest('hex'), COMPATIBLE_SUBAGENT_METADATA.provenanceSha256)
+      assert.equal(provenance.artifact.bytes, assetBytes.length)
+      const binding = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/peer-bindings.js')).href)
+      const peers = binding.inspectCanonicalPeerBindings(ctx, sdkRequire.resolve('@deepseek-ai/dsh-subagent'), wrapper, artifactPath, anchor)
+      const boundUrl = binding.bindCompatibleSubagentSource(assetBytes.toString('utf8'), provenance.transformation.importBindings, peers)
+      const generated = await import(boundUrl)
+      assert.equal(await import(boundUrl), generated, 'exact installed bytes and canonical vector give one emitted implementation')
       assert(token(ctx.subagents) instanceof generated.default)
       assert.equal(generated.SubagentError, native.SubagentError)
+      assert.equal(generated.SubagentDepthError, native.SubagentDepthError)
+      assert.equal(Object.getPrototypeOf(generated.default.prototype), (await import(peers['@deepseek-ai/dsh-typert-protocol'])).TypertRemoteService.prototype)
+      if (oldShadow) {
+        assert.equal(JSON.parse(await readFile(oldShadow.manifestPath, 'utf8')).version, '0.1.0-rc.6')
+        assert.equal(peers[oldShadow.peer], pathToFileURL(await realpath(createRequire(sdkRequire.resolve('@deepseek-ai/dsh-subagent')).resolve(oldShadow.peer))).href)
+        assert.notEqual(peers[oldShadow.peer], pathToFileURL(await realpath(oldShadow.entryPath)).href)
+        const readiness = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/readiness.js')).href)
+        const prepared = await readiness.inspectCompatibilityPreparation(ctx)
+        assert.equal(prepared.status, 'ready', JSON.stringify(prepared))
+      }
       assert.equal((await ctx.skills.list()).some(skill => skill.name === 'tdd'), true)
       if (scenario === 'off-next') {
         const retained = token(ctx.subagents), owner = providerOwner(), ownerUid = owner.uid
@@ -210,6 +267,54 @@ async function worker(scenario, tarball) {
         assert.equal(token(ctx.get('subagents')) === retained, true)
         assert.equal(providerOwner().uid, ownerUid)
         return { nextBootDeselected: true, retainedThisProcess: true }
+      }
+      if (scenario === 'bridge-toggle') {
+        const readiness = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/readiness.js')).href)
+        const bridge = (await ctx.pluginManager.listPlugins()).find(row => row.moduleName === pluginName + '/native-subagent')
+        assert.equal(bridge.patchId, 'mattpocock-native-subagent')
+        const retained = token(ctx.subagents), owner = providerOwner(), ownerUid = owner.uid
+        const rawStock = structuredClone(stock.options.config)
+        assert.equal(ctx.subagents.initialCwdSupported, true)
+        ctx.subagents.registerProvider({ name: 'component-continuity', capabilities: { continuable: true }, async prepareContinuable() { return {} } })
+        const started = await ctx.subagents.startContinuable({ provider: 'component-continuity', cwd: graph.pathB,
+          label: 'bridge toggle continuity', request: { parent: graph.parent, prompt: [{ type: 'text', text: 'no model' }], maxDepth: 4 }, signal: graph.signal() })
+        const child = ctx.agents.get(started.childId), header = structuredClone(child.session.header)
+        assert.equal(Object.isFrozen(child.session.header), true)
+        const observe = async () => {
+          assert.equal(token(ctx.subagents), retained)
+          assert.equal(providerOwner(), owner)
+          assert.equal(owner.uid, ownerUid)
+          assert.equal(owner.state, 2)
+          assert.deepEqual(stock.options.config, rawStock)
+          assert.equal(ctx.subagents.initialCwdSupported, true, 'component disabled state does not rewrite current capability')
+          await ctx.subagents.sendMessage(graph.parent, started.childId, [{ type: 'text', text: 'same B child through bridge toggle' }], { signal: graph.signal() })
+          assert.equal(ctx.agents.get(started.childId), child)
+          assert.deepEqual(child.session.header, header)
+          assert.equal(child.session.header.cwd, graph.pathB)
+          assert.equal(Object.isFrozen(child.session.header), true)
+          assert.equal((await ctx.sessionPersistence.stat(started.childId)).header.cwd, graph.pathB)
+          const read = await ctx.tools.execute({ callId: 'toggle-read', name: 'read', arguments: { file_path: 'marker.txt' }, agent: child, signal: graph.signal() })
+          assert.equal(read.value.lines[0].text, 'manager B')
+        }
+        const disabled = await ctx.pluginManager.setPluginEnabled(bridge.entryId, false)
+        assert.equal(disabled.application, 'applied', JSON.stringify(disabled))
+        assert.equal(entry('mattpocock-native-subagent').options.disabled, true)
+        const disabledPreparation = await readiness.inspectCompatibilityPreparation(ctx)
+        assert.equal(disabledPreparation.status, 'incompatible')
+        assert.equal(disabledPreparation.reason, 'compatibility-component-disabled')
+        assert.equal(app.loadProfileDirectory('manager-proof', dir, anchor).patches.findLast(row => row.id === bridge.patchId).disabled, true)
+        await observe()
+        const enabled = await ctx.pluginManager.setPluginEnabled(bridge.entryId, true)
+        assert.equal(enabled.application, 'applied', JSON.stringify(enabled))
+        assert.equal(entry('mattpocock-native-subagent').options.disabled, false)
+        const forcedPreparation = await readiness.inspectCompatibilityPreparation(ctx)
+        assert.equal(forcedPreparation.status, 'incompatible')
+        assert.equal(forcedPreparation.reason, 'compatibility-component-forced-enabled')
+        assert.match(forcedPreparation.diagnostic, /automatic selection|force-enabled/)
+        assert.equal(app.loadProfileDirectory('manager-proof', dir, anchor).patches.findLast(row => row.id === bridge.patchId).disabled, false,
+          'actual Manager enabling persists a boolean override, not the packaged automatic guard')
+        await observe()
+        return { componentToggleRetainsNative: true, sameProviderFiber: true, liveFrozenB: true, disabledAndForcedReasonsDistinct: true, persistedForcedEnable: true }
       }
       if (graph && scenario !== 'disable-compatible' && scenario !== 'remove-compatible') {
         assert.equal(ctx.subagents.initialCwdSupported, true)
@@ -238,6 +343,19 @@ async function worker(scenario, tarball) {
         assert.equal(ctx.agents.get(b.childId), child)
         assert.deepEqual(child.session.header, header)
         await writeFile(join(dir, 'expected-child.json'), JSON.stringify({ childId: b.childId, header }))
+        if (oldShadow) {
+          const importer = pathToFileURL(join(dir, 'independent-old-consumer.mjs')).href
+          const independent = ctx.loader.internal.version === 'v2'
+            ? ctx.loader.internal.resolveSync(importer, { specifier: oldShadow.peer, attributes: {} })
+            : ctx.loader.internal.resolveSync(oldShadow.peer, importer, {})
+          assert.equal(await realpath(fileURLToPath(independent.url)), await realpath(oldShadow.entryPath))
+          assert.notEqual(independent.url, peers[oldShadow.peer])
+          const oldNamespace = await ctx.loader.internal.import(oldShadow.peer, importer, {})
+          if (oldShadow.realOld) assert.notEqual(oldNamespace.Remote, (await import(peers[oldShadow.peer])).Remote)
+          else assert.equal(oldNamespace.profileOldPeer, true)
+          await oldShadow.unchanged()
+          return { oldProfilePeerPreserved: true, canonicalBoundProvider: true, actualProfileAB: true, nativeHotSend: true, nativePersistedB: true }
+        }
         return { actualProfileAB: true, nativeHotSend: true, nativePersistedB: true }
       }
       if (scenario === 'skills-enable') {
@@ -353,7 +471,7 @@ async function worker(scenario, tarball) {
     assert.equal(result.application, 'applied', JSON.stringify(result))
     assert.equal(result.bundle, pluginName)
     assert.equal(result.changed, true)
-    assert.equal(result.version, '0.4.3')
+    assert.equal(result.version, '0.4.4')
     const installed = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName)
     assert.equal(installed.installed, true)
     assert.equal(installed.enabled, true)
@@ -409,13 +527,13 @@ before(async () => {
   await run('tar', ['-xzf', tarball, '-C', fixtureRoot], { timeout: 60000 })
   const fixture = join(fixtureRoot, 'package'), manifestPath = join(fixture, 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  assert.equal(manifest.version, '0.4.3')
-  for (const version of ['0.4.4', '0.4.5']) {
+  assert.equal(manifest.version, '0.4.4')
+  for (const version of ['0.4.5', '0.4.6']) {
     await writeFile(manifestPath, JSON.stringify({ ...manifest, version }, null, 2) + '\n')
     await run('pnpm', ['pack', '--pack-destination', join(scratch, 'pack')], { cwd: fixture, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
     upgrades.set(version, join(scratch, 'pack', 'lmgatex-dsh-mattpocock-skills-' + version + '.tgz'))
   }
-  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.3')
+  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.4')
   profile = join(scratch, 'home/profiles/web')
   await mkdir(profile, { recursive: true })
 })
@@ -426,21 +544,21 @@ after(async () => {
   try { await archiveBinding?.assertUnchanged() } finally { await rm(scratch, { recursive: true, force: true }) }
 })
 
-async function child(scenario, tar = tarball) {
+async function child(scenario, tar = tarball, targetProfile = profile) {
   const source = [
     "import assert from 'node:assert/strict'", "import { createRequire } from 'node:module'",
-    "import { mkdir, readFile, writeFile, realpath } from 'node:fs/promises'",
-    "import { join, dirname, isAbsolute } from 'node:path'", "import { pathToFileURL } from 'node:url'",
+    "import { mkdir, readFile, writeFile, realpath, symlink, lstat } from 'node:fs/promises'",
+    "import { join, dirname, isAbsolute } from 'node:path'", "import { pathToFileURL, fileURLToPath } from 'node:url'",
     "import { createHash } from 'node:crypto'",
     'const hostRoot = ' + JSON.stringify(hostRoot), 'const pluginName = ' + JSON.stringify(pluginName),
     "const origin = Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')",
-    'const nativeHash = ' + JSON.stringify(nativeHash), nativeGraph.toString(), assertPackageMetadata.toString(), worker.toString(),
+    'const nativeHash = ' + JSON.stringify(nativeHash), nativeGraph.toString(), assertPackageMetadata.toString(), prepareOldProtocolShadow.toString(), worker.toString(),
     'console.log("MANAGER_RESULT:" + JSON.stringify(await worker(' + JSON.stringify(scenario) + ', ' + JSON.stringify(tar) + ')))',
   ].join('\n')
   const workerPath = join(scratch, 'worker-' + scenario + '.mjs')
   await writeFile(workerPath, source)
   const { stdout } = await run(process.execPath, [workerPath], {
-    cwd: profile, env: { ...process.env, NODE_OPTIONS: '', DSH_TELEMETRY_DISABLED: '1' },
+    cwd: targetProfile, env: { ...process.env, NODE_OPTIONS: '', DSH_TELEMETRY_DISABLED: '1' },
     timeout: 120000, maxBuffer: 8 * 1024 * 1024,
   })
   const line = stdout.split('\n').find(line => line.startsWith('MANAGER_RESULT:'))
@@ -475,7 +593,7 @@ test('actual manager Skills plugin enablement is independent of loaded compatibl
   assert.deepEqual(await child('skills-enable'), { skillsIndependent: true, retainedCompatible: true, unchangedRawStock: true })
 })
 
-for (const version of ['0.4.4', '0.4.5']) {
+for (const version of ['0.4.5', '0.4.6']) {
   test('actual manager installs synthetic upgrade fixture ' + version + ' without swapping loaded compatible service', options, async () => {
     assert.deepEqual(await child('upgrade-' + version, upgrades.get(version)), { syntheticFixtureVersion: version, restartRequired: true, retainedCompatible: true })
     assert.deepEqual(await child('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
@@ -485,4 +603,22 @@ for (const version of ['0.4.4', '0.4.5']) {
 test('actual manager package removal preserves live native child until root shutdown and next boot is stock-only', options, async () => {
   assert.deepEqual(await child('remove-compatible'), { compatibleRetainedOnBundleDisable: true, nativeChildSurvives: true, providerLifetimeRetained: true, rootDrained: true, removedByManager: true })
   assert.deepEqual(await child('stock-removed'), { stockAfterRemoval: true })
+})
+
+
+test('actual PluginManager bridge component off then on preserves native Fiber and frozen B child but persists a distinct force-enabled guard conflict', options, async () => {
+  const isolated = join(scratch, 'toggle-home/profiles/web')
+  await mkdir(isolated, { recursive: true })
+  assert.deepEqual(await child('install', tarball, isolated), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
+  assert.deepEqual(await child('bridge-toggle', tarball, isolated), { componentToggleRetainsNative: true, sameProviderFiber: true, liveFrozenB: true,
+    disabledAndForcedReasonsDistinct: true, persistedForcedEnable: true })
+})
+
+
+test('actual PluginManager installed archive fresh boot binds canonical native peers while isolated old Profile protocol and independent importer remain untouched', options, async () => {
+  const isolated = join(scratch, 'old-peer-home/profiles/web')
+  await mkdir(isolated, { recursive: true })
+  assert.deepEqual(await child('install', tarball, isolated), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
+  assert.deepEqual(await child('old-profile', tarball, isolated), { oldProfilePeerPreserved: true, canonicalBoundProvider: true,
+    actualProfileAB: true, nativeHotSend: true, nativePersistedB: true })
 })

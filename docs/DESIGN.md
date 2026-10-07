@@ -34,6 +34,16 @@ This document is the authoritative implementation contract. A later implementati
 - 后置组件 disabled:true 覆盖与功能请求冲突时，诊断明确为组件配置禁用，给出撤销关闭覆盖／恢复自动选择的修复方向，而非泛称版本不匹配或建议反复重启。恢复不得写强制 disabled:false，也不覆盖分组／隔离／别名／未知 Profile 选择。
 - 非默认 Profile 与真实 SDK 生命周期回归须验证禁用冲突、恢复自动 guard、实际能力与功能请求的区别；公开资料不含本机快照。
 
+## 既有 Profile 原生依赖接入修复
+
+用户认可继续修复原生依赖冲突及强制开启覆盖诊断。修复仍由同一插件包承担，不修改共享 SDK、Profile 的其他插件依赖或全局模块解析，也不自动重启服务。
+
+- 兼容实现依赖必须绑定到已验证的 canonical native importer 实际 ESM 依赖图；旧 Profile 局部依赖保持原样。使用已存在 Loader 的公开 `internal`／`ModuleLoader.resolveSync` 接口获得确切 URL，不直接反射 Node 或 continuation 私有对象、不改 loader cache 或注册解析 hook。
+- 对固定原版资产生成完整有限 import literal 清单；运行时在资产与 provenance 摘要验证后，仅把清单中的非 builtin specifier 换为 canonical URL，并以确定性 data URL 按正常 ESM 加载。保留 live bindings、MIT、全部 manager／activation 实现字节；不将本机 URL 写入公开资产。原版完整资产不重写或建立第二套 runtime。
+- 同步导入前 guard、只读 readiness 和真实加载必须证明同一实际绑定计划。wrapper 自身直接 Context／Loader／native constructor／utility imports 仍要求 exact canonical identity；未知 resolver、模块格式、路径、包身份或导入清单拒绝增强。不存在安全绑定证明时保留 stock，不仅删除旧 identity 检查。
+- `disabled:false` 仍是取代自动 guard 的强制开启覆盖，不因为载体运行就推定兼容；给出独立 forced-enabled 原因及撤销覆盖的恢复方向。`disabled:true` 原关闭原因保持不变。当前真实 capability 优先，不静默迁移 Profile 或虚构 SDK reset。
+- 回归使用真实 SDK／Loader／PluginPackages／Plugin Manager 与准确包的旧 Profile shadow 场景，验证实际 A/B 首次 cwd、冻结 header、续聊与冷恢复、原生类型身份、ACTIVE／PENDING 热重载保留及 root shutdown。新旧依赖旁路不影响其他 importer；源测试、制品与当前 GUI 激活分开报告。
+
 ## 单包兼容支持的交付要求
 
 相关 SDK 兼容支持由同一个插件包承担，不能让用户另行选择、安装或维护补丁、寻找 SDK 路径或执行手工准备命令。只把 recipe／管理器随包提供不算完成自动接入；目标是普通安装／升级、页面保存请求和必要的正常进程重启。当前实现进度与候选边界见[插件自管兼容支持](<PLUGIN_MANAGED_COMPATIBILITY.md>)；候选和源码进度不是发行包或当前 GUI 已生效的声明。

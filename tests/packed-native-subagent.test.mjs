@@ -117,7 +117,7 @@ async function worker(scenario) {
     await realpath(join(pluginRoot, 'lib/compatibility/native-subagent.js')))
   for (const peer of ['@deepseek-ai/cordis', '@deepseek-ai/cordis-plugin-loader', '@deepseek-ai/dsh-agent',
     '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-agent-loop', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-scope']) {
-    if (scenario === 'duplicate-scope-peer' && peer === '@deepseek-ai/dsh-scope') {
+    if (scenario === 'shadowed-protocol' && peer === '@deepseek-ai/dsh-typert-protocol' || scenario === 'duplicate-scope-peer' && peer === '@deepseek-ai/dsh-scope') {
       assert.notEqual(await realpath(wrapperRequire.resolve(peer)), await realpath(sdkRequire.resolve(peer)))
       continue
     }
@@ -137,7 +137,7 @@ async function worker(scenario) {
   ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model forbidden') }, stream() { modelCalls++; throw new Error('model forbidden') } })
   const update = async data => { await loader.root.update(data); await loader.await() }
   let graph
-  if (scenario === 'native' || scenario === 'cold-process' || scenario === 'asset-fallback' || scenario === 'root-lifetime' || scenario.startsWith('startup')) graph = await nativeGraph(ctx, load, profile, scenario === 'cold-process')
+  if (scenario === 'native' || scenario === 'cold-process' || scenario === 'asset-fallback' || scenario === 'root-lifetime' || scenario === 'shadowed-protocol' || scenario.startsWith('startup')) graph = await nativeGraph(ctx, load, profile, scenario === 'cold-process')
   try {
     if (scenario === 'active-hmr' || scenario === 'pending-hmr') {
       await update(stock)
@@ -168,7 +168,7 @@ async function worker(scenario) {
       assert((service[sdk.symbols.original] ?? service) instanceof sdk.native.default)
       return { refusedConditionalMismatch: true }
     }
-    if (scenario === 'duplicate-peer' || scenario === 'duplicate-scope-peer') {
+    if (scenario === 'duplicate-peer') {
       if (scenario === 'duplicate-peer') assert.notEqual(ownNative, actualNative)
       assert.notEqual(service?.[origin], 'native-subagent-0.2.1-alpha.1', 'different wrapper native peer must not permit enhanced wrong-identity graph')
       if (service) assert((service[sdk.symbols.original] ?? service) instanceof sdk.native.default)
@@ -189,16 +189,26 @@ async function worker(scenario) {
       assert.equal(ctx.agents.get(started.childId), child)
       return { ordinaryRetained: true, refusedInvalidImport: true }
     }
+    if (scenario === 'shadowed-protocol') assert.equal(service.initialCwdSupported, true, 'old Profile protocol must not block canonical initial cwd support')
     assert.equal(loader.resolve('subagent').fiber, undefined)
     assert.equal(loader.resolve('mattpocock-native-subagent').fiber.state, 2, JSON.stringify(logs))
     assert.equal(service[origin], 'native-subagent-0.2.1-alpha.1')
     assert.equal(service.resolveMaxDepth(), 5)
     assert.deepEqual(loader.resolve('subagent').options.config, raw)
     assert.equal((await ctx.skills.list()).some(item => item.name === 'tdd'), true)
-    const generated = await import(pathToFileURL(join(pluginRoot, 'compatibility/native-subagent-0.2.1-alpha.1.js')).href)
+    const artifactPath = join(pluginRoot, 'compatibility/native-subagent-0.2.1-alpha.1.js')
+    const binding = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/peer-bindings.js')).href)
+    const provenance = JSON.parse(await readFile(join(pluginRoot, 'compatibility/native-subagent.provenance.json'), 'utf8'))
+    const plan = binding.inspectCanonicalPeerBindings(ctx, actualNative, join(pluginRoot, 'lib/compatibility/native-subagent.js'), artifactPath, anchor)
+    const generated = await import(binding.bindCompatibleSubagentSource(await readFile(artifactPath, 'utf8'), provenance.transformation.importBindings, plan))
     assert((service[sdk.symbols.original] ?? service) instanceof generated.default)
     assert.equal(generated.SubagentError, sdk.native.SubagentError)
     assert.equal(generated.SubagentDepthError, sdk.native.SubagentDepthError)
+    if (scenario === 'shadowed-protocol') {
+      assert.equal(globalThis[Symbol.for('dsh.packed.old-protocol-evaluated')], undefined, 'the bridge must not evaluate the Profile shadow peer')
+      const { inspectCompatibilityPreparation } = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/readiness.js')).href)
+      assert.equal((await inspectCompatibilityPreparation(ctx)).status, 'ready')
+    }
     if (scenario === 'root-lifetime') {
       const token = value => value?.[sdk.symbols.original] ?? value
       const owner = () => {
@@ -385,7 +395,7 @@ if (process.argv[2] === '--packed-worker') {
       if (packRoot) { assert.equal(dirname(packRoot), tmpdir()); assert(packRoot.startsWith(join(tmpdir(), 'dsh-packed-native-'))); await rm(packRoot, { recursive: true, force: true }) }
     }
   })
-  async function fixture(t, { duplicatePeer = false, duplicateScopePeer = false, corruptAsset = false, conditionalExport = false } = {}) {
+  async function fixture(t, { duplicatePeer = false, duplicateScopePeer = false, shadowedProtocol = false, corruptAsset = false, conditionalExport = false } = {}) {
     const temp = await mkdtemp(join(tmpdir(), 'dsh-plain-profile-'))
     t.after(() => rm(temp, { recursive: true, force: true }))
     const profile = join(temp, 'profile'), install = join(temp, 'install')
@@ -408,6 +418,12 @@ if (process.argv[2] === '--packed-worker') {
     if (duplicateScopePeer) {
       await mkdir(join(pluginRoot, 'node_modules/@deepseek-ai'), { recursive: true })
       await cp(join(hostRoot, 'node_modules/@deepseek-ai/dsh-scope'), join(pluginRoot, 'node_modules/@deepseek-ai/dsh-scope'), { recursive: true, dereference: true })
+    }
+    if (shadowedProtocol) {
+      const peerRoot = join(pluginRoot, 'node_modules/@deepseek-ai/dsh-typert-protocol')
+      await mkdir(join(peerRoot, 'lib'), { recursive: true })
+      await writeFile(join(peerRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-typert-protocol', version: '0.1.0-rc.6', type: 'module', exports: { '.': './lib/index.js', './package.json': './package.json' } }))
+      await writeFile(join(peerRoot, 'lib/index.js'), 'globalThis[Symbol.for("dsh.packed.old-protocol-evaluated")] = true; throw new Error("fixture-only old Profile protocol must not be evaluated by the bridge");')
     }
     if (conditionalExport) {
       const filename = join(pluginRoot, 'package.json')
@@ -485,13 +501,25 @@ if (process.argv[2] === '--packed-worker') {
     const result = await f.probe('asset-fallback')
     assert.equal(result.ordinaryRetained, true); assert.equal(result.refusedInvalidImport, true)
   })
+  test('packed old Profile protocol shadow preserves native identity and supports actual first cwd and continuation', options, async t => {
+    const f = await fixture(t, { shadowedProtocol: true })
+    const result = await f.probe('shadowed-protocol')
+    assert.equal(result.enhanced, true)
+    assert.equal(result.frozenB, true)
+    assert.equal(result.sameSendIdentity, true)
+    assert.equal(result.spawnFork, true)
+    assert.equal(result.coldResume, true)
+    assert.equal(result.zeroModel, true)
+  })
   test('packed serialized selector refuses enhanced graph when wrapper resolves a duplicate pristine native peer', options, async t => {
     const f = await fixture(t, { duplicatePeer: true })
     assert.equal((await f.probe('duplicate-peer')).refusedWrongPeer, true)
   })
-  test('packed serialized selector refuses enhanced graph when wrapper resolves a duplicate pristine public scope peer', options, async t => {
+  test('packed scope shadow is bypassed only by binding actual canonical native scope identity', options, async t => {
     const f = await fixture(t, { duplicateScopePeer: true })
-    assert.equal((await f.probe('duplicate-scope-peer')).refusedWrongPeer, true)
+    const result = await f.probe('duplicate-scope-peer')
+    assert.equal(result.enhanced, true)
+    assert.equal(result.singleCanonicalNative, true)
   })
   test('packed public conditional export mismatch stays on stock before ordinary Node imports its alternate ESM target', options, async t => {
     const f = await fixture(t, { conditionalExport: true })

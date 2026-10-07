@@ -668,10 +668,12 @@ function startupFlag(value: boolean | null): string { return value === null ? '�
 /** Translate the authoritative Host state; plugin readiness never overrides loaded capability. */
 function startupStateText(saved: StartupStatus): string {
   if (saved.state === 'incompatible' && saved.preparation.reason === 'compatibility-component-disabled') return '兼容桥被配置禁用'
+  if (saved.state === 'incompatible' && saved.preparation.reason === 'compatibility-component-forced-enabled') return '兼容桥被强制开启'
   return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '插件兼容性尚未验证', unsupported: '增强功能不可用', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['state'], string>)[saved.state]
 }
 function preparationText(saved: StartupStatus): string {
   if (saved.preparation.reason === 'compatibility-component-disabled') return '兼容桥被配置禁用（需要恢复自动选择）'
+  if (saved.preparation.reason === 'compatibility-component-forced-enabled') return '兼容桥被强制开启（自动选择保护被覆盖）'
   return ({ ready: '插件实现已就绪（不代表当前已启用）', 'not-prepared': '插件兼容性尚未验证', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['preparation']['status'], string>)[saved.preparation.status]
 }
 function startupExplanation(saved: StartupStatus): { readonly title: string; readonly detail: string } {
@@ -680,6 +682,7 @@ function startupExplanation(saved: StartupStatus): { readonly title: string; rea
   if (saved.state === 'disabled') return { title: '已关闭', detail: '当前进程未启用此功能；关闭不卸载运行时能力，也不改变已有子代理的工作目录。' }
   if (saved.state === 'pending-restart') return { title: saved.enabledNow === true ? '当前仍生效：关闭请求待重启' : '尚未生效：待重启', detail: request + '当前进程保留本次启动配置；重启 DSH 后重新核对运行状态，刷新网页无效。' }
   if (saved.preparation.reason === 'compatibility-component-disabled') return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + '兼容桥被配置禁用', detail: request + '功能请求已保留，但内部依赖被组件配置关闭。请撤销兼容桥的关闭覆盖，恢复自动选择；不要把组件强制开启当作恢复默认。保存功能请求或反复重启都不会撤销该覆盖。当前进程与已有子代理不会被替换。' }
+  if (saved.preparation.reason === 'compatibility-component-forced-enabled') return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + '兼容桥被强制开启', detail: request + '功能请求已保留，但兼容桥的自动选择保护已被强制开启覆盖替换。请仅撤销该组件的强制开启覆盖，恢复自动选择；不要改成强制关闭或再次强制开启。其他兼容性冲突仍可能存在，恢复后请重新读取诊断。保存功能请求、刷新网页或反复重启都不会撤销该覆盖。当前进程与已有子代理不会被替换。' }
   if (saved.state === 'needs-preparation') return { title: '尚未生效：插件兼容性尚未验证', detail: request + '插件兼容性尚未验证，反复重启也不会生效。请安装或更新兼容的插件版本，并查看技术诊断。' }
   if (saved.state === 'unsupported') return { title: '尚未生效：增强功能不可用', detail: request + '当前无法提供此增强功能，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断；重启本身不能解决兼容性未知的问题。' }
   return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + startupStateText(saved), detail: request + '此增强功能暂不可用，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断，不要将保存成功或重启标记当作功能已生效。' }
@@ -722,12 +725,18 @@ export function StartupSettingsPanel(props: { readonly remote: StartupRemote }):
       ? saved.nativeInitialCwdSupported === true
         ? '当前运行时能力已支持，组件关闭覆盖不会抹除当前能力，但可能阻断下次启动的兼容选择。需要继续使用兼容桥时，撤销关闭覆盖以恢复自动选择；保存功能请求或刷新网页不会代替这一配置恢复。'
         : '此设置在 DSH 启动时读取；保存不改变当前进程。当前阻断是兼容桥的关闭覆盖，不是版本不匹配；先恢复自动选择，再正常重启并核对实际运行状态。刷新网页或反复重启不会撤销配置覆盖。'
-      : STARTUP_HINT),
+      : saved?.preparation.reason === 'compatibility-component-forced-enabled'
+        ? saved.nativeInitialCwdSupported === true
+          ? '当前运行时能力已支持，强制开启覆盖不会抹除当前能力，但已替换下次启动的自动选择保护。需要继续使用兼容桥时，仅撤销该强制开启覆盖以恢复自动选择；保存功能请求或刷新网页不会代替这一配置恢复。其他兼容性冲突仍可能存在。'
+          : '此设置在 DSH 启动时读取；保存不改变当前进程。兼容桥的强制开启覆盖替换了自动选择保护，不是组件被禁用或版本不匹配；仅撤销该覆盖以恢复自动选择，再重新读取诊断。其他兼容性冲突仍可能存在；刷新网页或反复重启不会撤销配置覆盖。'
+        : STARTUP_HINT),
     needsPreparation ? h('p', null, saved.state === 'disabled'
       ? '当前已关闭，不要求兼容验证。若以后启用此功能，请使用兼容的插件版本。'
       : saved.preparation.reason === 'compatibility-component-disabled'
         ? '内部依赖被配置禁用；撤销该组件的关闭覆盖以恢复自动选择，而不是强制开启或重新安装。普通原生子代理与已有会话不受此诊断操作影响。'
-        : '此增强功能暂不可用，仍可使用普通原生子代理。请安装或更新兼容的插件版本并查看技术诊断；保存或反复重启不会自动解决兼容问题。') : null,
+        : saved.preparation.reason === 'compatibility-component-forced-enabled'
+          ? '内部兼容桥被强制开启，自动选择保护已被覆盖；仅撤销该组件的强制开启覆盖以恢复自动选择，不改其他配置，也不强制关闭。恢复后重新读取兼容诊断；普通原生子代理与已有会话不受此诊断操作影响。'
+          : '此增强功能暂不可用，仍可使用普通原生子代理。请安装或更新兼容的插件版本并查看技术诊断；保存或反复重启不会自动解决兼容问题。') : null,
     saved?.state === 'pending-restart' && saved.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
       ? h('p', null, '插件实现已就绪，但当前运行时能力尚未启用；实现就绪不等于当前生效。已保存启用请求后，请正常重启 DSH 并重新核对。') : null,
     saved === null ? null : h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术诊断（启动标识、版本与原始状态）'),

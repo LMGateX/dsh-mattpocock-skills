@@ -58,6 +58,27 @@ test('component-disabled override is a visible dependency conflict, not version 
   assert.equal(checkbox(tree).props.checked, true)
 })
 
+test('forced-enabled override explains clear-only recovery without claiming feature activation or version mismatch', async t => {
+  const mounted = renderer(); t.after(() => mounted.unmount())
+  const actual = status({ state: 'incompatible', restartNeeded: false, boot: { epoch: 'forced-bridge', requested: { startupCwdEnabled: true } },
+    preparation: { status: 'incompatible', sdkVersion: '0.2.1-alpha.1', diagnostic: 'Clear only the forced-enable override', reason: 'compatibility-component-forced-enabled' } })
+  const remote = { startupStatus: async () => ok(actual), saveStartupSettings: () => assert.fail('diagnosis must not reset or save configuration') }
+  mounted.render(client.StartupSettingsPanel, { remote }); mounted.effects(); await settle()
+  const tree = mounted.render(client.StartupSettingsPanel, { remote })
+  const visible = text(rows(tree).filter(row => row.props?.role === 'status'))
+  assert.match(visible, /兼容桥被强制开启/)
+  assert.match(visible, /自动选择.*被.*替换/)
+  assert.match(visible, /仅撤销.*强制开启覆盖.*恢复自动选择/)
+  assert.match(visible, /功能请求已保留/)
+  assert.match(visible, /当前进程与已有子代理不会被替换/)
+  assert.match(visible, /当前生效：禁用/)
+  assert.doesNotMatch(visible, /兼容桥被配置禁用|插件兼容性不匹配|安装或更新|请更新|已生效/)
+  assert.equal(checkbox(tree).props.checked, true)
+  assert.equal(rows(tree).filter(row => row.type === 'input' && row.props.type === 'checkbox').length, 1)
+  assert.equal(rows(tree).filter(row => row.type === 'button').length, 2, 'no reset RPC or repair button')
+  assert.match(text(tree), /其他.*兼容.*冲突.*仍.*存在/)
+})
+
 test('saved enable survives several distinct simulated startup epochs but unprepared capability is explained beside current state', async t => {
   const { StartupSupport } = await import('../lib/controls/startup-support.js')
   const { MemoryVersionedStorage } = await import('../lib/controls/versioned-storage.js')

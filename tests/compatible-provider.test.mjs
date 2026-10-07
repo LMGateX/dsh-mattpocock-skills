@@ -22,14 +22,12 @@ if (hostRoot) {
   const load = hostLoad = name => import(pathToFileURL(require.resolve(name)).href)
   registerHooks({
     resolve(specifier, context, next) {
-      if (context.conditions.includes('import') && (specifier.startsWith('@deepseek-ai/') || specifier === 'zod')) {
-        return { url: pathToFileURL(require.resolve(specifier)).href, shortCircuit: true }
-      }
+      if (context.parentURL?.includes('/src/compatibility/') && specifier === './peer-bindings.js') specifier = './peer-bindings.ts'
       return next(specifier, context)
     },
     load(url, context, next) {
       if (url.endsWith('/compatibility/native-subagent-0.2.1-alpha.1.js')) importedAssets.add(url)
-      if (url.endsWith('/src/compatibility/composition.ts')) return { format: 'module', shortCircuit: true,
+      if (url.endsWith('/src/compatibility/composition.ts') || url.endsWith('/src/compatibility/peer-bindings.ts')) return { format: 'module', shortCircuit: true,
         source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText }
       return next(url, context)
     },
@@ -69,6 +67,8 @@ async function fixture(t, { damage } = {}) {
   await symlink(join(hostRoot, 'node_modules'), join(temp, 'node_modules'))
   const source = await readFile(new URL('../src/compatibility/native-subagent.ts', import.meta.url), 'utf8')
   await writeFile(join(temp, 'lib/compatibility/native-subagent.js'), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+  const bindings = await readFile(new URL('../src/compatibility/peer-bindings.ts', import.meta.url), 'utf8')
+  await writeFile(join(temp, 'lib/compatibility/peer-bindings.js'), ts.transpileModule(bindings, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
   for (const name of ['native-subagent-0.2.1-alpha.1.js', 'native-subagent.provenance.json']) await cp(new URL('../compatibility/' + name, import.meta.url), join(temp, 'compatibility', name))
   if (damage) await damage(temp)
   wrapperUrl = pathToFileURL(join(temp, 'lib/compatibility/native-subagent.js')).href
@@ -377,7 +377,12 @@ test('fresh public Loader constructs exactly one actual generated native runtime
   assert.equal(entry.fiber.state, 2, JSON.stringify(f.logs))
   assert.equal(f.loader.resolve('subagent').fiber, undefined)
   const service = token(f.ctx.subagents)
-  const generated = await import(pathToFileURL(join(f.temp, 'compatibility/native-subagent-0.2.1-alpha.1.js')).href)
+  const bindings = await import(pathToFileURL(join(f.temp, 'lib/compatibility/peer-bindings.js')).href)
+  const artifact = join(f.temp, 'compatibility/native-subagent-0.2.1-alpha.1.js')
+  const provenance = JSON.parse(await readFile(join(f.temp, 'compatibility/native-subagent.provenance.json'), 'utf8'))
+  const native = createRequire(join(hostRoot, 'package.json')).resolve('@deepseek-ai/dsh-subagent')
+  const plan = bindings.inspectCanonicalPeerBindings(f.ctx, native, join(f.temp, 'lib/compatibility/native-subagent.js'), artifact, join(hostRoot, 'package.json'))
+  const generated = await import(bindings.bindCompatibleSubagentSource(await readFile(artifact, 'utf8'), provenance.transformation.importBindings, plan))
   assert(service instanceof generated.default, 'not a lifecycle-only stub or second host graph')
   assert.equal(generated.SubagentError, sdk.native.SubagentError)
   assert.equal(generated.SubagentDepthError, sdk.native.SubagentDepthError)
