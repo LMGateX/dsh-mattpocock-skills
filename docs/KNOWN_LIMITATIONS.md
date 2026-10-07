@@ -1,6 +1,6 @@
 # Known mechanical limits and deferred work
 
-Status: **documented, deliberately not implemented in the 0.4.15/0.4.16 line.** Every item below is a
+Status: **documented, deliberately not implemented in the 0.4.15–0.4.17 line.** Every item below is a
 known limit with the evidence that produced the decision to defer it, and the work a later round would
 have to do. Nothing in this file changes behaviour, contracts, the injection protocol or any rule text.
 

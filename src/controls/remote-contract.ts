@@ -88,7 +88,7 @@ export function parsePolicyGrants(value: unknown): PolicyGrants {
 /** Browser-safe equivalent of the window business command boundary, never execution receipts. */
 export function parseRemoteTicketWindow(value: unknown): TicketWindowCommand {
   const r = record(value, 'ticket window command')
-  if (r.action !== 'reserve' && r.action !== 'release' && r.action !== 'reacquire') invalid('explicit ticket reserve/release/reacquire required')
+  if (r.action !== 'reserve' && r.action !== 'release' && r.action !== 'reacquire') invalid('ticket window commands must declare action "reserve", "release" or "reacquire"; there is no read action')
   record(r, 'ticket window command', ['action', 'operationId', 'workflowId', 'localTicketId', ...(r.action === 'reserve' ? [] : ['generation'])])
   const base = { operationId: id(r.operationId, 'operationId'), workflowId: id(r.workflowId, 'workflowId'), localTicketId: id(r.localTicketId, 'localTicketId') }
   if (r.action === 'reserve') return freeze({ ...base, action: 'reserve' })

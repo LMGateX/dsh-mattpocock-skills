@@ -310,10 +310,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const scheduleNotification=(ownerSessionId:string,retryAccepted=false):void=>{void flushNotifications(ownerSessionId,retryAccepted).catch(()=>undefined)}
   const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
+  // One step may produce many tool results (a run_code can complete several nested dispatches in the
+  // same step), and a message queued during that step is not yet visible to the host visibility oracle,
+  // so an unchanged snapshot would be installed once per tool result. Delivery is therefore also
+  // accounted per step, independently of host visibility.
+  let stepSerial=0
+  const deliveredInStep=new Map<string,{readonly step:number;readonly text:string}>()
   // A persistent association or policy-storage failure must not append the same notice at every
   // step and every tool result: the notice reuses the snapshot baseline and visibility rule.
   const failureReason=(error:unknown):string=>error instanceof ControlsError?error.code:error instanceof ResourceError?error.code:'internal-error'
   const installSnapshot=(caller:HostCaller,acceptedMessages:readonly UserMessage[],text:string,baselineKey:string):readonly UserMessage[]=>{
+    const delivered=deliveredInStep.get(baselineKey)
+    if(delivered!==undefined&&delivered.step===stepSerial&&delivered.text===text)return []
     const agent=ports.liveAgent(caller.sessionId!),baseline=baselines.get(baselineKey)
     if(agent&&baseline&&baseline.text===text&&baseline.agent===agent&&baseline.session===agent.session){
       if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
@@ -322,6 +330,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const message=ports.makeSnapshotMessage(text)
     if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
     else baselines.delete(baselineKey)
+    deliveredInStep.set(baselineKey,{step:stepSerial,text})
     return [message]
   }
   const deliverFailure=(caller:HostCaller,acceptedMessages:readonly UserMessage[],error:unknown):readonly UserMessage[]=>installSnapshot(caller,acceptedMessages,
@@ -366,20 +375,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const text=result===null?held!.text:result.text??(result.freshness==='current'?consumption.cachedText(key):null)
     if(text===null){refresh.record(refreshKey,refreshEpoch);return []}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId])
-    const baseline=baselines.get(baselineKey),agent=ports.liveAgent(caller.sessionId)
-    if(baseline&&baseline.text===text&&agent===baseline.agent&&agent.session===baseline.session){
-      // Inclusion is provisional for this returned batch, never retained as delivery proof.
-      if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
-      try{if(ports.snapshotVisible?.(caller,agent,baseline.message)===true)return []}catch{/* Unavailable visibility never proves delivery. */}
-    }
     try{
-      const message=ports.makeSnapshotMessage(text)
-      // An identical snapshot that is still visible in the real session is not installed again,
-      // fresh or stale: a failing refresh must not append the same stale facts at every step.
-      if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
-      else baselines.delete(baselineKey)
       refresh.record(refreshKey,refreshEpoch)
-      return [message]
+      // An identical snapshot that is still visible in the real session, or was already queued
+      // during this step, is not installed again: fresh or stale, a failing refresh must not
+      // append the same facts at every step or after every nested tool result.
+      return installSnapshot(caller,acceptedMessages,text,baselineKey)
     }catch(error){signal.throwIfAborted()
       refresh.record(refreshKey,refreshEpoch)
       return installSnapshot(caller,acceptedMessages,'Instrument snapshot exceeds its representation boundary. Current detail is unknown here, not zero or release proof. Accepted business input is retained; use instrument tools for detail.',baselineKey)
@@ -465,7 +466,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     async observe(event:HostEvent){
       // A disposed session never prepares again: drop its baseline so the retained Agent, its
       // Session log and the injected message are not kept alive for the process lifetime.
-      if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key)}
+      if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key);for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)}
       const actual=event.actualAgent,dispatch=actual&&exactExecutions.get(actual)
       if(dispatch){
         const commit=track(dispatch.token.instrumentInstanceId,async()=>{
@@ -483,7 +484,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-native-execution-observed'))
       }
     },
-    async preStep(caller,signal,acceptedMessages){return prepare(caller,signal,acceptedMessages)},
+    async preStep(caller,signal,acceptedMessages){stepSerial+=1;return prepare(caller,signal,acceptedMessages)},
     // Every tool result may carry this plugin's current projection or its honest unknown
     // diagnostic, so the hook stays unrestricted; the refresh gate inside prepare keeps an
     // unchanged projection from being rebuilt per call.
@@ -750,7 +751,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         })
       })
     },
-    async dispose(){closing=true;notificationLifetime.abort();guard();await Promise.allSettled([...notificationFlights.values()]);await queue.drain();nativeDispatch.disable();cachedSessions.clear();nativeWindows.clear();baselines.clear()}
+    async dispose(){closing=true;notificationLifetime.abort();guard();await Promise.allSettled([...notificationFlights.values()]);await queue.drain();nativeDispatch.disable();cachedSessions.clear();nativeWindows.clear();baselines.clear();deliveredInStep.clear()}
   }
   // Reconstruct only metadata/known host objects. Never resume a cold session for a dashboard.
   for(const agent of ports.liveAgents()){

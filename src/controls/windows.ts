@@ -214,7 +214,7 @@ function ticketIdentity(raw: Record<string, unknown>): { workflowId: string; loc
 }
 export function parseTicketWindowCommand(value: unknown): TicketWindowCommand {
   const raw = record(value, 'ticket window command')
-  if (raw.action !== 'reserve' && raw.action !== 'release' && raw.action !== 'reacquire') invalid('explicit reserve/release/reacquire required')
+  if (raw.action !== 'reserve' && raw.action !== 'release' && raw.action !== 'reacquire') invalid('ticket window commands must declare action "reserve", "release" or "reacquire"; there is no read action — read T/S from the injected snapshot or query mattpocock_history')
   record(raw, 'ticket window command', ['operationId', 'workflowId', 'localTicketId', 'action', ...(raw.action === 'reserve' ? [] : ['generation'])])
   const base = { operationId: id(raw.operationId, 'operationId'), ...ticketIdentity(raw) }
   return freeze(raw.action === 'reserve' ? { ...base, action: 'reserve' } : { ...base, action: raw.action, generation: generation(raw.generation) })

@@ -136,6 +136,7 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 - 成功取得/校验的最新快照返回 current；health 有 stale/unknown/unavailable/error/failed 时为 stale，reason 为 snapshot-health-degraded。freshness 描述本次读取，不把内部 null/unknown metrics 猜成 0。
 - 失败/timeout 不返回 snapshot，也不把旧快照当 current：已有一份成功取得的正文时，正文明说 Instrument state stale 并附稳定 reason，随后是上次成功取得的正文（可能已过期，不是当前容量、完成或释放证明）；无已验证正文时正文明说 Instrument state unknown。有已验证正文则 freshness 为 stale，否则 unavailable；cachedText 随即失效为 null，重复失败重写同一 stale 正文、不叠加标头。identity/policy 前导读取失败时，若该 session 已有 retained association，仍用其上次成功正文加同一 stale 标头，而不是清空事实。前导失败与 representation-boundary 通知走与快照相同的 baseline/可见性判定：相同正文仍在真实输入中时不重复追加。下次成功重新发送有效正文，哪怕 watermark 与失败前相同。
 - 稳定机械 reason：consumption-timeout、durability-commit-failed、commit-frontier-overflow、snapshot-read-failed、identity-mismatch、superseded-read。不把内部 exception 文本或开发 metadata 注入模型。
+- 同一步内（包括一次 `run_code` 里的多次嵌套工具结果）插件已经排队的相同正文不重复安装：步内按插件自己的投递记账，不依赖 Host 可见性；下一步仍按 baseline 与 `snapshotVisible` 判定是否重投，同一步内状态改变后的新正文仍会投递。
 - 被机械预算截断的正文（超长字符串、数组前 8 行、超 32 字段对象）附整体 digest（signature/tailSignature/fieldsSignature），使省略部分的变化也进入指纹，不只比较可见前缀与长度。
 - 去重含 businessRevision、configRevision、windowRev、scope、当前登记状态/来源、实际 resources/capabilities/health。忽略 viewerRevision、set-decision-view、hidden/read、read timestamp、纯资源域 ledgerRevision；**读取始终执行**，不凭 watermark 跳过物理观察。
 - Resource factsDigest 与实际 physical facts 一起参与指纹。即使 business/config/window watermark 相同，目录、HEAD、脏文件、canRetire reasons 或 digest 改变也更新正文；甚至 adapter 错误复用 digest 时实际事实变化也不会跳过。指纹为 canonical serialization，不是安全/加密哈希。

@@ -14,7 +14,7 @@ test('window command rejects a guessed ticket key and names the accepted keys', 
 
 test('window command without an action states the required explicit action', () => {
   assert.throws(() => parseTicketWindowCommand({ operationId: 'op-1', workflowId: 'wf-1', localTicketId: 'T183' }),
-    /explicit reserve\/release\/reacquire required/)
+    /must declare action "reserve", "release" or "reacquire"; there is no read action/)
 })
 
 test('instrument command errors list the accepted command keys', () => {

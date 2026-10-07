@@ -476,8 +476,10 @@ test('bounded snapshot representation degrades to sourced short unknown rather t
     assert(messages[0].content[0].text.length <= 512)
   }
   const retry = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'ordinary native business result' })
-  assert.equal(retry.length, 1, 'formatting failure and unconfirmed delivery never consume the baseline')
-  assert.match(retry[0].content[0].text, /Current detail is unknown/)
+  assert.equal(retry.length, 0, 'the fallback already queued in this step is not queued again')
+  const nextStep = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(nextStep.length, 1, 'formatting failure and unconfirmed delivery never consume the baseline')
+  assert.match(nextStep[0].content[0].text, /Current detail is unknown/)
   assert(attempted.some(text => text.length > 512))
   assert.equal((await f.read()).records.tickets[0].value.summary, 'fresh business is still retained')
 })
@@ -641,8 +643,10 @@ test('actual mounted SDK storage-uncertain preparation preserves native enter/me
   assert(result.content.some(block => block.text === 'unchanged ordinary native output'))
   assert.deepEqual(result.additionalContexts[0], native)
   assert.equal(result.additionalContexts[0].id, native.id)
-  assert.equal(result.additionalContexts[1].source.kind, 'mattpocock-controls')
-  assert.match(result.additionalContexts[1].content[0].text, /Instrument context unavailable/)
+  // The same unavailable notice was already queued by this step's pre-step decision, so the tool
+  // result adds nothing: an identical notice is installed once per step.
+  assert.equal(result.additionalContexts.length, 1)
+  assert.equal(result.additionalContexts.some(context => context.source.kind === 'mattpocock-controls'), false)
 })
 
 test('actual mounted SDK caller abort during uncertain policy preparation preserves the exact reason, not an unknown fallback', async t => {
@@ -986,4 +990,30 @@ test('an unretained session reports one stable unavailable notice', async t => {
   const text = first[0].content.map(part => part.text).join('')
   assert.doesNotMatch(text, /srv\/secret/)
   assert.match(text, /Instrument context unavailable: internal-error/)
+})
+test('an unchanged snapshot is installed once per step even while the host cannot see it yet', async t => {
+  const f = await ready(t)
+  // A run_code can complete several nested dispatches inside one step, and a message queued during
+  // that step is not yet visible to the host visibility oracle, so delivery is also accounted per step.
+  f.ports.snapshotVisible = () => false
+  const opened = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(opened.length, 1)
+  const first = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'nested dispatch A' })
+  const second = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'nested dispatch B' })
+  assert.equal(first.length, 0, 'the identical snapshot is not queued again in the same step')
+  assert.equal(second.length, 0)
+  const nextStep = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(nextStep.length, 1, 'a later step may re-offer it while the host still reports it as not visible')
+})
+
+test('a state change inside the same step is still delivered once and then suppressed', async t => {
+  const f = await ready(t)
+  f.ports.snapshotVisible = () => false
+  assert.equal((await f.runtime.preStep(caller('root'), signal())).length, 1)
+  await f.apply('put-ticket', { localTicketId: 'T9', value: ticket() })
+  const changed = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write' })
+  assert.equal(changed.length, 1)
+  assert.match(changed[0].content[0].text, /T9/)
+  const repeat = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write again' })
+  assert.equal(repeat.length, 0)
 })
