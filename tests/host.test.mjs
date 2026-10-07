@@ -135,6 +135,16 @@ test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects fo
   assert.equal(await f.mounted.ports.resourceLifecycle.verifyInitialBinding(), false)
   assert.deepEqual(await f.mounted.ports.resourceLifecycle.closeEntrypoints(), { closed: false, nativeColdResumeClosed: false })
 })
+test('a failing post-execute observation never replaces the native tool result', options, async t => {
+  let observed = 0
+  const f = await assembly(t, { async postExecute() { observed += 1; throw new Error('observer exploded') } })
+  await f.invoke('grantPolicy', { sessionId: 'owner', enabled: true, expectedRevision: 0 })
+  const result = await f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'observer-failure', agent: f.owner, signal: signal() })
+  // An observer's failure must not turn an accepted native result into an error.
+  assert.equal(result.isError, false)
+  assert.equal(observed, 1, 'the fixture runtime post-execute must actually be reached')
+})
+
 test('PTC-style nested post-execute keeps the plugin contract with and without an attributable agent', options, async t => {
   const f = await assembly(t)
   const result = Object.freeze({ isError: false, value: null, content: [] })
