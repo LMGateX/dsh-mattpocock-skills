@@ -71,7 +71,7 @@ principal/sessionId 是宿主调用携带的身份，不是模型请求体中的
 
 限制：单 host/profile、单 open domain handle；**未提供多进程/跨 domain 事务或 exactly-once**。调用者必须遵守单一存储 ownership。lineage 验证上限 128 层，文档 CAS 争用最多 32 次后返回 concurrent-update，均是机械失败而非业务阻塞/待裁决事项。
 
-I/O 失败可能发生在 rename 后、持久回执前。Adapter 因此锁定为 storage-uncertain，拒绝后续读写，保留原错误；宿主需关闭并用全新 domain/backend handle 重开，读取真实持久结果后再操作。不能用内存旧 revision 盲重试。重开后若策略已保存，旧 expectedRevision 必须冲突；若保存未发生，原 revision 可重试。尚无自动重开/生命周期接入；在当前单次 mount 组合中，被锁定的 domain 因此需要重启插件/宿主才能恢复（不能靠再次 open 同一 handle 清锁）。
+I/O 失败可能发生在 rename 后、持久回执前。Adapter 因此锁定为 storage-uncertain，拒绝后续读写，保留原错误；宿主需关闭并用全新 domain/backend handle 重开，读取真实持久结果后再操作。不能用内存旧 revision 盲重试。重开后若策略已保存，旧 expectedRevision 必须冲突；若保存未发生，原 revision 可重试。尚无自动重开/生命周期接入；在当前单次 mount 组合中，被锁定的 domain 因此需要重启插件/宿主才能恢复（不能靠再次 open 同一 handle 清锁）。相关规模与恢复限制、实测数据以及暂缓的修复计划见 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)。
 
 ## 6. 第一阶段验证
 

@@ -8,6 +8,7 @@ Public-source DSH adapter and reproducible distribution bundle for the Matt Poco
 - Authoritative architecture: [docs/DESIGN.md](docs/DESIGN.md)
 - Implementation sequence and gates: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 - Checksum-bound Phase 4 artifact runbook: [docs/PHASE4_ARTIFACT_VERIFICATION.md](docs/PHASE4_ARTIFACT_VERIFICATION.md)
+- Known mechanical limits and deferred work (documented, deliberately not implemented): [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md)
 - Required `implement-spec` behavioral evaluation: closed and failed (two trials passed, one had a hard failure). Its campaign definition, harness and raw records are evaluation material rather than package content, and are archived outside this repository.
 
 The package exposes unchanged upstream Skill bodies through DSH's native `ctx.skills` provider API. The channel set is data-driven: the plugin publishes exactly the channels declared by the pinned distribution, and an unknown channel name fails closed instead of loading an empty set.
