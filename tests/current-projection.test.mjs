@@ -108,11 +108,16 @@ test('all current categories together stay within 24000 characters without hidin
   const view = facts(result.text)
   const categories = [view.records.workflows, view.records.tickets, view.records.decisions, view.records.summary.statusCounts,
     view.windows.tickets, view.windows.executions, view.resources, view.worktreeRelations, view.contextConclusions, view.capabilities, view.health]
+  // Capabilities and health are derived facts with no captured history kind: a locator there
+  // pointed at an empty notRecorded page, so only recorded categories advertise a query.
+  const recorded = categories.filter(category => category !== view.capabilities && category !== view.health)
   for (const category of categories) {
     assert.ok(JSON.stringify(category).length <= 2000)
     assert.ok(category.shown > 0 && category.more)
-    assert.ok(category.query)
   }
+  for (const category of recorded) assert.equal(typeof category.query.query.kind, 'string')
+  assert.equal(view.capabilities.query, undefined)
+  assert.equal(view.health.query, undefined)
   assert.equal(view.health.counts.unknown, 1)
   assert.equal(view.health.total, 41)
   assert.equal(view.records.summary.pendingDecisionCount, 40)

@@ -953,3 +953,37 @@ test('a failing refresh installs the stale notice once while it stays visible', 
   const repeated = await f.runtime.preStep(caller('root'), signal())
   assert.equal(repeated.length, 0, 'an identical stale notice already in context is not repeated')
 })
+test('a rejected resource read never turns the next snapshot into unknown durability', async t => {
+  const f = await ready(t)
+  assert.equal((await f.runtime.preStep(caller('root'), signal())).length, 1)
+  await assert.rejects(f.runtime.resourceAction(caller('root'), 'root', { action: 'read', resourceId: 'no-such-resource' }, signal()))
+  const messages = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(messages.length, 1)
+  const text = messages[0].content.map(part => part.text).join('')
+  assert.doesNotMatch(text, /durability-commit-failed/)
+  assert.match(text, /Instrument state/)
+})
+
+test('a persistent context failure installs one notice with a stable reason', async t => {
+  const f = await ready(t)
+  assert.equal((await f.runtime.preStep(caller('root'), signal())).length, 1)
+  f.ports.snapshotVisible = () => true
+  f.controlsStorage.read = async () => { throw new Error('backend /srv/secret/controls.json exploded') }
+  const first = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(first.length, 1)
+  const text = first[0].content.map(part => part.text).join('')
+  assert.doesNotMatch(text, /srv\/secret/, 'internal exception text is not injected')
+  assert.match(text, /Instrument state stale: .*failed with internal-error/)
+  const second = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(second.length, 0, 'an identical notice already in context is not repeated')
+})
+
+test('an unretained session reports one stable unavailable notice', async t => {
+  const f = await fixture(t, { initialPolicy: policy() })
+  f.controlsStorage.read = async () => { throw new Error('backend /srv/secret/controls.json exploded') }
+  const first = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(first.length, 1)
+  const text = first[0].content.map(part => part.text).join('')
+  assert.doesNotMatch(text, /srv\/secret/)
+  assert.match(text, /Instrument context unavailable: internal-error/)
+})

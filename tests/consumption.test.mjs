@@ -174,6 +174,27 @@ test('reader failure keeps the last verified snapshot as explicitly stale text, 
   assert.equal(recovered.freshness, 'current'); assert.notEqual(recovered.text, null)
   assert.doesNotMatch(recovered.text, /state stale/)
 })
+test('a change past the briefed array head is detected, not served as unchanged', async () => {
+  const f = fixture()
+  const head = ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8']
+  f.current.records.scope = { kind: 'assigned', workflowId: 'flow', ticketIds: head }
+  const first = await f.feed.readForConsumption(identity)
+  assert.equal(first.freshness, 'current')
+  // Only the ninth entry changes: it is outside the eight shown rows and the length is unchanged.
+  f.current.records.scope = { kind: 'assigned', workflowId: 'flow', ticketIds: [...head, 't9'] }
+  const second = await f.feed.readForConsumption(identity)
+  assert.notEqual(second.text, null, 'the omitted tail is covered by the array digest')
+  assert.match(second.text, /tailSignature/)
+})
+
+test('categories without captured history carry no dead query locator', async () => {
+  const f = fixture()
+  const result = await f.feed.readForConsumption(identity)
+  const view = JSON.parse(result.text.slice(result.text.indexOf(String.fromCharCode(10, 123)) + 1))
+  assert.equal(view.capabilities.query, undefined)
+  assert.equal(view.health.query, undefined)
+  assert.equal(view.records.workflows.query.query.kind, 'workflow')
+})
 test('stuck reader is bounded and receives timeout abort without late cache publication', async () => {
   const blocked = deferred()
   let readerSignal

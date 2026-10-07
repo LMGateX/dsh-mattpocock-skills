@@ -216,6 +216,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const permission=await scope(caller.principalId,sessionId,view)
     const projectionBase=caller.principalId+'|'+sessionId
     const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision
+    const epoch=project.epoch()
     const projection=projectionCache.get(projectionBase)
     if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase))return projection.value
     const health: {scope:string;status:string;reason:string|null}[]=[]
@@ -235,7 +236,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...(await load()).assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
     const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
-    project.record(projectionBase)
+    project.record(projectionBase,epoch)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
     while(projectionCache.size>64)projectionCache.delete(projectionCache.keys().next().value as string)
     return value
@@ -256,13 +257,16 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const consumption=new InstrumentConsumption({...(options.consumptionTimeoutMs===undefined?{}:{timeoutMs:options.consumptionTimeoutMs}),
     bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>activeSnapshot(callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),signal)})
+  // Resource rejections in the tracked paths are raised before any write (unknown or foreign
+  // resource, unsupported legacy action), so they settle like other pre-commit rejections.
+  const preCommit=(error:unknown):boolean=>isPreCommitRejection(error)||error instanceof ResourceError
   const track=<T>(instanceId:string,effect:()=>Promise<T>):Promise<T>=>{
     touchState()
     const commit=queue.run(effect)
     // The frontier guards reads against acknowledged-but-unpersisted writes. A command that
     // was rejected before its durable write claims nothing, so it must not degrade the next
     // snapshot to unknown durability. Real write outcomes stay unknown.
-    consumptionProgram.trackCommit(instanceId,commit.then(()=>undefined,error=>{if(isPreCommitRejection(error))return;throw error}))
+    consumptionProgram.trackCommit(instanceId,commit.then(()=>undefined,error=>{if(preCommit(error))return;throw error}))
     return commit
   }
   const consumptionIdentity=(caller:HostCaller,view:SessionControlsView):ConsumptionIdentity=>({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId})
@@ -306,13 +310,37 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const scheduleNotification=(ownerSessionId:string,retryAccepted=false):void=>{void flushNotifications(ownerSessionId,retryAccepted).catch(()=>undefined)}
   const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
+  // A persistent association or policy-storage failure must not append the same notice at every
+  // step and every tool result: the notice reuses the snapshot baseline and visibility rule.
+  const failureReason=(error:unknown):string=>error instanceof ControlsError?error.code:error instanceof ResourceError?error.code:'internal-error'
+  const installSnapshot=(caller:HostCaller,acceptedMessages:readonly UserMessage[],text:string,baselineKey:string):readonly UserMessage[]=>{
+    const agent=ports.liveAgent(caller.sessionId!),baseline=baselines.get(baselineKey)
+    if(agent&&baseline&&baseline.text===text&&baseline.agent===agent&&baseline.session===agent.session){
+      if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
+      try{if(ports.snapshotVisible?.(caller,agent,baseline.message)===true)return []}catch{/* Unavailable visibility never proves delivery. */}
+    }
+    const message=ports.makeSnapshotMessage(text)
+    if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
+    else baselines.delete(baselineKey)
+    return [message]
+  }
+  const deliverFailure=(caller:HostCaller,acceptedMessages:readonly UserMessage[],error:unknown):readonly UserMessage[]=>installSnapshot(caller,acceptedMessages,
+    'Instrument context unavailable: '+failureReason(error)+'. Accepted business input is retained; missing facts are not execution capacity or business completion proof.',
+    'unavailable|'+caller.principalId+'|'+caller.sessionId)
   const prepare=async(caller:HostCaller,signal:AbortSignal,acceptedMessages:readonly UserMessage[]=[])=>{
     if(caller.sessionId===null)return []
     let view:SessionControlsView
     try{const saved=await controls.readPolicy(caller.principalId)
       const retained=cachedSessions.get(caller.sessionId)
       if(!saved.extensionEnabled&&!retained)return []
-      view=await identity(caller,caller.sessionId,signal)}catch(error){signal.throwIfAborted();return [ports.makeSnapshotMessage('Instrument context unavailable: '+String(error).slice(0,1024)+'. Accepted business input is retained; missing facts are not execution capacity or business completion proof.')]}
+      view=await identity(caller,caller.sessionId,signal)}catch(error){
+      signal.throwIfAborted()
+      // A retained association can still serve its last captured snapshot: only the reason changes.
+      const retained=cachedSessions.get(caller.sessionId)
+      const held=retained===undefined?null:consumption.degraded(consumptionIdentity(caller,retained),failureReason(error))
+      if(held!==null)return installSnapshot(caller,acceptedMessages,held,'held|'+caller.principalId+'|'+caller.sessionId)
+      return deliverFailure(caller,acceptedMessages,error)
+    }
     const key=consumptionIdentity(caller,view)
     // Rebuilding the projection re-reads every document, clones it and appends a history
     // observation, per step *and* per tool result (measured: 32 of 41 rebuilds produced no
@@ -321,6 +349,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // projection is reused. Delivery is still decided below, so an undelivered snapshot is
     // re-offered exactly as before, and a degraded cache still takes the full read.
     const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision
+    const refreshEpoch=refresh.epoch()
     const mayReuse=!refresh.shouldRefresh(refreshKey)
     // Within the gate window the last prepared projection is reused, including the explicitly
     // stale text of a failed refresh: a slow read must neither blank the instrument nor be
@@ -328,11 +357,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const held=consumption.prepared(key)
     const reusable=mayReuse&&held!==null
     const result=reusable?null:await consumption.readForConsumption(key,signal)
-    if(result!==null)refresh.record(refreshKey)
+    // A superseded read is an ordering outcome, not a failed instrument: the newer read owns
+    // the state and the gate, so this caller must not install a false unknown snapshot.
+    if(result!==null&&result.reason==='superseded-read')return []
+    if(result!==null)refresh.record(refreshKey,refreshEpoch)
     // Preparation is not delivery. Replay only after this consumption verified freshness.
     const freshness=result===null?(held!.fresh?'current':'stale'):result.freshness
     const text=result===null?held!.text:result.text??(result.freshness==='current'?consumption.cachedText(key):null)
-    if(text===null){refresh.record(refreshKey);return []}
+    if(text===null){refresh.record(refreshKey,refreshEpoch);return []}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId])
     const baseline=baselines.get(baselineKey),agent=ports.liveAgent(caller.sessionId)
     if(baseline&&baseline.text===text&&agent===baseline.agent&&agent.session===baseline.session){
@@ -346,9 +378,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // fresh or stale: a failing refresh must not append the same stale facts at every step.
       if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
       else baselines.delete(baselineKey)
-      refresh.record(refreshKey)
+      refresh.record(refreshKey,refreshEpoch)
       return [message]
-    }catch(error){signal.throwIfAborted();baselines.delete(baselineKey);return [ports.makeSnapshotMessage('Instrument snapshot exceeds its representation boundary. Current detail is unknown here, not zero or release proof. Accepted business input is retained; use instrument tools for detail.')] }
+    }catch(error){signal.throwIfAborted()
+      refresh.record(refreshKey,refreshEpoch)
+      return installSnapshot(caller,acceptedMessages,'Instrument snapshot exceeds its representation boundary. Current detail is unknown here, not zero or release proof. Accepted business input is retained; use instrument tools for detail.',baselineKey)
+    }
   }
   const facade:RuntimeFacade={
     async serializePolicyPermission(effect){return queue.run(effect)},
@@ -418,7 +453,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         })
       }
       if(!dispatch?.accepting&&actualAgent.session.header.origin==='subagent'){const parent=actualAgent.session.header.parentSession,view=parent&&cachedSessions.get(parent);if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))}
-      try{const view=await identity(caller,caller.sessionId!,signal);await queue.run(()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
+      try{const view=await identity(caller,caller.sessionId!,signal);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
       catch(error){signal.throwIfAborted();if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
       }catch(error){
         signal.throwIfAborted()
@@ -428,6 +463,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     },
     async observe(event:HostEvent){
+      // A disposed session never prepares again: drop its baseline so the retained Agent, its
+      // Session log and the injected message are not kept alive for the process lifetime.
+      if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key)}
       const actual=event.actualAgent,dispatch=actual&&exactExecutions.get(actual)
       if(dispatch){
         const commit=track(dispatch.token.instrumentInstanceId,async()=>{
@@ -712,12 +750,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         })
       })
     },
-    async dispose(){closing=true;notificationLifetime.abort();guard();await Promise.allSettled([...notificationFlights.values()]);await queue.drain();nativeDispatch.disable();cachedSessions.clear();nativeWindows.clear()}
+    async dispose(){closing=true;notificationLifetime.abort();guard();await Promise.allSettled([...notificationFlights.values()]);await queue.drain();nativeDispatch.disable();cachedSessions.clear();nativeWindows.clear();baselines.clear()}
   }
   // Reconstruct only metadata/known host objects. Never resume a cold session for a dashboard.
   for(const agent of ports.liveAgents()){
     const caller:HostCaller={kind:'agent',principalId:'agent:'+agent.id,sessionId:agent.id}
-    try{const view=await identity(caller,agent.id);await queue.run(()=>initialize(view));if(view.instance.ownerSessionId===agent.id)scheduleNotification(agent.id,true)}catch(error){if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
+    try{const view=await identity(caller,agent.id);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===agent.id)scheduleNotification(agent.id,true)}catch(error){if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
   }
   return facade
 }

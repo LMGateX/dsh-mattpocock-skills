@@ -203,10 +203,13 @@ export class SessionHistory {
     const capturedAt = revision(this.now(),'capturedAt')
     for(let attempt=0;attempt<32;attempt++) {
       const current = await this.load(), rows = [...current.rows]
+      // One index per attempt: the previous linear scan per observation made re-capture O(rows x observations).
+      const index=new Map<string,number>()
+      for(let position=0;position<rows.length;position++){const key=identity(rows[position]!);if(!index.has(key))index.set(key,position)}
       for(const observation of observations) {
         const sourceDomain=observation.source.domain
         if(current.suppression.some(s=>suppressionKey(s)===suppressionKey({...observation,sourceDomain}) && observation.version<=s.throughVersion)) continue
-        const old = rows.find(row=>identity(row)===identity(observation))
+        const position = index.get(identity(observation)), old = position === undefined ? undefined : rows[position]
         if(old) {
           if(old.purged) continue
           const {historyId: _id,sequence: _sequence,capturedAt: _time,sourceDomain: _domain,purged: _purged,...prior} = old
@@ -216,6 +219,7 @@ export class SessionHistory {
         }
         const sequence=increment(rows.length)
         rows.push({...observation,sourceDomain,purged:false,sequence,historyId:'h:'+sequence,capturedAt})
+        index.set(identity(observation),rows.length-1)
       }
       if(rows.length===current.rows.length) return freeze({revision:current.revision})
       const next=parseHistoryDocument({...current,revision:increment(current.revision),rows})

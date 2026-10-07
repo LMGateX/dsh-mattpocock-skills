@@ -66,6 +66,9 @@ export declare class InstrumentConsumption {
         readonly text: string;
         readonly fresh: boolean;
     } | null;
+    /** The last successfully captured text marked stale for `reason`, or null when nothing was
+     * captured. Used when the caller cannot even resolve its identity but is already retained. */
+    degraded(identity: ConsumptionIdentity, reason: string): string | null;
     cachedText(identity: ConsumptionIdentity): string | null;
     readForConsumption(input: ConsumptionIdentity, signal?: AbortSignal): Promise<ConsumptionResult>;
 }

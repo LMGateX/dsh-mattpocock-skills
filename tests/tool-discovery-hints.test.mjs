@@ -21,6 +21,13 @@ test('instrument command errors list the accepted command keys', () => {
   assert.throws(() => parseInstrumentCommand({ operationId: 'op-1', expectedRevision: 1, action: 'put-workflow', workflowId: 'wf-1', references: [], localTicketId: 'T1' }),
     /unknown key .*accepted keys: operationId, expectedRevision, action, workflowId, references, value/)
 })
+test('authored value arrays carry an element budget', () => {
+  const base = { operationId: 'op-1', expectedRevision: 0, action: 'put-workflow', workflowId: 'wf-1', references: [] }
+  const axes = Array.from({ length: 65 }, (_value, index) => ({ axisKey: 'a' + index, label: 'A', counting: 'exclusive', statuses: [] }))
+  assert.throws(() => parseInstrumentCommand({ ...base, value: { title: 'x', axes } }), /axes accepts at most 64 entries/)
+  assert.throws(() => parseInstrumentCommand({ ...base, references: Array.from({ length: 257 }, () => 'r'), value: { title: 'x', axes: [] } }),
+    /references accepts at most 256 entries/)
+})
 
 test('rejected authored values name the expected shape and enum literals', () => {
   const base = { operationId: 'op-1', expectedRevision: 0, workflowId: 'wf-1', references: [] }

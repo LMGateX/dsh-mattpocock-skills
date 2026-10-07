@@ -13,8 +13,8 @@ export function invalid(message: string): never {
 }
 
 const PRE_COMMIT_REJECTIONS: ReadonlySet<ControlsErrorCode> = new Set([
-  'invalid-input', 'access-denied', 'feature-disabled', 'revision-conflict', 'operation-conflict',
-  'concurrent-update', 'association-conflict', 'unknown-session', 'unknown-workspace',
+  'invalid-input', 'invalid-state', 'access-denied', 'feature-disabled', 'revision-conflict',
+  'operation-conflict', 'concurrent-update', 'association-conflict', 'unknown-session', 'unknown-workspace',
 ])
 /** True when a tracked mutation rejected before it could start its durable write, so the
  * stored documents are unchanged. A pending-read frontier must not report unknown durability
@@ -51,6 +51,12 @@ export function array(value: unknown, where: string): readonly unknown[] {
     result.push(value[index])
   }
   return result
+}
+/** Dense array with an element budget: a single accepted command must not inflate the durable document. */
+export function boundedArray(value: unknown, where: string, maximum: number): readonly unknown[] {
+  const rows = array(value, where)
+  if (rows.length > maximum) invalid(where + ' accepts at most ' + maximum + ' entries')
+  return rows
 }
 export function id(value: unknown, where: string): string {
   if (typeof value !== 'string' || value.trim() !== value || value.length === 0

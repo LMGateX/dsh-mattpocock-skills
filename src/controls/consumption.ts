@@ -95,9 +95,13 @@ function provenance<T>(row: { readonly history: readonly { readonly author: unkn
 const CATEGORY_TEXT_BUDGET = 2000
 const FIELD_TEXT_BUDGET = 384
 interface QueryLocator { readonly [key: string]: unknown }
-function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocator {
-  const names: Readonly<Record<string, string>> = { workflows: 'workflow', tickets: 'ticket', decisions: 'decision',
-    'status-summary': 'workflow', 'ticket-window': 'ticket-window', executions: 'execution', resources: 'resource', worktree: 'worktree' }
+// Only these categories are actually captured as history rows; other briefed fields must not
+// advertise a query that would return an empty notRecorded page.
+const RECORDED_HISTORY_KINDS: Readonly<Record<string, string>> = { workflows: 'workflow', tickets: 'ticket', decisions: 'decision',
+  'status-summary': 'workflow', 'ticket-window': 'ticket-window', executions: 'execution', resources: 'resource', worktree: 'worktree' }
+function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocator | undefined {
+  const name = RECORDED_HISTORY_KINDS[kind]
+  if (name === undefined) return undefined
   let recordId: string | undefined
   if (row) {
     if (typeof row.bindingId === 'string') recordId = row.bindingId
@@ -107,22 +111,26 @@ function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocat
     else if (typeof row.decisionId === 'string') recordId = JSON.stringify([row.workflowId, row.decisionId])
     else if (typeof row.workflowId === 'string') recordId = row.workflowId
   }
-  return { tool: 'mattpocock_history', action: 'query', query: { kind: names[kind] ?? kind, ...(recordId === undefined ? {} : { recordId }), limit: 20 } }
+  return { tool: 'mattpocock_history', action: 'query', query: { kind: name, ...(recordId === undefined ? {} : { recordId }), limit: 20 } }
 }
-function brief(value: unknown, query: QueryLocator, depth = 0, textBudget = FIELD_TEXT_BUDGET): unknown {
+function brief(value: unknown, query: QueryLocator | undefined, depth = 0, textBudget = FIELD_TEXT_BUDGET): unknown {
+  const located = query === undefined ? {} : { query }
   if (typeof value === 'string') return value.length <= textBudget ? value : {
-    text: value.slice(0, textBudget), truncated: true, originalChars: value.length, query,
+    // A truncated body keeps a fingerprint of the whole string: the visible prefix and length
+    // alone cannot distinguish two different tails.
+    text: value.slice(0, textBudget), truncated: true, originalChars: value.length, signature: currentSignature([value]), ...located,
   }
   if (value === null || typeof value !== 'object') return value
-  if (depth >= 6) return { truncated: true, query }
+  if (depth >= 6) return { truncated: true, ...located }
   if (Array.isArray(value)) {
     const rows = value.slice(0, 8).map(entry => brief(entry, query, depth + 1, textBudget))
-    return rows.length === value.length ? rows : { rows, shown: rows.length, total: value.length, more: true, truncated: true, query }
+    // The shown prefix cannot identify the omitted tail; the digest covers the whole array.
+    return rows.length === value.length ? rows : { rows, shown: rows.length, total: value.length, more: true, truncated: true, tailSignature: currentSignature(value), ...located }
   }
   const entries = Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
   const selected = entries.slice(0, 32)
   return { ...Object.fromEntries(selected.map(([key, entry]) => [key, brief(entry, query, depth + 1, textBudget)])),
-    ...(selected.length < entries.length ? { truncated: true, totalFields: entries.length, query } : {}) }
+    ...(selected.length < entries.length ? { truncated: true, totalFields: entries.length, fieldsSignature: currentSignature(entries.map(([key]) => key)), ...located } : {}) }
 }
 /** Compact non-security checksum of current rows, including details outside the text budget. */
 function currentSignature(rows: readonly unknown[]): string {
@@ -141,11 +149,11 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
   const shown: unknown[] = []
   const currentFactsSignature = currentSignature(rows)
   const envelope = (): unknown => ({ rows: shown, shown: shown.length, total: rows.length, more: shown.length < rows.length,
-    query, currentFactsSignature, ...(counts === undefined ? {} : { counts }) })
+    ...(query === undefined ? {} : { query }), currentFactsSignature, ...(counts === undefined ? {} : { counts }) })
   for (let index = 0; index < rows.length; index++) {
     const raw = rows[index] as Record<string, unknown>
     const locator = historyLocator(kind, raw)
-    let row = brief({ ...raw, query: locator }, locator)
+    let row = brief(locator === undefined ? raw : { ...raw, query: locator }, locator)
     if (canonical(row).length > 1000) {
       // Keep a readable identifier/state while referring to the full authored payload.
       const keys = ['workflowId', 'localTicketId', 'decisionId', 'executionId', 'generation', 'resourceId', 'bindingId', 'sourceRevision', 'state', 'held', 'status']
@@ -154,7 +162,7 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
       row = { ...Object.fromEntries(keys.filter(key => Object.hasOwn(raw, key)).map(key => [key, brief(raw[key], locator, 0, 96)])),
         ...(value ? { value: brief(Object.fromEntries(details.filter(key => Object.hasOwn(value, key)).map(key => [key, value[key]])), locator, 0, 96) } : {}),
         ...(typeof raw.result === 'string' ? { result: brief(raw.result, locator, 0, 96) } : {}),
-        truncated: true, query: locator }
+        ...(locator === undefined ? { truncated: true } : { truncated: true, query: locator }) }
     }
     shown.push(row)
     if (canonical(envelope()).length > CATEGORY_TEXT_BUDGET) { shown.pop(); break }
@@ -218,7 +226,7 @@ function diagnostic(identity: ConsumptionIdentity, reason: string): string {
 }
 
 function stale(verified: string, reason: string): string {
-  return 'Instrument state stale: the last verified snapshot is shown because the refresh failed with ' + reason
+  return 'Instrument state stale: the last successfully captured snapshot is shown because the refresh failed with ' + reason
     + '. These facts may be out of date and are not current capacity, completion or release proof; a fresh read is retried.\n' + verified
 }
 
@@ -230,12 +238,19 @@ export class InstrumentConsumption {
   readonly #commits = new Map<string, Set<Commit>>()
   readonly #overflow = new Map<string, { pending: number }>()
   readonly #cache = new Map<string, Cached>()
+  readonly #cacheMax = 64
   #sequence = 0
   constructor(options: ConsumptionOptions) {
     this.#timeoutMs = bounded(options.timeoutMs, 1000, 10000, 'timeoutMs')
     this.#maxPending = bounded(options.maxPendingCommits, 1024, 65536, 'maxPendingCommits')
     this.#options = Object.freeze({ ...options })
     options.bindProgram?.(Object.freeze({ trackCommit: (instanceId: string, commit: Promise<unknown>): void => this.#track(instanceId, commit) }))
+  }
+  /** Bounded insertion-ordered cache: a long-lived host must not retain one text per session ever seen. */
+  #store(key: string, entry: Cached): void {
+    this.#cache.delete(key)
+    this.#cache.set(key, entry)
+    while (this.#cache.size > this.#cacheMax) this.#cache.delete(this.#cache.keys().next().value as string)
   }
   #track(instanceId: string, promise: Promise<unknown>): void {
     if (typeof instanceId !== 'string' || !instanceId.trim()) throw new TypeError('commit requires a trusted instance ID')
@@ -263,6 +278,12 @@ export class InstrumentConsumption {
   prepared(identity: ConsumptionIdentity): { readonly text: string; readonly fresh: boolean } | null {
     const cached = this.#cache.get(cacheKey(checkedIdentity(identity)))
     return cached === undefined ? null : { text: cached.text, fresh: cached.valid }
+  }
+  /** The last successfully captured text marked stale for `reason`, or null when nothing was
+   * captured. Used when the caller cannot even resolve its identity but is already retained. */
+  degraded(identity: ConsumptionIdentity, reason: string): string | null {
+    const cached = this.#cache.get(cacheKey(checkedIdentity(identity)))
+    return cached === undefined || cached.verified === null ? null : stale(cached.verified, reason)
   }
   cachedText(identity: ConsumptionIdentity): string | null {
     const cached = this.#cache.get(cacheKey(checkedIdentity(identity)))
@@ -307,7 +328,7 @@ export class InstrumentConsumption {
       const unhealthy = snapshot.health.some(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status))
       // A late older read cannot regress a newer projection/cache. Unknown details are
       // still returned, but a degraded snapshot cannot be replayed as fresh context.
-      if (!previous || sequence >= previous.sequence) this.#cache.set(key, { text, verified: text, fingerprint, valid: !unhealthy, sequence })
+      if (!previous || sequence >= previous.sequence) this.#store(key, { text, verified: text, fingerprint, valid: !unhealthy, sequence })
       return { text: changed ? text : null, snapshot, freshness: unhealthy ? 'stale' : 'current', ...(unhealthy ? { reason: 'snapshot-health-degraded' } : {}) }
     } catch (error) {
       signal?.throwIfAborted() // exact caller reason; never convert cancellation into a diagnostic
@@ -318,7 +339,7 @@ export class InstrumentConsumption {
       // as explicitly stale text. It is never published as fresh, and the entry is invalidated,
       // so the retry still takes the full read once the gate window opens.
       const text = latest && previous.verified !== null ? stale(previous.verified, reason) : diagnostic(identity, reason)
-      if (latest) this.#cache.set(key, { ...previous, text, valid: false, sequence })
+      if (latest) this.#store(key, { ...previous, text, valid: false, sequence })
       if (reason === 'durability-commit-failed') {
         const commits = this.#commits.get(identity.instrumentInstanceId)
         for (const commit of frontier) if (commit.failed) commits?.delete(commit)

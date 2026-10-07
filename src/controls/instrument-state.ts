@@ -1,5 +1,5 @@
 import type { InstrumentInstance } from './state.js'
-import { array, boolean, ControlsError, freeze, id, invalid, record, revision } from './validation.js'
+import { array, boolean, boundedArray, ControlsError, freeze, id, invalid, record, revision } from './validation.js'
 
 export interface InstrumentAuthor { readonly kind: 'agent' | 'user'; readonly principalId: string; readonly sessionId: string | null }
 export interface StatusDefinition { readonly statusKey: string; readonly label: string; readonly meaning?: string | null; readonly summaryPriority?: number }
@@ -83,7 +83,7 @@ function text(value: unknown, where: string): string {
 }
 function nullableText(value: unknown, where: string): string | null { return value === undefined || value === null ? null : text(value, where) }
 function ids(value: unknown, where: string): readonly string[] {
-  const result = array(value, where).map(entry => id(entry, where))
+  const result = boundedArray(value, where, 256).map(entry => id(entry, where))
   if (new Set(result).size !== result.length) invalid(where + ' contains duplicates')
   return result
 }
@@ -110,10 +110,10 @@ const DECISION_VALUE_SHAPE = '{question, status, pending?, awaitingImplementatio
 
 function workflowValue(value: unknown): WorkflowValue {
   const raw = record(value, 'workflow', ['title', 'axes'])
-  const axes = array(raw.axes, 'axes').map(value => {
+  const axes = boundedArray(raw.axes, 'axes', 64).map(value => {
     const axis = record(value, 'axis', ['axisKey', 'label', 'counting', 'statuses'])
     if (axis.counting !== 'exclusive' && axis.counting !== 'overlapping') invalid('axis.counting must be "exclusive" or "overlapping"')
-    const statuses = array(axis.statuses, 'statuses').map(value => {
+    const statuses = boundedArray(axis.statuses, 'statuses', 64).map(value => {
       const status = record(value, 'status', ['statusKey', 'label', 'meaning', 'summaryPriority'])
       return { statusKey: id(status.statusKey, 'statusKey'), label: text(status.label, 'status label'),
         meaning: nullableText(status.meaning, 'status meaning'), ...(status.summaryPriority === undefined ? {} : { summaryPriority: revision(status.summaryPriority, 'summaryPriority') }) }
@@ -140,7 +140,7 @@ function decisionValue(value: unknown): DecisionValue {
   for (const key of ['context', 'recommendation', 'impact', 'result']) if (Object.hasOwn(raw, key)) optional[key] = nullableText(raw[key], key)
   if (Object.hasOwn(raw, 'ticketIds')) optional.ticketIds = ids(raw.ticketIds, 'decision ticketIds')
   if (Object.hasOwn(raw, 'options')) {
-    const options = array(raw.options, 'decision options').map(value => {
+    const options = boundedArray(raw.options, 'decision options', 64).map(value => {
       const option = record(value, 'decision option', ['key', 'label'])
       return { key: id(option.key, 'option key'), label: text(option.label, 'option label') }
     })
@@ -160,7 +160,7 @@ export function parseInstrumentCommand(value: unknown): InstrumentCommand {
   const raw = record(value, 'instrument command')
   const baseKeys = ['operationId', 'expectedRevision', 'action', 'workflowId', 'references', 'value']
   const base = { operationId: id(raw.operationId, 'operationId'), expectedRevision: revision(raw.expectedRevision, 'expected instrument revision'),
-    workflowId: id(raw.workflowId, 'workflowId'), references: array(raw.references ?? [], 'references').map(value => text(value, 'declared reference')) }
+    workflowId: id(raw.workflowId, 'workflowId'), references: boundedArray(raw.references ?? [], 'references', 256).map(value => text(value, 'declared reference')) }
   switch (raw.action) {
     case 'put-workflow': record(raw, 'command', baseKeys); return freeze({ ...base, action: raw.action, value: shape('workflow value', WORKFLOW_VALUE_SHAPE, () => workflowValue(raw.value)) })
     case 'put-ticket': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: shape('ticket value', TICKET_VALUE_SHAPE, () => ticketValue(raw.value)) })

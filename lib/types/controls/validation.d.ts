@@ -13,6 +13,8 @@ export declare function isPreCommitRejection(error: unknown): boolean;
 export declare function record(value: unknown, where: string, keys?: readonly string[]): Record<string, unknown>;
 /** Dense JSON arrays only: map must not silently skip holes that stringify as null. */
 export declare function array(value: unknown, where: string): readonly unknown[];
+/** Dense array with an element budget: a single accepted command must not inflate the durable document. */
+export declare function boundedArray(value: unknown, where: string, maximum: number): readonly unknown[];
 export declare function id(value: unknown, where: string): string;
 export declare function revision(value: unknown, where: string): number;
 export declare function increment(value: number): number;
