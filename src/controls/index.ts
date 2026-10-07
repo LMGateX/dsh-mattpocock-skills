@@ -4,7 +4,7 @@ import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js'
 import { INITIAL_DOCUMENT, parseControlsDocument } from './state.js'
 import type { ControlsDocument, InstrumentInstance, SessionAssociation } from './state.js'
 import type { ControlsStorage } from './storage.js'
-import { boolean, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
+import { boolean, ControlsError, freeze, id, increment, invalid, memoized, record, revision } from './validation.js'
 
 export { INITIAL_POLICY, parsePolicyIntent, parsePolicySnapshot, resolvePolicy } from './policy.js'
 export type { PolicyIntent, PolicySnapshot, WorkspacePolicyPatch, EffectivePolicy, PolicySource,
@@ -187,7 +187,7 @@ export class WorkspaceControls {
 
   private async load(): Promise<ControlsDocument> {
     const raw = await this.storage.read()
-    return raw === undefined ? INITIAL_DOCUMENT : parseControlsDocument(raw)
+    return raw === undefined ? INITIAL_DOCUMENT : memoized(raw, parseControlsDocument)
   }
 
   private async transact(change: (current: ControlsDocument) => ControlsDocument): Promise<ControlsDocument> {

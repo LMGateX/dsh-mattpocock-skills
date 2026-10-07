@@ -15,3 +15,4 @@ export declare function increment(value: number): number;
 export declare function boolean(value: unknown, where: string): boolean;
 export declare function capacity(value: unknown, where: string): number;
 export declare function freeze<T>(value: T): T;
+export declare function memoized<T>(value: unknown, parse: (input: unknown) => T): T;

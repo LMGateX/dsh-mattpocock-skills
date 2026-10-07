@@ -1,7 +1,7 @@
 import { emptyStartupDocument, parseStartupDesired, parseStartupDocument, parseStartupObservation } from './startup-state.js'
 import type { StartupBoot, StartupBootReceipt, StartupDesired, StartupDocument, StartupObservation, StartupStatus } from './startup-state.js'
 import type { VersionedStorage } from './versioned-storage.js'
-import { ControlsError, freeze, id, increment, revision } from './validation.js'
+import { ControlsError, freeze, id, increment, memoized, revision } from './validation.js'
 
 /** Trusted program seam; Host owns operator authorization and process identity.
  * Saving requests only the next process configuration: no SDK preparation here. */
@@ -15,7 +15,7 @@ export class StartupSupport {
     signal?.throwIfAborted()
     const raw = await this.storage.read()
     signal?.throwIfAborted()
-    return raw === undefined ? emptyStartupDocument() : parseStartupDocument(raw)
+    return raw === undefined ? emptyStartupDocument() : memoized(raw, parseStartupDocument)
   }
   private receipt(doc: StartupDocument): StartupBootReceipt | undefined {
     return doc.bootReceipts.find(receipt => receipt.epoch === this.epoch)

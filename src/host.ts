@@ -42,7 +42,7 @@ import { createDomainVersionedStorage } from './controls/versioned-storage.js'
 import type { VersionedStorage } from './controls/versioned-storage.js'
 import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants, parseResourceAction } from './controls/remote-contract.js'
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow } from './controls/remote-contract.js'
-import { boolean, ControlsError, freeze, id, increment, record, revision } from './controls/validation.js'
+import { boolean, ControlsError, freeze, id, increment, memoized, record, revision } from './controls/validation.js'
 import { StartupSupport } from './controls/startup-support.js'
 import { parseStartupDesired, parseStartupDocument } from './controls/startup-state.js'
 import type { StartupStatus } from './controls/startup-state.js'
@@ -254,6 +254,9 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
   const FACTS_CACHE_TTL_MS = 5_000
   const FACTS_CACHE_MAX = 16
   const FACTS_CACHE_MAX_EVENTS = 4_000
+  const EMPTY_EVENTS: readonly SessionEvent[] = Object.freeze([])
+  const LIVE_FACTS_TTL_MS = 250
+  const liveFacts = new Map<string, { readonly at: number; readonly facts: SessionFacts }>()
   interface StoredSessionStat {
     stat(id: SessionId, options?: { readonly signal?: AbortSignal }): Promise<{ readonly header: SessionHeader } | undefined>
   }
@@ -288,7 +291,24 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       return facts
     } finally { coldInflight.delete(sessionId) }
   }
-  const liveSessionFacts = (live: Agent): SessionFacts => freeze({ header: live.session.header, events: live.session.ownEvents(), live: true })
+  /** foldSubagentDescriptor is the only reader of `events`, and it is reached only
+   * for subagent headers. Deep-freezing a long-lived owner session's whole owned
+   * suffix cost a full traversal per tool execution and per step (measured: 135 ms
+   * for 47k events), which pegged a core while a single agent worked. Owners now
+   * carry no events, and subagent facts are reused briefly instead of re-frozen.
+   */
+  const liveSessionFacts = (live: Agent): SessionFacts => {
+    const header = live.session.header
+    if (header.origin !== 'subagent') return Object.freeze({ header, events: EMPTY_EVENTS, live: true })
+    const cached = liveFacts.get(header.id)
+    const now = Date.now()
+    if (cached !== undefined && now - cached.at < LIVE_FACTS_TTL_MS) return cached.facts
+    const events = live.session.ownEvents()
+    const facts: SessionFacts = Object.freeze({ header, events: Object.freeze(events), live: true })
+    liveFacts.set(header.id, { at: now, facts })
+    while (liveFacts.size > FACTS_CACHE_MAX) liveFacts.delete(liveFacts.keys().next().value as string)
+    return facts
+  }
   const sessionHeaderFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
     const sessionId = SessionId(id(raw, 'sessionId'))
     signal?.throwIfAborted()
@@ -306,7 +326,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
   const resolveSession = async (sessionId: string): Promise<TrustedSession | undefined> => {
     const facts = await sessionFacts(sessionId)
     const document = await storage.read()
-    const saved = document === undefined ? undefined : parseControlsDocument(document)
+    const saved = document === undefined ? undefined : memoized(document, parseControlsDocument)
     const association = saved?.associations.find(row => row.sessionId === sessionId)
     const instance = association && saved?.instances.find(row => row.instrumentInstanceId === association.instrumentInstanceId)
     const retained: TrustedSession | undefined = association && instance

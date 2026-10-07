@@ -4,7 +4,7 @@ import type { InstrumentInstance } from './state.js'
 import { parseAuthor } from './instrument-state.js'
 import type { InstrumentAuthor } from './instrument-state.js'
 import type { VersionedStorage } from './versioned-storage.js'
-import { array, boolean, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
+import { array, boolean, ControlsError, freeze, id, increment, invalid, memoized, record, revision } from './validation.js'
 
 export interface WorktreeBindingIntent {
   readonly operationId: string
@@ -366,7 +366,7 @@ export function createWorktreeBindings(storageForOwner: WorktreeBindingsStorage,
     const raw = await storageForOwner(owner.ownerSessionId).read()
     signal?.throwIfAborted()
     if (raw === undefined) return materialize({ schemaVersion: 1, revision: 0, owner, rows: [] })
-    const document = parseWorktreeBindingsDocument(raw)
+    const document = memoized(raw, parseWorktreeBindingsDocument)
     if (!equal(document.owner, owner)) throw new ControlsError('association-conflict', 'storage row belongs to another owner instance or workspace')
     return document
   }

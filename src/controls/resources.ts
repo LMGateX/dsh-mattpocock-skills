@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, normalize } from 'node:path'
-import { array, boolean, freeze, id, increment, record, revision } from './validation.js'
+import { array, boolean, freeze, id, increment, memoized, record, revision } from './validation.js'
 import { createDomainVersionedStorage, MemoryVersionedStorage } from './versioned-storage.js'
 import type { VersionedStorage, VersionedTable } from './versioned-storage.js'
 
@@ -201,7 +201,7 @@ export interface ResourceDependencies { readonly storage: ResourceStorage; reado
 export function createResourceModule(deps: ResourceDependencies): { readonly resources: ResourceOperations; readonly program: ResourceProgram } {
   const newId = deps.newId ?? randomUUID, now = deps.now ?? Date.now
   const initial: ResourceDocument = { schemaVersion: 1, revision: 0, resources: [], leases: [] }
-  const load = async (): Promise<ResourceDocument> => { const raw = await deps.storage.read(); return raw === undefined ? freeze(initial) : parseResourceDocument(raw) }
+  const load = async (): Promise<ResourceDocument> => { const raw = await deps.storage.read(); return raw === undefined ? freeze(initial) : memoized(raw, parseResourceDocument) }
   const transact = async (fn: (document: ResourceDocument) => ResourceDocument): Promise<ResourceDocument> => {
     for (let n = 0; n < 32; n++) {
       const old = await load(), next = fn(old)

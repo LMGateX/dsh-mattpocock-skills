@@ -92,8 +92,10 @@ test('compositions without the lightweight port keep observing stored logs', asy
   assert.equal(h.calls.observe, 1)
 })
 
-test('live sessions never touch persistence or the stored-log reader', async () => {
-  const live = new Map([['live-owner', { id: 'live-owner', session: { header: header('live-owner'), ownEvents: () => [descriptor] } }]])
+test('live owner sessions resolve facts without materializing the owned suffix', async () => {
+  let ownEventsCalls = 0
+  const live = new Map([['live-owner', { id: 'live-owner', session: { header: header('live-owner'),
+    ownEvents: () => { ownEventsCalls += 1; return [descriptor] } } }]])
   const h = harness({
     stat: async () => { throw new Error('live sessions must not stat the store') },
     observe: async () => { throw new Error('live sessions must not observe stored logs') },
@@ -101,7 +103,27 @@ test('live sessions never touch persistence or the stored-log reader', async () 
   })
   const facts = await h.sessionFacts('live-owner')
   assert.equal(facts.live, true)
-  assert.equal(facts.events.length, 1)
+  // Deep-freezing a long owner session's whole event array on every tool execution
+  // pegged a core; owner headers are classified from the header alone.
+  assert.deepEqual([...facts.events], [])
+  assert.equal(Object.isFrozen(facts.events), true)
+  assert.equal(ownEventsCalls, 0)
+  assert.equal(h.calls.stat, 0)
+  assert.equal(h.calls.observe, 0)
+})
+
+test('live subagent sessions materialize the owned suffix once and reuse it', async () => {
+  let ownEventsCalls = 0
+  const live = new Map([['live-child', { id: 'live-child', session: {
+    header: header('live-child', { origin: 'subagent', parentSession: 'parent' }),
+    ownEvents: () => { ownEventsCalls += 1; return [descriptor] },
+  } }]])
+  const h = harness({ live })
+  const first = await h.sessionFacts('live-child')
+  const second = await h.sessionFacts('live-child')
+  assert.equal(first.events.length, 1)
+  assert.equal(second.events, first.events)
+  assert.equal(ownEventsCalls, 1, 'repeat reads inside the freshness window reuse the frozen facts')
   assert.equal(h.calls.stat, 0)
   assert.equal(h.calls.observe, 0)
 })

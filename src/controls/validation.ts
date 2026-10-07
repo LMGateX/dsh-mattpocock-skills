@@ -73,3 +73,28 @@ export function freeze<T>(value: T): T {
   }
   return value
 }
+/** Storage adapters validate, detach and freeze the documents they return. Parsing
+ * the returned value again on every read re-walked a whole store per event: one
+ * controls-document parse per tool event dominated CPU on a large workspace. Any
+ * value a parser produced is registered by identity, so an unchanged document is
+ * reused verbatim and an already-parsed document is never parsed twice.
+ */
+const parsedValues = new WeakMap<object, unknown>()
+export function memoized<T>(value: unknown, parse: (input: unknown) => T): T {
+    if (value !== null && typeof value === 'object') {
+        const known = parsedValues.get(value)
+        if (known !== undefined)
+            return known as T
+    }
+    const parsed = parse(value)
+    if (parsed !== null && typeof parsed === 'object') {
+        // A validated document is recognised wherever it is passed back in.
+        parsedValues.set(parsed as object, parsed)
+        // A frozen input is one of our own validated documents, so the same value
+        // describes the same content; an unfrozen input is left uncached.
+        if (Object.isFrozen(value))
+            parsedValues.set(value as object, parsed)
+    }
+    return parsed
+}
+
