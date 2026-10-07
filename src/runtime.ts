@@ -66,7 +66,15 @@ class OrderedEffects {
 export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number }
 export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
   const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects()
-  const refresh=new RefreshGate(2_000)
+  const refresh=new RefreshGate(2_000), project=new RefreshGate(2_000)
+  // The polling path (client readSession) rebuilds the whole projection and appends another
+  // history observation per call — measured 68 readSession/s and 40-50 captures/s on an
+  // otherwise idle profile, with per-row JSON stringification as the top self frame. The
+  // projection is a pure function of the documents plus this process's mutations, so the
+  // same watermark serves it: unchanged revisions and no mutation means the frozen value is
+  // still the current projection.
+  const projectionCache=new Map<string,{readonly key:string;readonly value:RuntimeSnapshot}>()
+  const touchState=():void=>{refresh.touch();project.touch()}
   const controls=new WorkspaceControls(ports.controlsStorage,ports.authority)
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
@@ -142,7 +150,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(candidate===old)return old
       const next=parseRuntimeDocument({...candidate,revision:increment(old.revision)})
       if(await storage.compareAndSwap(old.revision,next)){
-        refresh.touch()
+        touchState()
         for(const owner of new Set([...next.assignments.map(row=>row.instrumentInstanceId),...next.notifications.map(row=>row.instrumentInstanceId)])){
           const view=[...cachedSessions.values()].find(view=>view.instance.instrumentInstanceId===owner)
           if(view)await captureSafely(view,()=>captureRuntime(view,next))
@@ -206,6 +214,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const snapshot=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<RuntimeSnapshot>=>queue.run(async()=>{
     const view=await identity(caller,sessionId,signal,false)
     const permission=await scope(caller.principalId,sessionId,view)
+    const projectionBase=caller.principalId+'|'+sessionId
+    const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision
+    const projection=projectionCache.get(projectionBase)
+    if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase))return projection.value
     const health: {scope:string;status:string;reason:string|null}[]=[]
     let records:RuntimeSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
     try{records=await instruments.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
@@ -221,8 +233,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(windowView&&!windowView.runtimeKnowledge.known)health.push({scope:'execution-admission',status:'unsupported',reason:windowView.runtimeKnowledge.reason})
     signal.throwIfAborted()
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...(await load()).assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    return freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,
+    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
+    project.record(projectionBase)
+    projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
+    while(projectionCache.size>64)projectionCache.delete(projectionCache.keys().next().value as string)
+    return value
   })
   const activeSnapshot=async(caller:HostCaller,signal:AbortSignal):Promise<RuntimeSnapshot & {readonly contextConclusions?:readonly {decisionId:string;workflowId:string;result:string;sourceRevision:number;source:unknown}[]}>=>{
     const current=await snapshot(caller,caller.sessionId!,signal),view=await identity(caller,caller.sessionId!,signal,false)
@@ -241,7 +257,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const consumption=new InstrumentConsumption({...(options.consumptionTimeoutMs===undefined?{}:{timeoutMs:options.consumptionTimeoutMs}),
     bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>activeSnapshot(callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),signal)})
   const track=<T>(instanceId:string,effect:()=>Promise<T>):Promise<T>=>{
-    refresh.touch()
+    touchState()
     const commit=queue.run(effect);consumptionProgram.trackCommit(instanceId,commit);return commit
   }
   const consumptionIdentity=(caller:HostCaller,view:SessionControlsView):ConsumptionIdentity=>({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId})
