@@ -96,11 +96,23 @@ export function parseAuthor(value: unknown): InstrumentAuthor {
   return freeze({ kind: raw.kind, principalId: id(raw.principalId, 'author principalId'), sessionId: session })
 }
 
+/** Attaches the expected value shape to a rejected authoring payload: the caller cannot
+ * derive nested keys and enum literals from a generic validator message. */
+function shape<T>(label: string, expected: string, parse: () => T): T {
+  try { return parse() } catch (error) {
+    if (error instanceof ControlsError && error.code === 'invalid-input') invalid(error.message + '; ' + label + ' shape: ' + expected)
+    throw error
+  }
+}
+const WORKFLOW_VALUE_SHAPE = '{title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?}]}]}'
+const TICKET_VALUE_SHAPE = '{title, statuses:{<axisKey>:[<statusKey>, ...]}, externalRef?, summary?, disposition?}'
+const DECISION_VALUE_SHAPE = '{question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key, label}], recommendation?, impact?, addressee?:{kind:"user"|"agent"|"unspecified", principalId?, label?}, result?}'
+
 function workflowValue(value: unknown): WorkflowValue {
   const raw = record(value, 'workflow', ['title', 'axes'])
   const axes = array(raw.axes, 'axes').map(value => {
     const axis = record(value, 'axis', ['axisKey', 'label', 'counting', 'statuses'])
-    if (axis.counting !== 'exclusive' && axis.counting !== 'overlapping') invalid('axis must declare its counting convention')
+    if (axis.counting !== 'exclusive' && axis.counting !== 'overlapping') invalid('axis.counting must be "exclusive" or "overlapping"')
     const statuses = array(axis.statuses, 'statuses').map(value => {
       const status = record(value, 'status', ['statusKey', 'label', 'meaning', 'summaryPriority'])
       return { statusKey: id(status.statusKey, 'statusKey'), label: text(status.label, 'status label'),
@@ -150,12 +162,12 @@ export function parseInstrumentCommand(value: unknown): InstrumentCommand {
   const base = { operationId: id(raw.operationId, 'operationId'), expectedRevision: revision(raw.expectedRevision, 'expected instrument revision'),
     workflowId: id(raw.workflowId, 'workflowId'), references: array(raw.references ?? [], 'references').map(value => text(value, 'declared reference')) }
   switch (raw.action) {
-    case 'put-workflow': record(raw, 'command', baseKeys); return freeze({ ...base, action: raw.action, value: workflowValue(raw.value) })
-    case 'put-ticket': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: ticketValue(raw.value) })
-    case 'put-decision': record(raw, 'command', [...baseKeys, 'decisionId']); return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: decisionValue(raw.value) })
+    case 'put-workflow': record(raw, 'command', baseKeys); return freeze({ ...base, action: raw.action, value: shape('workflow value', WORKFLOW_VALUE_SHAPE, () => workflowValue(raw.value)) })
+    case 'put-ticket': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: shape('ticket value', TICKET_VALUE_SHAPE, () => ticketValue(raw.value)) })
+    case 'put-decision': record(raw, 'command', [...baseKeys, 'decisionId']); return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: shape('decision value', DECISION_VALUE_SHAPE, () => decisionValue(raw.value)) })
     case 'set-decision-view': {
       record(raw, 'command', [...baseKeys, 'decisionId'])
-      const view = record(raw.value, 'decision view', ['read', 'hidden'])
+      const view = shape('decision view value', '{read, hidden}', () => record(raw.value, 'decision view', ['read', 'hidden']))
       return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: { read: boolean(view.read, 'read'), hidden: boolean(view.hidden, 'hidden') } })
     }
     default: return invalid('unknown instrument action; accepted actions: put-workflow, put-ticket, put-decision, set-decision-view')

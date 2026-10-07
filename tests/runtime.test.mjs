@@ -915,3 +915,41 @@ test('exact native ACK after accepted return but before blocked accepted CAS per
     assert.equal((await f.read()).records.decisions[0].value.pending, true)
   } finally { permit.resolve() }
 })
+
+test('a rejected authored command never turns the next snapshot into unknown durability', async t => {
+  const f = await ready(t)
+  assert.equal((await f.runtime.preStep(caller('root'), signal())).length, 1)
+  await rejectsCode(f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'stale-authored-command',
+    expectedRevision: 99, action: 'put-ticket', workflowId: 'flow', localTicketId: 'A', value: ticket() }, signal()), 'revision-conflict')
+  const messages = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(messages.length, 1)
+  const text = messages[0].content.map(part => part.text).join('')
+  assert.doesNotMatch(text, /durability-commit-failed/)
+  assert.doesNotMatch(text, /state unknown/)
+  assert.match(text, /Instrument state/)
+})
+
+test('a real storage write rejection still reports unknown durability', async t => {
+  const f = await ready(t)
+  const realCas = f.instrumentStorage.compareAndSwap.bind(f.instrumentStorage)
+  f.instrumentStorage.compareAndSwap = async () => { throw new Error('backend write rejected after rename') }
+  const revision = (await f.read()).records.businessRevision
+  await assert.rejects(f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'uncertain-write',
+    expectedRevision: revision, action: 'put-ticket', workflowId: 'flow', localTicketId: 'A', value: ticket() }, signal()))
+  f.instrumentStorage.compareAndSwap = realCas
+  const messages = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(messages.length, 1)
+  assert.match(messages[0].content.map(part => part.text).join(''), /durability-commit-failed/)
+})
+test('a failing refresh installs the stale notice once while it stays visible', async t => {
+  const f = await ready(t)
+  assert.equal((await f.runtime.preStep(caller('root'), signal())).length, 1)
+  await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
+  f.ports.snapshotVisible = () => true
+  f.ports.readPolicyGrants = async () => { throw new Error('synthetic ledger outage') }
+  const first = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(first.length, 1)
+  assert.match(first[0].content.map(part => part.text).join(''), /Instrument state stale:/)
+  const repeated = await f.runtime.preStep(caller('root'), signal())
+  assert.equal(repeated.length, 0, 'an identical stale notice already in context is not repeated')
+})

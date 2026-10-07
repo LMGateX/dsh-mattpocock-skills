@@ -82,7 +82,7 @@ Port 对象冻结，只由 construction callback 捕获，**只有 trackCommit**
 
 每次消费在第一个 await 前捕获**所属实例已有提交的固定 frontier**，等待这些提交后才调用 readSnapshot。别的实例、之后追加的提交、无关 child 生命周期及不断增长的全局队列不加入此次等待。实例 ledger 是共享真值，属于同一实例的已登记持久提交都可能影响 T/S/义务，Host 只登记这种相关提交。
 
-成功提交自动移除；失败提交保留至一次消费报告 durability-commit-failed，后续消费重新读最新事实，不把原失败当成业务否决。饱和时新增 Promise rejection 仍被观察，但不伪装完整 frontier；返回 commit-frontier-overflow，直到溢出 durability 都实际结算后再报告一次并允许重新读。overflow 不取消任何 producer。
+成功提交自动移除；写入结果未知的失败提交保留至一次消费报告 durability-commit-failed，后续消费重新读最新事实，不把原失败当成业务否决。在真正写入之前就被拒绝的受管命令（invalid-input、access-denied、feature-disabled、revision-conflict、operation-conflict、concurrent-update、association-conflict、unknown-session/unknown-workspace）没有写入任何字节，不登记为失败提交：它们只把该调用自身的错误交回调用者，不能让下一次消费退化成 unknown durability。饱和时新增 Promise rejection 仍被观察，但不伪装完整 frontier；返回 commit-frontier-overflow，直到溢出 durability 都实际结算后再报告一次并允许重新读。overflow 不取消任何 producer。
 
 有界 deadline 覆盖捕获的提交及随后 snapshot 读取。超时 abort **读取专用 signal**，不会取消持久提交、杀 child 或取消原 business message；对忽略 signal 的 reader 也有界返回 unknown，迟到完成不能更新缓存。caller signal abort 则抛出**完全相同的 caller reason**，绝不吞成仪器诊断或消耗原生消息。
 
@@ -106,7 +106,7 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 
 已有 context 在 awaited pre-step **之前**可能已采样。不能只更新 cachedText 并依赖那份旧 context；相关变更/失败须经此处新 appended message 进入同一个真实模型请求。关闭任何 display 座位不会禁用本路径。
 
-**text 为 null 仅表示此次读取成功，运行事实与已准备正文相同**；仍有 snapshot。它不是送达证明。实际 [RuntimeFacade](<../src/runtime.ts>)按完整 principal/session/instance/owner 身份保留最近成功准备的候选消息及确切 Agent、Session 对象；仅在此次消费 current 且正文仍相等后，用 cachedText(identity) 取得有界正文。它不会在读取失败、超时、身份错误或 superseded-read 后重播旧缓存。成功鲜读却报告 degraded/unknown 时仍发送该次读取的明确诊断，cachedText 的失效语义不变。
+**text 为 null 仅表示此次读取成功，运行事实与已准备正文相同**；仍有 snapshot。它不是送达证明。实际 [RuntimeFacade](<../src/runtime.ts>)按完整 principal/session/instance/owner 身份保留最近成功准备的候选消息及确切 Agent、Session 对象；仅在此次消费 current 且正文仍相等后，用 cachedText(identity) 取得有界正文。它不会在读取失败、超时、身份错误或 superseded-read 后把旧缓存当 current 重播；失败只能给出带 stale 标头、cachedText 仍为 null 的正文。成功鲜读却报告 degraded/unknown 时仍发送该次读取的明确诊断，cachedText 的失效语义不变。
 
 [HostPorts](<../src/host.ts>)提供可选、仅可信程序使用的 snapshotVisible(caller, actualAgent, message)。实际 adapter 校验 caller 与当前 registry 的精确 Agent/session 身份，再通过原生公开 Session.deriveMessages() 检查 user role、候选 ID、规范化 source 与 content 相等。对象引用相等、事件日志仍有记录、工具回报正文或 model-authored delivered 标记均不构成证明。compaction 的 replace 或原生 message projection 改变有效正文后，即便日志仍保留原消息，也必须重新安装 baseline。端口缺失、不可用或抛错时保守重装，不伪称已经送达。
 
@@ -134,7 +134,7 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 ## Freshness、去重与故障
 
 - 成功取得/校验的最新快照返回 current；health 有 stale/unknown/unavailable/error/failed 时为 stale，reason 为 snapshot-health-degraded。freshness 描述本次读取，不把内部 null/unknown metrics 猜成 0。
-- 失败/timeout 无 snapshot、无旧 policy fallback，正文明确 Instrument state unknown。有缓存则 freshness 为 stale，否则 unavailable；cachedText 随即失效为 null。下次成功重新发送有效正文，哪怕 watermark 与失败前相同。
+- 失败/timeout 不返回 snapshot，也不把旧快照当 current：已有一份已验证正文时，正文明说 Instrument state stale 并附稳定 reason，随后是上次已验证正文（可能已过期，不是当前容量、完成或释放证明）；无已验证正文时正文明说 Instrument state unknown。有已验证正文则 freshness 为 stale，否则 unavailable；cachedText 随即失效为 null，重复失败重写同一 stale 正文、不叠加标头。下次成功重新发送有效正文，哪怕 watermark 与失败前相同。
 - 稳定机械 reason：consumption-timeout、durability-commit-failed、commit-frontier-overflow、snapshot-read-failed、identity-mismatch、superseded-read。不把内部 exception 文本或开发 metadata 注入模型。
 - 去重含 businessRevision、configRevision、windowRev、scope、当前登记状态/来源、实际 resources/capabilities/health。忽略 viewerRevision、set-decision-view、hidden/read、read timestamp、纯资源域 ledgerRevision；**读取始终执行**，不凭 watermark 跳过物理观察。
 - Resource factsDigest 与实际 physical facts 一起参与指纹。即使 business/config/window watermark 相同，目录、HEAD、脏文件、canRetire reasons 或 digest 改变也更新正文；甚至 adapter 错误复用 digest 时实际事实变化也不会跳过。指纹为 canonical serialization，不是安全/加密哈希。

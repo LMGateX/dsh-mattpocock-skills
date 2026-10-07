@@ -45,7 +45,7 @@ export interface ConsumptionResult {
   readonly reason?: string
 }
 interface Commit { done: Promise<void>; failed: boolean }
-interface Cached { text: string; fingerprint: string; valid: boolean; sequence: number }
+interface Cached { text: string; fingerprint: string; valid: boolean; sequence: number; verified: string | null }
 class ConsumptionFailure extends Error {
   constructor(readonly reason: string) { super(reason) }
 }
@@ -217,6 +217,11 @@ function diagnostic(identity: ConsumptionIdentity, reason: string): string {
     canonical({ sessionId: identity.sessionId, instrumentInstanceId: identity.instrumentInstanceId, ownerSessionId: identity.ownerSessionId })
 }
 
+function stale(verified: string, reason: string): string {
+  return 'Instrument state stale: the last verified snapshot is shown because the refresh failed with ' + reason
+    + '. These facts may be out of date and are not current capacity, completion or release proof; a fresh read is retried.\n' + verified
+}
+
 /** A parent consumption seam; it owns neither native admission nor message delivery. */
 export class InstrumentConsumption {
   readonly #options: ConsumptionOptions
@@ -252,6 +257,12 @@ export class InstrumentConsumption {
       entries.delete(commit)
       if (entries.size === 0 && this.#commits.get(instanceId) === entries) this.#commits.delete(instanceId)
     }, () => { commit.failed = true })
+  }
+  /** Last prepared projection for this identity, including degraded text whose retry is still
+   * pending. Fresh is true only for a verified snapshot; degraded text never replays as current. */
+  prepared(identity: ConsumptionIdentity): { readonly text: string; readonly fresh: boolean } | null {
+    const cached = this.#cache.get(cacheKey(checkedIdentity(identity)))
+    return cached === undefined ? null : { text: cached.text, fresh: cached.valid }
   }
   cachedText(identity: ConsumptionIdentity): string | null {
     const cached = this.#cache.get(cacheKey(checkedIdentity(identity)))
@@ -296,20 +307,25 @@ export class InstrumentConsumption {
       const unhealthy = snapshot.health.some(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status))
       // A late older read cannot regress a newer projection/cache. Unknown details are
       // still returned, but a degraded snapshot cannot be replayed as fresh context.
-      if (!previous || sequence >= previous.sequence) this.#cache.set(key, { text, fingerprint, valid: !unhealthy, sequence })
+      if (!previous || sequence >= previous.sequence) this.#cache.set(key, { text, verified: text, fingerprint, valid: !unhealthy, sequence })
       return { text: changed ? text : null, snapshot, freshness: unhealthy ? 'stale' : 'current', ...(unhealthy ? { reason: 'snapshot-health-degraded' } : {}) }
     } catch (error) {
       signal?.throwIfAborted() // exact caller reason; never convert cancellation into a diagnostic
       const reason = error instanceof ConsumptionFailure ? error.reason : 'snapshot-read-failed'
       const previous = this.#cache.get(key)
-      if (previous && sequence >= previous.sequence) this.#cache.set(key, { ...previous, valid: false, sequence })
+      const latest = previous !== undefined && sequence >= previous.sequence
+      // A failed refresh must not blank the instrument: the last verified snapshot is re-offered
+      // as explicitly stale text. It is never published as fresh, and the entry is invalidated,
+      // so the retry still takes the full read once the gate window opens.
+      const text = latest && previous.verified !== null ? stale(previous.verified, reason) : diagnostic(identity, reason)
+      if (latest) this.#cache.set(key, { ...previous, text, valid: false, sequence })
       if (reason === 'durability-commit-failed') {
         const commits = this.#commits.get(identity.instrumentInstanceId)
         for (const commit of frontier) if (commit.failed) commits?.delete(commit)
         if (commits?.size === 0) this.#commits.delete(identity.instrumentInstanceId)
       }
       if (overflow && this.#overflow.get(identity.instrumentInstanceId)?.pending === 0) this.#overflow.delete(identity.instrumentInstanceId)
-      return { text: diagnostic(identity, reason), freshness: previous ? 'stale' : 'unavailable', reason }
+      return { text, freshness: latest && previous.verified !== null ? 'stale' : 'unavailable', reason }
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)

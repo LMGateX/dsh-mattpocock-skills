@@ -12,6 +12,17 @@ export function invalid(message: string): never {
   throw new ControlsError('invalid-input', message)
 }
 
+const PRE_COMMIT_REJECTIONS: ReadonlySet<ControlsErrorCode> = new Set([
+  'invalid-input', 'access-denied', 'feature-disabled', 'revision-conflict', 'operation-conflict',
+  'concurrent-update', 'association-conflict', 'unknown-session', 'unknown-workspace',
+])
+/** True when a tracked mutation rejected before it could start its durable write, so the
+ * stored documents are unchanged. A pending-read frontier must not report unknown durability
+ * for these; storage-uncertain and non-controls errors keep the persistence outcome unknown. */
+export function isPreCommitRejection(error: unknown): boolean {
+  return error instanceof ControlsError && PRE_COMMIT_REJECTIONS.has(error.code)
+}
+
 export function record(value: unknown, where: string, keys?: readonly string[]): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)
     || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) invalid(where + ' must be a plain object')

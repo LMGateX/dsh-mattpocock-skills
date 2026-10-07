@@ -21,3 +21,17 @@ test('instrument command errors list the accepted command keys', () => {
   assert.throws(() => parseInstrumentCommand({ operationId: 'op-1', expectedRevision: 1, action: 'put-workflow', workflowId: 'wf-1', references: [], localTicketId: 'T1' }),
     /unknown key .*accepted keys: operationId, expectedRevision, action, workflowId, references, value/)
 })
+
+test('rejected authored values name the expected shape and enum literals', () => {
+  const base = { operationId: 'op-1', expectedRevision: 0, workflowId: 'wf-1', references: [] }
+  assert.throws(() => parseInstrumentCommand({ ...base, action: 'put-workflow',
+    value: { title: 'x', axes: [{ axisKey: 's', label: 'S', statuses: [] }] } }),
+    /axis\.counting must be "exclusive" or "overlapping"; workflow value shape: \{title, axes:\[\{axisKey, label, counting:/)
+  assert.throws(() => parseInstrumentCommand({ ...base, action: 'put-ticket', localTicketId: 'T1', value: { title: 'x' } }),
+    /ticket statuses must be a plain object; ticket value shape: \{title, statuses:\{<axisKey>:\[<statusKey>, \.\.\.\]\}/)
+  assert.throws(() => parseInstrumentCommand({ ...base, action: 'put-ticket', localTicketId: 'T1',
+    value: { title: 'x', statuses: { s: 'open' } } }),
+    /status selections must be an array; ticket value shape:/)
+  assert.throws(() => parseInstrumentCommand({ ...base, action: 'put-decision', decisionId: 'D1', value: { question: 'q' } }),
+    /decision status must be non-empty text.*; decision value shape: \{question, status, pending\?/)
+})

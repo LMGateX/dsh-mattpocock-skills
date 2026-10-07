@@ -23,7 +23,7 @@ import type { HostCaller, HostJson, ResourceAction, RuntimeSnapshot } from './co
 import type { InstrumentCommand, InstrumentCompactInput, InstrumentPurgeHistoryInput } from './controls/instrument-state.js'
 import type { TicketWindowCommand } from './controls/windows.js'
 import type { PolicyIntent } from './controls/policy.js'
-import { array, ControlsError, freeze, id, increment, record, revision , memoized } from './controls/validation.js'
+import { array, ControlsError, freeze, id, increment, isPreCommitRejection, record, revision , memoized } from './controls/validation.js'
 import { RefreshGate } from './controls/refresh-gate.js'
 import { resolvePolicy } from './controls/policy.js'
 import { createWorktreeBindings, parseWorktreeBindingsDocument } from './controls/worktree-bindings.js'
@@ -258,7 +258,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>activeSnapshot(callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),signal)})
   const track=<T>(instanceId:string,effect:()=>Promise<T>):Promise<T>=>{
     touchState()
-    const commit=queue.run(effect);consumptionProgram.trackCommit(instanceId,commit);return commit
+    const commit=queue.run(effect)
+    // The frontier guards reads against acknowledged-but-unpersisted writes. A command that
+    // was rejected before its durable write claims nothing, so it must not degrade the next
+    // snapshot to unknown durability. Real write outcomes stay unknown.
+    consumptionProgram.trackCommit(instanceId,commit.then(()=>undefined,error=>{if(isPreCommitRejection(error))return;throw error}))
+    return commit
   }
   const consumptionIdentity=(caller:HostCaller,view:SessionControlsView):ConsumptionIdentity=>({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId})
   const directParentMessage=(exec:ToolExecution):boolean=>{
@@ -317,25 +322,29 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // re-offered exactly as before, and a degraded cache still takes the full read.
     const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision
     const mayReuse=!refresh.shouldRefresh(refreshKey)
-    // A degraded or missing cache still takes the full read, so honest unknown facts are
-    // re-derived instead of being replayed as fresh.
-    const reusable=mayReuse&&consumption.cachedText(key)!==null
+    // Within the gate window the last prepared projection is reused, including the explicitly
+    // stale text of a failed refresh: a slow read must neither blank the instrument nor be
+    // re-attempted on every step. Degraded text is never returned as current.
+    const held=consumption.prepared(key)
+    const reusable=mayReuse&&held!==null
     const result=reusable?null:await consumption.readForConsumption(key,signal)
     if(result!==null)refresh.record(refreshKey)
     // Preparation is not delivery. Replay only after this consumption verified freshness.
-    const freshness=result===null?'current':result.freshness
-    const text=result===null?consumption.cachedText(key):result.text??(result.freshness==='current'?consumption.cachedText(key):null)
+    const freshness=result===null?(held!.fresh?'current':'stale'):result.freshness
+    const text=result===null?held!.text:result.text??(result.freshness==='current'?consumption.cachedText(key):null)
     if(text===null){refresh.record(refreshKey);return []}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId])
     const baseline=baselines.get(baselineKey),agent=ports.liveAgent(caller.sessionId)
-    if(freshness==='current'&&baseline&&baseline.text===text&&agent===baseline.agent&&agent.session===baseline.session){
+    if(baseline&&baseline.text===text&&agent===baseline.agent&&agent.session===baseline.session){
       // Inclusion is provisional for this returned batch, never retained as delivery proof.
       if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
       try{if(ports.snapshotVisible?.(caller,agent,baseline.message)===true)return []}catch{/* Unavailable visibility never proves delivery. */}
     }
     try{
       const message=ports.makeSnapshotMessage(text)
-      if(freshness==='current'&&agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
+      // An identical snapshot that is still visible in the real session is not installed again,
+      // fresh or stale: a failing refresh must not append the same stale facts at every step.
+      if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
       else baselines.delete(baselineKey)
       refresh.record(refreshKey)
       return [message]
@@ -630,7 +639,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const provider=r.provider??'spawn';if(provider!=='spawn'&&provider!=='fork')throw new ControlsError('invalid-input','unsupported provider')
       const operationId=id(r.operationId??exec.callId,'operationId'),view=await identity(caller,caller.sessionId,exec.signal)
       const workflowId=r.workflowId===undefined?null:id(r.workflowId,'workflowId'),ticketIds=r.ticketIds===undefined?[]:array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
-      if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set')
+      if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
       const checkGrant=async()=>{await check(caller,caller.sessionId!,exec.signal);const permission=await scope(caller.principalId,caller.sessionId!,await controls.readSession(caller.principalId,caller.sessionId!));if(permission.kind==='assigned'&&((workflowId!==null&&permission.workflowId!==workflowId)||ticketIds.some(ticket=>!permission.ticketIds.includes(ticket))))denied('delegation exceeds actual parent assignment scope')}
       await checkGrant()
       if(!ports.createContinuable)throw new ResourceError('unsupported','native continuable creation is unavailable; no child was requested')
@@ -686,7 +695,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     async assign(caller,input,signal){
       const r=record(input,'task delegation',['sessionId','workflowId','ticketIds']),target=id(r.sessionId,'child sessionId'),workflowId=r.workflowId===null?null:id(r.workflowId,'workflowId')
       const ticketIds=array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
-      if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set')
+      if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
       const parent=await identity(caller,caller.sessionId!,signal),facts=await ports.sessionFacts(target,signal)
       if(facts.header.origin!=='subagent'||facts.header.parentSession!==caller.sessionId)denied('task grant requires actual direct managed child')
       const child=await controls.ensureSession(ports.operatorPrincipal,target)

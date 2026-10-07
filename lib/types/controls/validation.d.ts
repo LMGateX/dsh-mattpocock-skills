@@ -6,6 +6,10 @@ export declare class ControlsError extends Error {
     constructor(code: ControlsErrorCode, message: string);
 }
 export declare function invalid(message: string): never;
+/** True when a tracked mutation rejected before it could start its durable write, so the
+ * stored documents are unchanged. A pending-read frontier must not report unknown durability
+ * for these; storage-uncertain and non-controls errors keep the persistence outcome unknown. */
+export declare function isPreCommitRejection(error: unknown): boolean;
 export declare function record(value: unknown, where: string, keys?: readonly string[]): Record<string, unknown>;
 /** Dense JSON arrays only: map must not silently skip holes that stringify as null. */
 export declare function array(value: unknown, where: string): readonly unknown[];

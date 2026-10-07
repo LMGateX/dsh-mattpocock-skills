@@ -154,17 +154,25 @@ test('already failed and newly failing commits return unknown then permit latest
   const reading = f.feed.readForConsumption(identity); failing.reject('failure')
   assert.equal((await reading).reason, 'durability-commit-failed')
 })
-test('reader failure invalidates cached policy instead of presenting it as current', async () => {
+test('reader failure keeps the last verified snapshot as explicitly stale text, never as current', async () => {
   let fail = false
   const f = fixture({ readSnapshot: async () => { if (fail) throw Error('backend down'); return snapshot() } })
   const first = await f.feed.readForConsumption(identity)
-  assert.equal(first.freshness, 'current'); fail = true
+  assert.equal(first.freshness, 'current'); assert.equal(f.feed.prepared(identity).fresh, true)
+  fail = true
   const result = await f.feed.readForConsumption(identity)
   assert.equal(result.freshness, 'stale'); assert.equal(result.reason, 'snapshot-read-failed')
   assert.equal(result.snapshot, undefined); assert.equal(f.feed.cachedText(identity), null)
-  assert.doesNotMatch(result.text, /Windows explicitly enabled/); assert.match(result.text, /state unknown/)
+  assert.equal(f.feed.prepared(identity).fresh, false, 'degraded text is never fresh')
+  assert.match(result.text, /^Instrument state stale: .*snapshot-read-failed/)
+  assert.match(result.text, /Windows explicitly enabled/, 'the last verified facts stay readable')
+  assert.equal(f.feed.cachedText(identity), null, 'stale text is not replayed as verified cache')
+  const repeated = await f.feed.readForConsumption(identity)
+  assert.equal(repeated.text, result.text, 'repeated failures do not stack stale headers')
   fail = false
-  assert.notEqual((await f.feed.readForConsumption(identity)).text, null)
+  const recovered = await f.feed.readForConsumption(identity)
+  assert.equal(recovered.freshness, 'current'); assert.notEqual(recovered.text, null)
+  assert.doesNotMatch(recovered.text, /state stale/)
 })
 test('stuck reader is bounded and receives timeout abort without late cache publication', async () => {
   const blocked = deferred()

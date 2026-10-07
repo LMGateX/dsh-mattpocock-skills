@@ -60,6 +60,12 @@ export interface ConsumptionResult {
 export declare class InstrumentConsumption {
     #private;
     constructor(options: ConsumptionOptions);
+    /** Last prepared projection for this identity, including degraded text whose retry is still
+     * pending. Fresh is true only for a verified snapshot; degraded text never replays as current. */
+    prepared(identity: ConsumptionIdentity): {
+        readonly text: string;
+        readonly fresh: boolean;
+    } | null;
     cachedText(identity: ConsumptionIdentity): string | null;
     readForConsumption(input: ConsumptionIdentity, signal?: AbortSignal): Promise<ConsumptionResult>;
 }
