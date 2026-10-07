@@ -135,6 +135,21 @@ test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects fo
   assert.equal(await f.mounted.ports.resourceLifecycle.verifyInitialBinding(), false)
   assert.deepEqual(await f.mounted.ports.resourceLifecycle.closeEntrypoints(), { closed: false, nativeColdResumeClosed: false })
 })
+test('PTC-style nested post-execute keeps the plugin contract with and without an attributable agent', options, async t => {
+  const f = await assembly(t)
+  const result = Object.freeze({ isError: false, value: null, content: [] })
+  // A nested program call carries the effective agent, so name and nesting do not matter:
+  // the plugin appends its own separate message and leaves the tool result untouched.
+  for (const name of ['read', 'run_code']) {
+    const nested = await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name, callId: 'nested-' + name }, result, async () => ({ kind: 'accept' }))
+    assert.equal(nested.additionalContexts[0], f.owned)
+    assert.deepEqual(result, { isError: false, value: null, content: [] })
+  }
+  // Without an attributable agent the hook passes the decision through instead of guessing one.
+  const unattributed = await f.ctx.waterfall('tools/post-execute', { signal: signal(), name: 'read', callId: 'nested-unattributed' }, result, async () => ({ kind: 'accept' }))
+  assert.equal(unattributed.additionalContexts, undefined)
+})
+
 test('actual registry native/nested tool execution authenticates caller and cannot self-grant policy', options, async t => {
   const f = await assembly(t)
   const execute = (name, args, agent = f.owner) => f.ctx.tools.execute({ name, arguments: args, callId: 'fixture-call', agent, signal: signal() })
