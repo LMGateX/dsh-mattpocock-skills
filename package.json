@@ -1,6 +1,6 @@
 {
   "name": "@lmgatex/dsh-mattpocock-skills",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "private": true,
   "description": "Matt Pocock 技能分发与可选协作管理插件（可复现构建）",
   "type": "module",
@@ -56,6 +56,8 @@
     "lib/types/controls/state.d.ts",
     "lib/types/controls/storage.d.ts",
     "lib/types/controls/validation.d.ts",
+    "lib/controls/refresh-gate.js",
+    "lib/types/controls/refresh-gate.d.ts",
     "lib/controls/instrument-state.js",
     "lib/controls/instrument-storage.js",
     "lib/controls/instruments.js",

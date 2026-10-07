@@ -24,6 +24,7 @@ import type { InstrumentCommand, InstrumentCompactInput, InstrumentPurgeHistoryI
 import type { TicketWindowCommand } from './controls/windows.js'
 import type { PolicyIntent } from './controls/policy.js'
 import { array, ControlsError, freeze, id, increment, record, revision , memoized } from './controls/validation.js'
+import { RefreshGate } from './controls/refresh-gate.js'
 import { resolvePolicy } from './controls/policy.js'
 import { createWorktreeBindings, parseWorktreeBindingsDocument } from './controls/worktree-bindings.js'
 import type { WorktreeBindingsDocument, WorktreeBindingBusinessUpdate, WorktreeBindingsCompact, WorktreeBindingsPurgeHistory } from './controls/worktree-bindings.js'
@@ -65,6 +66,7 @@ class OrderedEffects {
 export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number }
 export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
   const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects()
+  const refresh=new RefreshGate(2_000)
   const controls=new WorkspaceControls(ports.controlsStorage,ports.authority)
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
@@ -91,6 +93,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     await (await historyFor(view)).capture(observations)
   }
+  // History capture is a side effect of reading the projection, not a change of it: the
+  // fingerprint is computed after the capture, so invalidating here would rebuild on every
+  // read and never converge. Only real document mutations touch the gate.
   const captureSafely=async(view:SessionControlsView,effect:()=>Promise<void>)=>{try{await effect();historyFailures.delete(view.instance.instrumentInstanceId)}catch(error){historyFailures.set(view.instance.instrumentInstanceId,String(error).slice(0,1024))}}
   const captureCurrent=async(view:SessionControlsView,items:readonly {kind:string;recordId:string;version:number;snapshot:unknown;domain:string;author?:HostCaller}[])=>{
     const history=await historyFor(view),store=await historyStores.get(view.instance.instrumentInstanceId)!,raw=await store.read(),prior=raw===undefined?[]:parseHistoryDocument(raw).rows
@@ -137,6 +142,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(candidate===old)return old
       const next=parseRuntimeDocument({...candidate,revision:increment(old.revision)})
       if(await storage.compareAndSwap(old.revision,next)){
+        refresh.touch()
         for(const owner of new Set([...next.assignments.map(row=>row.instrumentInstanceId),...next.notifications.map(row=>row.instrumentInstanceId)])){
           const view=[...cachedSessions.values()].find(view=>view.instance.instrumentInstanceId===owner)
           if(view)await captureSafely(view,()=>captureRuntime(view,next))
@@ -235,6 +241,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const consumption=new InstrumentConsumption({...(options.consumptionTimeoutMs===undefined?{}:{timeoutMs:options.consumptionTimeoutMs}),
     bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>activeSnapshot(callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),signal)})
   const track=<T>(instanceId:string,effect:()=>Promise<T>):Promise<T>=>{
+    refresh.touch()
     const commit=queue.run(effect);consumptionProgram.trackCommit(instanceId,commit);return commit
   }
   const consumptionIdentity=(caller:HostCaller,view:SessionControlsView):ConsumptionIdentity=>({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId})
@@ -285,21 +292,36 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const retained=cachedSessions.get(caller.sessionId)
       if(!saved.extensionEnabled&&!retained)return []
       view=await identity(caller,caller.sessionId,signal)}catch(error){signal.throwIfAborted();return [ports.makeSnapshotMessage('Instrument context unavailable: '+String(error).slice(0,1024)+'. Accepted business input is retained; missing facts are not execution capacity or business completion proof.')]}
-    const key=consumptionIdentity(caller,view),result=await consumption.readForConsumption(key,signal)
+    const key=consumptionIdentity(caller,view)
+    // Rebuilding the projection re-reads every document, clones it and appends a history
+    // observation, per step *and* per tool result (measured: 32 of 41 rebuilds produced no
+    // message at all). The gate watches the revisions this projection derives from plus an
+    // epoch bumped by every runtime/window mutation; while they are unchanged the verified
+    // projection is reused. Delivery is still decided below, so an undelivered snapshot is
+    // re-offered exactly as before, and a degraded cache still takes the full read.
+    const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision
+    const mayReuse=!refresh.shouldRefresh(refreshKey)
+    // A degraded or missing cache still takes the full read, so honest unknown facts are
+    // re-derived instead of being replayed as fresh.
+    const reusable=mayReuse&&consumption.cachedText(key)!==null
+    const result=reusable?null:await consumption.readForConsumption(key,signal)
+    if(result!==null)refresh.record(refreshKey)
     // Preparation is not delivery. Replay only after this consumption verified freshness.
-    const text=result.text??(result.freshness==='current'?consumption.cachedText(key):null)
-    if(text===null)return []
+    const freshness=result===null?'current':result.freshness
+    const text=result===null?consumption.cachedText(key):result.text??(result.freshness==='current'?consumption.cachedText(key):null)
+    if(text===null){refresh.record(refreshKey);return []}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId])
     const baseline=baselines.get(baselineKey),agent=ports.liveAgent(caller.sessionId)
-    if(result.freshness==='current'&&baseline&&baseline.text===text&&agent===baseline.agent&&agent.session===baseline.session){
+    if(freshness==='current'&&baseline&&baseline.text===text&&agent===baseline.agent&&agent.session===baseline.session){
       // Inclusion is provisional for this returned batch, never retained as delivery proof.
       if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
       try{if(ports.snapshotVisible?.(caller,agent,baseline.message)===true)return []}catch{/* Unavailable visibility never proves delivery. */}
     }
     try{
       const message=ports.makeSnapshotMessage(text)
-      if(result.freshness==='current'&&agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
+      if(freshness==='current'&&agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
       else baselines.delete(baselineKey)
+      refresh.record(refreshKey)
       return [message]
     }catch(error){signal.throwIfAborted();baselines.delete(baselineKey);return [ports.makeSnapshotMessage('Instrument snapshot exceeds its representation boundary. Current detail is unknown here, not zero or release proof. Accepted business input is retained; use instrument tools for detail.')] }
   }
@@ -399,7 +421,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     },
     async preStep(caller,signal,acceptedMessages){return prepare(caller,signal,acceptedMessages)},
-    async postExecute(caller,_exec,_result){return prepare(caller,_exec.signal)},
+    // Every tool result may carry this plugin's current projection or its honest unknown
+    // diagnostic, so the hook stays unrestricted; the refresh gate inside prepare keeps an
+    // unchanged projection from being rebuilt per call.
+    async postExecute(caller,exec,_result){return prepare(caller,exec.signal)},
     context(caller){return caller.sessionId!==null&&cachedSessions.has(caller.sessionId)?'Collaboration instruments: use mattpocock_record for current records, mattpocock_history for scoped history, mattpocock_worktree for recorded bindings. Fresh bounded state is sent when changed or its exact baseline is missing from the effective input; old chat messages are not deleted.':''},
     async executeManaged(caller,input:HostJson,exec:ToolRunContext){
       const r=record(input,'managed execution',['nativeTool','arguments','workflowId','localTicketId'])

@@ -28,6 +28,8 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/controls/state.d.ts',
   'lib/types/controls/storage.d.ts',
   'lib/types/controls/validation.d.ts',
+  'lib/controls/refresh-gate.js',
+  'lib/types/controls/refresh-gate.d.ts',
   'lib/controls/instrument-state.js',
   'lib/controls/instrument-storage.js',
   'lib/controls/instruments.js',
@@ -116,6 +118,8 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/controls/state.d.ts',
   'lib/types/controls/storage.d.ts',
   'lib/types/controls/validation.d.ts',
+  'lib/controls/refresh-gate.js',
+  'lib/types/controls/refresh-gate.d.ts',
   'lib/controls/instrument-state.js',
   'lib/controls/instrument-storage.js',
   'lib/controls/instruments.js',
@@ -183,7 +187,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.4.11'
+const EXPECTED_VERSION = '0.4.12'
 
 export const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2 || ~4.0.5-alpha.1',
@@ -241,7 +245,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 83
+const EXPECTED_FIXED_PACKED_FILES = 85
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

@@ -47,9 +47,9 @@ function validMembers() {
   ]
 }
 
-test('0.4.11 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.4.11' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.4.11')
+test('0.4.12 package policy admits exactly four metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.4.12' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.4.12')
   assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
     'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
   ])
@@ -59,7 +59,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.4.11',
+    version: '0.4.12',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
@@ -68,7 +68,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
-    [{ ...packageJson, version: '1.0.0' }, /0\.4\.11/],
+    [{ ...packageJson, version: '1.0.0' }, /0\.4\.12/],
     [{ ...packageJson, private: false }, /private/],
     [{ ...packageJson, scripts: { prepare: 'tsc' } }, /scripts/],
     [{ ...packageJson, publishConfig: { access: 'public' } }, /publishConfig/],
@@ -105,14 +105,14 @@ test('locale metadata verification rejects unknown structure and changed public 
   ]) assert.throws(() => validatePackageLocale('locale/worktree-bridge/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 83 fixed files, 85 vendor files and 64 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 83)
-  assert.equal(EXPECTED_PACKED_FILES, 168)
-  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 64)
+test('exact package inventory contains 85 fixed files, 85 vendor files and 66 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 85)
+  assert.equal(EXPECTED_PACKED_FILES, 170)
+  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 66)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 168)
+  assert.equal(members.size, 170)
   for (const path of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
 })
 
