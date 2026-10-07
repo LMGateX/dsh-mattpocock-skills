@@ -1,0 +1,73 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.15",
+  "private": true
+ },
+ "source": {
+  "commit": "c7043b9ff50d39853b14cb3fdde4110b320ce32d",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.15.tgz",
+  "bytes": 374903,
+  "sha256": "e26d0599aed4973f604d13f8ef3a0f6ec9323c649ba8decc32e17c716ea7f9b3",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 805,
+   "passed": 805,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 779,
+   "passed": 491,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 288
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 779 cases with 288 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "buildModules": 66,
+  "fixedFiles": 85,
+  "vendorFiles": 85,
+  "packedFiles": 170,
+  "clientBytes": 171399,
+  "featureEvidence": "A coordinator session reported 'Instrument state unknown: durability-commit-failed' right after an authoring command was rejected on a stale expectedRevision, and 153 consumption-timeout diagnostics earlier in the same session. Two defects produced those messages: every rejected tracked mutation was registered in the read frontier, so a command that never wrote anything claimed unknown durability, and a failed or timed-out refresh replaced a verified snapshot with bare state-unknown text. Rejections raised before the durable write (invalid input, denial, feature-off, revision/operation conflict, retry exhaustion, association/session errors) no longer enter the durability frontier, while real write outcomes still do. A failed refresh now returns the last verified snapshot as explicitly stale text (freshness stale, cachedText null, never current, repeated identical notices suppressed while visible). Rejected authored payloads name the expected value shape, and the mattpocock_record description documents the workflow, ticket, decision and decision-view shapes. Red/green regression tests lock the durability classification (the red run reproduced durability-commit-failed) and the stale-delivery contract.",
+  "privacy": "Only six closed assets published; no local raw logs, profile snapshots or session evidence"
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.14",
+  "independentReview": "none: findings were traced from the recorded session diagnostics and tool rejections inside this workspace and locked by red/green tests, not by an independent reviewer"
+ }
+}

@@ -1,0 +1,73 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.14",
+  "private": true
+ },
+ "source": {
+  "commit": "9f23a83f06dfc029926e2e30b00205a1484e07a9",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.14.tgz",
+  "bytes": 372381,
+  "sha256": "5b18709e9e381d68cfc99196de4f94653c0eaf83fb2a4f751c2fb278f03eecf6",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 801,
+   "passed": 801,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 775,
+   "passed": 487,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 288
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 775 cases with 288 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "buildModules": 66,
+  "fixedFiles": 85,
+  "vendorFiles": 85,
+  "packedFiles": 170,
+  "clientBytes": 169487,
+  "featureEvidence": "PTC research against the installed core showed nested tool calls run the identical pre/post-execute pipeline and ferry their additionalContexts up through the outer run_code result, while a throwing tools/post-execute listener replaces a nested result (and every context ferried through it) with a bare error. The post-execute observation is now non-fatal for observer failures but still rethrows the exact caller abort reason, and a regression test locks both the abort reason and the observer-failure contract.",
+  "privacy": "Only six closed assets published; no local raw logs, profile snapshots or session evidence"
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.13",
+  "independentReview": "PTC pipeline, lifecycle and context-ferry semantics verified against the installed core by a delegated researcher with file:line citations"
+ }
+}
