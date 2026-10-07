@@ -665,6 +665,7 @@ export class StartupSettingsController {
 const STARTUP_HINT = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页或热重载不能代替进程重启。兼容支持由同一插件包提供；安装或更新插件后，保存下次启动请求，再正常重启 DSH。是否生效以当前运行状态为准；兼容性尚未验证时，反复重启也不会生效。'
 const settingsCard = { border: '1px solid rgba(127,127,127,.3)', borderRadius: '12px', padding: '20px', minWidth: 0, overflowWrap: 'anywhere' as const }
 const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px', minWidth: 0 }
+const TONE = { open: '#15803d', closed: '#b45309' } as const
 const settingsActions = { display: 'flex', flexWrap: 'wrap' as const, gap: '8px', marginTop: '16px' }
 const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '12px 0', minWidth: 0 }
 function startupFlag(value: boolean | null): string { return value === null ? '未知（观测不可用）' : value ? '启用' : '禁用' }
@@ -823,39 +824,60 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       setMessage('已保存并应用配置（修订 ' + snapshot.revision + '）；协作管理' + (snapshot.extensionEnabled ? '已启用' : '已关闭') + '，无需额外启用按钮。功能可用性仍以宿主能力与会话观测为准；上述工作树启动配置独立保存。' + (snapshot.extensionEnabled ? '' : '协作管理总闸（全局）仍为关闭，各工作区的「协作功能」「参考上限」都不会生效。'))
     } catch (error) { setMessage('保存结果未确认：' + errorText(error) + '。请重新读取协作配置核对，草稿未作为成功回执。') } finally { setBusy(false) }
   }
-  const booleanField = (field: PolicyField, label: string, effective: string): ReactElement => {
+  const globalScope = workspace === null
+  const inheritLabel = globalScope ? '未设置（用安全初始值）' : '继承全局'
+  const scopeWord = globalScope ? '所有工作区默认' : '本工作区'
+  const gatesOpen = draft.extensionEnabled && preview.workspaceEnabled
+  const gateReason = (value: { readonly reason: string | null }): boolean => value.reason === 'extension-disabled' || value.reason === 'workspace-disabled'
+  const badge = (text: string, tone: string): ReactElement => h('span', { style: { background: tone, color: '#fff', borderRadius: '999px', padding: '1px 10px', fontSize: '12px', lineHeight: '18px', whiteSpace: 'nowrap' as const } }, text)
+  const booleanField = (field: PolicyField, label: string, effective: string, alert = false): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
     return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 180px' } }, label),
       h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
-        h('option', { value: 'inherit' }, '继承'), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
-      h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
+        h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
+      h('small', { style: { flexBasis: '100%' } }, alert ? badge('总闸未开', TONE.closed) : null, '草稿有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
   }
-  const gateField = (field: PolicyField, label: string, effective: string): ReactElement => {
+  const gateField = (field: PolicyField, label: string, open: boolean, effectiveText: string): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
-    return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 180px' } }, label),
+    return h('div', { key: field, style: { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '10px 0', minWidth: 0 } },
+      h('span', { style: { fontWeight: 600, minWidth: '9em' } }, label),
       h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
-        h('option', { value: 'inherit' }, '继承'), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
-      h('small', { style: { flexBasis: '100%' } }, '有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
+        h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
+      badge(effectiveText, open ? TONE.open : TONE.closed),
+      h('small', { style: { flexBasis: '100%' } }, '来源：' + SOURCE_LABELS[preview.sources[field]]))
   }
+  const gatePanel = h('div', { style: { ...settingsCard, borderLeft: '4px solid ' + (gatesOpen ? TONE.open : TONE.closed), background: gatesOpen ? 'rgba(21,128,61,.10)' : 'rgba(180,83,9,.12)', marginBottom: '16px' } },
+    h('div', { style: { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '12px', marginBottom: '8px' } },
+      h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '15px' } },
+        h('input', { type: 'checkbox', 'aria-label': '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, extensionEnabled: event.target.checked }); setMessage(null) } }),
+        '协作管理总闸（全局）'),
+      badge(draft.extensionEnabled ? '已开启' : '已关闭', draft.extensionEnabled ? TONE.open : TONE.closed),
+      badge(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开', preview.workspaceEnabled ? TONE.open : TONE.closed)),
+    h('p', { style: { margin: '0 0 8px' } }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发，也不控制子代理工作树启动设置。'),
+    h('label', { style: settingsField }, h('span', { style: { fontWeight: 600 } }, '配置编辑范围'),
+      h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
+        ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
+    gateField('workspace.enabled', scopeWord + '总闸', preview.workspaceEnabled, preview.workspaceEnabled ? '已启用' : '未启用'),
+    gateField('skills.enabled', scopeWord + '技能分发', preview.skillsEnabled, preview.skillsEnabled ? '启用' : '禁用'),
+    h('p', { style: { margin: '6px 0 0' } }, globalScope
+      ? '当前编辑的是「全局默认」：选「未设置（用安全初始值）」表示没有默认值，该叶子回落到安全初始值（本工作区总闸＝关闭，技能分发＝开启）。'
+      : '选「继承全局」表示删除本工作区的覆盖，回落到上面的全局默认；参考上限留空同理。'))
+  const gateRow = h('div', null,
+    h('p', null, '生效需要两级总闸同时打开：「协作管理总闸（全局）」全局唯一、对所有工作区生效；每个工作区另有自己的总闸且默认关闭。'),
+    !draft.extensionEnabled ? diagnostic('全局总闸当前为关闭：下面各范围的「协作功能」「参考上限」都不会生效，只有「界面显示位置」与技能分发不受影响。') : null)
+  const featureField = (name: typeof FEATURE_NAMES[number]): ReactElement => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name]), gateReason(preview.features[name]))
   const dirty = JSON.stringify(draft) !== JSON.stringify(intentOf(saved))
   const saveLabel = busy ? '正在保存…' : saved.extensionEnabled !== draft.extensionEnabled ? draft.extensionEnabled ? '保存并启用协作管理' : '保存并关闭协作管理' : '保存并应用配置'
   return h('section', { 'aria-label': '插件配置', style: pageStyle },
     h(StartupSettingsPanel, { remote: props.remote }),
     h('section', { 'aria-label': '工作区协作管理', style: settingsCard },
       h('h3', { style: { marginTop: 0 } }, '协作管理'),
-      h('p', null, '这些设置由插件独立保存并应用，不需要再保存一次“草稿”或另行启用。生效需要两级总闸同时打开：「协作管理总闸（全局）」全局唯一、对所有工作区生效；「本工作区总闸」按工作区设置且默认关闭。两级都打开后，本工作区的「协作功能」才生效。总闸不影响技能分发，也不控制上述子代理工作树启动设置。'),
-      h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, extensionEnabled: event.target.checked }); setMessage(null) } }), '协作管理总闸（全局）'),
-      !draft.extensionEnabled ? diagnostic('全局总闸当前为关闭：下面各范围的「协作功能」「参考上限」都不会生效，只有「界面显示位置」仍然生效。') : null,
-      h('label', { style: settingsField }, '配置编辑范围', h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
-        ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
-      h('p', null, '选择“继承”或将参考上限留空，即删除当前范围的覆盖，沿用全局默认或安全初始值。'),
-      gateField('workspace.enabled', '本工作区总闸', preview.workspaceEnabled ? '已启用' : '未启用（默认关闭）'),
+      gatePanel,
+      gateRow,
       h('div', { style: settingsGrid },
-        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '协作功能'), FEATURE_NAMES.map(name => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name])))),
-        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '技能分发'), h('p', null, '按工作区决定是否提供 Matt Pocock 技能；默认启用，不受协作管理总闸影响。'),
-          gateField('skills.enabled', '本工作区技能分发', preview.skillsEnabled ? '启用' : '禁用')),
+        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '协作功能'), h('p', null, '每个功能仍受两级总闸约束；这里只决定该功能在本范围是否被请求。'), FEATURE_NAMES.map(name => featureField(name))),
         h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '参考上限'), h('p', null, 'T/S 仅提供规模参考，不是硬名额；留空继承，不猜测默认数值。'),
           (['ticketWindowSize', 'runningSubagentLimit'] as const).map(name => { const field = ('windows.' + name) as PolicyField; return h('label', { key: name, style: settingsField },
             h('span', null, CAPACITY_LABELS[name]), h('input', { 'aria-label': CAPACITY_LABELS[name], type: 'number', min: 1, step: 1, style: { width: '100px', maxWidth: '100%' }, value: ownLeaf(draft, workspace, field) ?? '',
@@ -880,7 +902,6 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       sessionChoices.unknown ? diagnostic('会话导航未知或不完整；不能据此断言没有会话。') : sessionChoices.ids.length === 0 ? h('p', null, '当前导航没有列出的会话（不是实例或权限结论）。') : null,
       selectedInspection === null ? null : h(SettingsInspection, { key: selectedInspection, sessionId: selectedInspection, observer: props.observe(selectedInspection), remote: props.remote })))
 }
-
 
 /** Read only public call material; never serialize the lazy argument reader's internals. */
 export function sourceRecord(props: ToolCallViewProps): unknown {

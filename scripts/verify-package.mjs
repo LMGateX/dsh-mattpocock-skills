@@ -183,7 +183,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.4.5'
+const EXPECTED_VERSION = '0.4.6'
 
 export const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2 || ~4.0.5-alpha.1',
