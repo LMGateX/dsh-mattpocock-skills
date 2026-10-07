@@ -1,0 +1,86 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.18",
+  "private": true
+ },
+ "source": {
+  "commit": "e07d252a0bf249d34486855586eddd3bd99ddf0a",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.18.tgz",
+  "bytes": 377574,
+  "sha256": "8f551fc023f068345ab2ea33f34996fbe8eb370f2908fd59f399c8def24f8d38",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 815,
+   "passed": 815,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 789,
+   "passed": 501,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 288
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 789 cases with 288 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "isolatedDshVerification": {
+   "result": "passed",
+   "dsh": "0.2.1-alpha.1",
+   "profile": "headless",
+   "installedFromPrivateSnapshot": true,
+   "channels": {
+    "stable": 27,
+    "beta": 27
+   },
+   "checkoutTarballReportsByteIdentical": true,
+   "modelInvoked": false,
+   "webStarted": false,
+   "customClient": false
+  },
+  "buildModules": 66,
+  "fixedFiles": 85,
+  "vendorFiles": 85,
+  "packedFiles": 170,
+  "clientBytes": 171875,
+  "featureEvidence": "v0.4.17 keyed snapshot de-duplication by a per-prepare counter, and a live resumed PTC run showed the duplicate deliveries were unchanged: the session log records six identical 9.1 KB snapshots inside one step/start..step/end pair, before any nested dispatch, because the host assembles one admitted model request several times and every assembly called the pre-step hook again. Delivery is now keyed by the admitted step identity (turn:step) supplied by the host hook payload: an identical text is installed once per admitted step however many assembly passes or nested dispatches that step contains, a state change inside the step still delivers its new text, and a later admitted step re-offers the text whenever the host reports the exact baseline missing (rejected decisions, rewrites, spoofed copies, compaction, aborted attempts all covered by updated contract tests). The trade-off is explicit and documented: a message the host discards inside the same step is re-offered at the next step rather than again inside that step. The window command rejection now names reserve/release/reacquire and states that there is no read action, and the mattpocock_window description points T/S facts at the injected snapshot and mattpocock_history."
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.17",
+  "independentReview": "none: the v0.4.17 fix was falsified by the live session's own injection counts after the restart (six identical snapshots still inside one step), which is what produced this corrected keying; the behaviour is locked by the per-step regression tests and the updated baseline-contract tests"
+ }
+}
