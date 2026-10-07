@@ -1,5 +1,5 @@
 import type { InstrumentInstance } from './state.js'
-import { array, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
+import { array, ControlsError, freeze, id, increment, invalid, record, revision , memoized } from './validation.js'
 import { createDomainVersionedStorage, MemoryVersionedStorage } from './versioned-storage.js'
 import type { VersionedStorage, VersionedTable } from './versioned-storage.js'
 
@@ -164,7 +164,7 @@ export function parseHistoryDocument(value: unknown): HistoryDocument {
 }
 function scopedParser(instance: InstrumentInstance): (value: unknown) => HistoryDocument {
   return value => {
-    const d = parseHistoryDocument(value)
+    const d = memoized(value, parseHistoryDocument)
     if (d.instrumentInstanceId !== instance.instrumentInstanceId || d.ownerSessionId !== instance.ownerSessionId || d.controlWorkspaceId !== instance.controlWorkspaceId) throw new ControlsError('association-conflict','history storage identity differs from scoped instance')
     return d
   }

@@ -1,0 +1,73 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.9",
+  "private": true
+ },
+ "source": {
+  "commit": "1c2f8ea9648aa3d1bfbaed13b3375e258235c9ba",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.9.tgz",
+  "bytes": 369402,
+  "sha256": "48e16fc469ff90d01c33549bc5098aea5959045d39cd7289332ef2355b566545",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 791,
+   "passed": 791,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 765,
+   "passed": 479,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 286
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 765 cases with 286 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "buildModules": 64,
+  "fixedFiles": 83,
+  "vendorFiles": 85,
+  "packedFiles": 168,
+  "clientBytes": 169487,
+  "featureEvidence": "Dynamic profiling of a live process measured the plugin at 64% of CPU: a single call site, liveSessionFacts, deep-froze the whole live owner event array on every authorization/hook call (47,223 events and about 366,827 objects, 135.2 ms per call, 7-8.4 calls per second in the sampled process). Owner headers are classified from the header alone, so owner sessions now carry no events, subagent facts are materialized once and reused for a short window, and documents returned by storage adapters are parsed once per returned value instead of once per read.",
+  "privacy": "Only six closed assets published; no local raw logs, profile snapshots or session evidence"
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.8",
+  "independentReview": "dynamic profiling performed by a delegated investigator against the running process; no independent code review of this release"
+ }
+}

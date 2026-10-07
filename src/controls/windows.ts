@@ -3,7 +3,7 @@ import type { SessionControlsView, WorkspaceControls } from './index.js'
 import type { InstrumentAuthority, InstrumentScope } from './instruments.js'
 import { parseAuthor } from './instrument-state.js'
 import type { InstrumentInstance } from './state.js'
-import { array, boolean, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
+import { array, boolean, ControlsError, freeze, id, increment, invalid, record, revision , memoized } from './validation.js'
 import { createDomainVersionedStorage, MemoryVersionedStorage } from './versioned-storage.js'
 import type { VersionedStorage, VersionedTable } from './versioned-storage.js'
 
@@ -547,7 +547,7 @@ export function initialWindowDocument(instance: InstrumentInstance): WindowDocum
 }
 function parserFor(instanceId: string): (value: unknown) => WindowDocument {
   return value => {
-    const parsed = parseWindowDocument(value)
+    const parsed = memoized(value, parseWindowDocument)
     if (parsed.instrumentInstanceId !== instanceId) throw new ControlsError('association-conflict', 'window row and document identities differ')
     return parsed
   }

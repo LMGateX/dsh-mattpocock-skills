@@ -23,7 +23,7 @@ import type { HostCaller, HostJson, ResourceAction, RuntimeSnapshot } from './co
 import type { InstrumentCommand, InstrumentCompactInput, InstrumentPurgeHistoryInput } from './controls/instrument-state.js'
 import type { TicketWindowCommand } from './controls/windows.js'
 import type { PolicyIntent } from './controls/policy.js'
-import { array, ControlsError, freeze, id, increment, record, revision } from './controls/validation.js'
+import { array, ControlsError, freeze, id, increment, record, revision , memoized } from './controls/validation.js'
 import { resolvePolicy } from './controls/policy.js'
 import { createWorktreeBindings, parseWorktreeBindingsDocument } from './controls/worktree-bindings.js'
 import type { WorktreeBindingsDocument, WorktreeBindingBusinessUpdate, WorktreeBindingsCompact, WorktreeBindingsPurgeHistory } from './controls/worktree-bindings.js'
@@ -130,7 +130,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   let savedPolicy=await controls.readPolicy(ports.operatorPrincipal)
   let transitioning:PolicyIntent|null=null
   const mayRequireWindows=(policy:PolicyIntent):boolean=>policy.extensionEnabled&&(policy.defaults.windows?.enabled===true||Object.values(policy.workspaceOverrides).some(patch=>patch.windows?.enabled===true))
-  const load=async():Promise<RuntimeDocument>=>{const raw=await storage.read();return raw===undefined?INITIAL_RUNTIME_DOCUMENT:parseRuntimeDocument(raw)}
+  const load=async():Promise<RuntimeDocument>=>{const raw=await storage.read();return raw===undefined?INITIAL_RUNTIME_DOCUMENT:memoized(raw,parseRuntimeDocument)}
   const update=async(change:(current:RuntimeDocument)=>RuntimeDocument):Promise<RuntimeDocument>=>{
     for(let attempt=0;attempt<32;attempt++){
       const old=await load(),candidate=change(old)

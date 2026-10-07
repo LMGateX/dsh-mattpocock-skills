@@ -46,6 +46,18 @@ test('cold owner session facts come from the lightweight port without reading th
   assert.equal(h.calls.observe, 0)
 })
 
+test('repeat header lookups within the freshness window reuse the facts', async () => {
+  const h = harness({ stat: async id => ({ header: header(id) }) })
+  const first = await h.sessionFacts('cold-owner')
+  const second = await h.sessionFacts('cold-owner')
+  const third = await h.sessionFacts('cold-owner')
+  assert.equal(second, first)
+  assert.equal(third, first)
+  // Authorization asks for the same header dozens of times per second; only the first
+  // lookup may pay the stored-session stat.
+  assert.equal(h.calls.stat, 1)
+})
+
 test('a subagent still observes its stored log for the folded descriptor', async () => {
   const h = harness({
     stat: async id => ({ header: header(id, { origin: 'subagent', parentSession: 'parent' }) }),
