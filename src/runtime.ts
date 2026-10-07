@@ -403,7 +403,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     context(caller){return caller.sessionId!==null&&cachedSessions.has(caller.sessionId)?'Collaboration instruments: use mattpocock_record for current records, mattpocock_history for scoped history, mattpocock_worktree for recorded bindings. Fresh bounded state is sent when changed or its exact baseline is missing from the effective input; old chat messages are not deleted.':''},
     async executeManaged(caller,input:HostJson,exec:ToolRunContext){
       const r=record(input,'managed execution',['nativeTool','arguments','workflowId','localTicketId'])
-      if(r.nativeTool!=='subagent'&&r.nativeTool!=='subagent_fork'&&r.nativeTool!=='send_message')throw new ControlsError('invalid-input','unsupported managed native tool')
+      if(r.nativeTool!=='subagent'&&r.nativeTool!=='subagent_fork'&&r.nativeTool!=='send_message')throw new ControlsError('invalid-input','unsupported managed native tool; accepted nativeTool values: subagent, subagent_fork, send_message')
       const args=parseHostJson(r.arguments),workflowId=r.workflowId===null?null:id(r.workflowId,'workflowId'),localTicketId=r.localTicketId===null?null:id(r.localTicketId,'localTicketId')
       if(workflowId===null&&localTicketId!==null)throw new ControlsError('invalid-input','ticket needs a declared workflow')
       const view=await identity(caller,caller.sessionId!,exec.signal),executionId=id(exec.callId,'execution callId')

@@ -158,7 +158,7 @@ export function parseInstrumentCommand(value: unknown): InstrumentCommand {
       const view = record(raw.value, 'decision view', ['read', 'hidden'])
       return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: { read: boolean(view.read, 'read'), hidden: boolean(view.hidden, 'hidden') } })
     }
-    default: return invalid('unknown instrument action')
+    default: return invalid('unknown instrument action; accepted actions: put-workflow, put-ticket, put-decision, set-decision-view')
   }
 }
 
@@ -178,7 +178,7 @@ export function parseInstrumentHistoryTarget(value: unknown): InstrumentHistoryT
   if(r.kind==='workflow') {record(value,'workflow target',['kind','workflowId']);return {kind:'workflow',workflowId}}
   if(r.kind==='ticket') {record(value,'ticket target',['kind','workflowId','localTicketId']);return {kind:'ticket',workflowId,localTicketId:id(r.localTicketId,'localTicketId')}}
   if(r.kind==='decision') {record(value,'decision target',['kind','workflowId','decisionId']);return {kind:'decision',workflowId,decisionId:id(r.decisionId,'decisionId')}}
-  return invalid('unknown instrument history target kind')
+  return invalid('unknown instrument history target kind; accepted kinds: workflow, ticket, decision')
 }
 function checkpointState(value: unknown, cut: number): InstrumentState {
   const s=record(value,'checkpoint state',['businessRevision','viewerRevisions','workflows','tickets','decisions','decisionViews'])

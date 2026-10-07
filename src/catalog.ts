@@ -50,7 +50,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function assertKeys(record: Record<string, unknown>, required: readonly string[], optional: readonly string[], label: string): void {
   const allowed = new Set([...required, ...optional])
-  for (const key of Object.keys(record)) assert(allowed.has(key), label + ' contains unknown key ' + JSON.stringify(key))
+  for (const key of Object.keys(record)) assert(allowed.has(key), label + ' contains unknown key ' + JSON.stringify(key) + '; accepted keys: ' + [...allowed].sort().join(', '))
   for (const key of required) assert(Object.hasOwn(record, key), label + ' is missing key ' + JSON.stringify(key))
 }
 

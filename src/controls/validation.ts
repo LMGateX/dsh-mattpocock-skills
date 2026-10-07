@@ -17,7 +17,7 @@ export function record(value: unknown, where: string, keys?: readonly string[]):
     || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) invalid(where + ' must be a plain object')
   const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== 'string' || (keys && !keys.includes(key))) invalid(where + ': unknown key ' + String(key))
+    if (typeof key !== 'string' || (keys && !keys.includes(key))) invalid(where + ': unknown key ' + String(key) + (keys === undefined || keys.length === 0 ? '' : '; accepted keys: ' + keys.join(', ')))
     const descriptor = Object.getOwnPropertyDescriptor(value, key)!
     if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value') || descriptor.value === undefined) invalid(where + ': field must be enumerable JSON data: ' + key)
     result[key] = descriptor.value

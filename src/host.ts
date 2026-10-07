@@ -245,14 +245,63 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
   readonly authority: ControlsAuthority; readonly sessionFacts: HostPorts['sessionFacts']; readonly authorizeCaller: HostPorts['authorizeCaller']; readonly operatorPrincipal: string
 } {
   const operatorPrincipal = 'user:' + id(ctx.connection.operator.id, 'operator id')
-  const sessionFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
+  // Authorization, association resolution and native-child confirmation read these facts.
+  // Only subagent classification consumes the folded event stream; every other caller reads
+  // the immutable header. The lightweight persistence port observes one stored session
+  // WITHOUT reading its event log, so owner sessions never pay a cold log decode here; the
+  // full observation stays the fallback and the canonical not-found path, and its result is
+  // shared across concurrent and near-term repeat calls.
+  const FACTS_CACHE_TTL_MS = 5_000
+  const FACTS_CACHE_MAX = 16
+  const FACTS_CACHE_MAX_EVENTS = 4_000
+  interface StoredSessionStat {
+    stat(id: SessionId, options?: { readonly signal?: AbortSignal }): Promise<{ readonly header: SessionHeader } | undefined>
+  }
+  const coldFacts = new Map<string, { readonly at: number; readonly facts: SessionFacts }>()
+  const coldInflight = new Map<string, Promise<SessionFacts>>()
+  const storedSnapshot = async (sessionId: SessionId, signal?: AbortSignal): Promise<{ readonly header: SessionHeader } | undefined> => {
+    // Optional seam: an older composition without this service keeps the observation path.
+    const persistence = typeof ctx.get === 'function' ? ctx.get('sessionPersistence') as StoredSessionStat | undefined : undefined
+    if (persistence === undefined || typeof persistence.stat !== 'function') return undefined
+    return await persistence.stat(sessionId, signal === undefined ? undefined : { signal })
+  }
+  const observeColdFacts = async (sessionId: SessionId, signal?: AbortSignal): Promise<SessionFacts> => {
+    const cached = coldFacts.get(sessionId)
+    if (cached !== undefined && Date.now() - cached.at < FACTS_CACHE_TTL_MS) return cached.facts
+    const inflight = coldInflight.get(sessionId)
+    if (inflight !== undefined) return await inflight
+    const pending = (async (): Promise<SessionFacts> => {
+      const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
+      try { return freeze({ header: observation.header, events: observation.events.slice(observation.inheritedEventCount), live: false }) }
+      finally { observation[Symbol.dispose]() }
+    })()
+    coldInflight.set(sessionId, pending)
+    try {
+      const facts = await pending
+      if (facts.events.length <= FACTS_CACHE_MAX_EVENTS) {
+        const cutoff = Date.now() - FACTS_CACHE_TTL_MS
+        for (const [key, entry] of coldFacts) if (entry.at < cutoff) coldFacts.delete(key)
+        coldFacts.delete(sessionId)
+        coldFacts.set(sessionId, { at: Date.now(), facts })
+        while (coldFacts.size > FACTS_CACHE_MAX) coldFacts.delete(coldFacts.keys().next().value as string)
+      }
+      return facts
+    } finally { coldInflight.delete(sessionId) }
+  }
+  const liveSessionFacts = (live: Agent): SessionFacts => freeze({ header: live.session.header, events: live.session.ownEvents(), live: true })
+  const sessionHeaderFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
     const sessionId = SessionId(id(raw, 'sessionId'))
     signal?.throwIfAborted()
     const live = ctx.agents.get(sessionId)
-    if (live) return { header: live.session.header, events: live.session.ownEvents(), live: true }
-    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
-    try { return { header: observation.header, events: observation.events.slice(observation.inheritedEventCount), live: false } }
-    finally { observation[Symbol.dispose]() }
+    if (live !== undefined) return liveSessionFacts(live)
+    const snapshot = await storedSnapshot(sessionId, signal)
+    if (snapshot !== undefined) return freeze({ header: snapshot.header, events: [], live: false })
+    return await observeColdFacts(sessionId, signal)
+  }
+  const sessionFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
+    const header = await sessionHeaderFacts(raw, signal)
+    if (header.live || header.header.origin !== 'subagent') return header
+    return await observeColdFacts(SessionId(id(raw, 'sessionId')), signal)
   }
   const resolveSession = async (sessionId: string): Promise<TrustedSession | undefined> => {
     const facts = await sessionFacts(sessionId)
@@ -286,7 +335,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
     async authorizeSession(principal, sessionId) {
       authenticate(principal)
       if (principal !== operatorPrincipal && principal !== 'agent:' + sessionId) deny('agent cannot address another session as its own')
-      await sessionFacts(sessionId)
+      await sessionHeaderFacts(sessionId)
     },
     resolveSession,
     async verifyWorkspace(workspaceId) { const row = ctx.workspaceRegistry.get(WorkspaceId(id(workspaceId, 'workspaceId'))); return row !== undefined && await row.status() === 'ok' },
@@ -662,20 +711,20 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         },
       })))
     }
-    tool('mattpocock_controls', 'Read saved workspace controls or explicitly delegated policy saves.', async (raw, caller, exec) => {
+    tool('mattpocock_controls', 'Read saved workspace controls or explicitly delegated policy saves. Request keys: read={action:"read"}; save={action:"save", intent, expectedRevision}. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       if (raw.action === 'read') { record(raw, 'policy read', ['action']); await ports.authority.authorizePolicy(caller.principalId, 'read'); return active.readPolicy(caller, exec.signal) }
       record(raw, 'policy save', ['action', 'intent', 'expectedRevision']); if (raw.action !== 'save') throw new ControlsError('invalid-input', 'read/save action required')
       await ports.authority.authorizePolicy(caller.principalId, 'write')
       const saved = await active.savePolicy(caller, parsePolicyIntent(raw.intent), revision(raw.expectedRevision, 'expectedRevision'), exec.signal)
       options.onPolicyChanged?.(); return saved
     })
-    tool('mattpocock_record', 'Read the actual session instrument or submit authored ticket/decision records.', async (raw, caller, exec) => {
+    tool('mattpocock_record', 'Read the actual session instrument or submit authored ticket/decision records. Request keys: read={action:"read"}; apply={action:"apply", command} with command={operationId, expectedRevision, action:"put-workflow"|"put-ticket"|"put-decision"|"set-decision-view", workflowId, references, value, plus localTicketId for put-ticket and decisionId for put-decision or set-decision-view}. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
       if (raw.action === 'read') { record(raw, 'instrument read', ['action']); return active.readSession(caller, caller.sessionId!, exec.signal) }
       record(raw, 'instrument apply', ['action', 'command']); if (raw.action !== 'apply') throw new ControlsError('invalid-input', 'read/apply action required')
       return active.applyInstrument(caller, caller.sessionId!, parseInstrumentCommand(raw.command), exec.signal)
     })
-    tool('mattpocock_window', 'Register explicit ticket-window reservations, releases and reacquisitions. Release a T slot only after its ticket has reached its declared delivered state, or is blocked with no further implementable work.', async (raw, caller, exec) => {
+    tool('mattpocock_window', 'Request keys: a flat object {operationId, workflowId, localTicketId, action:"reserve"|"release"|"reacquire", generation}, with generation required for release and reacquire and omitted for reserve; the ticket key is localTicketId, there is no nested command object. Extra keys are rejected and the error lists the accepted keys. Register explicit ticket-window reservations, releases and reacquisitions. Release a T slot only after its ticket has reached its declared delivered state, or is blocked with no further implementable work.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.applyTicketWindow(caller, caller.sessionId!, parseTicketWindowCommand(raw), exec.signal)
     })
     if (active.historyAction) tool('mattpocock_history', 'Query this session retained instrument history separately from current context: query with query={kind?,recordId?,limit?,cursor?}; detail with historyIds; set-context with kind,recordId,included; purge with historyIds/range/archivedOnly deletes derived copies; compact validates them. compact-source or purge-source with domain=records|windows|worktrees and an explicit request performs source history cleanup preserving current state; use sourceRevisions from query, not history revision. Paging summaries are not complete detail. Purge affects instrument data, not Git worktrees or native conversation history.', async (raw, caller, exec) => {
@@ -686,7 +735,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         'purge-source': ['action','domain','request'], 'compact-source': ['action','domain','request'],
       }
       const allowed = typeof raw.action === 'string' && Object.hasOwn(keys, raw.action) ? keys[raw.action] : undefined
-      if (!allowed) throw new ControlsError('invalid-input', 'query/detail/set-context/purge/compact action required')
+      if (!allowed) throw new ControlsError('invalid-input', 'action required; accepted actions: query, detail, set-context, purge, compact, purge-source, compact-source')
       record(raw, 'history request', allowed)
       await ports.authorizeCaller(caller, caller.sessionId!); return active.historyAction!(caller, caller.sessionId!, parseHostJson(raw), exec.signal)
     })
@@ -708,10 +757,10 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       record(raw, 'delegation request', ['description', 'prompt', 'provider', 'worktree', 'operationId', 'workflowId', 'ticketIds'])
       await ports.authorizeCaller(caller, caller.sessionId!); return active.delegate!(caller, parseHostJson(raw), exec)
     })
-    if (active.executeManaged) tool('mattpocock_execute', 'Observe native delegation through its existing permission pipeline and record supported execution facts. Never forge execution receipts.', async (raw, caller, exec) => {
+    if (active.executeManaged) tool('mattpocock_execute', 'Observe native delegation through its existing permission pipeline and record supported execution facts. Never forge execution receipts. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.executeManaged!(caller, parseHostJson(raw), exec)
     })
-    if (active.assign) tool('mattpocock_assign', 'Record only authenticated delegation assignments; never self-grant user policy access.', async (raw, caller, exec) => {
+    if (active.assign) tool('mattpocock_assign', 'Record only authenticated delegation assignments; never self-grant user policy access. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.assign!(caller, parseHostJson(raw), exec.signal)
     })
     disposers.push(ctx.on('session/event', (session, event) => {
