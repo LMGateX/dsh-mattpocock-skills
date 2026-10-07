@@ -19,7 +19,7 @@ const client = registration.factory(request => { requests.push(request); if (req
 const clone = value => JSON.parse(JSON.stringify(value))
 const ok = value => ({ ok: true, value })
 const settle = () => new Promise(resolve => setImmediate(resolve))
-const policy = { revision: 4, extensionEnabled: true, defaults: {}, workspaceOverrides: {} }
+const policy = { revision: 4, extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }
 const instance = { instrumentInstanceId: 'i-one', ownerSessionId: 'owner-one', controlWorkspaceId: 'workspace-one' }
 function snapshot(sessionId = 'session-one', overrides = {}) {
   return { sessionId, instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'workspace-one', extensionEnabled: true,
@@ -79,7 +79,7 @@ test('native keyed/list contributions do not hijack single or composer chain sea
 })
 
 test('sparse leaf off and restore inheritance preserve independent feature/display intent', () => {
-  const intent = { extensionEnabled: true, defaults: { display: { header: true }, windows: { enabled: true } }, workspaceOverrides: {} }
+  const intent = { extensionEnabled: true, defaults: { workspace: { enabled: true }, display: { header: true }, windows: { enabled: true } }, workspaceOverrides: {} }
   const off = client.setPolicyLeaf(intent, 'workspace-one', 'display.header', false)
   assert.equal(off.workspaceOverrides['workspace-one'].display.header, false)
   assert.equal(off.defaults.windows.enabled, true)
@@ -275,7 +275,7 @@ test('independent strict declaration emission produces only the client entry tex
 })
 
 test('draft impact reports source changes and unset capacities without invented execution receipts', () => {
-  const draft = { extensionEnabled: true, defaults: { display: { header: true } }, workspaceOverrides: { w: { display: { header: false } } } }
+  const draft = { extensionEnabled: true, defaults: { workspace: { enabled: true }, display: { header: true } }, workspaceOverrides: { w: { display: { header: false } } } }
   const saved = { ...draft, revision: 7, workspaceOverrides: {} }
   const impact = client.policyDraftImpact(saved, draft, 'w', true)
   assert.equal(impact.readRevision, 7)

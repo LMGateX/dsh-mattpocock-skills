@@ -23,7 +23,7 @@ export async function instrumentFixture(options = {}) {
   await controls.ensureSession('admin', 'B')
   await controls.ensureSession('admin', 'child')
   if ((await controls.readPolicy('admin')).revision === 0) await controls.savePolicy('admin', { extensionEnabled: true,
-    defaults: { ticketProgress: { enabled: true }, pendingDecisions: { enabled: true } }, workspaceOverrides: {} }, 0)
+    defaults: { workspace: { enabled: true }, ticketProgress: { enabled: true }, pendingDecisions: { enabled: true } }, workspaceOverrides: {} }, 0)
   const scopes = new Map([['child', { kind: 'assigned', workflowId: 'flow', ticketIds: ['T1'] }]])
   const revoked = new Set()
   const authority = { async resolveAccess(principal, session) {

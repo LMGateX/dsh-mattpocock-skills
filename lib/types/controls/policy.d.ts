@@ -13,6 +13,10 @@ export interface DisplayPatch {
     readonly timeline?: boolean;
 }
 export interface WorkspacePolicyPatch {
+    /** Per-workspace master gate; the safe initial is closed. */
+    readonly workspace?: FeaturePatch;
+    /** Per-workspace Skill distribution; the safe initial is open. */
+    readonly skills?: FeaturePatch;
     readonly binding?: FeaturePatch;
     readonly lifecycle?: FeaturePatch;
     readonly windows?: WindowPatch;
@@ -32,17 +36,21 @@ export declare const FEATURE_NAMES: readonly ["binding", "lifecycle", "windows",
 export declare const DISPLAY_NAMES: readonly ["header", "inputSummary", "rightPanel", "sessionList", "timeline"];
 export type FeatureName = typeof FEATURE_NAMES[number];
 export type PolicySource = 'workspace' | 'global' | 'safe-initial';
-export type PolicyField = 'binding.enabled' | 'lifecycle.enabled' | 'windows.enabled' | 'ticketProgress.enabled' | 'pendingDecisions.enabled' | 'windows.ticketWindowSize' | 'windows.runningSubagentLimit' | 'display.header' | 'display.inputSummary' | 'display.rightPanel' | 'display.sessionList' | 'display.timeline';
+export type PolicyField = 'workspace.enabled' | 'skills.enabled' | 'binding.enabled' | 'lifecycle.enabled' | 'windows.enabled' | 'ticketProgress.enabled' | 'pendingDecisions.enabled' | 'windows.ticketWindowSize' | 'windows.runningSubagentLimit' | 'display.header' | 'display.inputSummary' | 'display.rightPanel' | 'display.sessionList' | 'display.timeline';
 export interface EffectivePolicy {
     readonly configurationRevision: number;
     readonly controlWorkspaceId: string;
     readonly workspaceVerified: boolean;
     readonly extensionEnabled: boolean;
+    /** Per-workspace gate, resolved; the safe initial is closed. */
+    readonly workspaceEnabled: boolean;
+    /** Skill distribution for this workspace, resolved; the safe initial is open. */
+    readonly skillsEnabled: boolean;
     readonly features: Readonly<Record<FeatureName, {
         readonly requested: boolean;
         /** configured is policy intent, NOT a claim of installed/enforced host capability. */
         readonly status: 'disabled' | 'configured' | 'unsupported';
-        readonly reason: 'extension-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null;
+        readonly reason: 'extension-disabled' | 'workspace-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null;
     }>>;
     readonly windows: {
         readonly ticketWindowSize: number | null;

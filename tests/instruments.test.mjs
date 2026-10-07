@@ -286,7 +286,7 @@ test('turning features off retains reads/old explicit dispositions but does not 
 
 test('display off is independent of business recording, and input author/instance/window forgery is rejected', async () => {
   const f = await ready()
-  await f.controls.savePolicy('admin', { extensionEnabled: true, defaults: { ticketProgress: { enabled: true }, pendingDecisions: { enabled: true },
+  await f.controls.savePolicy('admin', { extensionEnabled: true, defaults: { workspace: { enabled: true }, ticketProgress: { enabled: true }, pendingDecisions: { enabled: true },
     display: { header: false, inputSummary: false, rightPanel: false, sessionList: false, timeline: false } }, workspaceOverrides: {} }, 1)
   await f.apply('put-decision', { decisionId: 'D', value: decision() })
   assert.equal((await f.read()).summary.pendingDecisionCount, 1)

@@ -172,7 +172,7 @@ test('plugin readiness and real DOM saves stay pending in the same Host epoch, e
   const { container, root } = await mount(t, client.SettingsPage, f.props)
   const currentText = () => named(container, '当前运行状态').textContent
   const checkManagement = () => {
-    assert.equal(named(container, '全局协作管理总开关').checked, false)
+    assert.equal(named(container, '协作管理总闸（全局）').checked, false)
     assert.equal(f.calls.policy.length, 0)
     assert.equal(f.calls.refresh, 0)
     assert.deepEqual(f.calls.observe, [])
@@ -271,7 +271,7 @@ test('DOM clicks save startup revision seven independently from management revis
   assert.equal(f.calls.refresh, 0)
   assert.match(current.textContent, /当前生效：禁用/)
   assert.match(current.textContent, /待重启/)
-  await click(named(container, '全局协作管理总开关'))
+  await click(named(container, '协作管理总闸（全局）'))
   await click(button(container, '保存并启用协作管理'))
   assert.equal(f.calls.policy.length, 1)
   assert.equal(f.calls.policy[0].revision, 42)
@@ -279,14 +279,14 @@ test('DOM clicks save startup revision seven independently from management revis
   assert.equal(f.calls.startup.length, 1)
   assert.equal(f.calls.refresh, 1)
   assert.match(named(container, '保存前预览').textContent, /已保存并应用配置/)
-  await click(named(container, '全局协作管理总开关'))
+  await click(named(container, '协作管理总闸（全局）'))
   await click(button(container, '保存并关闭协作管理'))
   assert.equal(f.calls.policy[1].revision, 43)
   assert.equal(f.calls.policy[1].intent.extensionEnabled, false)
 })
 
 test('Chinese field controls preserve raw wire names, explicit false and sparse inheritance', async t => {
-  const policy = { revision: 42, extensionEnabled: true, defaults: { binding: { enabled: true } }, workspaceOverrides: { 'work-one': { binding: { enabled: false } } } }
+  const policy = { revision: 42, extensionEnabled: true, defaults: { workspace: { enabled: true }, binding: { enabled: true } }, workspaceOverrides: { 'work-one': { binding: { enabled: false } } } }
   const f = fixture({ readPolicy: async () => ok(copy(policy)) }), { container, window } = await mount(t, client.SettingsPage, f.props)
   const binding = named(container, '工作树绑定')
   assert.equal(binding.value, 'off')
@@ -304,7 +304,7 @@ test('Chinese field controls preserve raw wire names, explicit false and sparse 
   assert.equal(capacity.value, '3')
   await click(button(container, '保存并应用配置'))
   assert.equal(f.calls.policy[0].revision, 42)
-  assert.deepEqual(f.calls.policy[0].intent, { extensionEnabled: true, defaults: { binding: { enabled: true } }, workspaceOverrides: {
+  assert.deepEqual(f.calls.policy[0].intent, { extensionEnabled: true, defaults: { workspace: { enabled: true }, binding: { enabled: true } }, workspaceOverrides: {
     'work-one': { lifecycle: { enabled: false }, windows: { ticketWindowSize: 3 }, display: { inputSummary: true } },
   } })
 })
@@ -401,9 +401,9 @@ test('startup rejected save keeps the DOM draft and marks last confirmation inst
 test('management rejected save retains DOM draft without claiming it is applied', async t => {
   const f = fixture({ savePolicy: async (_intent, revision) => { assert.equal(revision, 42); throw new Error('controlled revision conflict') } })
   const { container } = await mount(t, client.SettingsPage, f.props)
-  await click(named(container, '全局协作管理总开关'))
+  await click(named(container, '协作管理总闸（全局）'))
   await click(button(container, '保存并启用协作管理'))
-  assert.equal(named(container, '全局协作管理总开关').checked, true)
+  assert.equal(named(container, '协作管理总闸（全局）').checked, true)
   const preview = named(container, '保存前预览')
   assert.match(preview.textContent, /保存结果未确认/)
   assert.match(preview.textContent, /有未保存更改/)
@@ -411,7 +411,7 @@ test('management rejected save retains DOM draft without claiming it is applied'
   assert.equal(f.calls.refresh, 0)
   assert.equal(f.calls.startup.length, 0)
   await click(button(container, '放弃未保存更改'))
-  assert.equal(named(container, '全局协作管理总开关').checked, false)
+  assert.equal(named(container, '协作管理总闸（全局）').checked, false)
   assert.equal(button(container, '保存并应用配置').disabled, true)
 })
 
@@ -467,7 +467,7 @@ test('DOM session selection cancels old reads and does not upgrade policy draft 
   assert.match(inspection.textContent, /所选会话 B/)
   assert.doesNotMatch(inspection.textContent, /所选会话 A/)
   assert.deepEqual(reads.map(row => row.id), ['A', 'B'])
-  await click(named(container, '全局协作管理总开关'))
+  await click(named(container, '协作管理总闸（全局）'))
   await click(button(container, '保存并启用协作管理'))
   assert.equal(f.calls.policy[0].revision, 42, 'inspection revision ninety-nine never upgrades opening policy CAS')
   assert.equal(f.calls.startup.length, 0)
@@ -535,4 +535,72 @@ test('settings DOM separates Chinese configuration groups and collapsed technica
   assert(raw.length > 0, 'technical originals remain accessible')
   for (const node of raw) { const details = node.closest('details'); assert(details, 'technical data must be in details'); assert.equal(details.open, false) }
   assert.deepEqual(f.calls.observe, [])
+})
+
+test('real DOM exposes the workspace gate and skill switch as explicit per-workspace leaves', async t => {
+  const f = fixture()
+  const { container } = await mount(t, client.SettingsPage, f.props)
+  const gate = named(container, '本工作区总闸')
+  const skills = named(container, '本工作区技能分发')
+  assert.equal(gate.value, 'inherit')
+  assert.equal(skills.value, 'inherit')
+  assert.match(normalText(container), /未启用（默认关闭）/)
+  await select(named(container, '配置编辑范围'), 'work-one')
+  await select(gate, 'on')
+  await select(skills, 'off')
+  await click(button(container, '保存并应用配置'))
+  const saved = f.calls.policy.at(-1)
+  assert.deepEqual(saved.intent.workspaceOverrides['work-one'], { workspace: { enabled: true }, skills: { enabled: false } })
+  assert.deepEqual(saved.intent.defaults, {})
+})
+
+test('input summary reports the closed global gate instead of live-looking numbers', async t => {
+  const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
+  const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: false, workspaceEnabled: true,
+      features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
+      display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
+    records: { instance, summary: { countingScope: 'instance', totalTickets: 7, statusCounts: [] } },
+    windows: null, resources: [], capabilities: [], health: [] }
+  const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
+  t.after(() => observer.dispose())
+  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const summary = named(container, '协作进度摘要')
+  assert.match(summary.textContent, /协作管理未生效：全局总闸已关闭/)
+  assert.doesNotMatch(summary.textContent, /本工作区总闸已关闭/)
+})
+
+test('input summary reports the closed workspace gate distinctly from the global gate', async t => {
+  const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
+  const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: false,
+      features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
+      display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
+    records: { instance, summary: { countingScope: 'instance', totalTickets: 7, statusCounts: [] } },
+    windows: null, resources: [], capabilities: [], health: [] }
+  const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
+  t.after(() => observer.dispose())
+  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const summary = named(container, '协作进度摘要')
+  assert.match(summary.textContent, /协作管理未生效：本工作区总闸已关闭/)
+  assert.doesNotMatch(summary.textContent, /全局总闸已关闭/)
+})
+
+test('input summary stays silent while both gates are open', async t => {
+  const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
+  const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true,
+      features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
+      display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
+    records: { instance, summary: { countingScope: 'instance', totalTickets: 7, statusCounts: [] } },
+    windows: null, resources: [], capabilities: [], health: [] }
+  const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
+  t.after(() => observer.dispose())
+  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const summary = named(container, '协作进度摘要')
+  assert.match(summary.textContent, /票 7/)
+  assert.doesNotMatch(summary.textContent, /协作管理未生效/)
 })

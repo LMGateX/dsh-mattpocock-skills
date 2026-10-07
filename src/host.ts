@@ -205,12 +205,17 @@ export interface HostPorts {
 }
 export interface HostOptions {
   createRuntime(ports: HostPorts): Promise<RuntimeFacade>
+  /** Notified after a saved policy change so derived caches can be refreshed. */
+  readonly onPolicyChanged?: () => void
   /** Explicit trusted launch configuration; not a Remote/GUI/model path. */
   readonly sdkRoot?: string
   /** Program-only test/embedding seam; production uses the actual process epoch. */
   readonly startup?: { readonly bootEpoch?: string }
 }
-export interface HostMount { readonly service: MattPocockControlsService; readonly ports: HostPorts; dispose(): Promise<void> }
+export interface HostMount {
+  /** Workspace-scoped Skill delivery gate; unavailable policy keeps skills on. */
+  readonly skillsEnabledForCwd: (cwd: string | undefined) => Promise<boolean>
+  readonly service: MattPocockControlsService; readonly ports: HostPorts; dispose(): Promise<void> }
 
 function deny(message: string): never { throw new ControlsError('access-denied', message) }
 export function operatorCaller(ctx: Context): HostCaller {
@@ -300,7 +305,7 @@ export class MattPocockControlsService extends TypertRemoteService {
   constructor(ctx: Context, private readonly runtime: RuntimeFacade, private readonly ports: HostPorts,
     private readonly grants: VersionedStorage<PolicyGrants>,
     private readonly startup: StartupSupport,
-    private readonly lifecycle: { readonly signal: AbortSignal; track<T>(work: () => Promise<T>): Promise<T> }) { super(ctx, REMOTE_NAMESPACE) }
+    private readonly lifecycle: { readonly signal: AbortSignal; track<T>(work: () => Promise<T>): Promise<T>; readonly onPolicyChanged?: () => void }) { super(ctx, REMOTE_NAMESPACE) }
   private run<T>(operation: (caller: HostCaller, signal: AbortSignal) => Promise<T>, suppliedSignal?: AbortSignal): Promise<T> {
     const caller = operatorCaller(this.ctx)
     this.lifecycle.signal.throwIfAborted()
@@ -315,7 +320,11 @@ export class MattPocockControlsService extends TypertRemoteService {
   }
   readPolicy(): Promise<PolicySnapshot> { return this.run(async (caller, signal) => parsePolicySnapshot(await this.runtime.readPolicy(caller, signal))) }
   savePolicy(intent: unknown, expectedRevision: unknown): Promise<PolicySnapshot> {
-    return this.run(async (caller, signal) => parsePolicySnapshot(await this.runtime.savePolicy(caller, parsePolicyIntent(intent), revision(expectedRevision, 'expectedRevision'), signal)))
+    return this.run(async (caller, signal) => {
+      const saved = parsePolicySnapshot(await this.runtime.savePolicy(caller, parsePolicyIntent(intent), revision(expectedRevision, 'expectedRevision'), signal))
+      this.lifecycle.onPolicyChanged?.()
+      return saved
+    })
   }
   listWorkspaces(): Promise<readonly WorkspaceRow[]> {
     return this.run(async (_, signal) => {
@@ -640,7 +649,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     }
     runtime = await options.createRuntime(ports)
     const active = runtime
-    const service = new MattPocockControlsService(ctx, active, ports, grants, startup, { signal: lifetime.signal, track })
+    const service = new MattPocockControlsService(ctx, active, ports, grants, startup, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }) })
     disposers.push(ctx.typert.register(hostRemoteContribution()))
     // Model tools always address the actual caller's session, never a supplied principal.
     const tool = (name: string, description: string, action: (raw: Record<string, unknown>, caller: HostCaller, exec: ToolRunContext) => Promise<unknown>) => {
@@ -656,7 +665,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     tool('mattpocock_controls', 'Read saved workspace controls or explicitly delegated policy saves.', async (raw, caller, exec) => {
       if (raw.action === 'read') { record(raw, 'policy read', ['action']); await ports.authority.authorizePolicy(caller.principalId, 'read'); return active.readPolicy(caller, exec.signal) }
       record(raw, 'policy save', ['action', 'intent', 'expectedRevision']); if (raw.action !== 'save') throw new ControlsError('invalid-input', 'read/save action required')
-      await ports.authority.authorizePolicy(caller.principalId, 'write'); return active.savePolicy(caller, parsePolicyIntent(raw.intent), revision(raw.expectedRevision, 'expectedRevision'), exec.signal)
+      await ports.authority.authorizePolicy(caller.principalId, 'write')
+      const saved = await active.savePolicy(caller, parsePolicyIntent(raw.intent), revision(raw.expectedRevision, 'expectedRevision'), exec.signal)
+      options.onPolicyChanged?.(); return saved
     })
     tool('mattpocock_record', 'Read the actual session instrument or submit authored ticket/decision records.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
@@ -664,7 +675,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       record(raw, 'instrument apply', ['action', 'command']); if (raw.action !== 'apply') throw new ControlsError('invalid-input', 'read/apply action required')
       return active.applyInstrument(caller, caller.sessionId!, parseInstrumentCommand(raw.command), exec.signal)
     })
-    tool('mattpocock_window', 'Register explicit ticket-window reservations, releases and reacquisitions.', async (raw, caller, exec) => {
+    tool('mattpocock_window', 'Register explicit ticket-window reservations, releases and reacquisitions. Release a T slot only after its ticket has reached its declared delivered state, or is blocked with no further implementable work.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.applyTicketWindow(caller, caller.sessionId!, parseTicketWindowCommand(raw), exec.signal)
     })
     if (active.historyAction) tool('mattpocock_history', 'Query this session retained instrument history separately from current context: query with query={kind?,recordId?,limit?,cursor?}; detail with historyIds; set-context with kind,recordId,included; purge with historyIds/range/archivedOnly deletes derived copies; compact validates them. compact-source or purge-source with domain=records|windows|worktrees and an explicit request performs source history cleanup preserving current state; use sourceRevisions from query, not history revision. Paging summaries are not complete detail. Purge affects instrument data, not Git worktrees or native conversation history.', async (raw, caller, exec) => {
@@ -697,7 +708,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       record(raw, 'delegation request', ['description', 'prompt', 'provider', 'worktree', 'operationId', 'workflowId', 'ticketIds'])
       await ports.authorizeCaller(caller, caller.sessionId!); return active.delegate!(caller, parseHostJson(raw), exec)
     })
-    if (active.executeManaged) tool('mattpocock_execute', 'Optionally observe native delegation through its existing permission pipeline. T/S references and incomplete observations do not veto valid dispatch; never forge execution receipts.', async (raw, caller, exec) => {
+    if (active.executeManaged) tool('mattpocock_execute', 'Observe native delegation through its existing permission pipeline and record supported execution facts. Never forge execution receipts.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.executeManaged!(caller, parseHostJson(raw), exec)
     })
     if (active.assign) tool('mattpocock_assign', 'Record only authenticated delegation assignments; never self-grant user policy access.', async (raw, caller, exec) => {
@@ -744,6 +755,15 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     disposers.push(ctx.on('subagent/end', info => { const agent = info.local ? ctx.agents.get(info.id) : undefined; observe({ kind: 'subagent-end', sessionId: info.id, runId: info.runId, provider: info.provider, local: info.local, stopReason: info.stopReason, ...(agent ? { actualAgent: agent } : {}) }) }))
     ctx.effect(() => dispose)
     resolveNotificationObserverReady()
-    return { service, ports, dispose }
+    return { service, ports, dispose, skillsEnabledForCwd: async (cwd?: string) => {
+    try {
+      if (typeof cwd !== 'string' || cwd === '') return true
+      const workspace = await ctx.workspaceRegistry.resolveByPath(cwd)
+      if (!workspace) return true
+      const { resolvePolicy } = await import('./controls/policy.js')
+      const policy = await service.readPolicy()
+      return resolvePolicy(policy, workspace.id, true).skillsEnabled
+    } catch { return true }
+  } }
   } catch (error) { await dispose(); throw error }
 }

@@ -86,13 +86,19 @@ test('current records and minimal protocol append independently without touching
   assert.equal(messages[1].source.kind, 'host-plugin')
   assert.match(result.text, /author reports, not program execution/)
   assert.match(result.text, /Skills, user agreements and task documents/)
-  assert.match(result.text, /no universal approval gate/)
+  assert.match(result.text, /Register pending decisions when you judge them necessary/)
   assert.match(result.text, /mattpocock_record/); assert.match(result.text, /mattpocock_execute/); assert.match(result.text, /mattpocock_window/)
-  assert.match(result.text, /explicit T reserve\/release\/reacquire/); assert.match(result.text, /T\/S are advisory reference limits/)
+  assert.match(result.text, /explicit T reserve\/release\/reacquire/); assert.match(result.text, /T and S are this session's configured limits/)
   assert.match(result.text, /Ticketless work has no T requirement/)
   assert.match(result.text, /Partially complete/); assert.match(result.text, /child-author/); assert.match(result.text, /old-obligation/)
   assert.match(result.text, /native-admission/); assert.match(result.text, /unsupported/)
   assert.doesNotMatch(result.text, /candidate|development version|unvalidated|not model-validated|未验证|开发版本/i)
+  assert.doesNotMatch(result.text, /advisory|admission gate|does not prohibit|approval gate|does not require approval|no forced cancellation|without requiring all work/i)
+  assert.doesNotMatch(result.text, /"capability":/)
+  assert.match(result.text, /Ticket discipline: T slots are held and worked in parallel up to the configured T limit/)
+  assert.doesNotMatch(result.text, /work one held ticket to convergence before admitting another|one at a time/i)
+  assert.match(result.text, /should not be released or reacquired merely to make room for a different ticket/)
+  assert.doesNotMatch(result.text, /never split one ticket|shall not be released/i)
   assert.equal(result.snapshot.windows.S.used, 1)
   assert.equal(f.feed.cachedText(identity), result.text)
 })
@@ -294,4 +300,22 @@ test('source semantic check uses repository strict compiler options without emit
   const program = ts.createProgram([fileURLToPath(sourceURL)], parsed.options)
   const diagnostics = ts.getPreEmitDiagnostics(program).filter(d => !d.file || d.file.fileName === fileURLToPath(sourceURL))
   assert.deepEqual(diagnostics.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')), [])
+})
+
+test('both gates report their own off state in the injected protocol', async () => {
+  const workspaceClosed = fixture()
+  workspaceClosed.current = { ...workspaceClosed.current, policy: { ...workspaceClosed.current.policy, workspaceEnabled: false } }
+  const workspaceText = (await workspaceClosed.feed.readForConsumption(identity)).text
+  assert.match(workspaceText, /Management feature is OFF for this workspace/)
+  assert.doesNotMatch(workspaceText, /Management feature is OFF: existing records/)
+
+  const globalClosed = fixture()
+  globalClosed.current = { ...globalClosed.current, policy: { ...globalClosed.current.policy, extensionEnabled: false, workspaceEnabled: true } }
+  const globalText = (await globalClosed.feed.readForConsumption(identity)).text
+  assert.match(globalText, /Management feature is OFF: existing records/)
+  assert.doesNotMatch(globalText, /OFF for this workspace/)
+
+  const gateUnknown = fixture()
+  const unknownText = (await gateUnknown.feed.readForConsumption(identity)).text
+  assert.doesNotMatch(unknownText, /Management feature is OFF/)
 })

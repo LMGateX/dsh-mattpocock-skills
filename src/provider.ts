@@ -18,6 +18,8 @@ export type ProviderDiagnostic = (message: string) => void
 export type SkillFileReader = (handle: FileHandle, signal: AbortSignal | undefined) => Promise<Buffer>
 
 export interface ProviderOptions {
+  /** Workspace-scoped distribution gate; absent keeps delivery on. */
+  readonly workspaceAllowed?: (cwd: string | undefined) => Promise<boolean>
   readonly packageRoot?: string
   readonly catalog?: SkillCatalog
   readonly lifecycleSignal?: AbortSignal
@@ -200,6 +202,8 @@ export function createMattPocockSkillProvider(channel: Channel, options: Provide
     async list(lookup: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
       const signal = lookupSignal(options.lifecycleSignal, lookup.signal)
       throwIfAborted(signal)
+      // Workspace-scoped distribution: an unavailable policy store keeps delivery on.
+      if (options.workspaceAllowed && !await options.workspaceAllowed(lookup.cwd)) return []
       return candidates
     },
     async get(candidate: SkillCandidate, lookup: SkillLookupOptions): Promise<SkillDefinition | undefined> {

@@ -67,7 +67,7 @@ async function fixture(t) {
   })
   return { root, temporary, events, authority, open, async close() { await facility?.closeAll(); await backend?.close() } }
 }
-const intent = { extensionEnabled: true, defaults: { windows: { enabled: true, ticketWindowSize: 3, runningSubagentLimit: 2 } },
+const intent = { extensionEnabled: true, defaults: { workspace: { enabled: true }, windows: { enabled: true, ticketWindowSize: 3, runningSubagentLimit: 2 } },
   workspaceOverrides: { W: { display: { header: false } } } }
 
 test('actual DSH domain/JSON storage restores stable owners, nested children and policy after reopen', options, async t => {

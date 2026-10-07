@@ -56,7 +56,7 @@ test('development pack has exact closed inventory and a dependency-free controls
       async authorizePolicy() {}, async authorizeSession() {},
       async resolveSession() { return { kind: 'owner', controlWorkspaceId: 'W' } }, async verifyWorkspace() { return true },
     })
-    await core.savePolicy('user', { extensionEnabled: true, defaults: { ticketProgress: { enabled: true }, pendingDecisions: { enabled: true } }, workspaceOverrides: {} }, 0)
+    await core.savePolicy('user', { extensionEnabled: true, defaults: { workspace: { enabled: true }, ticketProgress: { enabled: true }, pendingDecisions: { enabled: true } }, workspaceOverrides: {} }, 0)
     await core.ensureSession('user', 'S')
     const authority = { async resolveAccess() {
       return { author: { kind: 'user', principalId: 'user', sessionId: null }, scope: { kind: 'coordinator' } }

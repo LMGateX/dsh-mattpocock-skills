@@ -5,7 +5,7 @@ import { WorkspaceControls, MemoryControlsStorage, ControlsError, INITIAL_POLICY
 
 const denied = new Error('existing host access denied')
 const code = value => error => error instanceof ControlsError && error.code === value
-const enabled = overrides => ({ extensionEnabled: true, defaults: {
+const enabled = overrides => ({ extensionEnabled: true, defaults: { workspace: { enabled: true },
   binding: { enabled: true }, windows: { enabled: true, ticketWindowSize: 3, runningSubagentLimit: 2 },
 }, workspaceOverrides: overrides ?? {} })
 
@@ -58,7 +58,7 @@ test('unknown workspace cannot activate controls and missing capacities are not 
   const policy = resolvePolicy({ ...enabled(), revision: 1 }, 'unregistered', false)
   assert.equal(policy.features.binding.status, 'unsupported')
   assert.equal(policy.features.binding.reason, 'workspace-unverified')
-  const unset = resolvePolicy({ revision: 1, extensionEnabled: true, defaults: { windows: { enabled: true } }, workspaceOverrides: {} }, 'W', true)
+  const unset = resolvePolicy({ revision: 1, extensionEnabled: true, defaults: { workspace: { enabled: true }, windows: { enabled: true } }, workspaceOverrides: {} }, 'W', true)
   assert.equal(unset.features.windows.reason, 'window-capacity-unset')
   assert.equal(unset.windows.ticketWindowSize, null)
 })

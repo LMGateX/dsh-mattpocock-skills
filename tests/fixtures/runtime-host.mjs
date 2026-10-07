@@ -70,7 +70,7 @@ export function actualAgent(id, { parent, managed = false, cwd = '/fixture' } = 
   } }
 }
 export const policy = (windows = { enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 }, more = {}) => ({
-  extensionEnabled: true, defaults: {
+  extensionEnabled: true, defaults: { workspace: { enabled: true },
     ticketProgress: { enabled: true }, pendingDecisions: { enabled: true }, windows, ...more,
   }, workspaceOverrides: {},
 })

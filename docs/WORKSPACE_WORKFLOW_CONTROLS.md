@@ -39,11 +39,21 @@
 - 规格要求各显示方式有独立开关：顶部紧凑入口、输入区摘要、右侧详情、session 列表提醒与插件附加对话呈现；沿用继承/覆盖，关闭显示不停止仪器记账或 agent 自动消费。默认组合与未支持位置限制见 [显示配置](<SESSION_INSTRUMENT_PLACEMENT.md>)。
 
 扩展总开关是新受管任务的硬门。其开启后，各功能按“工作区显式字段 → 全局默认字段 → 安全初值”逐字段解析；恢复继承是删除该覆盖，不是另写一个相同值。
+
+两级总闸（当前实现）：
+
+- `extensionEnabled` 是全局唯一总闸（「协作管理总闸（全局）」），对所有工作区生效，不受「配置编辑范围」影响。
+- 每个工作区另有独立总闸 `workspace.enabled`（「本工作区总闸」），安全初值**关闭**，同样支持继承/显式开/显式关。
+- 功能生效条件是 `extensionEnabled && workspaceEnabled && feature.enabled`；总闸未开时原因分别报 `extension-disabled`（全局总闸已关闭）与 `workspace-disabled`（本工作区总闸已关闭）。
+- 技能分发是独立叶子 `skills.enabled`（「本工作区技能分发」），安全初值**开启**，按会话 cwd 解析的工作区判定，不经过协作总闸；策略不可读时保持开启（fail-open）。保存策略后宿主使技能目录缓存失效，开关变更无需重启。
+- 输入区摘要在任一级总闸未开时显示「协作管理未生效：全局总闸已关闭 / 本工作区总闸已关闭」，不把已保存数字伪装成实时事实。
 初始安装默认不启用自动管理；具体默认容量未定。下面**只是配置语义示例，不是当前可用的 cordis 配置**：
 
 ~~~yaml
-extensionEnabled: true    # 示例假定操作者已显式开启
+extensionEnabled: true    # 全局总闸；示例假定操作者已显式开启
 workspaceDefaults:
+  workspace: { enabled: false }   # 本工作区总闸的安全初值：关闭
+  skills: { enabled: true }       # 技能分发安全初值：开启
   binding: { enabled: false }
   lifecycle: { enabled: false }
   windows: { enabled: false, ticketWindowSize: 2, runningSubagentLimit: 2 }

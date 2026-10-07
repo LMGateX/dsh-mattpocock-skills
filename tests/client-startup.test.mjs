@@ -310,7 +310,7 @@ test('settings mount startup controls while Workspace Policy is unavailable and 
   for (const unavailable of [true, false]) {
     const page = renderer(), startup = renderer(); t.after(() => { startup.unmount(); page.unmount() })
     let startupSave
-    const remote = { readPolicy: async () => { if (unavailable) throw new Error('Workspace Policy unavailable'); return ok({ revision: 42, extensionEnabled: true, defaults: {}, workspaceOverrides: {} }) },
+    const remote = { readPolicy: async () => { if (unavailable) throw new Error('Workspace Policy unavailable'); return ok({ revision: 42, extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }) },
       listWorkspaces: async () => ok([]), startupStatus: async () => ok(status({ desired: { startupCwdEnabled: false }, state: 'disabled', restartNeeded: false })),
       saveStartupSettings: async (desired, revision, signal) => { startupSave = { desired, revision, signal }; return ok(status({ desired, revision: 8 })) },
       savePolicy: () => { throw new Error('startup cannot save Workspace Policy') } }

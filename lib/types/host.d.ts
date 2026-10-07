@@ -170,6 +170,8 @@ export interface HostPorts {
 }
 export interface HostOptions {
     createRuntime(ports: HostPorts): Promise<RuntimeFacade>;
+    /** Notified after a saved policy change so derived caches can be refreshed. */
+    readonly onPolicyChanged?: () => void;
     /** Explicit trusted launch configuration; not a Remote/GUI/model path. */
     readonly sdkRoot?: string;
     /** Program-only test/embedding seam; production uses the actual process epoch. */
@@ -178,6 +180,8 @@ export interface HostOptions {
     };
 }
 export interface HostMount {
+    /** Workspace-scoped Skill delivery gate; unavailable policy keeps skills on. */
+    readonly skillsEnabledForCwd: (cwd: string | undefined) => Promise<boolean>;
     readonly service: MattPocockControlsService;
     readonly ports: HostPorts;
     dispose(): Promise<void>;
@@ -202,6 +206,7 @@ export declare class MattPocockControlsService extends TypertRemoteService {
     constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, startup: StartupSupport, lifecycle: {
         readonly signal: AbortSignal;
         track<T>(work: () => Promise<T>): Promise<T>;
+        readonly onPolicyChanged?: () => void;
     });
     private run;
     startupStatus(suppliedSignal?: AbortSignal): Promise<StartupStatus>;

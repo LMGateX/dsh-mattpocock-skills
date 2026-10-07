@@ -109,7 +109,7 @@ test('startup settings use independent CAS and reject wire-supplied identity or 
   const f = await assembly(t)
   const initial = await f.invoke('startupStatus')
   const policy = await f.invoke('readPolicy')
-  const savedPolicy = await f.invoke('savePolicy', { intent: { extensionEnabled: true, defaults: {}, workspaceOverrides: {} }, expectedRevision: policy.revision })
+  const savedPolicy = await f.invoke('savePolicy', { intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }, expectedRevision: policy.revision })
   assert.equal(savedPolicy.revision, 1)
   assert.equal((await f.invoke('startupStatus')).revision, initial.revision)
   const saved = await f.invoke('saveStartupSettings', { desired: { startupCwdEnabled: true }, expectedRevision: initial.revision })

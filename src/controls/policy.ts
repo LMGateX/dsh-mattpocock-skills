@@ -13,6 +13,10 @@ export interface DisplayPatch {
   readonly timeline?: boolean
 }
 export interface WorkspacePolicyPatch {
+  /** Per-workspace master gate; the safe initial is closed. */
+  readonly workspace?: FeaturePatch
+  /** Per-workspace Skill distribution; the safe initial is open. */
+  readonly skills?: FeaturePatch
   readonly binding?: FeaturePatch
   readonly lifecycle?: FeaturePatch
   readonly windows?: WindowPatch
@@ -32,6 +36,7 @@ export const DISPLAY_NAMES = ['header', 'inputSummary', 'rightPanel', 'sessionLi
 export type FeatureName = typeof FEATURE_NAMES[number]
 export type PolicySource = 'workspace' | 'global' | 'safe-initial'
 export type PolicyField =
+  | 'workspace.enabled' | 'skills.enabled'
   | 'binding.enabled' | 'lifecycle.enabled' | 'windows.enabled'
   | 'ticketProgress.enabled' | 'pendingDecisions.enabled'
   | 'windows.ticketWindowSize' | 'windows.runningSubagentLimit'
@@ -42,11 +47,15 @@ export interface EffectivePolicy {
   readonly controlWorkspaceId: string
   readonly workspaceVerified: boolean
   readonly extensionEnabled: boolean
+  /** Per-workspace gate, resolved; the safe initial is closed. */
+  readonly workspaceEnabled: boolean
+  /** Skill distribution for this workspace, resolved; the safe initial is open. */
+  readonly skillsEnabled: boolean
   readonly features: Readonly<Record<FeatureName, {
     readonly requested: boolean
     /** configured is policy intent, NOT a claim of installed/enforced host capability. */
     readonly status: 'disabled' | 'configured' | 'unsupported'
-    readonly reason: 'extension-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null
+    readonly reason: 'extension-disabled' | 'workspace-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null
   }>>
   readonly windows: { readonly ticketWindowSize: number | null; readonly runningSubagentLimit: number | null }
   readonly display: Required<DisplayPatch>
@@ -60,7 +69,7 @@ export const INITIAL_POLICY: PolicySnapshot = freeze({
 const DISPLAY_INITIAL = { header: true, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } as const
 
 function parsePatch(value: unknown, where: string): WorkspacePolicyPatch {
-  const raw = record(value, where, [...FEATURE_NAMES, 'display'])
+  const raw = record(value, where, [...FEATURE_NAMES, 'workspace', 'skills', 'display'])
   const result: Record<string, unknown> = {}
   for (const feature of FEATURE_NAMES) {
     if (!Object.hasOwn(raw, feature)) continue
@@ -73,6 +82,11 @@ function parsePatch(value: unknown, where: string): WorkspacePolicyPatch {
         : capacity(group[key], where + '.' + feature + '.' + key)
     }
     if (Object.keys(parsed).length > 0) result[feature] = parsed
+  }
+  for (const gate of ['workspace', 'skills'] as const) {
+    if (!Object.hasOwn(raw, gate)) continue
+    const group = record(raw[gate], where + '.' + gate, ['enabled'])
+    if (Object.hasOwn(group, 'enabled')) result[gate] = { enabled: boolean(group.enabled, where + '.' + gate + '.enabled') }
   }
   if (Object.hasOwn(raw, 'display')) {
     const group = record(raw.display, where + '.display', DISPLAY_NAMES)
@@ -123,10 +137,12 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
     ticketWindowSize: choose('windows', 'ticketWindowSize', null) as number | null,
     runningSubagentLimit: choose('windows', 'runningSubagentLimit', null) as number | null,
   }
+  const workspaceEnabled = choose('workspace', 'enabled', false) as boolean
+  const skillsEnabled = choose('skills', 'enabled', true) as boolean
   const features = {} as Record<FeatureName, EffectivePolicy['features'][FeatureName]>
   for (const feature of FEATURE_NAMES) {
     const requested = choose(feature, 'enabled', false) as boolean
-    const reason = !parsed.extensionEnabled ? 'extension-disabled' : !requested ? 'feature-disabled'
+    const reason = !parsed.extensionEnabled ? 'extension-disabled' : !workspaceEnabled ? 'workspace-disabled' : !requested ? 'feature-disabled'
       : !workspaceVerified ? 'workspace-unverified'
       : feature === 'windows' && (windows.ticketWindowSize === null || windows.runningSubagentLimit === null) ? 'window-capacity-unset' : null
     features[feature] = { requested, status: reason === null ? 'configured'
@@ -134,5 +150,5 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
   }
   const display = Object.fromEntries(DISPLAY_NAMES.map(key => [key, choose('display', key, DISPLAY_INITIAL[key])])) as Required<DisplayPatch>
   return freeze({ configurationRevision: parsed.revision, controlWorkspaceId: workspaceId, workspaceVerified,
-    extensionEnabled: parsed.extensionEnabled, features, windows, display, sources })
+    extensionEnabled: parsed.extensionEnabled, workspaceEnabled, skillsEnabled, features, windows, display, sources })
 }

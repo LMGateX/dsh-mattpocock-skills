@@ -46,7 +46,7 @@ async function fixture({ storage = new MemoryWindowStorage(), runtimeId = 'clean
     async resolveSession(session) { return session === 'child' ? { kind: 'managed-child', parentSessionId: 'root' } : { kind: 'owner', controlWorkspaceId: 'workspace' } },
     async verifyWorkspace() { return true },
   }, () => instance.instrumentInstanceId)
-  await controls.savePolicy('owner', { extensionEnabled: true, defaults: { windows: { enabled: true, ticketWindowSize: 1, runningSubagentLimit: 1 } }, workspaceOverrides: {} }, 0)
+  await controls.savePolicy('owner', { extensionEnabled: true, defaults: { workspace: { enabled: true }, windows: { enabled: true, ticketWindowSize: 1, runningSubagentLimit: 1 } }, workspaceOverrides: {} }, 0)
   await controls.ensureSession('owner', 'child')
   const authority = { async resolveAccess(p, session, _instance, access) {
     if (beforeResolveAccess) await beforeResolveAccess(p, session, access)

@@ -241,11 +241,11 @@ test('oversized current categories keep pending totals, unknown health, locators
   assert.equal(f.feed.cachedText(identity), null)
 })
 
-test('advisory windows do not require managed-only execution, capacity approval, or lifecycle gates', async () => {
+test('injected text states configured limits as facts without enforcement disclaimers', async () => {
   const { feed } = fixture()
   const { text } = await feed.readForConsumption(identity)
-  assert.match(text, /T\/S are advisory reference limits/)
-  assert.match(text, /Exceeding them or unknown usage does not prohibit dispatch or require approval/)
+  assert.match(text, /T and S are this session's configured limits/)
+  assert.doesNotMatch(text, /advisory|admission gate|does not prohibit|approval gate|does not require approval|no forced cancellation|without requiring all work/i)
   assert.doesNotMatch(text, /Retire only|actualCanRetire|close.*resume|must use managed|only.*managed/i)
   assert.match(text, /worktree binding|worktree relationships/i)
 })

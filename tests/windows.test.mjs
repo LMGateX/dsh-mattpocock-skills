@@ -47,7 +47,7 @@ async function fixture({ T = 3, S = 2, capability = 'cooperative', runtimeId = '
   } }
   let policyRevision = 0
   async function configure(patch = {}) {
-    const saved = await controls.savePolicy('owner', { extensionEnabled: true, defaults: {
+    const saved = await controls.savePolicy('owner', { extensionEnabled: true, defaults: { workspace: { enabled: true },
       windows: { enabled: !disabled, ...(unset ? {} : { ticketWindowSize: T, runningSubagentLimit: S }), ...patch.windows },
       ...(patch.display ? { display: patch.display } : {}),
     }, workspaceOverrides: {} }, policyRevision)
@@ -540,7 +540,7 @@ test('pre-workflow research reserves only S; null-scoped descendants inherit no 
 test('null assignment reads actual business module empty and cannot write real workflow records', async () => {
   const f = await fixture({ childWorkflowId: null })
   const instruments = new SessionInstruments(f.controls, new MemoryInstrumentStorage(), f.authority)
-  await f.controls.savePolicy('owner', { extensionEnabled: true, defaults: { windows: { enabled: true, ticketWindowSize: 3, runningSubagentLimit: 2 }, ticketProgress: { enabled: true }, pendingDecisions: { enabled: true } }, workspaceOverrides: {} }, 1)
+  await f.controls.savePolicy('owner', { extensionEnabled: true, defaults: { workspace: { enabled: true }, windows: { enabled: true, ticketWindowSize: 3, runningSubagentLimit: 2 }, ticketProgress: { enabled: true }, pendingDecisions: { enabled: true } }, workspaceOverrides: {} }, 1)
   await instruments.apply('owner', 'root', { operationId: f.op(), expectedRevision: 0, workflowId: 'real-flow', action: 'put-workflow', value: { title: 'Real task', axes: [] } })
   await instruments.apply('owner', 'root', { operationId: f.op(), expectedRevision: 1, workflowId: 'real-flow', action: 'put-ticket', localTicketId: 'A', value: { title: 'Real ticket', statuses: {} } })
   const childBusiness = await instruments.read('owner', 'child')
