@@ -1,0 +1,86 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.17",
+  "private": true
+ },
+ "source": {
+  "commit": "2e660f1f3fdc98eb99ac6abc1262b2de28d3a65a",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.17.tgz",
+  "bytes": 377268,
+  "sha256": "2fa5e9393a67cb39155a961b1fbb6f8cb7a4f0b9cec71a4cc6a5f5206c4086b8",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 815,
+   "passed": 815,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 789,
+   "passed": 501,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 288
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 789 cases with 288 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "isolatedDshVerification": {
+   "result": "passed",
+   "dsh": "0.2.1-alpha.1",
+   "profile": "headless",
+   "installedFromPrivateSnapshot": true,
+   "channels": {
+    "stable": 27,
+    "beta": 27
+   },
+   "checkoutTarballReportsByteIdentical": true,
+   "modelInvoked": false,
+   "webStarted": false,
+   "customClient": false
+  },
+  "buildModules": 66,
+  "fixedFiles": 85,
+  "vendorFiles": 85,
+  "packedFiles": 170,
+  "clientBytes": 171875,
+  "featureEvidence": "A live coordination session was inspected while a resumed PTC run kept calling the instrument. Its post-restart turn showed four shape rejections from the model itself and no state diagnostic, while one step received six identical copies of the same 6.4 KB snapshot and 98 of 120 injected steps carried more than one copy of only one or two distinct texts. Root cause: a step may complete many nested tool dispatches, a message queued during that step is not yet visible to the host visibility oracle, and the tool-result hook carries no accepted-message batch, so an unchanged snapshot was re-installed once per dispatch. Delivery is now accounted per step inside the plugin: an identical text already queued in the current step is not installed again, independently of host visibility, while a state change inside the step still delivers its new text and a later step still re-offers text the host reports as not visible. The window command rejection now states that there is no read action and names reserve/release/reacquire, and the mattpocock_window description says T/S facts come from the injected snapshot and mattpocock_history. Two existing tests that had encoded the duplicate delivery were updated to the new per-step contract."
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.16",
+  "independentReview": "none: the finding came from the live session's own instrument injections counted against the documented one-snapshot-per-step contract; the fix is locked by two new regression tests that fail on the previous behaviour and by the pre-fix live counts recorded here"
+ }
+}
