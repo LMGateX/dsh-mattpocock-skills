@@ -94,11 +94,21 @@ export function createDomainVersionedStorage<T extends VersionedDocument>(
     return existing.storage as VersionedStorage<T>
   }
   const shared = context
+  // Every read used to parse, structured-clone and deep-freeze the whole document.
+  // Instrument polling reads the same revision many times per second, so the frozen
+  // snapshot is retained and reused while the stored revision is unchanged; CAS above
+  // advances the revision, which invalidates this cache automatically.
+  let cached: T | undefined
   const storage: VersionedStorage<T> = {
     async read() {
       assertReadable(shared)
       const raw = table.get(key)
-      return raw === undefined ? undefined : snapshot(parse, raw)
+      if (raw === undefined) return undefined
+      const stored = typeof raw === 'object' && raw !== null ? (raw as { readonly revision?: unknown }).revision : undefined
+      if (cached !== undefined && stored === cached.revision) return cached
+      const value = snapshot(parse, raw)
+      cached = value
+      return value
     },
     compareAndSwap(expectedRevision, next) {
       assertReadable(shared)
@@ -109,12 +119,14 @@ export function createDomainVersionedStorage<T extends VersionedDocument>(
           if (table.get(key) === undefined) {
             if (expectedRevision !== 0) return false
             await table.put(key, parsed)
+            cached = parsed
             return true
           }
           await table.update(key, current => {
             if (snapshot(parse, current).revision !== expectedRevision) throw new CasConflict()
             return parsed
           })
+          cached = parsed
           return true
         } catch (error) {
           if (error instanceof CasConflict) return false

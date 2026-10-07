@@ -1,0 +1,73 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.7",
+  "private": true
+ },
+ "source": {
+  "commit": "c239326df125285288ffaa9af81027528e27c52e",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.7.tgz",
+  "bytes": 368038,
+  "sha256": "647f15e0e5edeff338a2521fabcfa0b9b712ba0c3454e34a3c368aa9961f5030",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 782,
+   "passed": 782,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 756,
+   "passed": 470,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 286
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 756 cases with 286 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "buildModules": 64,
+  "fixedFiles": 83,
+  "vendorFiles": 85,
+  "packedFiles": 168,
+  "clientBytes": 168340,
+  "featureEvidence": "Stored-session facts are observed header-only through ctx.sessionPersistence.stat, so authorization, association resolution and native-child confirmation no longer decode a whole stored event log for owner sessions; subagent descriptors still observe the stored log, with a short-lived shared observation cache and in-flight deduplication. Instrument unknown-key errors list the accepted keys and dispatch errors list the accepted actions, and the most opaque instrument descriptions document their request shape.",
+  "privacy": "Only six closed assets published; no local raw logs, profile snapshots or session evidence"
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.6",
+  "independentReview": "not run for this release; this attachment records local verifier and test evidence only"
+ }
+}
