@@ -1,0 +1,86 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.16",
+  "private": true
+ },
+ "source": {
+  "commit": "f74c1e6982077a5996b22509570776dc46dc5e91",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.16.tgz",
+  "bytes": 376801,
+  "sha256": "3c4fce29c5292229a1c2e9fef1caccc173ac02a14c5921a38e12997f188830ee",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 813,
+   "passed": 813,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 787,
+   "passed": 499,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 288
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 787 cases with 288 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "isolatedDshVerification": {
+   "result": "passed",
+   "dsh": "0.2.1-alpha.1",
+   "profile": "headless",
+   "installedFromPrivateSnapshot": true,
+   "channels": {
+    "stable": 27,
+    "beta": 27
+   },
+   "checkoutTarballReportsByteIdentical": true,
+   "modelInvoked": false,
+   "webStarted": false,
+   "customClient": false
+  },
+  "buildModules": 66,
+  "fixedFiles": 85,
+  "vendorFiles": 85,
+  "packedFiles": 170,
+  "clientBytes": 171822,
+  "featureEvidence": "Two independent read-only audits of the instrument read/consume/inject/delivery face and the write/storage/recovery face ran against v0.4.15 and returned numbered findings with code anchors; the reproduced ones were re-verified in an isolated real-DSH environment before any fix. Fixed: a rejected command could still poison durability because the pre-commit classifier only accepted one error class, so unknown-resource reads, viewer-only history queries and already-cleaned binding updates were reported as unknown persistence outcomes (now ResourceError codes and invalid-state settle as pre-commit, verified end-to-end in an isolated headless session where the rejected reads no longer produce durability-commit-failed); a refresh-gate record stamped the post-mutation epoch, so a mutation landing during an in-flight read certified the pre-mutation projection as current (the gate now stamps the epoch observed before the read); a persistent prologue or representation-boundary failure injected one identical raw-exception notice per step and per tool result (now a stable mechanical reason, retained-session last captured facts when available, and the same baseline/visibility suppression as snapshots); superseded reads are no longer installed as bare unknown snapshots; brief truncation now carries whole-value digests so changes past the shown prefix, the first eight array rows or the first 32 fields are not lost; history re-capture no longer scans every retained row per observation; the consumption cache and snapshot baselines are bounded and pruned on session disposal; authored value arrays carry element budgets; capability/health briefs no longer advertise a query locator that returns an empty notRecorded page."
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.15",
+  "independentReview": "two separate read-only audit agents (not the implementing session) inspected the read and write faces and returned anchored findings; every accepted finding was traced in code and, for the reproduced ones, locked by a red/green repository test or an isolated real-DSH run; no external human reviewer"
+ }
+}
