@@ -172,7 +172,10 @@ test('fresh preStep/postExecute snapshots retain source authors; disabled/hide d
   await f.managed({ workflowId: 'flow', localTicketId: 'A' })
   const before = await f.runtime.preStep(caller('root'), signal())
   await f.apply('put-ticket', { localTicketId: 'A', value: ticket('repair', '最新业务报告-watermark') })
-  const after = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'ordinary delivery' })
+  const sameStep = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'ordinary delivery' })
+  assert.equal(sameStep.length, 0, 'a later pass of the same admitted step is not installed again')
+  // The first delivery of an admitted step may come from a tool result: the host passes that step's name.
+  const after = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'ordinary delivery' }, 'next:1')
   assert.equal(before[0].source.kind, 'mattpocock-controls')
   assert.equal(after[0].source.form, 'snapshot')
   assert.match(after[0].content[0].text, /最新业务报告-watermark/)
@@ -1009,14 +1012,16 @@ test('one admitted step installs an identical snapshot once even while the host 
   assert.equal(nextStep.length, 1, 'a later admitted step may re-offer it while the host still reports it as not visible')
 })
 
-test('a state change inside one admitted step is delivered once and then suppressed', async t => {
+test('one bounded current view per admitted step, newest facts at the next step', async t => {
   const f = await ready(t)
   f.ports.snapshotVisible = () => false
   assert.equal((await f.runtime.preStep(caller('root'), signal(), [], '95:1')).length, 1)
   await f.apply('put-ticket', { localTicketId: 'T9', value: ticket() })
-  const changed = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write' }, '95:1')
+  const sameStep = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write' }, '95:1')
+  assert.equal(sameStep.length, 0, 'a later pass of the same admitted step is not installed again')
+  const changed = await f.runtime.preStep(caller('root'), signal(), [], '96:1')
   assert.equal(changed.length, 1)
   assert.match(changed[0].content[0].text, /T9/)
-  const repeat = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write again' }, '95:1')
+  const repeat = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'write again' }, '96:1')
   assert.equal(repeat.length, 0)
 })

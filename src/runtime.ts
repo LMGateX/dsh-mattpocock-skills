@@ -311,10 +311,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const scheduleNotification=(ownerSessionId:string,retryAccepted=false):void=>{void flushNotifications(ownerSessionId,retryAccepted).catch(()=>undefined)}
   const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
   // The host may assemble one admitted model request several times, and a PTC step may complete
-  // several nested dispatches; all of them share one turn:step identity. A message queued during
-  // that step is not yet visible to the host visibility oracle, so an unchanged snapshot would be
-  // installed once per assembly pass or nested result. Delivery is therefore also accounted per
-  // admitted step, independently of host visibility.
+  // several nested dispatches; all of them share one turn:step identity. Those passes can be seconds
+  // apart while other sessions keep changing the facts, and a message queued during the step is not
+  // yet visible to the host visibility oracle, so delivering every pass would put a burst of
+  // near-identical full snapshots into one request. A bounded current view is delivered at most once
+  // per admitted step; later passes are suppressed and the newest facts reach the model with the next
+  // admitted step (its own instrument tool results still carry the state their call produced).
   let stepSerial=0,currentStepKey='serial:0'
   const deliveredInStep=new Map<string,{readonly step:string;readonly text:string}>()
   // A persistent association or policy-storage failure must not append the same notice at every
@@ -322,7 +324,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const failureReason=(error:unknown):string=>error instanceof ControlsError?error.code:error instanceof ResourceError?error.code:'internal-error'
   const installSnapshot=(caller:HostCaller,acceptedMessages:readonly UserMessage[],text:string,baselineKey:string):readonly UserMessage[]=>{
     const delivered=deliveredInStep.get(baselineKey)
-    if(delivered!==undefined&&delivered.step===currentStepKey&&delivered.text===text)return []
+    if(delivered!==undefined&&delivered.step===currentStepKey)return []
     const agent=ports.liveAgent(caller.sessionId!),baseline=baselines.get(baselineKey)
     if(agent&&baseline&&baseline.text===text&&baseline.agent===agent&&baseline.session===agent.session){
       if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []

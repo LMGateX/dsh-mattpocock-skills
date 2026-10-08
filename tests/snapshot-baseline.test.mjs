@@ -198,7 +198,7 @@ test('fresh child snapshots never reuse owner payload and assignment changes rep
   f.child.session.append('user/message', child[0], { surfaceOp: 'append' })
   assert.equal(snapshots(await propose({ ...f, root: f.child })).length, 0)
   await f.runtime.assign(caller('root'), { sessionId: 'child', workflowId: 'flow', ticketIds: ['B'] }, signal())
-  const changed = snapshots(await propose({ ...f, root: f.child }))
+  const changed = snapshots(await propose({ ...f, root: f.child }, signal(), [], 4))
   assert.equal(changed.length, 1)
   assert.match(body(changed[0]), /synthetic-beta-owner-details/)
   assert.doesNotMatch(body(changed[0]), /synthetic-alpha-details/)
