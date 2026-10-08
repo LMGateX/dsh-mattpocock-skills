@@ -349,7 +349,7 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   const text = JSON.stringify(rendered)
   assert.match(text, /票 7/); assert.match(text, /部分接口可评审 3/)
   assert.match(text, /待用户裁决 2/); assert.match(text, /待落实 1/)
-  assert.match(text, /T 2\/4/); assert.match(text, /S 已登记 0\/3.*总数未知/); assert.match(text, /资源 1/)
+  assert.match(text, /T 2\/4/); assert.match(text, /S 在跑 0\/3.*总数未知/); assert.match(text, /资源 1/)
   assert(!text.includes('S 0/3')); assert(!text.includes('%')); assert(!text.includes('in_progress'))
   assert.equal(view.policy.display.inputSummary, false)
   const healthyS = { ...windows, capability: 'cooperative', runtimeKnowledge: { runtimeId: 'runtime-one', known: true, reason: null }, S: { ...windows.S, used: 1, countKnown: true } }
@@ -569,7 +569,7 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   const rendered = client.HeaderEntry({ sessionId: 'session-one', ...face })
   assert.match(JSON.stringify(rendered), /T 5\/4/); assert.match(JSON.stringify(rendered), /超出 1/); assert.match(JSON.stringify(rendered), /差额 -1/)
   assert.doesNotMatch(JSON.stringify(rendered), /参考/, 'the input-area progress never hedges its own numbers')
-  assert.match(JSON.stringify(rendered), /S 已登记 0/); assert.match(JSON.stringify(rendered), /总数未知/)
+  assert.match(JSON.stringify(rendered), /S 在跑 0/); assert.match(JSON.stringify(rendered), /总数未知/)
   const details = fixture.entries.find(row => row.options?.name === 'sidebar.right.pane.tab')
   const props = { sessionId: 'session-one', useTabInfo: () => ({ tab: { visible: true } }), ...details.options.inject('session-one') }
   const detailTree = client.Details(props)
@@ -577,7 +577,7 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   assert(projection)
   const projected = client.WindowProjection(projection.props)
   assert.match(JSON.stringify(projected), /不是硬名额.*不.*额外审批/)
-  assert.match(JSON.stringify(projected), /available.*登记账本.*不.*全机/)
+  assert.match(JSON.stringify(projected), /available 只是账本余量.*不是全机可派发数量/)
   assert.match(JSON.stringify(projected), /countKnown.*false/)
   assert(!JSON.stringify(projected).includes('可以派'))
   const failed = client.WindowProjection({ view: snapshot('A', { windows, health: [{ scope: 'windows', status: 'unknown', reason: 'window ledger read failed' }] }) })

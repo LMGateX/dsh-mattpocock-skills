@@ -60,21 +60,20 @@ test('RuntimeFacade delegation observes native-created child execution without m
  assert.equal(active.windows.S.used,2)
  assert.equal(active.windows.S.overcommitted,true)
  assert.equal(calls.length,2)
- // A continuable lane's own run ending disposes its Agent instance but not the lane: the slot stays
- // occupied as unknown (never claimed as running) so the next wake can return it to running.
+ // The window counts subagents that are actually running, so a finished run frees its slot even when
+ // the durable session survives and can be woken again.
  await f.event(f.agents.get(first.childId))
  const parked=await f.read()
- assert.equal(parked.windows.S.used,2,'a continuable lane keeps its admitted slot while it can be woken again')
- assert.equal(parked.windows.S.byState.unknown,1,'the disposed instance is parked as unknown, never claimed as running')
- assert.equal(parked.windows.S.byState.accepted,1)
- assert.notEqual(parked.windows.runtimeKnowledge.reason,'unmanaged-or-late-native-creation','a recognized disposal is not unmanaged native activity')
- // The same child session being woken again re-attaches instead of reading as an unmanaged execution.
+ assert.equal(parked.windows.S.used,1,'a finished run no longer occupies a running slot')
+ assert.equal(parked.windows.S.byState.released,1)
+ // Waking the same child session runs it again: the lane is re-admitted with a new generation so S
+ // keeps counting subagents that are running, not runs that once started.
  const revived={...f.agents.get(first.childId)}
  await f.runtime.created(caller(first.childId),signal(),revived)
  const awake=await f.read()
- assert.equal(awake.windows.S.used,2)
- assert.equal(awake.windows.S.byState.running,1,'a woken continuable lane is running again')
- assert.equal(awake.windows.S.byState.unknown,0)
+ assert.equal(awake.windows.S.used,2,'a woken lane is running again and occupies a slot')
+ assert.equal(awake.windows.S.byState.running,1)
+ assert.equal(awake.windows.executions.filter(row=>row.generation>1).length,1,'the wake re-admitted the same execution as a new generation')
  assert.notEqual(awake.windows.runtimeKnowledge.reason,'unmanaged-or-late-native-creation','a recognized wake is not unmanaged native activity')
 })
 

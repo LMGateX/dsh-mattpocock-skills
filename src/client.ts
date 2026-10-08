@@ -176,16 +176,16 @@ export function windowSummary(windows: WindowSnapshot | null, health: ClientSess
   const T = 'T ' + countText(windows.T.used) + reference(windows.T)
   const knownS = windows.S.countKnown === true && windows.capability === 'cooperative' && windows.runtimeKnowledge?.known === true && windows.S.byState.unknown === 0
   const S = knownS ? 'S ' + countText(windows.S.used) + reference(windows.S)
-    : 'S 已登记 ' + countText(windows.S.used) + reference(windows.S) + ' · 总数未知'
+    : 'S 在跑 ' + countText(windows.S.used) + reference(windows.S) + ' · 总数未知'
   return [T, S]
 }
 export function WindowProjection(props: { readonly view: ClientSessionSnapshot }): ReactElement {
   const failed = props.view.health.find(row => row.scope === 'windows' && row.status === 'unknown')
   const windows = props.view.windows
   if (failed || windows === null) return diagnostic('窗口观测未知：' + (failed?.reason ?? '未返回 T/S；不是 0 或默认容量'))
-  return h('section', { 'aria-label': '参考窗口观测' },
+  return h('section', { 'aria-label': '窗口观测' },
     diagnostic('T/S 是参考值，不是硬名额；超出或统计未知不拒绝派发，也不要求额外审批。'),
-    diagnostic('available 仅是登记账本余量，不是全机可派发数量；countKnown=false 时 used 只是已登记量，总数未知。'),
+    diagnostic('S 计的是当前观察到的在跑受管执行；存在未登记原生活动时它是已知下界（总数未知），available 只是账本余量，不是全机可派发数量。'),
     diagnostic(windowSummary(windows, props.view.health).join(' · ')), pretty(windows))
 }
 /** Aggregate read health controls the count; per-resource physical inspection never erases metadata. */
@@ -309,7 +309,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
         view.records?.tickets.filter(ticket => ticket.workflowId === workflow.workflowId).map(ticket => h('article', { key: ticket.localTicketId }, h('strong', null, ticket.value.title), pretty(ticket.value))))),
       h('h4', null, '待用户裁决 ' + view.records.summary.pendingUserDecisionCount + ' · 待落实 ' + view.records.summary.awaitingImplementationCount),
       view.records.decisions.map(decision => h(DecisionEditor, { key: props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId, decision, records: view.records!, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))),
-    h('h4', null, '双窗口（实例范围，观测/参考）'), h(WindowProjection, { view }),
+    h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
     h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
     h('details', null, h('summary', null, '旧资源记录（仅只读，不提供创建/实际退役入口）'), ResourceProjection({ view })),
     h('h4', null, '能力与健康（观测标签）'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health }),
@@ -595,7 +595,7 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · 主会话 ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新所选会话'),
     h('h4', null, '票进度与待裁决'), view.records === null ? diagnostic('票/事项账本未知') : pretty(view.records),
-    h('h4', null, '独立 T/S（观测/参考）'), h(WindowProjection, { view }),
+    h('h4', null, '独立 T/S（观测）'), h(WindowProjection, { view }),
     props.remote ? h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('details', null, h('summary', null, '旧资源记录（仅只读）'), ResourceProjection({ view })),
     props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,

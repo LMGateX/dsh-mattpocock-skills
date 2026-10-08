@@ -46,15 +46,11 @@ function parseSourceCleanupJournal(value:unknown):SourceCleanupJournal {
 }
 interface Dispatch {
   readonly caller: HostCaller; readonly exec: ToolRunContext; readonly instance: SessionControlsView
-  readonly token: ExecutionToken; readonly workflowId: string | null; readonly ticketIds: readonly string[]
+  readonly workflowId: string | null; readonly ticketIds: readonly string[]
   readonly children: Set<Agent>; readonly live: Set<Agent>
-  readonly continuable: boolean
+  token: ExecutionToken
+  released: boolean
   accepting:boolean
-}
-/** One admitted execution indexed by child session, which survives Agent instance churn. */
-interface ManagedExecution {
-  readonly instance: SessionControlsView; readonly token: ExecutionToken
-  readonly continuable: boolean; readonly live: Set<Agent>
 }
 const NATIVE_TOOLS = new Set(['subagent','subagent_fork','send_message'])
 function denied(message: string): never { throw new ControlsError('access-denied',message) }
@@ -86,10 +82,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
   const cachedSessions=new Map<string,SessionControlsView>(), nativeWindows=new Map<string,boolean>()
   const exactExecutions=new WeakMap<Agent,Dispatch>(), initialized=new Set<string>()
-  // A continuable child is disposed between runs and re-created when it is woken; an Agent instance
-  // going away is therefore not evidence that its admitted execution finished. Managed executions are
-  // tracked by child session as well, so a woken lane re-attaches instead of reading as unmanaged.
-  const managedExecutions=new Map<string,ManagedExecution>(), reattached=new WeakMap<Agent,ManagedExecution>()
+  // A continuable child is disposed between runs and re-created when it is woken, so the same child
+  // session can run several times under one dispatch. Managed executions are therefore indexed by child
+  // session as well: a wake re-admits the lane into the running window instead of reading as unmanaged.
+  const managedExecutions=new Map<string,Dispatch>(), reattached=new WeakMap<Agent,Dispatch>()
   const worktreeStores=new Map<string,VersionedStorage<WorktreeBindingsDocument>>()
   const worktrees=createWorktreeBindings(owner=>{const store=worktreeStores.get(owner);if(!store)throw new ControlsError('invalid-state','worktree storage unopened');return store})
   const openWorktrees=async(view:SessionControlsView)=>{const owner=view.instance.ownerSessionId;if(!worktreeStores.has(owner))worktreeStores.set(owner,await ports.openUnitStorage('worktrees_'+createHash('sha256').update(view.instance.instrumentInstanceId).digest('hex').slice(0,48),parseWorktreeBindingsDocument));return worktrees}
@@ -455,8 +451,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const dispatch=nativeDispatch.getStore()
       if(dispatch?.accepting&&actualAgent.session.header.origin==='subagent'&&actualAgent.session.header.parentSession===dispatch.caller.sessionId&&ports.liveAgent(actualAgent.id)===actualAgent){
         dispatch.children.add(actualAgent);dispatch.live.add(actualAgent);exactExecutions.set(actualAgent,dispatch)
-        const managed:ManagedExecution={instance:dispatch.instance,token:dispatch.token,continuable:dispatch.continuable,live:dispatch.live}
-        managedExecutions.set(actualAgent.id,managed);reattached.set(actualAgent,managed)
+        managedExecutions.set(actualAgent.id,dispatch);reattached.set(actualAgent,dispatch)
         await track(dispatch.token.instrumentInstanceId,async()=>{
           const task:TaskAssignment={sessionId:actualAgent.id,parentSessionId:dispatch.caller.sessionId!,instrumentInstanceId:dispatch.token.instrumentInstanceId,workflowId:dispatch.workflowId,ticketIds:dispatch.ticketIds}
           await update(old=>{
@@ -470,13 +465,27 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
       if(!dispatch?.accepting&&actualAgent.session.header.origin==='subagent'){
         const managed=managedExecutions.get(actualAgent.id)
-        if(managed){
-          // A continuable child is disposed between runs and re-created on the next wake. Its admitted
-          // execution is still in flight, so re-attach it (unknown -> running is a legal receipt) and keep
-          // it counted instead of reporting the wake as unmanaged native activity.
-          managed.live.add(actualAgent);reattached.set(actualAgent,managed)
+        if(managed&&managed.released){
+          // A continuable child's run ended and released its slot; waking the same session runs it again,
+          // so the lane is re-admitted through a fresh generation. S counts subagents that are actually
+          // running — that is what the sliding window is for — instead of the runs that once started.
+          try{
+            const reservation=await track(managed.token.instrumentInstanceId,()=>windowsProgram.reserveExecution(managed.caller.principalId,managed.caller.sessionId!,{operationId:'readmit:'+randomUUID(),executionId:managed.token.executionId,workflowId:managed.workflowId,localTicketId:managed.ticketIds.length===1?managed.ticketIds[0]!:null}))
+            if(reservation.dispatchable){
+              managed.token=reservation.token;managed.released=false;managed.live.add(actualAgent)
+              exactExecutions.set(actualAgent,managed);reattached.set(actualAgent,managed)
+              await track(managed.token.instrumentInstanceId,async()=>{
+                await update(old=>({...old,bindings:[...old.bindings.filter(b=>b.sessionId!==actualAgent.id),{...managed.token,sessionId:actualAgent.id,parentSessionId:actualAgent.session.header.parentSession??managed.caller.sessionId!,runtimeId,released:false}]}))
+                await windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'running'})
+              })
+            }
+          }catch(error){signal.throwIfAborted()/* A woken lane that cannot be re-admitted is reported below rather than failing the wake. */}
+        }
+        if(managed&&!managed.released){
+          // The same admitted lease is still current (a duplicate creation or a raced wake): re-attach.
+          managed.live.add(actualAgent);exactExecutions.set(actualAgent,managed);reattached.set(actualAgent,managed)
           await track(managed.token.instrumentInstanceId,()=>windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'running'}))
-        }else{
+        }else if(!managed){
           const parent=actualAgent.session.header.parentSession,view=parent&&cachedSessions.get(parent)
           if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))
         }
@@ -494,24 +503,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // A disposed session never prepares again: drop its baseline so the retained Agent, its
       // Session log and the injected message are not kept alive for the process lifetime.
       if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key);for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)}
-      const actual=event.actualAgent,dispatch=actual&&exactExecutions.get(actual)
-      const attached=dispatch??(actual&&reattached.get(actual))
+      const actual=event.actualAgent,attached=actual&&(exactExecutions.get(actual)??reattached.get(actual))
       if(attached){
         const commit=track(attached.token.instrumentInstanceId,async()=>{
           if(event.kind==='agent-disposed'){
+            // This run ended: the lane stops running, so its slot is released. A later wake re-admits
+            // it through a fresh generation, which is what keeps S equal to the running subagent count.
             const managed=managedExecutions.get(actual!.id)
-            attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!)
-            if(managed&&managed.continuable){
-              // The lane can be woken again, so disposal of this instance is not a release proof: keep
-              // the slot occupied as unknown. `unknown -> running` stays legal for the next wake while
-              // `released -> running` would be rejected as a regression.
-              if(managed.live.size===0)await windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'unknown'})
-            }else{
-              if(managed)managedExecutions.delete(actual!.id)
-              await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===attached.token.leaseId?{...b,released:true}:b)}))
-              if(attached.live.size===0)await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'released'})
-            }
-          }else if(event.kind==='agent-status'&&event.status==='running')await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'running'})
+            attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!);attached.released=true
+            if(managed)managed.released=true
+            await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===attached.token.leaseId?{...b,released:true}:b)}))
+            if(attached.live.size===0)await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'released'})
+          }else if(event.kind==='agent-status'&&event.status==='running'&&!attached.released)await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'running'})
           // Idle and subagent/end are deliberately NOT implementation-release proofs.
         })
         await commit;return
@@ -568,7 +571,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         return parseHostJson({nativeTool:r.nativeTool,outcome:sent.isError?'error':'success',...(sent.isError?{error:sent.error}:{value:sent.value}),source:'native-tool-program-result',observation:'unknown',diagnostic:String(error).slice(0,1024)})
       }
       if(reservation.replayed||!reservation.dispatchable)throw new ControlsError('operation-conflict','reservation replay/unknown is not permission to redispatch')
-      const dispatch:Dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds:localTicketId===null?[]:[localTicketId],children:new Set(),live:new Set(),continuable:r.nativeTool==='subagent_fork',accepting:true}
+      const dispatch:Dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds:localTicketId===null?[]:[localTicketId],children:new Set(),live:new Set(),released:false,accepting:true}
       let result:ToolExecutionResult
       try{result=await nativeDispatch.run(dispatch,()=>ports.executeNative(exec,r.nativeTool as 'subagent'|'subagent_fork'|'send_message',args))}
       catch(error){try{await track(view.instance.instrumentInstanceId,()=>windowsProgram.receipt({...reservation.token,operationId:randomUUID(),state:'unknown'}))}catch{}throw error}
@@ -746,7 +749,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         try{
           const reservation=await track(view.instance.instrumentInstanceId,()=>windowsProgram.reserveExecution(caller.principalId,caller.sessionId!,{operationId:'delegate-reserve:'+operationId,executionId:operationId,workflowId,localTicketId:ticketIds.length===1?ticketIds[0]!:null}))
           if(reservation.replayed||!reservation.dispatchable)throw new ControlsError('operation-conflict','delegation reservation replay is not permission to redispatch')
-          dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds,children:new Set(),live:new Set(),continuable:true,accepting:true}
+          dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds,children:new Set(),live:new Set(),released:false,accepting:true}
         }catch(error){exec.signal.throwIfAborted();if(error instanceof ControlsError&&['access-denied','invalid-input','operation-conflict'].includes(error.code))throw error}
       }
       let receipt:Awaited<ReturnType<NonNullable<HostPorts['createContinuable']>>>
