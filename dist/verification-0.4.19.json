@@ -1,0 +1,86 @@
+{
+ "schemaVersion": 1,
+ "package": {
+  "name": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.4.19",
+  "private": true
+ },
+ "source": {
+  "commit": "f53c0398df35c8fddab01b3a491d9d06da1aef36",
+  "clean": true
+ },
+ "archive": {
+  "name": "lmgatex-dsh-mattpocock-skills-0.4.19.tgz",
+  "bytes": 377682,
+  "sha256": "64fc46a40bac42ddb47b4fb5aac86a2e255860f7cb4689c46f4a18b42bc5ed7b",
+  "primaryPackCount": 1,
+  "manifestPreserved": true
+ },
+ "tools": {
+  "node": "v24.17.0",
+  "pnpm": "11.8.0",
+  "typescript": "5.9.3",
+  "sdk": "0.2.1-alpha.1"
+ },
+ "validation": {
+  "rootTests": {
+   "total": 815,
+   "passed": 815,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0
+  },
+  "rootTestsWithoutHostRoot": {
+   "total": 789,
+   "passed": 501,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 288
+  },
+  "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 789 cases with 288 environment-gated skips.",
+  "exactArchiveVerifier": "passed",
+  "sameArchive": {
+   "total": 25,
+   "passed": 25,
+   "failed": 0,
+   "cancelled": 0,
+   "skipped": 0,
+   "ordinaryNodeNative": 14,
+   "actualPluginManager": 11
+  },
+  "isolatedDshVerification": {
+   "result": "passed",
+   "dsh": "0.2.1-alpha.1",
+   "profile": "headless",
+   "installedFromPrivateSnapshot": true,
+   "channels": {
+    "stable": 27,
+    "beta": 27
+   },
+   "checkoutTarballReportsByteIdentical": true,
+   "modelInvoked": false,
+   "webStarted": false,
+   "customClient": false
+  },
+  "buildModules": 66,
+  "fixedFiles": 85,
+  "vendorFiles": 85,
+  "packedFiles": 170,
+  "clientBytes": 171875,
+  "featureEvidence": "v0.4.17 and v0.4.18 both bounded identical duplicates but left a measured volume problem: a live resumed session recorded 37 injected steps carrying 624.6 KB of snapshot text, of which 271.4 KB (43%) was superseded inside the same admitted step, and one step carried 8 deliveries totalling 99.6 KB against a final delivery of 12.6 KB. Event traces show why: those deliveries happen at the start of one admitted step, the host assembles the same request several times, and between those passes other actors (the session's own children) kept reserving T and registering S, so each pass produced a different text (T.used 5->8, S.used 4->8 in the worst step). Delivery is now bounded to at most one snapshot per admitted step: the first delivery of a step is installed and every later pass of that step is suppressed whether or not the text changed, so the newest facts reach the model with the next admitted step while the model's own instrument tool results keep carrying the state their call produced. Regression tests lock both halves (a later pass of the same step installs nothing; the next admitted step installs the then-current facts), and the affected contract tests moved their re-offer assertions to the next admitted step."
+ },
+ "upstream": {
+  "distribution": "v0.3.0",
+  "skills": "v1.3.1",
+  "channels": {
+   "beta": 27,
+   "stable": 27
+  },
+  "vendorBytes": 279662,
+  "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+ },
+ "review": {
+  "baseline": "v0.4.18",
+  "independentReview": "none: the delivery bound is a measured product decision (43% of injected bytes were same-step superseded full snapshots) taken with the operator after showing the per-step byte and token cost; the change is small and locked by regression tests, and the live after-check is the byte count per admitted step once the operator restarts"
+ }
+}
