@@ -353,7 +353,7 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   assert(!text.includes('S 0/3')); assert(!text.includes('%')); assert(!text.includes('in_progress'))
   assert.equal(view.policy.display.inputSummary, false)
   const healthyS = { ...windows, capability: 'cooperative', runtimeKnowledge: { runtimeId: 'runtime-one', known: true, reason: null }, S: { ...windows.S, used: 1, countKnown: true } }
-  assert.deepEqual([...client.windowSummary(healthyS)], ['T 2/4（参考） · 超出 未知 · 差额 未知', 'S 1/3（参考） · 超出 未知 · 差额 未知'])
+  assert.deepEqual([...client.windowSummary(healthyS)], ['T 2/4 · 超出 未知 · 差额 未知', 'S 1/3 · 超出 未知 · 差额 未知'])
   assert.deepEqual([...client.windowSummary(null)], ['T 未知', 'S 未知'])
   release(); observer.dispose()
 })
@@ -567,7 +567,8 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   const header = fixture.entries.find(row => row.options?.name === 'conversation.session.header.utilities')
   const face = header.options.inject('session-one'); const release = face.observer.retain(); t.after(release); await settle()
   const rendered = client.HeaderEntry({ sessionId: 'session-one', ...face })
-  assert.match(JSON.stringify(rendered), /参考/); assert.match(JSON.stringify(rendered), /超出 1/); assert.match(JSON.stringify(rendered), /差额 -1/)
+  assert.match(JSON.stringify(rendered), /T 5\/4/); assert.match(JSON.stringify(rendered), /超出 1/); assert.match(JSON.stringify(rendered), /差额 -1/)
+  assert.doesNotMatch(JSON.stringify(rendered), /参考/, 'the input-area progress never hedges its own numbers')
   assert.match(JSON.stringify(rendered), /S 已登记 0/); assert.match(JSON.stringify(rendered), /总数未知/)
   const details = fixture.entries.find(row => row.options?.name === 'sidebar.right.pane.tab')
   const props = { sessionId: 'session-one', useTabInfo: () => ({ tab: { visible: true } }), ...details.options.inject('session-one') }

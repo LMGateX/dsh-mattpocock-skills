@@ -49,6 +49,8 @@ instrument 查询与 UI 都是所属实例账本的投影，不是另外几套�
 管理模块把这些可信信号转换为自己的 execution/lease 状态；适配后的 execution-released 是拟设计的内部回执，不冒充已有 DSH 事件。关闭信号按具体实例/执行代次/lease 匹配，一次释放，迟到信号不能关闭续用后的新执行。订阅放在仍存活的管理 scope，不能把唯一关闭监控绑定在已销毁的 child scope。
 缺少关闭/释放回执时保持 unknown/reconcile，核对实际运行事实；不回退到正则、关键词、LLM 判断、沉默时长或模型自报状态。
 
+**续用子代理的实例释放不是执行结束（0.4.20 实现规则）**：continuable child 的一次 run 结束会让内置 AgentLoop 移出该 Agent 实例（`agent/disposed`），但 durable session 仍在、随后可被再次唤醒。因此受管 execution 在实例释放时记 `unknown`——保留已准入槽位，不声称 running，也不发 `released`；同一 child session 被唤醒、实例重建时命中同一 lease 的既有绑定，回执 `running`（`unknown → running` 是合法转换，`released → running` 会被状态机按回退拒绝）。只有 one-shot（`subagent`）的实例释放才发 `released`。这样 S 的 `byState.running` 等于当前观察到的在跑执行，而不是「这一次 run 是否结束」。
+
 ## 3. 优先路线：现有插件入口实现同一步消费
 
 这里的“同时”首先保证：**主代理消费原生返回结果的同一次模型步骤中，也收到已对齐的窗口状态**。不要求先改成一个新的网络包/原生 inbox 消息格式。

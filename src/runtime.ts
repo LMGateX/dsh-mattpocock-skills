@@ -48,7 +48,13 @@ interface Dispatch {
   readonly caller: HostCaller; readonly exec: ToolRunContext; readonly instance: SessionControlsView
   readonly token: ExecutionToken; readonly workflowId: string | null; readonly ticketIds: readonly string[]
   readonly children: Set<Agent>; readonly live: Set<Agent>
+  readonly continuable: boolean
   accepting:boolean
+}
+/** One admitted execution indexed by child session, which survives Agent instance churn. */
+interface ManagedExecution {
+  readonly instance: SessionControlsView; readonly token: ExecutionToken
+  readonly continuable: boolean; readonly live: Set<Agent>
 }
 const NATIVE_TOOLS = new Set(['subagent','subagent_fork','send_message'])
 function denied(message: string): never { throw new ControlsError('access-denied',message) }
@@ -80,6 +86,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
   const cachedSessions=new Map<string,SessionControlsView>(), nativeWindows=new Map<string,boolean>()
   const exactExecutions=new WeakMap<Agent,Dispatch>(), initialized=new Set<string>()
+  // A continuable child is disposed between runs and re-created when it is woken; an Agent instance
+  // going away is therefore not evidence that its admitted execution finished. Managed executions are
+  // tracked by child session as well, so a woken lane re-attaches instead of reading as unmanaged.
+  const managedExecutions=new Map<string,ManagedExecution>(), reattached=new WeakMap<Agent,ManagedExecution>()
   const worktreeStores=new Map<string,VersionedStorage<WorktreeBindingsDocument>>()
   const worktrees=createWorktreeBindings(owner=>{const store=worktreeStores.get(owner);if(!store)throw new ControlsError('invalid-state','worktree storage unopened');return store})
   const openWorktrees=async(view:SessionControlsView)=>{const owner=view.instance.ownerSessionId;if(!worktreeStores.has(owner))worktreeStores.set(owner,await ports.openUnitStorage('worktrees_'+createHash('sha256').update(view.instance.instrumentInstanceId).digest('hex').slice(0,48),parseWorktreeBindingsDocument));return worktrees}
@@ -445,6 +455,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const dispatch=nativeDispatch.getStore()
       if(dispatch?.accepting&&actualAgent.session.header.origin==='subagent'&&actualAgent.session.header.parentSession===dispatch.caller.sessionId&&ports.liveAgent(actualAgent.id)===actualAgent){
         dispatch.children.add(actualAgent);dispatch.live.add(actualAgent);exactExecutions.set(actualAgent,dispatch)
+        const managed:ManagedExecution={instance:dispatch.instance,token:dispatch.token,continuable:dispatch.continuable,live:dispatch.live}
+        managedExecutions.set(actualAgent.id,managed);reattached.set(actualAgent,managed)
         await track(dispatch.token.instrumentInstanceId,async()=>{
           const task:TaskAssignment={sessionId:actualAgent.id,parentSessionId:dispatch.caller.sessionId!,instrumentInstanceId:dispatch.token.instrumentInstanceId,workflowId:dispatch.workflowId,ticketIds:dispatch.ticketIds}
           await update(old=>{
@@ -456,7 +468,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           if(dispatch.children.size>1)await markKnowledge(dispatch.instance,false,'unexpected-multiple-native-executions')
         })
       }
-      if(!dispatch?.accepting&&actualAgent.session.header.origin==='subagent'){const parent=actualAgent.session.header.parentSession,view=parent&&cachedSessions.get(parent);if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))}
+      if(!dispatch?.accepting&&actualAgent.session.header.origin==='subagent'){
+        const managed=managedExecutions.get(actualAgent.id)
+        if(managed){
+          // A continuable child is disposed between runs and re-created on the next wake. Its admitted
+          // execution is still in flight, so re-attach it (unknown -> running is a legal receipt) and keep
+          // it counted instead of reporting the wake as unmanaged native activity.
+          managed.live.add(actualAgent);reattached.set(actualAgent,managed)
+          await track(managed.token.instrumentInstanceId,()=>windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'running'}))
+        }else{
+          const parent=actualAgent.session.header.parentSession,view=parent&&cachedSessions.get(parent)
+          if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))
+        }
+      }
       try{const view=await identity(caller,caller.sessionId!,signal);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
       catch(error){signal.throwIfAborted();if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
       }catch(error){
@@ -471,13 +495,23 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // Session log and the injected message are not kept alive for the process lifetime.
       if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key);for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)}
       const actual=event.actualAgent,dispatch=actual&&exactExecutions.get(actual)
-      if(dispatch){
-        const commit=track(dispatch.token.instrumentInstanceId,async()=>{
+      const attached=dispatch??(actual&&reattached.get(actual))
+      if(attached){
+        const commit=track(attached.token.instrumentInstanceId,async()=>{
           if(event.kind==='agent-disposed'){
-            dispatch.live.delete(actual!);exactExecutions.delete(actual!)
-            await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===dispatch.token.leaseId?{...b,released:true}:b)}))
-            if(dispatch.live.size===0)await windowsProgram.receipt({...dispatch.token,operationId:randomUUID(),state:'released'})
-          }else if(event.kind==='agent-status'&&event.status==='running')await windowsProgram.receipt({...dispatch.token,operationId:randomUUID(),state:'running'})
+            const managed=managedExecutions.get(actual!.id)
+            attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!)
+            if(managed&&managed.continuable){
+              // The lane can be woken again, so disposal of this instance is not a release proof: keep
+              // the slot occupied as unknown. `unknown -> running` stays legal for the next wake while
+              // `released -> running` would be rejected as a regression.
+              if(managed.live.size===0)await windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'unknown'})
+            }else{
+              if(managed)managedExecutions.delete(actual!.id)
+              await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===attached.token.leaseId?{...b,released:true}:b)}))
+              if(attached.live.size===0)await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'released'})
+            }
+          }else if(event.kind==='agent-status'&&event.status==='running')await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'running'})
           // Idle and subagent/end are deliberately NOT implementation-release proofs.
         })
         await commit;return
@@ -534,7 +568,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         return parseHostJson({nativeTool:r.nativeTool,outcome:sent.isError?'error':'success',...(sent.isError?{error:sent.error}:{value:sent.value}),source:'native-tool-program-result',observation:'unknown',diagnostic:String(error).slice(0,1024)})
       }
       if(reservation.replayed||!reservation.dispatchable)throw new ControlsError('operation-conflict','reservation replay/unknown is not permission to redispatch')
-      const dispatch:Dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds:localTicketId===null?[]:[localTicketId],children:new Set(),live:new Set(),accepting:true}
+      const dispatch:Dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds:localTicketId===null?[]:[localTicketId],children:new Set(),live:new Set(),continuable:r.nativeTool==='subagent_fork',accepting:true}
       let result:ToolExecutionResult
       try{result=await nativeDispatch.run(dispatch,()=>ports.executeNative(exec,r.nativeTool as 'subagent'|'subagent_fork'|'send_message',args))}
       catch(error){try{await track(view.instance.instrumentInstanceId,()=>windowsProgram.receipt({...reservation.token,operationId:randomUUID(),state:'unknown'}))}catch{}throw error}
@@ -712,7 +746,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         try{
           const reservation=await track(view.instance.instrumentInstanceId,()=>windowsProgram.reserveExecution(caller.principalId,caller.sessionId!,{operationId:'delegate-reserve:'+operationId,executionId:operationId,workflowId,localTicketId:ticketIds.length===1?ticketIds[0]!:null}))
           if(reservation.replayed||!reservation.dispatchable)throw new ControlsError('operation-conflict','delegation reservation replay is not permission to redispatch')
-          dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds,children:new Set(),live:new Set(),accepting:true}
+          dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds,children:new Set(),live:new Set(),continuable:true,accepting:true}
         }catch(error){exec.signal.throwIfAborted();if(error instanceof ControlsError&&['access-denied','invalid-input','operation-conflict'].includes(error.code))throw error}
       }
       let receipt:Awaited<ReturnType<NonNullable<HostPorts['createContinuable']>>>
@@ -754,7 +788,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         })
       })
     },
-    async dispose(){closing=true;notificationLifetime.abort();guard();await Promise.allSettled([...notificationFlights.values()]);await queue.drain();nativeDispatch.disable();cachedSessions.clear();nativeWindows.clear();baselines.clear();deliveredInStep.clear()}
+    async dispose(){closing=true;notificationLifetime.abort();guard();await Promise.allSettled([...notificationFlights.values()]);await queue.drain();nativeDispatch.disable();cachedSessions.clear();nativeWindows.clear();baselines.clear();deliveredInStep.clear();managedExecutions.clear()}
   }
   // Reconstruct only metadata/known host objects. Never resume a cold session for a dashboard.
   for(const agent of ports.liveAgents()){

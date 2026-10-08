@@ -172,7 +172,7 @@ function capacityText(value: unknown): string { return value === null ? '未配�
 export function windowSummary(windows: WindowSnapshot | null, health: ClientSessionSnapshot['health'] = []): readonly string[] {
   if (windows === null || health.some(row => row.scope === 'windows' && row.status === 'unknown')) return ['T 未知', 'S 未知']
   const signed = (value: unknown): string => typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '未知'
-  const reference = (usage: WindowSnapshot['T']): string => '/' + capacityText(usage.capacity) + '（参考） · 超出 ' + countText(usage.overage) + ' · 差额 ' + signed(usage.gap)
+  const reference = (usage: WindowSnapshot['T']): string => '/' + capacityText(usage.capacity) + ' · 超出 ' + countText(usage.overage) + ' · 差额 ' + signed(usage.gap)
   const T = 'T ' + countText(windows.T.used) + reference(windows.T)
   const knownS = windows.S.countKnown === true && windows.capability === 'cooperative' && windows.runtimeKnowledge?.known === true && windows.S.byState.unknown === 0
   const S = knownS ? 'S ' + countText(windows.S.used) + reference(windows.S)

@@ -1,6 +1,6 @@
 {
   "name": "@lmgatex/dsh-mattpocock-skills",
-  "version": "0.4.19",
+  "version": "0.4.20",
   "private": true,
   "description": "Matt Pocock 技能分发与可选协作管理插件（可复现构建）",
   "type": "module",
