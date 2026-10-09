@@ -291,3 +291,16 @@ test('RuntimeFacade delegates an uninstrumented child with native inherited cwd 
  assert.equal(recovered.childId,first.childId)
  assert.equal(calls.length,1)
 })
+
+test('a reload re-admits lanes that are still running instead of dropping S to unknown',async t=>{
+ const f=await fixture(t,{known:true,initialPolicy:policy()}),calls=installCreation(f)
+ const first=await f.runtime.delegate(caller('root'),{description:'Reloaded lane',prompt:'Keep working'},f.exec())
+ assert.equal(first.accepted,true)
+ assert.equal(calls.length,1)
+ f.agents.get(first.childId).status='running'
+ await f.reopen()
+ const after=await f.read()
+ assert.equal(after.windows.S.used,1,'a still-running lane is re-admitted across a reload')
+ // The reload downgrades the previous runtime's row; the sweep re-admits the still-running lane
+ assert.equal(after.windows.S.used,1)
+})

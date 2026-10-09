@@ -81,7 +81,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
   const cachedSessions=new Map<string,SessionControlsView>(), nativeWindows=new Map<string,boolean>()
-  const exactExecutions=new WeakMap<Agent,Dispatch>(), initialized=new Set<string>()
+  const exactExecutions=new WeakMap<Agent,Dispatch>(), initialized=new Set<string>(), readmitted=new Set<string>()
   // A continuable child is disposed between runs and re-created when it is woken, so the same child
   // session can run several times under one dispatch. Managed executions are therefore indexed by child
   // session as well: a wake re-admits the lane into the running window instead of reading as unmanaged.
@@ -227,6 +227,39 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // The installed host truthfully reports unsupported complete enumeration. No guessed empty list.
     await markKnowledge(view,actual.known,actual.reason)
     initialized.add(key)
+  }
+  /**
+   * A hot reload or restart drops the in-memory dispatch map while the child keeps running. The
+   * persisted bindings plus live-Agent facts re-admit exactly the lanes that are running now, so S
+   * does not silently collapse after a reload; a lane that cannot be re-admitted stays visible as
+   * unknown window facts instead.
+   */
+  const readmitPersistedLanes=async(view:SessionControlsView):Promise<void>=>{
+    try{
+      if(!(view.policy.extensionEnabled&&view.policy.features.windows.requested))return
+      const owner=view.instance.ownerSessionId,document=await load()
+      const rows=document.bindings.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId&&!row.released)
+      if(rows.length===0)return
+      const live=new Map<string,Agent>(ports.liveAgents().filter(agent=>agent.id!==owner&&agent.session.header.origin==='subagent'&&(agent as unknown as {status?:string}).status==='running').map(agent=>[agent.id as unknown as string,agent]))
+      if(live.size===0)return
+      const coordinator=callerFor(ports.operatorPrincipal,owner,ports.operatorPrincipal)
+      const current=await windows.read(coordinator.principalId,view.association.sessionId as unknown as Parameters<typeof windows.read>[1])
+      const admitted=new Set(current.executions.filter(row=>row.state==='running'||row.state==='accepted').map(row=>row.executionId))
+      for(const row of rows){
+        const agent=live.get(row.sessionId)
+        if(agent===undefined||admitted.has(row.executionId))continue
+        try{
+          const caller=callerFor('agent:'+row.parentSessionId,row.parentSessionId,ports.operatorPrincipal)
+          const token={instrumentInstanceId:row.instrumentInstanceId,executionId:row.executionId,generation:row.generation,leaseId:row.leaseId}
+          const dispatch:Dispatch={caller,exec:undefined as unknown as ToolRunContext,instance:view,workflowId:null,ticketIds:[],children:new Set(),live:new Set([agent]),token,released:false,accepting:false}
+          await track(view.instance.instrumentInstanceId,async()=>{
+            await windowsProgram.receipt({...token,operationId:randomUUID(),state:'running'})
+            managedExecutions.set(agent.id,dispatch);reattached.set(agent,dispatch);exactExecutions.set(agent,dispatch)
+            await update(old=>({...old,bindings:[...old.bindings.filter(binding=>binding.sessionId!==agent.id),{...token,sessionId:agent.id,parentSessionId:row.parentSessionId,runtimeId,released:false}]}))
+          })
+        }catch{/* One lane that cannot be re-admitted stays an unknown window fact; it never fails the mount. */}
+      }
+    }catch{/* Persistence or windows unavailable during mount: the ordinary read path reports unknown. */}
   }
   const resourceModule=(caller:HostCaller,view:SessionControlsView,signal:AbortSignal)=>{
     const getGit=()=>concreteGitAdapter(ports.gitRunnerForSession(view.association.sessionId,signal))
@@ -827,7 +860,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // Reconstruct only metadata/known host objects. Never resume a cold session for a dashboard.
   for(const agent of ports.liveAgents()){
     const caller:HostCaller={kind:'agent',principalId:'agent:'+agent.id,sessionId:agent.id}
-    try{const view=await identity(caller,agent.id);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===agent.id)scheduleNotification(agent.id,true)}catch(error){if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
+    try{const view=await identity(caller,agent.id);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(!readmitted.has(view.instance.instrumentInstanceId)){readmitted.add(view.instance.instrumentInstanceId);await readmitPersistedLanes(view)}if(view.instance.ownerSessionId===agent.id)scheduleNotification(agent.id,true)}catch(error){if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
   }
   return facade
 }
