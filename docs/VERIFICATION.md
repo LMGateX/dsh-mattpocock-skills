@@ -156,3 +156,9 @@ node scripts/verify-package.mjs --prepack
 ```
 
 将 `/absolute/sdk` 替换为操作者已核验的实际 SDK 绝对目录。原生 cwd/管理器 probe 只准备隔离副本，不修改所提供的参考安装。最终 tarball 单次构建后保存只读 size/SHA256/source commit/pnpm identity，并用现有 verifier 精确核对；外部制品记录与本页摘要范围不同。
+
+## 0.4.25 制品验收（2026-10-09）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.25.tgz`（**382871** bytes，sha256 `01c3b5ae28fdec3894c284b12ab3932e9d1661601612a0631e17ce2008123243`，170 成员，源提交 `35969a5`）经精确 tarball 验证与同字节矩阵通过：根测试 **824／824**（0 failed／0 cancelled／0 skipped）、无宿主根 798 中 508 通过／290 环境门禁跳过／0 failed、同归档矩阵 **25／25**（普通 Node 原生 14＋真实 Plugin Manager 11）。隔离双宿主（`0.2.1-alpha.1` 与 `0.2.1-alpha.2`）各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。完整记录见 [`dist/verification-0.4.25.json`](<../dist/verification-0.4.25.json>)。
+
+本版携带宿主原生初始子代理 cwd seam（`SubagentStartRequest.cwd`）与改写后的模型可见文本。原生调用形状已对**真实** alpha.2 `@deepseek-ai/dsh-subagent` 类型编译通过：spec 携带 `provider`、`label`、预留 `childId`、`request {parent, prompt, maxDepth?, cwd?}`、`signal` 与 `delivery:'parent'`，句柄暴露 `childId`、`messageId`、`result`。
