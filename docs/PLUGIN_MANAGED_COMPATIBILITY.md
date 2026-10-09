@@ -10,6 +10,10 @@
 
 当前源码验收为全量 761／761、0 skipped；[绑定实际 SDK 身份](<../tests/canonical-peer-bindings.test.mjs>)5／5、[完整导入清单](<../tests/compatible-import-inventory.test.mjs>)18／18、组合 49／49、准备 87／87、实际 Plugin Manager 11／11。后者包括关→开覆盖／已有服务与 B child 连续性，以及真实旧协议包只读接入的 Manager 安装／新启动、A/B 文件读取、继承／冻结持久 header／热续用；独立旧 importer 仍不变。真实原生提供者与普通解包合计 30／30，通过 full native spawn/fork／冷恢复等既有路径。测试只写自有隔离目录，无模型、无监听；不是当前已部署 GUI 激活证明。候选 clean-source 一次制品与同字节矩阵、复审、发布和安装另行报告；本机路径、Profile 快照和原始证据不进入公开材料。
 
+## 0.2.1-alpha.2 接入口径（2026-10-09）
+
+该宿主已删除 `startContinuable` 并改用公开 `startActivation`，且 `SubagentStartRequest.cwd` 由提供者自行解析并经会话工作目录 owner 记录。因此本插件在该宿主上直接使用原生 seam，不需要也不装载随包兼容提供者；导入前组合 guard 仍按实际服务与版本把原行留给 stock，不会用陈旧的 alpha.1 服务替换宿主。随包兼容提供者继续服务没有该 seam 的宿主（含 `0.2.1-alpha.1`）。
+
 ## 当前源码进度与验收边界
 
 0.4.2 发布线已将版本固定的[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>)、[公开来源与变换记录](<../compatibility/native-subagent.provenance.json>)、[真实包装入口](<../src/compatibility/native-subagent.ts>)与[只读启动准备观测](<../src/compatibility/readiness.ts>)纳入精确文件／exports 清单，并通过[编译后启动选择器](<../src/compatibility/composition.ts>)生成公开 bundle 覆盖。历史 0.4.1 Release 不含此实现；发行包内容不等于当前进程安装／启用事实。

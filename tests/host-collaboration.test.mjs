@@ -152,6 +152,61 @@ test('existing read-only and danger-full policies retain their native permission
   }
 })
 
+test('upstream activation seam carries the explicit cwd and keeps upstream ownership', options, async t => {
+  const activations = [], bridge = { calls: 0 }
+  const native = {
+    resolveMaxDepth: () => 2,
+    async startContinuable() { bridge.calls++; throw new Error('compatibility bridge must not serve a host that exposes the activation seam') },
+    async startActivation(spec) {
+      activations.push(spec)
+      // Local children always carry a message id; the rejecting capture result proves
+      // this caller attaches a handler instead of leaking a host-process rejection.
+      return { childId: spec.childId, messageId: 'activation-message', result: Promise.reject(new Error('capture failed')) }
+    },
+  }
+  const f = await assembly(t, {}, (_, __, ctx, owner) => {
+    ctx.provide('subagents', native)
+    ctx.provide('workingDirectory', { async ensure() { return owner.session.header.cwd } })
+    filesystemBoundary(ctx, owner, { mode: 'workspace-write' })
+  })
+  const request = { provider: 'spawn', childId: 'native-child', label: 'Native lane', prompt: 'Task' }, exec = { agent: f.owner, signal: signal() }
+  assert.equal(f.mounted.ports.capabilities.nativeInitialChildCwd, 'supported')
+  assert.deepEqual(await f.mounted.ports.createContinuable(exec, { ...request, cwd: '/fixture/tree' }), { childId: 'native-child', messageId: 'activation-message' })
+  assert.equal(activations.length, 1)
+  assert.deepEqual(Object.keys(activations[0]).sort(), ['childId', 'delivery', 'label', 'provider', 'request', 'signal'])
+  assert.equal(activations[0].delivery, 'parent')
+  assert.equal(activations[0].childId, 'native-child')
+  assert.equal(activations[0].request.cwd, '/fixture/tree')
+  assert.deepEqual(Object.keys(activations[0].request).sort(), ['cwd', 'maxDepth', 'parent', 'prompt'])
+  // Omission inherits upstream: never fabricate a directory value.
+  await f.mounted.ports.createContinuable(exec, { provider: 'fork', childId: 'native-inherit', label: 'Inherit', prompt: 'Task' })
+  assert.deepEqual(Object.keys(activations[1].request).sort(), ['maxDepth', 'parent', 'prompt'])
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(bridge.calls, 0)
+  const status = await f.mounted.ports.startupStatus(signal())
+  assert.equal(status.nativeInitialCwdSupported, true)
+  assert.equal(status.preparation.status, 'ready')
+  assert.match(status.preparation.diagnostic, /native-activation/)
+})
+
+test('activation seam still authorizes the directory before any child exists, and needs the directory owner', options, async t => {
+  const activations = []
+  const native = { resolveMaxDepth: () => 2, async startActivation(spec) { activations.push(spec); return { childId: spec.childId, messageId: 'activation-message' } } }
+  const f = await assembly(t, {}, (_, __, ctx, owner) => {
+    ctx.provide('subagents', native)
+    ctx.provide('workingDirectory', { async ensure() { return owner.session.header.cwd } })
+    filesystemBoundary(ctx, owner, { mode: 'workspace-write' })
+  })
+  const request = { provider: 'spawn', childId: 'denied', label: 'Denied', prompt: 'Task' }
+  await assert.rejects(f.mounted.ports.createContinuable({ agent: f.owner, signal: signal() }, { ...request, cwd: '/outside/tree' }), { code: 'access-denied' })
+  assert.equal(activations.length, 0)
+  // A structural activation method without the session directory owner cannot honor a
+  // value, so the capability stays unsupported rather than transmitting it optimistically.
+  const absent = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', { resolveMaxDepth: () => 2, async startActivation() { throw new Error('must not start') } }))
+  assert.equal(absent.mounted.ports.capabilities.nativeInitialChildCwd, 'unsupported')
+  await assert.rejects(absent.mounted.ports.createContinuable({ agent: absent.owner, signal: signal() }, { ...request, cwd: '/fixture/tree' }), { code: 'unsupported' })
+})
+
 test('installed public LocalFs resolves real symlink escapes before native creation and accepts canonical directories', options, async t => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-host-cwd-auth-'))
   t.after(() => rm(temp, { recursive: true, force: true }))

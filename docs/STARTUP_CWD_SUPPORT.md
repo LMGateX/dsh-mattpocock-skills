@@ -61,7 +61,7 @@ The same-package compatible provider is composed at genuine startup; it does not
 Projection precedence:
 
 1. Both boot and desired off: `disabled`, even if old preparation information is stale or failed.
-2. An official loaded native getter reporting true does not require managed disk preparation; current enablement and configuration restart status remain authoritative.
+2. An official loaded native seam — the compatible provider's getter exactly true, or a host activation service carrying startActivation with the session working-directory owner — does not require managed disk preparation; current enablement and configuration restart status remain authoritative.
 3. With native capability unavailable, preparation `failed`, `incompatible`, or `uncertain` take precedence over a pending-restart label.
 4. `not-prepared` with a known SDK version means `needs-preparation`. An unavailable SDK root (null SDK version) means `unsupported`, not merely pending reboot.
 5. Ready source with an old loaded unsupported module means `pending-restart`; unknown loaded capability means `uncertain`.

@@ -2,6 +2,16 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 未发布源码改动：宿主原生初始 cwd seam（2026-10-09）
+
+`src/host.ts` 按实际加载的公开服务选择首次 cwd seam：宿主原生 `startActivation` 加会话工作目录 owner，或随包兼容提供者的 `initialCwdSupported`；能力判定不看版本字符串。原生 seam 的 `result` 承诺有人挂接失败处理，不把捕获失败变成宿主进程的未处理拒绝。
+
+完整根回归 **824／824**，0 failed、0 cancelled、0 skipped，含新增两条真实 Host 装载用例（原生 seam 传递显式 cwd 且省略不伪造目录；缺工作目录 owner 时能力保持 unsupported 且不派发）。
+
+隔离双宿主验证（同一工作树、各自全新 `DSH_HOME`、无模型调用）：`0.2.1-alpha.1` 与 `0.2.1-alpha.2` 的 `stable` 注册表报告 sha256 同为 `a7d694ead579fadeea80bd61f9cb821294ce629a757385529cdaf65aa1b96249`（27 Skills／11 模型可见）；alpha.2 探针确认 `startActivation: true`、`startContinuable: false`、`workingDirectory: true`、`worktrees: false`。
+
+本条只记录未发布的工作树源码与隔离验证，**未**发布、**未**安装到本机 Profile、**未**重启任何服务。
+
 ## 发布版本与上游来源
 
 本次发布线为 `0.4.3`，历史 `0.4.2`／`0.4.1` 标签及资产保持不变；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。

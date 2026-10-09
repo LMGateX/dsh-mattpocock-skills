@@ -4,6 +4,8 @@
 
 **从 DSH `0.1.2-rc.1` 到 `0.2.1-alpha.1`（含 `0.1.7-alpha.2`、`0.1.7-rc.1`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2`），本插件始终不需要修改运行时代码。**
 
+`0.2.1-alpha.2` 是第一个需要运行时代码适配的宿主：子代理公开 API 由 `startContinuable` 改为 `startActivation`（并新增 `delivery`／`SubagentStartRequest.cwd`），本插件改用宿主原生 seam 传递显式首次 cwd；技能 provider 契约不变。详见下节。
+
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与最初宿主编译结果**逐字节相同**。
 
 每次必须修改的都是 **`package.json` 中声明的 peer 依赖范围**。这是元数据问题，不是行为问题。两次具体表现不同：
@@ -51,6 +53,23 @@ for (const [name, range] of Object.entries(dependencies)) {
 - 上界是 `<0.3.0-0`：`0.3.0-alpha.1` 实测为 **false**。0.3 线到来时必须更新 peer 范围，或使用 `allow-version` 豁免。
 
 因为两版 `dsh-skill` 的 `lib/types` 逐字节相同，`devDependencies` 仍钉在 `@deepseek-ai/dsh-skill@0.1.7-alpha.2`：升级它不会改变编译产物，只会让 pnpm 把整条新宿主的 peer 家族重新解析进来。运行时由 profile interception 指向运行时副本，`devDependencies` 只影响编译期类型。
+
+## 0.2.1-alpha.2 核对
+
+在 `/tmp` 下的全新隔离安装中进行（各自独立 `DSH_HOME`，未改动本机 DSH 与任何 Profile，未调用模型）。
+
+| 核对项 | 结果 |
+|---|---|
+| 安装期 peer 门禁 | 通过；alpha.2 真实 `evaluatePluginCompatibility`（`includePrerelease: true`）对 16 条受检范围零拒绝，pnpm 默认判定对 `0.2.1-alpha.2` 同样零告警 |
+| 门禁边界 | `0.2.2-alpha.1` 门禁通过但 pnpm 默认判定告警 16 条；`0.3.0-alpha.1` 被门禁拒绝——与 alpha.1 时结论相同 |
+| `@deepseek-ai/dsh-skill` 的 `lib/` | 与 `0.2.1-alpha.1` **逐字节相同**（`dsh-tool-skill`／`dsh-skill-filesystem` 仅有附加差异：agents home 解析、watcher 错误处理） |
+| 插件树装载 | 正常；日志无本插件／子代理错误，宿主在模型调用前以 `MISSING_CREDENTIAL` 结束 |
+| `stable` 注册表报告 | 27 个 Skills、11 个模型可见；sha256 `a7d694ead579fadeea80bd61f9cb821294ce629a757385529cdaf65aa1b96249`，与 `0.2.1-alpha.1` **逐字节相同** |
+| 实际加载的子代理服务 | `startActivation` 存在、`startContinuable` **已删除**、无 `initialCwdSupported` getter；会话工作目录服务存在 |
+| 官方 Git Worktrees | 默认**未装载**（`ctx.worktrees`、`create_worktree` 均不存在）；出厂 profile 不启用该项 |
+| `agent/pre-step` 载荷 | 与 alpha.1 相同 |
+
+破坏性变化与处理：`startContinuable` 被 `startActivation` 取代，`ContinuableStartSpec`／`ContinuableStart` 等类型一并移除。本插件按实际加载的公开服务选择 seam：有原生 `startActivation` + 会话工作目录 owner 时走原生，否则仍走随包兼容提供者；导入前组合 guard 在 alpha.2 上把原行留给 stock，不会装载陈旧的 alpha.1 服务。
 
 ## 核对范围与方法
 

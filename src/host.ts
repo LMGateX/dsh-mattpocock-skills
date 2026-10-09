@@ -74,9 +74,26 @@ export const HOST_CAPABILITIES = freeze({
 export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChildCwd'> & {
   readonly nativeInitialChildCwd: 'supported' | 'unsupported'
 }
-// Old SDKs lack the getter; only explicit native support authorizes cwd transmission.
+/** Which live seam carries an explicit initial child directory. `native` is the
+ * upstream activation contract (0.2.1-alpha.2 and later, where the provider itself
+ * resolves and records the request directory); `bridge` is this plugin's pinned
+ * compatibility provider. Neither is inferred from a version string — only the
+ * public method the actual service exposes authorizes cwd transmission. */
+type InitialChildCwdSeam = 'native' | 'bridge' | 'unsupported'
+interface NativeActivationFacade {
+  readonly initialCwdSupported?: boolean
+  readonly startActivation?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown; readonly result?: unknown }>
+}
+function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
+  const subagents = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
+  if (!subagents) return 'unsupported'
+  // Upstream resolves the directory through the session working-directory owner;
+  // a service that carries the method without that owner cannot honor the value.
+  if (typeof subagents.startActivation === 'function' && ctx.get('workingDirectory')?.ensure !== undefined) return 'native'
+  return subagents.initialCwdSupported === true ? 'bridge' : 'unsupported'
+}
 function initialChildCwdSupported(ctx: Context): boolean {
-  return (ctx.get('subagents') as (Context['subagents'] & { readonly initialCwdSupported?: boolean }) | undefined)?.initialCwdSupported === true
+  return initialChildCwdSeam(ctx) !== 'unsupported'
 }
 /** Initial cwd is a file-scope change, not merely an accessible-directory check. */
 async function authorizeInitialChildCwd(ctx: Context, parent: Agent, cwd: string, signal: AbortSignal): Promise<() => void> {
@@ -588,6 +605,10 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     const startupNode = new HostStartupNode({
       observeCompatibilityPreparation: signal => inspectCompatibilityPreparation(ctx, signal),
       nativeSource: () => {
+        // Diagnostic origin of the actually loaded seam; never a capability claim.
+        const seam = initialChildCwdSeam(ctx)
+        if (seam === 'native') return 'native-activation'
+        if (seam !== 'bridge') return null
         const service = ctx.get('subagents') as unknown as Record<symbol, unknown> | undefined
         const source = service?.[Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')]
         return source === 'native-subagent-0.2.1-alpha.1' ? source : null
@@ -683,11 +704,29 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         const spec = { provider: raw.provider, label, childId,
           request: { parent: exec.agent!, prompt: [{ type: 'text' as const, text: prompt }], ...(maxDepth === undefined ? {} : { maxDepth }) },
           signal: exec.signal, ...(cwd === undefined ? {} : { cwd }) }
+        const seam = initialChildCwdSeam(ctx)
         if (cwd !== undefined) {
           requireStartupCwd()
-          if (!initialChildCwdSupported(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
+          if (seam === 'unsupported') throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
         }
         verifyCwd?.()
+        if (seam === 'native') {
+          // Upstream keeps the reserved identity and carries the directory inside the
+          // request, so the provider resolves and records it before the child exists.
+          // Parent delivery is the model-facing completion notice this plugin's receipt
+          // already implies; the returned handle stays with the upstream manager, which
+          // settles the child and releases its slot without further action here.
+          const activation = await (native as unknown as NativeActivationFacade).startActivation!({ provider: raw.provider, label, childId,
+            request: { parent: exec.agent!, prompt: [{ type: 'text' as const, text: prompt }], ...(maxDepth === undefined ? {} : { maxDepth }), ...(cwd === undefined ? {} : { cwd }) },
+            signal: exec.signal, delivery: 'parent' })
+          // The result promise rejects on capture failure; nobody here awaits it, and an
+          // unhandled rejection would surface in the host process. The parent notice and
+          // this plugin's lifecycle observation carry the outcome instead.
+          const result = activation.result
+          if (result !== null && typeof result === 'object' && typeof (result as Promise<unknown>).catch === 'function') (result as Promise<unknown>).catch(() => undefined)
+          // The local-child overload with a reserved childId guarantees the message id.
+          return { childId: String(activation.childId), messageId: String(activation.messageId ?? '') }
+        }
         return native.startContinuable(spec)
       },
       installNativeGuard(guard) { const remove = ctx.tools.guard(guard); disposers.push(remove); return remove },

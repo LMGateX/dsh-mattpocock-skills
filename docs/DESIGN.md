@@ -34,6 +34,13 @@ This document is the authoritative implementation contract. A later implementati
 - 后置组件 disabled:true 覆盖与功能请求冲突时，诊断明确为组件配置禁用，给出撤销关闭覆盖／恢复自动选择的修复方向，而非泛称版本不匹配或建议反复重启。恢复不得写强制 disabled:false，也不覆盖分组／隔离／别名／未知 Profile 选择。
 - 非默认 Profile 与真实 SDK 生命周期回归须验证禁用冲突、恢复自动 guard、实际能力与功能请求的区别；公开资料不含本机快照。
 
+## 宿主原生初始 cwd seam（2026-10-09，已获所有者认可）
+
+- 已核对 DSH `0.2.1-alpha.2` 的公开 `@deepseek-ai/dsh-subagent`：`startContinuable` 已删除，改为 `startActivation(spec)`，`SubagentStartRequest.cwd?` 由提供者自行解析并经会话工作目录 owner 记录；省略仍继承父目录。
+- 实际加载的服务同时暴露 `startActivation` 与会话工作目录 owner（`workingDirectory.ensure`）时，本插件使用宿主原生 seam 传递显式首次 cwd；否则仍使用随包版本固定兼容提供者。能力判定只来自实际加载的公开服务对象，不来自版本字符串、模型输入或用户声明。
+- 随包兼容提供者、recipe 与 `host-patches/` 继续交付，服务没有原生 seam 的宿主；本决策不改变 0.4.3 的用户入口、启动时采样、实际 header 核对，也不增加第二个 cwd 来源。
+- 授权、持久意图、原生副作用边界复验与确认序列不变：宿主原生不豁免预检查，省略 cwd 仍不写任何目录值。
+
 ## 既有 Profile 原生依赖接入修复
 
 用户认可继续修复原生依赖冲突及强制开启覆盖诊断。修复仍由同一插件包承担，不修改共享 SDK、Profile 的其他插件依赖或全局模块解析，也不自动重启服务。
