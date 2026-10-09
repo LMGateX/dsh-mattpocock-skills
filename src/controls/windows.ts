@@ -596,7 +596,12 @@ function parseScope(value: unknown): InstrumentScope {
   return freeze({ kind: 'assigned', workflowId, ticketIds })
 }
 function allowed(scope: InstrumentScope, value: { workflowId: string | null; localTicketId: string | null }): boolean {
-  return scope.kind === 'coordinator' || (scope.workflowId === value.workflowId && (value.localTicketId === null || scope.ticketIds.includes(value.localTicketId)))
+  if (scope.kind === 'coordinator') return true
+  // A ticketless execution is research outside every ticket scope: it claims no ticket and holds no T
+  // slot, so an assigned lane may run it in its own, an inherited or a new worktree. Ticketed work
+  // stays strictly inside the assignment's workflow and tickets.
+  if (value.workflowId === null && value.localTicketId === null) return true
+  return scope.workflowId === value.workflowId && (value.localTicketId === null || scope.ticketIds.includes(value.localTicketId))
 }
 function checkScope(scope: InstrumentScope, value: { workflowId: string | null; localTicketId: string | null }): void {
   if (!allowed(scope, value)) throw new ControlsError('access-denied', 'ticket/execution is outside trusted assignment')

@@ -304,3 +304,19 @@ test('a reload re-admits lanes that are still running instead of dropping S to u
  // The reload downgrades the previous runtime's row; the sweep re-admits the still-running lane
  assert.equal(after.windows.S.used,1)
 })
+
+test('an assigned lane may run ticketless research but never work outside its ticket scope',async t=>{
+ const f=await fixture(t,{known:true,initialPolicy:policy()}),calls=installCreation(f)
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
+ const child=await f.runtime.delegate(caller('root'),{description:'lane',prompt:'w',workflowId:'flow',ticketIds:['A']},f.exec())
+ assert.equal(child.accepted,true)
+ const research=await f.runtime.delegate(caller(child.childId),{description:'research',prompt:'w',worktree:'/trees/research'},f.exec(child.childId))
+ assert.equal(research.accepted,true,'a ticketless research lane is creatable from an assigned lane')
+ const rows=(await f.runtime.worktreeAction(caller('root'),'root',{action:'read'},signal())).rows
+ const researchRow=rows.find(row=>row.value.plannedChildSessionId===research.childId)
+ assert.equal(researchRow.value.requestedCwd,'/trees/research','the research lane keeps its own worktree')
+ assert.equal('ticketIds' in researchRow.value,false,'a research lane records no ticket')
+ assert.equal((await f.read()).windows.S.used,2,'both lanes are running')
+ await assert.rejects(f.runtime.delegate(caller(child.childId),{description:'escape',prompt:'w',workflowId:'other',ticketIds:['A']},f.exec(child.childId)),/not registered in workflow|assignment|scope/)
+})
