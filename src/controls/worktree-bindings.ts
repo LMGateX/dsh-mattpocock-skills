@@ -13,6 +13,8 @@ export interface WorktreeBindingIntent {
   readonly plannedChildSessionId: string
   readonly requestedCwd: string
   readonly task?: string
+  /** Tickets this lane works; recorded on the binding so a ticket can be traced to its lanes. */
+  readonly ticketIds?: readonly string[]
 }
 export interface WorktreeBindingValue extends WorktreeBindingIntent {
   readonly actualChildSessionId: string | null
@@ -140,14 +142,20 @@ function parseOwner(value: unknown): InstrumentInstance {
   return freeze({ instrumentInstanceId: id(r.instrumentInstanceId, 'instrumentInstanceId'), ownerSessionId: id(r.ownerSessionId, 'ownerSessionId'), controlWorkspaceId: id(r.controlWorkspaceId, 'controlWorkspaceId') })
 }
 function parseIntent(value: unknown): WorktreeBindingIntent {
-  const r = record(value, 'binding intent', ['operationId', 'parentSessionId', 'plannedChildSessionId', 'requestedCwd', 'task'])
+  const r = record(value, 'binding intent', ['operationId', 'parentSessionId', 'plannedChildSessionId', 'requestedCwd', 'task', 'ticketIds'])
   const parentSessionId = id(r.parentSessionId, 'parentSessionId'), plannedChildSessionId = id(r.plannedChildSessionId, 'plannedChildSessionId')
   if (parentSessionId === plannedChildSessionId) invalid('child must differ from parent')
-  return freeze({ operationId: id(r.operationId, 'operationId'), parentSessionId, plannedChildSessionId, requestedCwd: cwd(r.requestedCwd), ...(r.task === undefined ? {} : { task: text(r.task, 'task') }) })
+  if (r.ticketIds !== undefined && !Array.isArray(r.ticketIds)) invalid('ticketIds must be an array')
+  const rawTicketIds = (r.ticketIds ?? []) as readonly unknown[]
+  if (rawTicketIds.length > 32) invalid('ticketIds is bounded to 32')
+  const ticketIds = rawTicketIds.map(value => id(value, 'ticketId'))
+  if (new Set(ticketIds).size !== ticketIds.length) invalid('ticketIds must be unique')
+  return freeze({ operationId: id(r.operationId, 'operationId'), parentSessionId, plannedChildSessionId, requestedCwd: cwd(r.requestedCwd), ...(ticketIds.length === 0 ? {} : { ticketIds }),
+    ...(r.task === undefined ? {} : { task: text(r.task, 'task') }) })
 }
 function parseValue(value: unknown): WorktreeBindingValue {
-  const r = record(value, 'binding value', ['operationId', 'parentSessionId', 'plannedChildSessionId', 'requestedCwd', 'task', 'actualChildSessionId', 'actualCwd', 'acceptance', 'outcome', 'diagnostic', 'business'])
-  const intent = parseIntent({ operationId: r.operationId, parentSessionId: r.parentSessionId, plannedChildSessionId: r.plannedChildSessionId, requestedCwd: r.requestedCwd, ...(r.task === undefined ? {} : { task: r.task }) })
+  const r = record(value, 'binding value', ['operationId', 'parentSessionId', 'plannedChildSessionId', 'requestedCwd', 'task', 'ticketIds', 'actualChildSessionId', 'actualCwd', 'acceptance', 'outcome', 'diagnostic', 'business'])
+  const intent = parseIntent({ operationId: r.operationId, parentSessionId: r.parentSessionId, plannedChildSessionId: r.plannedChildSessionId, requestedCwd: r.requestedCwd, ...(r.task === undefined ? {} : { task: r.task }), ...(r.ticketIds === undefined ? {} : { ticketIds: r.ticketIds }) })
   if (r.acceptance !== 'unknown' && r.acceptance !== 'accepted' && r.acceptance !== 'rejected') invalid('unknown native acceptance')
   if (r.outcome !== 'pending' && r.outcome !== 'confirmed' && r.outcome !== 'failed' && r.outcome !== 'cancelled' && r.outcome !== 'accepted-unknown') invalid('unknown creation outcome')
   const business = record(r.business, 'binding business', ['state', 'notes'])
@@ -166,7 +174,7 @@ function parseBusinessUpdate(value: unknown): WorktreeBindingBusinessUpdate {
 }
 function equal(a: unknown, b: unknown): boolean { return JSON.stringify(a) === JSON.stringify(b) }
 function intentOf(value: WorktreeBindingValue): WorktreeBindingIntent {
-  return { operationId: value.operationId, parentSessionId: value.parentSessionId, plannedChildSessionId: value.plannedChildSessionId, requestedCwd: value.requestedCwd, ...(value.task === undefined ? {} : { task: value.task }) }
+  return { operationId: value.operationId, parentSessionId: value.parentSessionId, plannedChildSessionId: value.plannedChildSessionId, requestedCwd: value.requestedCwd, ...(value.ticketIds === undefined || value.ticketIds.length === 0 ? {} : { ticketIds: value.ticketIds }), ...(value.task === undefined ? {} : { task: value.task }) }
 }
 
 /** Storage parser: never reset malformed history to an empty registry. */
@@ -224,7 +232,7 @@ function parseDigest(value: unknown): string {
   return value
 }
 function identityOf(value: WorktreeBindingValue): Omit<WorktreeBindingIntent, 'task'> {
-  return { operationId: value.operationId, parentSessionId: value.parentSessionId, plannedChildSessionId: value.plannedChildSessionId, requestedCwd: value.requestedCwd }
+  return { operationId: value.operationId, parentSessionId: value.parentSessionId, plannedChildSessionId: value.plannedChildSessionId, requestedCwd: value.requestedCwd, ...(value.ticketIds === undefined || value.ticketIds.length === 0 ? {} : { ticketIds: value.ticketIds }) }
 }
 function technicalOf(value: WorktreeBindingValue): WorktreeBindingTechnical {
   return { ...identityOf(value), actualChildSessionId: value.actualChildSessionId, actualCwd: value.actualCwd, acceptance: value.acceptance, businessState: value.business.state }
@@ -287,8 +295,8 @@ export function parseWorktreeBindingsDocument(value: unknown): WorktreeBindingsM
   const manifest: WorktreeBindingManifest[] = array(r.manifest, 'binding manifest').map(value => {
     const raw = record(value, 'manifest version', ['bindingId', 'revision', 'recordedAt', 'operationId', 'source', 'author', 'technical', 'valueDigest', 'notesDigest', 'retained'])
     if (raw.source !== 'intent' && raw.source !== 'program' && raw.source !== 'agent') invalid('unknown manifest source')
-    const tech = record(raw.technical, 'technical binding', ['operationId', 'parentSessionId', 'plannedChildSessionId', 'requestedCwd', 'actualChildSessionId', 'actualCwd', 'acceptance', 'businessState'])
-    const parsed = parseValue({ operationId: tech.operationId, parentSessionId: tech.parentSessionId, plannedChildSessionId: tech.plannedChildSessionId, requestedCwd: tech.requestedCwd, actualChildSessionId: tech.actualChildSessionId, actualCwd: tech.actualCwd, acceptance: tech.acceptance, outcome: tech.actualCwd === null ? 'accepted-unknown' : 'confirmed', diagnostic: null, business: { state: tech.businessState } })
+    const tech = record(raw.technical, 'technical binding', ['operationId', 'parentSessionId', 'plannedChildSessionId', 'requestedCwd', 'ticketIds', 'actualChildSessionId', 'actualCwd', 'acceptance', 'businessState'])
+    const parsed = parseValue({ operationId: tech.operationId, parentSessionId: tech.parentSessionId, plannedChildSessionId: tech.plannedChildSessionId, requestedCwd: tech.requestedCwd, ...(tech.ticketIds === undefined ? {} : { ticketIds: tech.ticketIds }), actualChildSessionId: tech.actualChildSessionId, actualCwd: tech.actualCwd, acceptance: tech.acceptance, outcome: tech.actualCwd === null ? 'accepted-unknown' : 'confirmed', diagnostic: null, business: { state: tech.businessState } })
     return { bindingId: id(raw.bindingId, 'manifest bindingId'), revision: revision(raw.revision, 'manifest revision'), recordedAt: revision(raw.recordedAt, 'recordedAt'), operationId: id(raw.operationId, 'operationId'), source: raw.source,
       author: parseAuthor(raw.author), technical: technicalOf(parsed), valueDigest: parseDigest(raw.valueDigest), notesDigest: parseDigest(raw.notesDigest), retained: boolean(raw.retained, 'retained') }
   })

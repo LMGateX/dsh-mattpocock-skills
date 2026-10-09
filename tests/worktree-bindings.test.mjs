@@ -228,3 +228,16 @@ test('creation and business operations share durable identity protection; change
   await assert.rejects(bindings.registerIntent(owner, author, { ...intent, operationId: 'new-op-same-child' }), error => error.code === 'association-conflict')
   assert.equal((await bindings.query(owner)).revision, 2)
 })
+
+test('a lane binding records the tickets it works and legacy rows without tickets still parse', async () => {
+  const f = fixture(), bindings = f.open()
+  const registered = await bindings.registerIntent(owner, author, { ...intent, operationId: 'ticketed-op', plannedChildSessionId: 'child-T', requestedCwd: '/trees/T', ticketIds: ['T7', 'T8'] })
+  assert.deepEqual(registered.row.value.ticketIds, ['T7', 'T8'])
+  const reopened = f.open()
+  const row = (await reopened.query(owner)).rows.find(candidate => candidate.value.operationId === 'ticketed-op')
+  assert.deepEqual(row.value.ticketIds, ['T7', 'T8'], 'the tickets survive a reopen')
+  await assert.rejects(bindings.registerIntent(owner, author, { ...intent, operationId: 'ticketed-dup', plannedChildSessionId: 'child-D', requestedCwd: '/trees/D', ticketIds: ['T7', 'T7'] }),
+    error => error.code === 'invalid-input')
+  const unticketed = await bindings.registerIntent(owner, author, { ...intent, operationId: 'plain-op', plannedChildSessionId: 'child-P', requestedCwd: '/trees/P' })
+  assert.equal('ticketIds' in unticketed.row.value, false, 'a ticketless lane records no ticket field')
+})

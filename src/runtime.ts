@@ -772,7 +772,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         return {accepted:binding?.value.acceptance==='accepted'?true:null,childId:intent.row.childId,replayed:true,recording:'unknown'}
       }
       const registry=cwd===undefined?null:await openWorktrees(view)
-      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd!,task:r.description as string}));if(!registered.dispatch)return {accepted:registered.row.value.acceptance==='accepted',childId:intent.row.childId,replayed:true,recording:registered.row.value.outcome}}
+      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd!,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})}));if(!registered.dispatch)return {accepted:registered.row.value.acceptance==='accepted',childId:intent.row.childId,replayed:true,recording:registered.row.value.outcome}}
       await checkGrant()
       let dispatch:Dispatch|null=null
       if(view.policy.extensionEnabled&&view.policy.features.windows.requested){

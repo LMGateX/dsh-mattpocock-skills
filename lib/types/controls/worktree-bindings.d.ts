@@ -8,6 +8,8 @@ export interface WorktreeBindingIntent {
     readonly plannedChildSessionId: string;
     readonly requestedCwd: string;
     readonly task?: string;
+    /** Tickets this lane works; recorded on the binding so a ticket can be traced to its lanes. */
+    readonly ticketIds?: readonly string[];
 }
 export interface WorktreeBindingValue extends WorktreeBindingIntent {
     readonly actualChildSessionId: string | null;
