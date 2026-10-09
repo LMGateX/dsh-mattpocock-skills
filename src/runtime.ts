@@ -199,7 +199,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     return rows
   }
-  const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
+/** Absent and explicit null both mean "no ticket"; a present value must still be a real id. */
+  const optionalTicketId=(value:unknown,where:string):string|null=>{
+    if(value===undefined||value===null)return null
+    try{return id(value,where)}catch{throw new ControlsError('invalid-input',where+' must be a non-empty opaque id, or null when this work belongs to no ticket')}
+  }
+    const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
     const known=await registeredTickets(caller,sessionId)
     if(known===null||known.has(workflowId+'\u0000'+localTicketId))return
     throw new ControlsError('invalid-input','ticket "'+localTicketId+'" is not registered in workflow "'+workflowId+'"; record it with mattpocock_record put-ticket (workflowId "'+workflowId+'", localTicketId "'+localTicketId+'") first, or omit workflowId for a ticketless research lane')
@@ -593,7 +598,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     async executeManaged(caller,input:HostJson,exec:ToolRunContext){
       const r=record(input,'managed execution',['nativeTool','arguments','workflowId','localTicketId'])
       if(r.nativeTool!=='subagent'&&r.nativeTool!=='subagent_fork'&&r.nativeTool!=='send_message')throw new ControlsError('invalid-input','unsupported managed native tool; accepted nativeTool values: subagent, subagent_fork, send_message')
-      const args=parseHostJson(r.arguments),workflowId=r.workflowId===null?null:id(r.workflowId,'workflowId'),localTicketId=r.localTicketId===null?null:id(r.localTicketId,'localTicketId')
+      const args=parseHostJson(r.arguments),workflowId=optionalTicketId(r.workflowId,'workflowId'),localTicketId=optionalTicketId(r.localTicketId,'localTicketId')
       if(workflowId===null&&localTicketId!==null)throw new ControlsError('invalid-input','ticket needs a declared workflow')
       const view=await identity(caller,caller.sessionId!,exec.signal),executionId=id(exec.callId,'execution callId')
       const permission=await scope(caller.principalId,caller.sessionId!,view)
@@ -751,7 +756,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const result=await history.apply(input as unknown as HistoryAction,{kind:'authored',domain:'history-actions',author:parseHostJson(caller),recordedAt:null,coverage:'recorded-history'},signal)
           return r.action==='purge'?{...result,scope:'derived-session-history',sourceRecordsDeleted:false,nativeConversationDeleted:false}:result
         }
-        throw new ControlsError('invalid-input','unknown history action')
+        throw new ControlsError('invalid-input','unknown history action; accepted actions: query, detail, set-context, purge, compact, compact-source, purge-source')
       })
     },
     async worktreeAction(caller,sessionId,input,signal){
@@ -769,14 +774,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           try{if(ports.liveAgent(row.value.plannedChildSessionId)&&(!ports.flushSession||!await ports.flushSession(row.value.plannedChildSessionId,signal)))throw new ControlsError('storage-uncertain','live child native checkpoint unavailable');const facts=await ports.sessionFacts(row.value.plannedChildSessionId,signal);if(facts.header.origin==='subagent'&&facts.header.parentSession&&typeof facts.header.cwd==='string')header={sessionId:facts.header.id,parentSessionId:facts.header.parentSession,cwd:facts.header.cwd}}catch(error){signal.throwIfAborted();if(!(error instanceof ControlsError)||error.code!=='unknown-session')throw error}
           return registry.reconcile(view.instance,operationId,header,caller)
         }
-        throw new ControlsError('invalid-input','unknown worktree action')
+        throw new ControlsError('invalid-input','unknown worktree action; accepted actions: read, update, reconcile')
       })
     },
     async delegate(caller,input,exec){
       if(caller.kind!=='agent'||caller.sessionId===null)denied('delegation requires actual native agent')
       const r=record(input,'delegation',['description','prompt','provider','worktree','operationId','workflowId','ticketIds'])
       if(typeof r.description!=='string'||!r.description.trim()||typeof r.prompt!=='string'||!r.prompt.trim())throw new ControlsError('invalid-input','description and prompt are required text')
-      const provider=r.provider??'spawn';if(provider!=='spawn'&&provider!=='fork')throw new ControlsError('invalid-input','unsupported provider')
+      const provider=r.provider??'spawn';if(provider!=='spawn'&&provider!=='fork')throw new ControlsError('invalid-input','unsupported provider; accepted provider values: spawn, fork')
       const operationId=id(r.operationId??exec.callId,'operationId'),view=await identity(caller,caller.sessionId,exec.signal)
       const workflowId=r.workflowId===undefined?null:id(r.workflowId,'workflowId'),ticketIds=r.ticketIds===undefined?[]:array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
       if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
@@ -838,8 +843,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       return result
     },
     async assign(caller,input,signal){
-      const r=record(input,'task delegation',['sessionId','workflowId','ticketIds']),target=id(r.sessionId,'child sessionId'),workflowId=r.workflowId===null?null:id(r.workflowId,'workflowId')
-      const ticketIds=array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
+      const r=record(input,'task delegation',['sessionId','workflowId','ticketIds']),target=id(r.sessionId,'child sessionId'),workflowId=optionalTicketId(r.workflowId,'workflowId')
+      const ticketIds=r.ticketIds===undefined?[]:array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
       if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
       const parent=await identity(caller,caller.sessionId!,signal),facts=await ports.sessionFacts(target,signal)
       if(facts.header.origin!=='subagent'||facts.header.parentSession!==caller.sessionId)denied('task grant requires actual direct managed child')

@@ -81,6 +81,8 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk \
 ./node_modules/.bin/tsc --noEmit --project tsconfig.json
 ~~~
 
+兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 历史第一轮组合验证为 runtime 22 tests + host 18 tests = 40/40 pass；后续 fail-first 阶段曾为 48 tests / 47 pass。该阶段发现的 resident epoch 与 managed wrapper concludesTurn 缺陷已由主代理修复，并在最新定向回归中通过。历史该次 runtime 文件为 **41 项**；通知、startup 与 receipt-window 定向 **9/9 pass**，late identity / managed parent conclusion / storage fault / caller abort 定向 **4/4 pass**。历史该阶段构建与根级验收记录为：Host/Client 严格编译与客户端 JS/DTS 生成均 exit 0，完整根 suite **288/288 pass、0 fail、0 skip**，其中 Runtime **41**、Host **29**、Client **23**。记录见[最终验证（本地原始记录不公开；参见验证范围）](<VERIFICATION.md#historical-evidence>)，这些旧阶段数量不冒称当前修复版结果；当前最终验收仍以公开验证说明为准。所有数量只代表机械测试，不代表真实模型工作流、原生全路径强 S、初始 cwd 绑定、真实资源退休或 GUI/profile 安装验收。
 
 ## 通知持久化短尾：已接线的定向验证

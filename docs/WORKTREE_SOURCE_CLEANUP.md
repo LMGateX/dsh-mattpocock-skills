@@ -109,6 +109,8 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk \
 pnpm exec tsc -p tsconfig.json --noEmit
 ```
 
+兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 结果：**19/19 通过、零失败、零跳过、exit 0**；全工程 strict TypeScript noEmit **exit 0**。另独立 entry 的 strict/noUncheckedIndexedAccess/exactOptionalPropertyTypes/verbatimModuleSyntax/isolatedModules 检查 exit 0。
 
 真实部分：安装版 DSH 的 DomainFacility＋JsonStorageBackend 写到新临时目录；实际 source JSON 在删除前含 unique-old-note-marker，删除后字节不含该 marker，而未选旧 note/当前 note 仍在。真实 table.update 持久成功后故意丢回执触发 storage-uncertain；fresh facility/backend handle 重开确认 source holes、完整当前 value、原创建 dispatch=false、原 business 重试不回填。独立新 Node 进程读取相同 source 文件，快照一致、旧 marker 不存在、当前 marker 存在。fixture 目录按已验证绝对临时路径清除。

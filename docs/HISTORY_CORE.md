@@ -106,6 +106,8 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk \
 pnpm exec tsc -p tsconfig.json --noEmit
 ~~~
 
+兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 **第一阶段结果：** 历史核心当时为 10/10 通过；未设置 DSH_CONTROLS_HOST_ROOT 时原生存储探针明确 skipped，不计成集成通过。测试直接验证生产 TypeScript 的公开接口；本轮源清理与 Host/Client 集成的最终测试、严格构建和打包结果由主集成者统一重跑登记。
 
 仓库源码实施不自动安装宿主补丁、启用 Profile 或更新正在运行的 GUI；部署与发布沿用独立授权和完成记录。

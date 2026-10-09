@@ -10,19 +10,24 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import { constants as fsConstants } from 'node:fs'
 import { open, stat, chmod } from 'node:fs/promises'
+import { ALPHA1_NATIVE_SHA256, nativeEntrySha256, openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Accepted seam: actual public pinned PluginManager + pnpm-owned Profile +
 // actual app-boot Include/Hmr/PluginPackages, not hand-assembled package links.
 // The shipped default base/Web layers are composed intact; a final bounded
 // no-listen overlay disables surfaces and other unrelated plugins for boot.
 // This is not complete Web/GUI activation, a replacement server, or a release.
+// Host-generic manager probes run on DSH_CONTROLS_HOST_ROOT. Scenarios that assert
+// the released 0.2.1-alpha.1 bridge stay pinned behind DSH_CONTROLS_COMPAT_HOST_ROOT.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
+const compatSourceRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for genuine PluginManager probes' }
+const compatOptions = { skip: !compatSourceRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for genuine 0.2.1-alpha.1 bridge PluginManager probes' }
+const compatRoot = compatSourceRoot ? await openCompatHostView(compatSourceRoot) : undefined
 const repo = fileURLToPath(new URL('../', import.meta.url))
 const run = promisify(execFile)
 const pluginName = '@lmgatex/dsh-mattpocock-skills'
 const origin = Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')
-const nativeHash = '75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541'
 
 // Trusted operator test input only; never a runtime/user-path authorization API.
 function operatorArchiveInput(env) {
@@ -200,6 +205,11 @@ async function worker(scenario, tarball) {
       new app.PluginPackages(ctx, { resolution })
       new TypertRegistry(ctx); new SkillRegistry(ctx)
       ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model forbidden') }, stream() { modelCalls++; throw new Error('model forbidden') } })
+      // alpha.2 local subagents inject the working-directory service. This bounded
+      // manager proof disables every unrelated provider row, so mount an inert
+      // mechanical working directory for the genuine stock Fiber to activate.
+      if (native.default.inject?.includes('workingDirectory') && ctx.get('workingDirectory') === undefined)
+        ctx.provide('workingDirectory', { async ensure() { return dir }, async set() {} })
       if (scenario === 'native' || scenario === 'cold-native' || scenario === 'disable-compatible' || scenario === 'remove-compatible' || scenario === 'bridge-toggle' || scenario === 'old-profile') graph = await nativeGraph(ctx, load, dir, scenario === 'cold-native', scenario === 'disable-compatible' ? 'bundle-parent' : scenario === 'remove-compatible' ? 'remove-parent' : 'manager-parent')
       await ctx.plugin(Timer)
       await ctx.plugin(Hmr, { root: [], base: dir, ignored: [], debounce: 1 })
@@ -448,6 +458,25 @@ async function worker(scenario, tarball) {
     }
     const initial = token(ctx.subagents), uid = entry('subagent').fiber.uid
     assert(initial instanceof native.default)
+    if (scenario === 'disable-bundle') {
+      const disabled = await ctx.pluginManager.setBundleEnabled(pluginName, false)
+      assert.equal(disabled.application, 'applied', JSON.stringify(disabled))
+      assert.equal((await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName).enabled, false)
+      assert.equal((await ctx.skills.list()).some(skill => skill.name === 'tdd'), false)
+      assert.equal(token(ctx.subagents) === initial, true, 'bundle disable keeps the live canonical stock provider')
+      assert.equal(entry('subagent').fiber.uid, uid)
+      return { persistedDisabled: true }
+    }
+    if (scenario === 'remove-bundle') {
+      const removed = await ctx.pluginManager.removeBundle(pluginName)
+      assert.equal(removed.application, 'applied', JSON.stringify(removed))
+      assert.equal(removed.packageResult?.exitCode, 0, JSON.stringify(removed))
+      assert.equal((await ctx.pluginManager.listBundles()).some(bundle => bundle.name === pluginName), false)
+      await assert.rejects(readFile(join(dir, 'node_modules', pluginName, 'package.json')), error => error.code === 'ENOENT')
+      assert.equal(token(ctx.subagents) === initial, true, 'bundle removal keeps the live canonical stock provider')
+      assert.equal(entry('subagent').fiber.uid, uid)
+      return { removedBundle: true }
+    }
     if (scenario === 'stock-removed') {
       assert.equal(ctx.subagents[origin], undefined)
       assert.equal((await ctx.pluginManager.listBundles()).some(bundle => bundle.name === pluginName), false)
@@ -503,14 +532,21 @@ async function worker(scenario, tarball) {
     if (graph && ctx?.get('subagents')) await graph.dispose()
     if (ctx?.get('loader')) await ctx.fiber.dispose()
     assert.equal(modelCalls, 0)
+    assert.match(String(nativeHash), /^[0-9a-f]{64}$/, 'manager worker needs the pinned native entry hash')
     assert.equal(createHash('sha256').update(await readFile(sdkRequire.resolve('@deepseek-ai/dsh-subagent'))).digest('hex'), nativeHash)
   }
 }
 
-let scratch, tarball, profile, archiveBinding
+let scratch, tarball, archiveBinding, profiles
+const nativeHashes = new Map()
 const upgrades = new Map()
 before(async () => {
-  if (!hostRoot) { assert(!operatorArchive, 'accepted archive proof requires DSH_CONTROLS_HOST_ROOT'); return }
+  if (!hostRoot && !compatRoot) { assert(!operatorArchive, 'accepted archive proof requires DSH_CONTROLS_HOST_ROOT or DSH_CONTROLS_COMPAT_HOST_ROOT'); return }
+  if (hostRoot) { assert(isAbsolute(hostRoot)); nativeHashes.set(hostRoot, await nativeEntrySha256(hostRoot)) }
+  if (compatRoot) {
+    assert.equal(await nativeEntrySha256(compatSourceRoot), ALPHA1_NATIVE_SHA256, 'DSH_CONTROLS_COMPAT_HOST_ROOT must carry the pinned 0.2.1-alpha.1 native entry')
+    nativeHashes.set(compatRoot, ALPHA1_NATIVE_SHA256)
+  }
   scratch = await mkdtemp(join(tmpdir(), 'dsh-manager-public-proof-'))
   await mkdir(join(scratch, 'pack'))
   await chmod(scratch, 0o700)
@@ -534,8 +570,8 @@ before(async () => {
     upgrades.set(version, join(scratch, 'pack', 'lmgatex-dsh-mattpocock-skills-' + version + '.tgz'))
   }
   assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.25')
-  profile = join(scratch, 'home/profiles/web')
-  await mkdir(profile, { recursive: true })
+  profiles = { canonical: join(scratch, 'canonical-home/profiles/web'), compat: join(scratch, 'compat-home/profiles/web') }
+  for (const dir of Object.values(profiles)) await mkdir(dir, { recursive: true })
 })
 after(async () => {
   if (!scratch) return
@@ -544,15 +580,16 @@ after(async () => {
   try { await archiveBinding?.assertUnchanged() } finally { await rm(scratch, { recursive: true, force: true }) }
 })
 
-async function child(scenario, tar = tarball, targetProfile = profile) {
+async function child(scenario, tar = tarball, targetProfile = profiles.compat, root = compatRoot, expectedHash = nativeHashes.get(root)) {
+  assert(isAbsolute(root), 'manager worker needs an absolute host root')
   const source = [
     "import assert from 'node:assert/strict'", "import { createRequire } from 'node:module'",
     "import { mkdir, readFile, writeFile, realpath, symlink, lstat } from 'node:fs/promises'",
     "import { join, dirname, isAbsolute } from 'node:path'", "import { pathToFileURL, fileURLToPath } from 'node:url'",
     "import { createHash } from 'node:crypto'",
-    'const hostRoot = ' + JSON.stringify(hostRoot), 'const pluginName = ' + JSON.stringify(pluginName),
+    'const hostRoot = ' + JSON.stringify(root), 'const pluginName = ' + JSON.stringify(pluginName),
     "const origin = Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')",
-    'const nativeHash = ' + JSON.stringify(nativeHash), nativeGraph.toString(), assertPackageMetadata.toString(), prepareOldProtocolShadow.toString(), worker.toString(),
+    'const nativeHash = ' + JSON.stringify(expectedHash), nativeGraph.toString(), assertPackageMetadata.toString(), prepareOldProtocolShadow.toString(), worker.toString(),
     'console.log("MANAGER_RESULT:" + JSON.stringify(await worker(' + JSON.stringify(scenario) + ', ' + JSON.stringify(tar) + ')))',
   ].join('\n')
   const workerPath = join(scratch, 'worker-' + scenario + '.mjs')
@@ -565,60 +602,75 @@ async function child(scenario, tar = tarball, targetProfile = profile) {
   assert(line, stdout)
   return JSON.parse(line.slice('MANAGER_RESULT:'.length))
 }
+// Host-generic boots read the canonical root; bridge boots read the pinned alpha.1 view.
+const canonicalChild = (scenario, tar = tarball, targetProfile = profiles.canonical) => child(scenario, tar, targetProfile, hostRoot, nativeHashes.get(hostRoot))
+const bridgeChild = (scenario, tar = tarball, targetProfile = profiles.compat) => child(scenario, tar, targetProfile, compatRoot, nativeHashes.get(compatRoot))
 
 test('ordinary PluginManager pnpm install over actual default base/Web composition retains live native service', options, async () => {
-  assert.deepEqual(await child('install'), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
+  assert.deepEqual(await canonicalChild('install'), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
 })
 
-test('fresh actual app-boot selects compatible installed provider in canonical runtime resolution', options, async () => {
-  assert.deepEqual(await child('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
+test('canonical whole bundle disable persists stock-only next boot and live reenable retains stock', options, async () => {
+  // Shares the canonical profile that the ordinary install above bootstrapped.
+  assert.deepEqual(await canonicalChild('disable-bundle'), { persistedDisabled: true })
+  assert.deepEqual(await canonicalChild('stock-next'), { nextBootStock: true, liveReenableRetainsStock: true })
 })
 
-test('actual PluginManager whole-bundle disable cannot silently replace loaded compatible native service', options, async () => {
-  assert.deepEqual(await child('disable-compatible'), { compatibleRetainedOnBundleDisable: true, nativeChildSurvives: true, providerLifetimeRetained: true, rootDrained: true })
+test('fresh actual app-boot selects compatible installed provider in canonical runtime resolution', compatOptions, async () => {
+  assert.deepEqual(await bridgeChild('install'), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
+  assert.deepEqual(await bridgeChild('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
 })
 
-test('whole bundle off persists stock-only next boot and reenable takes effect on subsequent fresh boot', options, async () => {
-  assert.deepEqual(await child('off-next'), { nextBootDeselected: true, retainedThisProcess: true })
-  assert.deepEqual(await child('stock-next'), { nextBootStock: true, liveReenableRetainsStock: true })
-  assert.deepEqual(await child('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
+test('actual PluginManager whole-bundle disable cannot silently replace loaded compatible native service', compatOptions, async () => {
+  assert.deepEqual(await bridgeChild('disable-compatible'), { compatibleRetainedOnBundleDisable: true, nativeChildSurvives: true, providerLifetimeRetained: true, rootDrained: true })
 })
 
-test('manager-installed true boot native children keep A/B initial cwd and persisted frozen headers across processes', options, async () => {
-  assert.deepEqual(await child('native'), { actualProfileAB: true, nativeHotSend: true, nativePersistedB: true })
-  assert.deepEqual(await child('cold-native'), { actualProfileColdResume: true, frozenB: true })
+test('whole bundle off persists stock-only next boot and reenable takes effect on subsequent fresh boot', compatOptions, async () => {
+  assert.deepEqual(await bridgeChild('off-next'), { nextBootDeselected: true, retainedThisProcess: true })
+  assert.deepEqual(await bridgeChild('stock-next'), { nextBootStock: true, liveReenableRetainsStock: true })
+  assert.deepEqual(await bridgeChild('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
 })
 
-test('actual manager Skills plugin enablement is independent of loaded compatible provider', options, async () => {
-  assert.deepEqual(await child('skills-enable'), { skillsIndependent: true, retainedCompatible: true, unchangedRawStock: true })
+test('manager-installed true boot native children keep A/B initial cwd and persisted frozen headers across processes', compatOptions, async () => {
+  assert.deepEqual(await bridgeChild('native'), { actualProfileAB: true, nativeHotSend: true, nativePersistedB: true })
+  assert.deepEqual(await bridgeChild('cold-native'), { actualProfileColdResume: true, frozenB: true })
+})
+
+test('actual manager Skills plugin enablement is independent of loaded compatible provider', compatOptions, async () => {
+  assert.deepEqual(await bridgeChild('skills-enable'), { skillsIndependent: true, retainedCompatible: true, unchangedRawStock: true })
 })
 
 for (const version of ['0.4.5', '0.4.6']) {
-  test('actual manager installs synthetic upgrade fixture ' + version + ' without swapping loaded compatible service', options, async () => {
-    assert.deepEqual(await child('upgrade-' + version, upgrades.get(version)), { syntheticFixtureVersion: version, restartRequired: true, retainedCompatible: true })
-    assert.deepEqual(await child('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
+  test('actual manager installs synthetic upgrade fixture ' + version + ' without swapping loaded compatible service', compatOptions, async () => {
+    assert.deepEqual(await bridgeChild('upgrade-' + version, upgrades.get(version)), { syntheticFixtureVersion: version, restartRequired: true, retainedCompatible: true })
+    assert.deepEqual(await bridgeChild('fresh'), { enhancedFreshBoot: true, publicIncludeSiblings: true, installedPeerIdentity: true })
   })
 }
 
-test('actual manager package removal preserves live native child until root shutdown and next boot is stock-only', options, async () => {
-  assert.deepEqual(await child('remove-compatible'), { compatibleRetainedOnBundleDisable: true, nativeChildSurvives: true, providerLifetimeRetained: true, rootDrained: true, removedByManager: true })
-  assert.deepEqual(await child('stock-removed'), { stockAfterRemoval: true })
+test('actual manager package removal preserves live native child until root shutdown and next boot is stock-only', compatOptions, async () => {
+  assert.deepEqual(await bridgeChild('remove-compatible'), { compatibleRetainedOnBundleDisable: true, nativeChildSurvives: true, providerLifetimeRetained: true, rootDrained: true, removedByManager: true })
+})
+
+test('canonical manager package removal leaves next boot stock-only', options, async () => {
+  // Shares the canonical profile that the ordinary install above populated.
+  assert.deepEqual(await canonicalChild('remove-bundle'), { removedBundle: true })
+  assert.deepEqual(await canonicalChild('stock-removed'), { stockAfterRemoval: true })
 })
 
 
-test('actual PluginManager bridge component off then on preserves native Fiber and frozen B child but persists a distinct force-enabled guard conflict', options, async () => {
+test('actual PluginManager bridge component off then on preserves native Fiber and frozen B child but persists a distinct force-enabled guard conflict', compatOptions, async () => {
   const isolated = join(scratch, 'toggle-home/profiles/web')
   await mkdir(isolated, { recursive: true })
-  assert.deepEqual(await child('install', tarball, isolated), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
-  assert.deepEqual(await child('bridge-toggle', tarball, isolated), { componentToggleRetainsNative: true, sameProviderFiber: true, liveFrozenB: true,
+  assert.deepEqual(await bridgeChild('install', tarball, isolated), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
+  assert.deepEqual(await bridgeChild('bridge-toggle', tarball, isolated), { componentToggleRetainsNative: true, sameProviderFiber: true, liveFrozenB: true,
     disabledAndForcedReasonsDistinct: true, persistedForcedEnable: true })
 })
 
 
-test('actual PluginManager installed archive fresh boot binds canonical native peers while isolated old Profile protocol and independent importer remain untouched', options, async () => {
+test('actual PluginManager installed archive fresh boot binds canonical native peers while isolated old Profile protocol and independent importer remain untouched', compatOptions, async () => {
   const isolated = join(scratch, 'old-peer-home/profiles/web')
   await mkdir(isolated, { recursive: true })
-  assert.deepEqual(await child('install', tarball, isolated), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
-  assert.deepEqual(await child('old-profile', tarball, isolated), { oldProfilePeerPreserved: true, canonicalBoundProvider: true,
+  assert.deepEqual(await bridgeChild('install', tarball, isolated), { installedByManager: true, retainedStock: true, realDefaultWebComposition: true, skillsMounted: true })
+  assert.deepEqual(await bridgeChild('old-profile', tarball, isolated), { oldProfilePeerPreserved: true, canonicalBoundProvider: true,
     actualProfileAB: true, nativeHotSend: true, nativePersistedB: true })
 })

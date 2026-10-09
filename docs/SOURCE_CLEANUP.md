@@ -100,6 +100,8 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk \
 pnpm exec tsc -p tsconfig.json --noEmit
 ~~~
 
+兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 最后一次新测试 **16/16 通过，零失败、零跳过**；严格全项目 TypeScript noEmit 通过（strict / exactOptionalPropertyTypes / noUncheckedIndexedAccess）。不设置宿主路径时两项 native tests 明确 skipped，不算通过。
 
 常规来源回归已用 source routing（不生成 lib）跑过：业务与 storage **61/61**，其中包含新测试 16 case 在两个 workers 各执行一次的 32 项重复统计；原真实 instruments-persistence **7/7**，其 child process 通过 NODE_OPTIONS data-URL 的纯 source-loader 同样使用当前 TypeScript。独立 loader 没有注册测试，因此原 child JSON 输出未被 TAP 污染。V2 已认可后旧「schemaVersion=2 必须损坏」断言需由 main 改成真正未知版本；V1 的正常输入仍兼容。

@@ -6,9 +6,12 @@ import ts from 'typescript'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { openCompatHostView } from './fixtures/compat-host.mjs'
 
-const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT to run real native factory probes' }
+// The factory probes apply the released 0.2.1-alpha.1 recipe/bridge to the pinned host.
+const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
+const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT to run real 0.2.1-alpha.1 native factory probes' }
+const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
 const signal = () => new AbortController().signal
 let sdk
 if (hostRoot) {
@@ -36,7 +39,7 @@ async function fixture(t, { prepare = async () => ({}) } = {}) {
     await mkdir(dirname(target), { recursive: true })
     // The plugin artifact imports the canonical host's public errors and peers.
     await symlink(source, target)
-  } else await cp(source, target, { recursive: true })
+  } else await cp(source, target, { recursive: true, dereference: true })
   await writeFile(join(temp, '.dsh-cwd-patch-target'), 'isolated-cwd-patch-target' + String.fromCharCode(10))
   for (const name of await readdir(join(hostRoot, 'node_modules'))) {
     if (name === '@deepseek-ai') {

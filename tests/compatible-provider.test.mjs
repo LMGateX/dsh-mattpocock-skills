@@ -8,11 +8,14 @@ import { tmpdir } from 'node:os'
 import { join, isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Accepted seams: real public Loader/Fiber and native startContinuable/sendMessage.
 // Only disposable packages are written; canonical SDK peers are read-only.
-const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for canonical public SDK probes' }
+// The generated bridge is released 0.2.1-alpha.1 evidence.
+const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
+const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for canonical 0.2.1-alpha.1 public SDK probes' }
+const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
 let sdk, composition, hostLoad
 let wrapperUrl
 const importedAssets = new Set()

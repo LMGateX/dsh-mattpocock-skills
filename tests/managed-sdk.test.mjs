@@ -9,9 +9,10 @@ import { dirname, join } from 'node:path'
 import { inspectManagedSdk, prepareManagedSdk, restoreManagedSdk } from '../src/compatibility/managed-sdk.ts'
 
 // Native SDK fixtures are opt-in: no developer home path or global installation guess.
-const sourceRoot = process.env.DSH_CONTROLS_HOST_ROOT
+// The bundled recipe patches exactly the released 0.2.1-alpha.1 host.
+const sourceRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const test = (name, fn) => nodeTest(name, {
-  skip: sourceRoot ? false : 'set DSH_CONTROLS_HOST_ROOT to run isolated SDK deployment fixtures',
+  skip: sourceRoot ? false : 'set DSH_CONTROLS_COMPAT_HOST_ROOT to run isolated 0.2.1-alpha.1 SDK deployment fixtures',
 }, fn)
 const recipe = JSON.parse(await readFile(new URL('../compatibility/initial-cwd.recipe.json', import.meta.url), 'utf8'))
 async function fixture(t) {

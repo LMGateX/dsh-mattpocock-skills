@@ -10,16 +10,25 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import { constants as fsConstants } from 'node:fs'
 import { open, stat, chmod } from 'node:fs/promises'
+import { ALPHA1_NATIVE_SHA256, nativeEntrySha256, openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Accepted seam: development tarball + shipped !!js + public Loader/Fiber/native.
 // Plain Node resolution only: no hooks, transplanted runtime namespace or SDK writes.
 // This bounded public Profile fixture is NOT the complete default Web Profile/GUI.
+// Canonical boot/first-install probes run on DSH_CONTROLS_HOST_ROOT; packed bridge
+// probes stay pinned to the released 0.2.1-alpha.1 host behind
+// DSH_CONTROLS_COMPAT_HOST_ROOT.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
+const compatSourceRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for packed canonical public SDK probes' }
+const compatOptions = { skip: !compatSourceRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for packed 0.2.1-alpha.1 bridge probes' }
+const compatRoot = compatSourceRoot ? await openCompatHostView(compatSourceRoot) : undefined
 const run = promisify(execFile)
 const repo = fileURLToPath(new URL('../', import.meta.url))
 const origin = Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')
-const nativeHash = '75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541'
+// The parent run injects the pinned entry hash per fixture root; each packed child
+// asserts the exact bytes it loaded were not modified by the scenario.
+const nativeHash = process.env.DSH_PACKED_NATIVE_SHA256
 const pluginName = '@lmgatex/dsh-mattpocock-skills'
 
 // Trusted operator test input only; never a runtime/user-path authorization API.
@@ -135,6 +144,11 @@ async function worker(scenario) {
   await ctx.fiber.await()
   let modelCalls = 0
   ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model forbidden') }, stream() { modelCalls++; throw new Error('model forbidden') } })
+  // alpha.2 local subagents declare the working-directory service. This bounded
+  // state-only HMR profile mounts an inert mechanical provider so the genuine
+  // stock Fiber can activate; it never creates a child or touches a filesystem.
+  if (sdk.native.default.inject?.includes('workingDirectory') && ctx.get('workingDirectory') === undefined)
+    ctx.provide('workingDirectory', { async ensure() { return profile }, async set() {} })
   const update = async data => { await loader.root.update(data); await loader.await() }
   let graph
   if (scenario === 'native' || scenario === 'cold-process' || scenario === 'asset-fallback' || scenario === 'root-lifetime' || scenario === 'shadowed-protocol' || scenario.startsWith('startup')) graph = await nativeGraph(ctx, load, profile, scenario === 'cold-process')
@@ -367,6 +381,7 @@ async function worker(scenario) {
     if (graph) await graph.dispose()
     if (ctx.fiber.state !== 4) { await update([]); await ctx.fiber.dispose() }
     assert.equal(modelCalls, 0)
+    assert.match(String(nativeHash), /^[0-9a-f]{64}$/, 'packed worker needs the pinned native entry hash')
     assert.equal(createHash('sha256').update(await readFile(actualNative)).digest('hex'), nativeHash)
   }
 }
@@ -375,9 +390,14 @@ if (process.argv[2] === '--packed-worker') {
   console.log(JSON.stringify(await worker(process.argv[3])))
 } else {
   let packRoot, tarball, archiveBinding
+  const nativeHashes = new Map()
   before(async () => {
-    if (!hostRoot) { assert(!operatorArchive, 'accepted archive proof requires DSH_CONTROLS_HOST_ROOT'); return }
-    assert(isAbsolute(hostRoot))
+    if (!hostRoot && !compatRoot) { assert(!operatorArchive, 'accepted archive proof requires DSH_CONTROLS_HOST_ROOT or DSH_CONTROLS_COMPAT_HOST_ROOT'); return }
+    if (hostRoot) { assert(isAbsolute(hostRoot)); nativeHashes.set(hostRoot, await nativeEntrySha256(hostRoot)) }
+    if (compatRoot) {
+      assert.equal(await nativeEntrySha256(compatSourceRoot), ALPHA1_NATIVE_SHA256, 'DSH_CONTROLS_COMPAT_HOST_ROOT must carry the pinned 0.2.1-alpha.1 native entry')
+      nativeHashes.set(compatRoot, ALPHA1_NATIVE_SHA256)
+    }
     packRoot = await mkdtemp(join(tmpdir(), 'dsh-packed-native-'))
     await chmod(packRoot, 0o700)
     if (operatorArchive) {
@@ -395,7 +415,8 @@ if (process.argv[2] === '--packed-worker') {
       if (packRoot) { assert.equal(dirname(packRoot), tmpdir()); assert(packRoot.startsWith(join(tmpdir(), 'dsh-packed-native-'))); await rm(packRoot, { recursive: true, force: true }) }
     }
   })
-  async function fixture(t, { duplicatePeer = false, duplicateScopePeer = false, shadowedProtocol = false, corruptAsset = false, conditionalExport = false } = {}) {
+  async function fixture(t, { root = hostRoot, duplicatePeer = false, duplicateScopePeer = false, shadowedProtocol = false, corruptAsset = false, conditionalExport = false } = {}) {
+    assert(isAbsolute(root), 'packed fixture needs an absolute host root')
     const temp = await mkdtemp(join(tmpdir(), 'dsh-plain-profile-'))
     t.after(() => rm(temp, { recursive: true, force: true }))
     const profile = join(temp, 'profile'), install = join(temp, 'install')
@@ -403,21 +424,21 @@ if (process.argv[2] === '--packed-worker') {
     await mkdir(join(profile, 'node_modules/@lmgatex'), { recursive: true })
     await mkdir(install)
     await writeFile(join(profile, 'package.json'), JSON.stringify({ name: 'bounded-public-profile', type: 'module' }))
-    await cp(join(hostRoot, 'package.json'), join(install, 'package.json'))
-    await symlink(join(hostRoot, 'node_modules'), join(install, 'node_modules'))
-    for (const name of await readdir(join(hostRoot, 'node_modules'))) {
-      if (name !== '@lmgatex') await symlink(join(hostRoot, 'node_modules', name), join(profile, 'node_modules', name))
+    await cp(join(root, 'package.json'), join(install, 'package.json'))
+    await symlink(join(root, 'node_modules'), join(install, 'node_modules'))
+    for (const name of await readdir(join(root, 'node_modules'))) {
+      if (name !== '@lmgatex') await symlink(join(root, 'node_modules', name), join(profile, 'node_modules', name))
     }
     await run('tar', ['-xzf', tarball, '-C', join(profile, 'node_modules/@lmgatex')])
     assert.equal(dirname(pluginRoot), join(profile, 'node_modules/@lmgatex'))
     await rename(join(profile, 'node_modules/@lmgatex/package'), pluginRoot)
     if (duplicatePeer) {
       await mkdir(join(pluginRoot, 'node_modules/@deepseek-ai'), { recursive: true })
-      await cp(join(hostRoot, 'node_modules/@deepseek-ai/dsh-subagent'), join(pluginRoot, 'node_modules/@deepseek-ai/dsh-subagent'), { recursive: true, dereference: true })
+      await cp(join(root, 'node_modules/@deepseek-ai/dsh-subagent'), join(pluginRoot, 'node_modules/@deepseek-ai/dsh-subagent'), { recursive: true, dereference: true })
     }
     if (duplicateScopePeer) {
       await mkdir(join(pluginRoot, 'node_modules/@deepseek-ai'), { recursive: true })
-      await cp(join(hostRoot, 'node_modules/@deepseek-ai/dsh-scope'), join(pluginRoot, 'node_modules/@deepseek-ai/dsh-scope'), { recursive: true, dereference: true })
+      await cp(join(root, 'node_modules/@deepseek-ai/dsh-scope'), join(pluginRoot, 'node_modules/@deepseek-ai/dsh-scope'), { recursive: true, dereference: true })
     }
     if (shadowedProtocol) {
       const peerRoot = join(pluginRoot, 'node_modules/@deepseek-ai/dsh-typert-protocol')
@@ -438,7 +459,7 @@ if (process.argv[2] === '--packed-worker') {
       'globalThis[Symbol.for("dsh.packed.forbidden-import")] = true; export default class Bad {}')
     return { profile, pluginRoot, async probe(scenario) {
       const result = await run(process.execPath, [fileURLToPath(import.meta.url), '--packed-worker', scenario], {
-        cwd: profile, env: { ...process.env, DSH_CONTROLS_HOST_ROOT: hostRoot, NODE_OPTIONS: '' }, timeout: 20000, maxBuffer: 4 * 1024 * 1024 })
+        cwd: profile, env: { ...process.env, DSH_CONTROLS_HOST_ROOT: root, DSH_PACKED_NATIVE_SHA256: nativeHashes.get(root), NODE_OPTIONS: '' }, timeout: 20000, maxBuffer: 4 * 1024 * 1024 })
       return JSON.parse(result.stdout.trim().split(String.fromCharCode(10)).at(-1))
     } }
   }
@@ -474,35 +495,35 @@ if (process.argv[2] === '--packed-worker') {
     const f = await fixture(t)
     assert.equal((await f.probe(scenario)).retainedStockIdentity, true)
   })
-  test('fresh ordinary Node process packed native create read frozen JSONL spawn/fork hot/cold send matrix then next process cold resumes B', options, async t => {
-    const f = await fixture(t)
+  test('fresh ordinary Node process packed native create read frozen JSONL spawn/fork hot/cold send matrix then next process cold resumes B', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot })
     const first = await f.probe('native')
     assert.equal(first.frozenB, true); assert.equal(first.spawnFork, true); assert.equal(first.coldResume, true); assert.equal(first.zeroModel, true)
     const cold = await f.probe('cold-process')
     assert.equal(cold.coldProcessResumed, true); assert.equal(cold.frozenB, true)
   })
-  test('packed StartupSupport save affects next process request without management activation or native remount', options, async t => {
-    const f = await fixture(t)
+  test('packed StartupSupport save affects next process request without management activation or native remount', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot })
     assert.equal((await f.probe('startup')).startupIndependent, true)
     const next = await f.probe('startup-next')
     assert.equal(next.nextBoot, true); assert.equal(next.managementOff, true)
   })
-  test('packed original numeric and !!js volatile edits retain raw rows and last valid limits without native remount', options, async t => {
-    const f = await fixture(t)
+  test('packed original numeric and !!js volatile edits retain raw rows and last valid limits without native remount', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot })
     const result = await f.probe('volatile-config')
     assert.equal(result.retainedVolatileIdentity, true); assert.equal(result.lastValidRetained, true)
   })
-  test('packed public root lifetime survives whole unpatch and disposes with actual root', options, async t => {
-    const f = await fixture(t)
+  test('packed public root lifetime survives whole unpatch and disposes with actual root', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot })
     assert.deepEqual(await f.probe('root-lifetime'), { rootLifetimeRetained: true, childPreservedB: true, rootDisposed: true, lastValidRetained: true })
   })
-  test('packed own asset integrity failure does not execute invalid image and retains real ordinary native create/send', options, async t => {
-    const f = await fixture(t, { corruptAsset: true })
+  test('packed own asset integrity failure does not execute invalid image and retains real ordinary native create/send', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot, corruptAsset: true })
     const result = await f.probe('asset-fallback')
     assert.equal(result.ordinaryRetained, true); assert.equal(result.refusedInvalidImport, true)
   })
-  test('packed old Profile protocol shadow preserves native identity and supports actual first cwd and continuation', options, async t => {
-    const f = await fixture(t, { shadowedProtocol: true })
+  test('packed old Profile protocol shadow preserves native identity and supports actual first cwd and continuation', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot, shadowedProtocol: true })
     const result = await f.probe('shadowed-protocol')
     assert.equal(result.enhanced, true)
     assert.equal(result.frozenB, true)
@@ -511,22 +532,22 @@ if (process.argv[2] === '--packed-worker') {
     assert.equal(result.coldResume, true)
     assert.equal(result.zeroModel, true)
   })
-  test('packed serialized selector refuses enhanced graph when wrapper resolves a duplicate pristine native peer', options, async t => {
-    const f = await fixture(t, { duplicatePeer: true })
+  test('packed serialized selector refuses enhanced graph when wrapper resolves a duplicate pristine native peer', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot, duplicatePeer: true })
     assert.equal((await f.probe('duplicate-peer')).refusedWrongPeer, true)
   })
-  test('packed scope shadow is bypassed only by binding actual canonical native scope identity', options, async t => {
-    const f = await fixture(t, { duplicateScopePeer: true })
+  test('packed scope shadow is bypassed only by binding actual canonical native scope identity', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot, duplicateScopePeer: true })
     const result = await f.probe('duplicate-scope-peer')
     assert.equal(result.enhanced, true)
     assert.equal(result.singleCanonicalNative, true)
   })
-  test('packed public conditional export mismatch stays on stock before ordinary Node imports its alternate ESM target', options, async t => {
-    const f = await fixture(t, { conditionalExport: true })
+  test('packed public conditional export mismatch stays on stock before ordinary Node imports its alternate ESM target', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot, conditionalExport: true })
     assert.equal((await f.probe('conditional-export')).refusedConditionalMismatch, true)
   })
-  test('development pnpm pack resolves genuine exported wrapper and shipped YAML in fresh ordinary Node public Profile', options, async t => {
-    const f = await fixture(t)
+  test('development pnpm pack resolves genuine exported wrapper and shipped YAML in fresh ordinary Node public Profile', compatOptions, async t => {
+    const f = await fixture(t, { root: compatRoot })
     const result = await f.probe('fresh')
     assert.equal(result.enhanced, true)
     assert.equal(result.singleCanonicalNative, true)

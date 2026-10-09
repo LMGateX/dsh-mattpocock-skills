@@ -95,6 +95,8 @@ pnpm exec tsc --noEmit -p tsconfig.json
 DSH_CONTROLS_HOST_ROOT=/absolute/sdk node --test tests/window-cleanup.test.mjs tests/windows.test.mjs
 ```
 
+兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 - 源测试 in-memory transpile 生产 TS，不依赖本仓库 lib，不生成制品。
 - 前三片各先 red 后 green：v2 checkpoint 原 unknown-key 拒绝；compactHistory 不存在；purgeHistory 不存在。每片失败 exit 1 后实现并复验。
 - 后续每片分别加入并执行：多代次 GC/late receipts，授权/命令/CAS，v2 corruption/origins，竞争 revision，真实提交后丢回执/fresh recovery，native JSON 独立进程。

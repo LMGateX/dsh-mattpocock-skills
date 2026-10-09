@@ -84,6 +84,8 @@ pnpm exec tsc -p tsconfig.json
 DSH_CONTROLS_HOST_ROOT=/absolute/sdk node --test tests/controls.test.mjs tests/controls-persistence.test.mjs
 ```
 
+兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 首次运行 27 项中 26 通过、1 个损坏索引用例失败：测试误删了合法叶节点；修正为删除被引用的 parent 后 27/27 通过。真实 ENOTDIR 注入证明该 pre-publication 失败点不发布内存/事件/磁盘更新；另有实际持久成功后故意丢回执的探针验证重开核对。不能泛化为所有 I/O 故障均回滚磁盘，亦不是全工作流或模型行为测试。
 
 全量机械回归 68/68 通过（零跳过），包括 30 个新增测试。scratch build 零漂移，开发包精确 112 个成员且独立 controls 入口可导入；[完整验证记录（本地原始记录不公开；参见验证范围）](<VERIFICATION.md#historical-evidence>)区分开发制品与发布门禁。[双轴独立审查（本地原始记录不公开；参见验证范围）](<VERIFICATION.md#historical-evidence>)无阻塞项，唯一低优先级建议已整理并复核；整理后全量回归仍为 68/68。历史 release/干净树/owner profile/模型评估门禁保持原样。

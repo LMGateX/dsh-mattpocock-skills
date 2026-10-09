@@ -81,4 +81,6 @@ pnpm exec tsc -p tsconfig.json
 DSH_CONTROLS_HOST_ROOT=/path/to/dsh node --test tests/startup-support.test.mjs
 ```
 
+`startup-support` 的原生存储探针读规范根；兼容桥（alpha.1）用例另需第二个显式根 `DSH_CONTROLS_COMPAT_HOST_ROOT`，缺失时带诊断 skip；双根说明与重建命令见[公开验证摘要](<VERIFICATION.md>)。
+
 For isolated compiled output the tests accept `STARTUP_TEST_BUILD_ROOT=file:///absolute/compiled-output/`. This changes only test imports, not shipped runtime resolution. This module verification does not claim installation or activation of the owner profile/GUI, SDK preparation, publication, or concurrent multi-process storage safety.

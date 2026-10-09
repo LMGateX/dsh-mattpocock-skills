@@ -12,7 +12,10 @@ export async function openInstrumentDomain(storageRoot) {
   const { DomainFacility, defineDomain, domainTable } = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
   const { JsonStorageBackend } = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
   const { z } = await load(['zod', 'index.js'])
-  for (const name of ['dsh-storage-domain', 'dsh-storage-json']) assert.equal(JSON.parse(await readFile(join(hostRoot, 'node_modules', '@deepseek-ai', name, 'package.json'), 'utf8')).version, '0.2.1-alpha.1')
+  // The peers must match the host build actually under test; pinning a literal build number
+  // would only restate the calendar, not the contract.
+  const hostVersion = JSON.parse(await readFile(join(hostRoot, 'package.json'), 'utf8')).version
+  for (const name of ['dsh-storage-domain', 'dsh-storage-json']) assert.equal(JSON.parse(await readFile(join(hostRoot, 'node_modules', '@deepseek-ai', name, 'package.json'), 'utf8')).version, hostVersion)
   const backend = new JsonStorageBackend(storageRoot)
   const events = []
   const facility = new DomainFacility({ storage: { backend: { get() { return backend } } }, emit(name, value) { events.push({ name, value }) }, logger: { warn() {}, error() {} } }, { backend: 'json' })

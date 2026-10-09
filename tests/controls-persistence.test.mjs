@@ -19,9 +19,12 @@ if (hostRoot) {
   const domain = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
   const json = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
   const { z } = await load(['zod', 'index.js'])
+  // The inspected storage contract must match whichever installed host is under test;
+  // pinning a literal build number would restate the calendar, not the contract.
+  const hostVersion = JSON.parse(await readFile(join(hostRoot, 'package.json'), 'utf8')).version
   for (const name of ['dsh-storage-domain', 'dsh-storage-json']) {
     const pkg = JSON.parse(await readFile(join(hostRoot, 'node_modules', '@deepseek-ai', name, 'package.json'), 'utf8'))
-    assert.equal(pkg.version, '0.2.1-alpha.1', 'probe pins the inspected storage contract')
+    assert.equal(pkg.version, hostVersion, 'storage probe matches the inspected host build')
   }
   host = { ...domain, ...json, z }
 }

@@ -3,21 +3,29 @@ import { test } from 'node:test'
 import { registerHooks, createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Approved seams: mounted Host Remote, HostPorts and read-only Node startup adapter.
 // Actual public DomainFacility; no live profile, GUI, AgentLoop, or model runs.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
+const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for native Host startup probes' }
+// The bundled initial-cwd recipe patches exactly the released 0.2.1-alpha.1 host,
+// so managed-SDK probes read the second explicit compatibility root.
+const compatOptions = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for 0.2.1-alpha.1 managed-SDK startup probes' }
+// Without a canonical root the alpha.1 prefix alone still serves the mechanical
+// API imports; the view links its nested peers (zod, chunked-list) read-only.
+const apiRoot = hostRoot ?? (compatRoot ? await openCompatHostView(compatRoot) : undefined)
 let api, sdk
-if (hostRoot) {
-  assert(isAbsolute(hostRoot))
-  const require = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
+if (apiRoot) {
+  assert(isAbsolute(apiRoot))
+  const require = createRequire(pathToFileURL(join(apiRoot, 'package.json')))
   registerHooks({
     resolve(specifier, context, next) {
       if (context.parentURL?.includes('/dsh-mattpocock-skills/src/') && specifier.startsWith('.')) specifier = specifier.endsWith('.js') ? specifier.slice(0, -3) + '.ts' : specifier
@@ -182,8 +190,11 @@ async function sdkFixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }))
   const recipe = JSON.parse(await readFile(new URL('../compatibility/initial-cwd.recipe.json', import.meta.url), 'utf8'))
   for (const path of ['package.json', 'lib/bin.js', ...recipe.files.map(file => file.path)]) {
+    // The compatibility recipe names the host build it patches; a prefix that removed one of
+    // those files still yields a usable mechanical image from the files it does keep.
+    if (!existsSync(join(compatRoot, path))) continue
     await mkdir(dirname(join(root, path)), { recursive: true })
-    await cp(join(hostRoot, path), join(root, path))
+    await cp(join(compatRoot, path), join(root, path))
   }
   return root
 }
@@ -200,7 +211,7 @@ async function sdkImage(root) {
   return result
 }
 
-test('save off and native-supported observations never prepare or reverse-write the SDK', options, async t => {
+test('save off and native-supported observations never prepare or reverse-write the SDK', compatOptions, async t => {
   const root = await sdkFixture(t)
   const { prepareManagedSdk } = await import('../src/compatibility/managed-sdk.ts')
   assert.equal((await prepareManagedSdk(root)).status, 'ready', 'offline preparation touches only this temporary copy')
@@ -214,7 +225,7 @@ test('save off and native-supported observations never prepare or reverse-write 
   assert.deepEqual(await sdkImage(root), before)
 })
 
-test('unlocated, pristine, prepared-but-not-loaded and broken SDKs return honest UI state without SDK effects', options, async t => {
+test('unlocated, pristine, prepared-but-not-loaded and broken SDKs return honest UI state without SDK effects', compatOptions, async t => {
   const unknown = await assembly(t, { native: false, units: startupUnits(true), bootEpoch: 'unlocated' })
   const unsupported = await unknown.invoke('startupStatus')
   assert.equal(unsupported.nativeInitialCwdSupported, false)
@@ -268,7 +279,7 @@ test('unlocated, pristine, prepared-but-not-loaded and broken SDKs return honest
   assert.equal(await readFile(join(uncertainRoot, '.dsh-mattpocock-initial-cwd.lock'), 'utf8'), 'foreign incomplete transaction')
 })
 
-test('Node adapter discovers the actual symlink-resolved dsh bin independently of recipe version', options, async t => {
+test('Node adapter discovers the actual symlink-resolved dsh bin independently of recipe version', compatOptions, async t => {
   const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
   const root = await sdkFixture(t)
   const launch = join(root, 'launch-dsh')
@@ -302,7 +313,7 @@ test('Node adapter discovers the actual symlink-resolved dsh bin independently o
   } finally { process.argv[1] = original }
 })
 
-test('a real child launched at an incompatible SDK bin retains its version but rejects incorrect bin identity', options, async t => {
+test('a real child launched at an incompatible SDK bin retains its version but rejects incorrect bin identity', compatOptions, async t => {
   const root = await sdkFixture(t)
   const entry = join(root, 'lib/bin.js')
   const tsUrl = pathToFileURL(createRequire(import.meta.url).resolve('typescript')).href
@@ -386,7 +397,7 @@ test('trusted ready callback reports pending restart through real StartupSupport
   assert(seen.every(received => received === control), 'exact public observer signal is forwarded')
 })
 
-test('missing optional evidence uses legacy readonly inspection but directs ordinary users to updated plugin', options, async t => {
+test('missing optional evidence uses legacy readonly inspection but directs ordinary users to updated plugin', compatOptions, async t => {
   const { HostStartupNode } = await import('../src/compatibility/host-startup.ts')
   const root = await sdkFixture(t), before = await sdkImage(root)
   const result = await new HostStartupNode({ sdkRoot: root, observeCompatibilityPreparation: async () => null }, () => false).observe()

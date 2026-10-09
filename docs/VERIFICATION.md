@@ -12,6 +12,19 @@
 
 本条只记录未发布的工作树源码与隔离验证，**未**发布、**未**安装到本机 Profile、**未**重启任何服务。
 
+## 双宿主测试根：规范 alpha.2 与兼容桥 alpha.1（2026-10-10）
+
+宿主升级到 `0.2.1-alpha.2` 后，插件走宿主原生 per-child cwd seam，不再在 alpha.2 上加载版本钉住的兼容桥（0.4.25 的既有行为）。测试套件因此显式区分两个宿主根，不再让一个根同时承担两类断言：
+
+- `DSH_CONTROLS_HOST_ROOT`：规范宿主（本机 `/home/dev/.local/lib/node_modules/@deepseek-ai/dsh`，`0.2.1-alpha.2`）。Host／Client 通用用例、宿主原生 seam 用例在这里运行。
+- `DSH_CONTROLS_COMPAT_HOST_ROOT`：兼容桥证据根（本机 scratch prefix `/home/dev/.dsh/hosts/dsh-0.2.1-alpha.1/node_modules/@deepseek-ai/dsh`，`0.2.1-alpha.1`）。初始 cwd recipe 应用、兼容 subagent 字节与 peer 绑定、公开 Loader 组合 guard、打包插件桥场景、真实 Plugin Manager 桥场景必须使用它；缺失时这些用例带 `set DSH_CONTROLS_COMPAT_HOST_ROOT ...` 诊断 skip，不改写断言、不计成通过。
+
+在 prefix 中重建 alpha.1 根：`npm install --install-strategy=nested @deepseek-ai/dsh@0.2.1-alpha.1 <prefix>`，根即 `<prefix>/node_modules/@deepseek-ai/dsh`。nested 策略把传递依赖保留在各 owner 包的 `node_modules` 下，所以桥夹具会在临时只读 view 中把这些 owner 内包按 Node 可见名链接成一个根（[compat-host.mjs](<../tests/fixtures/compat-host.mjs>)，只创建 scratch 符号链接，不写任何已安装文件），让整套 alpha.1 闭包从单一根可解析。桥的原生入口字节仍钉住 SHA-256 `75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541`。
+
+`packed-native-subagent` 与 `plugin-manager-compatibility` 只把 alpha.1 桥场景切到兼容根；alpha.2 的 HMR、安装与卸载等通用场景继续在规范根运行，因此不会用“全文件跳过”掩盖宿主通用行为。
+
+本轮开发工作树观察（Node 24.17.0，`node --test tests/*.test.mjs`）：规范根 **804** 项中 609 通过、194 个桥用例带诊断 skip、1 失败；双根 **830** 项中 829 通过、0 skip、1 失败；无任何宿主根 **804** 项中 511 通过、292 个环境门禁 skip、1 失败。桥相关用例在双根下全部运行且通过。唯一失败项是工作树自带的 scratch TypeScript 构建门禁：`src/host.ts` 已更新的两条工具描述尚未反映到生成物 `lib/host.js`，需由源码所有者重建 `lib/` 后复跑；本轮为 tests+docs 修复，不修改 `src/`、`lib/`。
+
 ## 发布版本与上游来源
 
 本次发布线为 `0.4.3`，历史 `0.4.2`／`0.4.1` 标签及资产保持不变；上游来源仍钉住分发版本 `v0.3.0` / Skills `v1.3.1`。插件版本、Skills 分发版本和 DSH 宿主版本相互独立，不移动既有标签。公开 Release 资产仅包含经过 verifier 检查的发行包、制品身份与脱敏验证摘要，不上传本地原始日志或开发收据。
@@ -147,15 +160,20 @@ pnpm exec tsc -p tsconfig.json
 chmod 755 lib/compatibility/cli.js
 pnpm exec tsc -p tsconfig.client.json --noEmit
 node scripts/build-client.mjs --out lib/client.js --declaration
+# 规范宿主（alpha.2）：桥专用用例带诊断 skip
 DSH_CONTROLS_HOST_ROOT=/absolute/sdk node --test tests/*.test.mjs
-DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CWD_IMPLEMENTATION=managed node --test tests/host-cwd.test.mjs
-DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CWD_IMPLEMENTATION=plugin-owned node --test tests/host-cwd.test.mjs
+# 双根全矩阵：桥用例不再跳过，通用用例仍读规范根
+DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CONTROLS_COMPAT_HOST_ROOT=/absolute/alpha.1/sdk node --test tests/*.test.mjs
+# 无宿主根：全部环境门禁用例带诊断 skip，仍须 0 failed
+node --test tests/*.test.mjs
+DSH_CONTROLS_COMPAT_HOST_ROOT=/absolute/alpha.1/sdk DSH_CWD_IMPLEMENTATION=managed node --test tests/host-cwd.test.mjs
+DSH_CONTROLS_COMPAT_HOST_ROOT=/absolute/alpha.1/sdk DSH_CWD_IMPLEMENTATION=plugin-owned node --test tests/host-cwd.test.mjs
 node scripts/verify-vendor.mjs
 # Only from clean committed source; does not publish or install:
 node scripts/verify-package.mjs --prepack
 ```
 
-将 `/absolute/sdk` 替换为操作者已核验的实际 SDK 绝对目录。原生 cwd/管理器 probe 只准备隔离副本，不修改所提供的参考安装。最终 tarball 单次构建后保存只读 size/SHA256/source commit/pnpm identity，并用现有 verifier 精确核对；外部制品记录与本页摘要范围不同。
+将 `/absolute/sdk` 替换为操作者已核验的实际规范 SDK 绝对目录，`/absolute/alpha.1/sdk` 替换为按上文重建的 `0.2.1-alpha.1` prefix 根。原生 cwd/管理器 probe 只准备隔离副本，不修改所提供的参考安装。最终 tarball 单次构建后保存只读 size/SHA256/source commit/pnpm identity，并用现有 verifier 精确核对；外部制品记录与本页摘要范围不同。
 
 ## 0.4.25 制品验收（2026-10-09）
 

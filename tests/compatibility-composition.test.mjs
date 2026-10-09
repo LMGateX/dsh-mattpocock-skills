@@ -9,11 +9,14 @@ import { promisify } from 'node:util'
 import { join, isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Accepted seam: actual public applyEntryPatches -> Loader.root.update -> Fiber.
 // No SDK writes, profile boot, network, AgentLoop, or model requests.
-const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for public Loader regression' }
+// The automatic Loader guard is released 0.2.1-alpha.1 bridge evidence.
+const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
+const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for public Loader regression on the 0.2.1-alpha.1 bridge' }
+const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
 let api, bindings, sdk, lifecycleStubSource
 const observation = { mounts: [], disposals: [] }
 if (hostRoot) {
@@ -148,7 +151,7 @@ test('serialized public patches decide before any composition or compatibility m
     'assert.equal(imports,1); assert.equal(mounts,1); assert.equal(loader.resolve("subagent").fiber,undefined);' +
     'await loader.root.update([]); await loader.await(); await ctx.fiber.dispose(); console.log("self-contained public boot verified");'
   const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], {
-    env: { ...process.env, DSH_COMPOSITION_ROWS: JSON.stringify(rows), DSH_COMPOSITION_PROFILE: layout.root }, timeout: 10000,
+    env: { ...process.env, DSH_CONTROLS_HOST_ROOT: hostRoot, DSH_COMPOSITION_ROWS: JSON.stringify(rows), DSH_COMPOSITION_PROFILE: layout.root }, timeout: 10000,
   })
   assert.match(stdout, /self-contained public boot verified/)
 })

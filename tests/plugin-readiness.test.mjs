@@ -7,11 +7,14 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Public Loader.entries/Entry.parent.tree.root.data and real StartupSupport only.
 // Fixture writes and symlink targets belong to scratch; SDK remains read-only.
-const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for readonly plugin readiness probes' }
+// Readiness admits only the released 0.2.1-alpha.1 native image.
+const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
+const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for readonly 0.2.1-alpha.1 plugin readiness probes' }
+const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
 let sdk, api, bindings, composition, HostStartupNode, StartupSupport
 if (hostRoot) {
   assert(isAbsolute(hostRoot))

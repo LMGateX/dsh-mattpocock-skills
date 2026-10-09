@@ -212,8 +212,11 @@ continuable 会话后续还可能冷恢复，删除它的 cwd 也会破坏后续
 公开源码测试入口如下（需独立的匹配 SDK，仅验证各测试声明的契约，不等同于重放历史 12 场景探针）：
 
 ~~~bash
-DSH_CONTROLS_HOST_ROOT=/absolute/sdk node --test tests/git-worktrees.test.mjs tests/host-cwd.test.mjs
+DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CONTROLS_COMPAT_HOST_ROOT=/absolute/alpha.1/sdk \
+  node --test tests/git-worktrees.test.mjs tests/host-cwd.test.mjs
 ~~~
+
+`host-cwd` 应用 `0.2.1-alpha.1` recipe，因此必须同时提供 `DSH_CONTROLS_COMPAT_HOST_ROOT`；`git-worktrees` 仍是规范根用例。双根说明见[公开验证摘要](<VERIFICATION.md>)。
 
 历史探针仅在本地研究归档中复跑，不是公开仓库命令。该探针每次创建独立测试仓，包含预期拒绝断言；已保存的历史运行 exit=0、assertions=PASS，不代表上述公开测试已在当前修复版重新通过。
 初次实验在断言完成后因误用裸 Cordis Context 的 dispose 方法 exit=1；修正测试脚本收尾后，在新仓重跑 exit=0，保存的是后者。本次没有依靠这次脚本修正规避任何权限拒绝。

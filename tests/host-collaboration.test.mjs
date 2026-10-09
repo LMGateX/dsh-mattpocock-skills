@@ -348,7 +348,9 @@ test('deprecated resource tool and old UI service are read-only before reaching 
   const requests = []
   const f = await assembly(t, { async resourceAction(_, __, request) { requests.push(request); return { request } } })
   assert.equal((await execute(f, 'mattpocock_resource', { action: 'read', resourceId: 'R' })).isError, false)
-  assert.equal((await execute(f, 'mattpocock_resource', { action: 'borrow', path: '/prepared/tree' })).isError, true)
+  const borrow = await execute(f, 'mattpocock_resource', { action: 'borrow', path: '/prepared/tree' })
+  assert.equal(borrow.isError, true)
+  assert.match(borrow.content[0].text, /only reads recorded resources; pass \{action:"read", resourceId\}/)
   await assert.rejects(f.invoke('resourceAction', { sessionId: 'owner', request: { action: 'retain', resourceId: 'R' } }), { code: 'feature-disabled' })
   assert.equal(requests.length, 1)
   // Model-visible text states what to do; it does not narrate our deprecation or switch state.

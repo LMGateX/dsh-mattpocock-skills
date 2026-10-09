@@ -7,12 +7,15 @@ import { tmpdir } from 'node:os'
 import { join, dirname, isAbsolute, relative, sep } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { inspectCanonicalPeerBindings, bindCompatibleSubagentSource } from '../lib/compatibility/peer-bindings.js'
+import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Accepted Loader/CWD seam: actual public Loader + PluginPackages resolution and
 // the shipped source binder. No ModuleLoader mocks, global hooks, or native
 // child/model launches. All fixture writes are owned scratch; SDK is read-only.
-const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for real public SDK peer binding probes', timeout: 15000 }
+// The shipped artifact is the released 0.2.1-alpha.1 bridge.
+const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
+const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for real 0.2.1-alpha.1 public SDK peer binding probes', timeout: 15000 }
+const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
 const pluginName = '@lmgatex/dsh-mattpocock-skills'
 const peerName = '@deepseek-ai/dsh-typert-protocol'
 const artifactUrl = new URL('../compatibility/native-subagent-0.2.1-alpha.1.js', import.meta.url)
