@@ -190,10 +190,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     for(const flow of records.workflows){const marks=new Set<string>();for(const axis of flow.value.axes)for(const status of axis.statuses){labels.set(flow.workflowId+'\u0000'+status.statusKey,status.label);if(status.terminal===true)marks.add(status.statusKey)}if(marks.size>0)terminal.set(flow.workflowId,marks)}
     if(terminal.size===0)return []
     const rows:{workflowId:string;localTicketId:string;generation:number;label:string|null}[]=[]
+    const byTicket=new Map(records.tickets.map(ticket=>[ticket.workflowId+'\u0000'+ticket.localTicketId,ticket]))
     for(const row of windows.tickets){
       if(!row.held)continue
       const marks=terminal.get(row.workflowId);if(marks===undefined)continue
-      const ticket=records.tickets.find(candidate=>candidate.workflowId===row.workflowId&&candidate.localTicketId===row.localTicketId);if(ticket===undefined)continue
+      const ticket=byTicket.get(row.workflowId+'\u0000'+row.localTicketId);if(ticket===undefined)continue
       for(const key of Object.values(ticket.value.statuses).flat())if(marks.has(String(key))){rows.push({workflowId:row.workflowId,localTicketId:row.localTicketId,generation:row.generation,label:labels.get(row.workflowId+'\u0000'+String(key))??null});break}
     }
     return rows
