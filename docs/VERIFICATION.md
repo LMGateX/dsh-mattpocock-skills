@@ -180,3 +180,9 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.25.tgz`（**382871** bytes，sha256 `01c3b5ae28fdec3894c284b12ab3932e9d1661601612a0631e17ce2008123243`，170 成员，源提交 `35969a5`）经精确 tarball 验证与同字节矩阵通过：根测试 **824／824**（0 failed／0 cancelled／0 skipped）、无宿主根 798 中 508 通过／290 环境门禁跳过／0 failed、同归档矩阵 **25／25**（普通 Node 原生 14＋真实 Plugin Manager 11）。隔离双宿主（`0.2.1-alpha.1` 与 `0.2.1-alpha.2`）各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。完整记录见 [`dist/verification-0.4.25.json`](<../dist/verification-0.4.25.json>)。
 
 本版携带宿主原生初始子代理 cwd seam（`SubagentStartRequest.cwd`）与改写后的模型可见文本。原生调用形状已对**真实** alpha.2 `@deepseek-ai/dsh-subagent` 类型编译通过：spec 携带 `provider`、`label`、预留 `childId`、`request {parent, prompt, maxDepth?, cwd?}`、`signal` 与 `delivery:'parent'`，句柄暴露 `childId`、`messageId`、`result`。
+
+## 0.4.26 制品验收（2026-10-10）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.26.tgz`（**383511** bytes，sha256 `4009268e2b452fe64c8e300bfec530ea830577f2ed293e51acfdfcb77541630a`，170 成员，源提交 `f7a61b5`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.2` 下 804 用例 **610 通过／0 失败**（194 个 beta 期桥用例按诊断跳过）、双宿主 **830／830 全通过且零跳过**、无宿主根 804 中 512 通过／292 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.2 与 0.2.1-alpha.1 两个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。完整记录见 `dist/verification-0.4.26.json`。
+
+本版修复面向模型的契约不一致：mattpocock_execute／mattpocock_assign 现在与 mattpocock_delegate 一样把省略等同于 null（ticketIds 等同于空数组），非法值的拒绝信息明确给出 null 这一出路，工具描述补齐了此前只隐含的形状（execute 的无票规则与 nativeTool 取值、assign 的请求键、controls 的 intent 与 patch 键、resource 的只读范围）；provider、worktree、history 的拒绝信息现在列出可接受取值。回归由 tests/model-contract.test.mjs 钉住。
