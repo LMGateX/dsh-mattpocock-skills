@@ -2,7 +2,7 @@ import type { InstrumentInstance } from './state.js'
 import { array, boolean, boundedArray, ControlsError, freeze, id, invalid, record, revision } from './validation.js'
 
 export interface InstrumentAuthor { readonly kind: 'agent' | 'user'; readonly principalId: string; readonly sessionId: string | null }
-export interface StatusDefinition { readonly statusKey: string; readonly label: string; readonly meaning?: string | null; readonly summaryPriority?: number }
+export interface StatusDefinition { readonly statusKey: string; readonly label: string; readonly meaning?: string | null; readonly summaryPriority?: number; readonly terminal?: boolean }
 export interface StatusAxis { readonly axisKey: string; readonly label: string; readonly counting: 'exclusive' | 'overlapping'; readonly statuses: readonly StatusDefinition[] }
 export interface WorkflowValue { readonly title: string; readonly axes: readonly StatusAxis[] }
 export interface TicketValue {
@@ -104,7 +104,7 @@ function shape<T>(label: string, expected: string, parse: () => T): T {
     throw error
   }
 }
-const WORKFLOW_VALUE_SHAPE = '{title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?}]}]}'
+const WORKFLOW_VALUE_SHAPE = '{title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?, terminal?}]}]}'
 const TICKET_VALUE_SHAPE = '{title, statuses:{<axisKey>:[<statusKey>, ...]}, externalRef?, summary?, disposition?}'
 const DECISION_VALUE_SHAPE = '{question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key, label}], recommendation?, impact?, addressee?:{kind:"user"|"agent"|"unspecified", principalId?, label?}, result?}'
 
@@ -114,9 +114,11 @@ function workflowValue(value: unknown): WorkflowValue {
     const axis = record(value, 'axis', ['axisKey', 'label', 'counting', 'statuses'])
     if (axis.counting !== 'exclusive' && axis.counting !== 'overlapping') invalid('axis.counting must be "exclusive" or "overlapping"')
     const statuses = boundedArray(axis.statuses, 'statuses', 64).map(value => {
-      const status = record(value, 'status', ['statusKey', 'label', 'meaning', 'summaryPriority'])
+      const status = record(value, 'status', ['statusKey', 'label', 'meaning', 'summaryPriority', 'terminal'])
+      if (status.terminal !== undefined && typeof status.terminal !== 'boolean') invalid('status.terminal must be boolean')
       return { statusKey: id(status.statusKey, 'statusKey'), label: text(status.label, 'status label'),
-        meaning: nullableText(status.meaning, 'status meaning'), ...(status.summaryPriority === undefined ? {} : { summaryPriority: revision(status.summaryPriority, 'summaryPriority') }) }
+        meaning: nullableText(status.meaning, 'status meaning'), ...(status.summaryPriority === undefined ? {} : { summaryPriority: revision(status.summaryPriority, 'summaryPriority') }),
+        ...(status.terminal === undefined ? {} : { terminal: status.terminal }) }
     })
     if (new Set(statuses.map(row => row.statusKey)).size !== statuses.length) invalid('duplicate statusKey within an axis')
     return { axisKey: id(axis.axisKey, 'axisKey'), label: text(axis.label, 'axis label'), counting: axis.counting, statuses } as StatusAxis

@@ -9,6 +9,7 @@ export interface StatusDefinition {
     readonly label: string;
     readonly meaning?: string | null;
     readonly summaryPriority?: number;
+    readonly terminal?: boolean;
 }
 export interface StatusAxis {
     readonly axisKey: string;

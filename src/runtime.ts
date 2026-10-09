@@ -182,6 +182,30 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     try{const read=await instruments.read(caller.principalId,sessionId);return new Set(read.tickets.map(row=>row.localTicketId))}
     catch{return null}
   }
+  /**
+   * A ticket whose workflow marks its reached status `terminal` no longer needs its T slot. The release
+   * is a program reconcile authored on the owning session; it is never inferred from message text or labels.
+   */
+  const reconcileDeliveredTickets=async(caller:HostCaller,sessionId:string):Promise<void>=>{
+    try{
+      const view=await identity(caller,sessionId)
+      const owner=view.instance.ownerSessionId,ownerCaller=callerFor('agent:'+owner,owner,ports.operatorPrincipal)
+      const ledger=await instruments.read(ownerCaller.principalId,owner)
+      const terminal=new Map<string,ReadonlySet<string>>()
+      for(const flow of ledger.workflows){const marks=new Set<string>();for(const axis of flow.value.axes)for(const state of axis.statuses)if(state.terminal===true)marks.add(state.statusKey);if(marks.size>0)terminal.set(flow.workflowId,marks)}
+      if(terminal.size===0)return
+      const held=await windows.read(ownerCaller.principalId,owner)
+      for(const row of held.tickets){
+        if(!row.held)continue
+        const marks=terminal.get(row.workflowId);if(marks===undefined)continue
+        const ticket=ledger.tickets.find(candidate=>candidate.workflowId===row.workflowId&&candidate.localTicketId===row.localTicketId),statuses=ticket?.value.statuses
+        if(statuses===undefined)continue
+        const done=Object.values(statuses).some(list=>Array.isArray(list)&&list.some(key=>marks.has(String(key))))
+        if(!done)continue
+        try{await windows.apply(ownerCaller.principalId,owner,{operationId:'ticket-reconcile:'+row.localTicketId+':'+row.generation,workflowId:row.workflowId,localTicketId:row.localTicketId,action:'release',generation:row.generation})}catch{/* A failed reconcile keeps the slot held; it never invents a delivery. */}
+      }
+    }catch{/* Maintenance only: an unavailable ledger or window never fails the authored command. */}
+  }
   const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
     const known=await registeredTickets(caller,sessionId)
     if(known===null||known.has(localTicketId))return
@@ -424,6 +448,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const result=await track(view.instance.instrumentInstanceId,async()=>{
         signal.throwIfAborted();await check(caller,sessionId,signal)
         const applied=await instruments.apply(caller.principalId,sessionId,command)
+        if(command.action==='put-ticket')await reconcileDeliveredTickets(caller,sessionId)
         let notificationFailure:string|null=null
         if(command.action!=='set-decision-view'&&(caller.kind==='user'||sessionId!==view.instance.ownerSessionId)){
           const notificationId=createHash('sha256').update(JSON.stringify([view.instance.instrumentInstanceId,command.operationId])).digest('hex')
