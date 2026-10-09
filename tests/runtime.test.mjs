@@ -1033,6 +1033,18 @@ test('one bounded current view per admitted step, newest facts at the next step'
   assert.equal(repeat.length, 0)
 })
 
+test('a ticket id is only valid inside the workflow that registered it', async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, ticketWindowSize: 2 }) })
+  await f.apply('put-workflow', { value: workflow })
+  await f.apply('put-workflow', { workflowId: 'other', value: { ...workflow, title: 'other' } })
+  await f.apply('put-ticket', { workflowId: 'other', localTicketId: 'X', value: ticket() })
+  await assert.rejects(f.window('reserve', 'X'), /not registered in workflow "flow"/)
+  assert.equal((await f.read()).windows.T.used, 0, 'a foreign-workflow ticket never holds a slot here')
+  await f.apply('put-ticket', { localTicketId: 'X', value: ticket() })
+  await f.window('reserve', 'X')
+  assert.equal((await f.read()).windows.T.used, 1)
+})
+
 test('a delivered snapshot message is appended and never rewritten in place', async t => {
   const f = await ready(t, { known: true })
   await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })

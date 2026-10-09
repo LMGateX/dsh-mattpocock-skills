@@ -178,8 +178,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     signal?.throwIfAborted();return view
   }
   /** A ticket window may only name tickets this instrument already knows; unverifiable reads never veto work. */
+  /** Registered (workflow, ticket) pairs; a ticket id is only meaningful inside its own workflow. */
   const registeredTickets=async(caller:HostCaller,sessionId:string):Promise<ReadonlySet<string>|null>=>{
-    try{const read=await instruments.read(caller.principalId,sessionId);return new Set(read.tickets.map(row=>row.localTicketId))}
+    try{const read=await instruments.read(caller.principalId,sessionId);return new Set(read.tickets.map(row=>row.workflowId+'\u0000'+row.localTicketId))}
     catch{return null}
   }
   /** Held T slots whose ticket already sits in a terminal status: the agent releases them, nothing else does. */
@@ -199,8 +200,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
     const known=await registeredTickets(caller,sessionId)
-    if(known===null||known.has(localTicketId))return
-    throw new ControlsError('invalid-input','ticket "'+localTicketId+'" is not registered in this instrument; record it with mattpocock_record put-ticket (workflowId "'+workflowId+'", localTicketId "'+localTicketId+'") first, or omit workflowId for a ticketless research lane')
+    if(known===null||known.has(workflowId+'\u0000'+localTicketId))return
+    throw new ControlsError('invalid-input','ticket "'+localTicketId+'" is not registered in workflow "'+workflowId+'"; record it with mattpocock_record put-ticket (workflowId "'+workflowId+'", localTicketId "'+localTicketId+'") first, or omit workflowId for a ticketless research lane')
   }
   const scope=async(principal:string,sessionId:string,view:SessionControlsView):Promise<InstrumentScope>=>{
     if(principal===ports.operatorPrincipal||sessionId===view.instance.ownerSessionId)return {kind:'coordinator'}
