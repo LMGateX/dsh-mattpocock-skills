@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.22",
+    "private": true
+  },
+  "source": {
+    "commit": "b864de0c1422c0caef969fa679bf5534b2b65cac",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.22.tgz",
+    "bytes": 381395,
+    "sha256": "e29f80fa2a6cb23c2c7e974f72a9ea2e4edafec4d55667f7d652992da7d23bc7",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.1"
+  },
+  "validation": {
+    "rootTests": {
+      "total": 821,
+      "passed": 821,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 795,
+      "passed": 507,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 288
+    },
+    "rootTestsNote": "Isolated host-root run: DSH_CONTROLS_HOST_ROOT plus the checksum-bound accepted tarball, so no environment-gated host integration case was skipped. A plain node --test without that host seam reports 795 cases with 288 environment-gated skips.",
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 14,
+      "actualPluginManager": 11
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "dsh": "0.2.1-alpha.1",
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "buildModules": 66,
+    "fixedFiles": 85,
+    "vendorFiles": 85,
+    "packedFiles": 170,
+    "clientBytes": 171891,
+    "featureEvidence": "S now answers the operator's question directly: it counts subagents that are running. v0.4.20 had parked a disposed continuable child as `unknown`, which kept the slot occupied after the run ended and still reported a number that was not the running count; the operator rejected that semantics. The implementation now follows the window's purpose. A run ending still releases the slot (`released`), because that instance is genuinely not running and `released -> running` is rejected as a regression by the window state machine; when the durable session is woken again and its Agent is re-created, the plugin re-admits the same executionId through a fresh reservation (new generation and leaseId, which windows.ts explicitly supports for a released execution), re-attaches the new instance, and receipts `running`, so the woken lane occupies a slot again. A wake that matches no known unreleased binding is still reported as unmanaged native activity. The input-area progress now reads `S <running>/<cap>` (degrading to `S 在跑 <n>/<cap> · 总数未知` when unmanaged native activity makes the count a lower bound) and the `（参考）` hedge after the ratios is gone; the separate note that these windows are accounting observations rather than hard quotas remains. Locked by the delegation test, which asserts that a finished run frees its slot, that the wake re-admits the same execution as a new generation, and that the wake is not reported as unmanaged."
+  },
+  "upstream": {
+    "distribution": "v0.3.0",
+    "skills": "v1.3.1",
+    "channels": {
+      "beta": 27,
+      "stable": 27
+    },
+    "vendorBytes": 279662,
+    "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+  },
+  "review": {
+    "baseline": "v0.4.20",
+    "independentReview": "none: the semantics were corrected directly from the operator's statement of the window's purpose; the previous behaviour was falsified by their own reading of the live panel, and the new rule is locked by the updated delegation test plus the client summary assertions"
+  }
+}
