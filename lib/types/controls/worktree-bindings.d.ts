@@ -6,7 +6,8 @@ export interface WorktreeBindingIntent {
     readonly parentSessionId: string;
     /** Caller supplies this as native spec.sessionId; never generate a new identity on retry. */
     readonly plannedChildSessionId: string;
-    readonly requestedCwd: string;
+    /** Absolute native cwd, or null when the lane inherits its parent's actual cwd. */
+    readonly requestedCwd: string | null;
     readonly task?: string;
     /** Tickets this lane works; recorded on the binding so a ticket can be traced to its lanes. */
     readonly ticketIds?: readonly string[];
@@ -55,7 +56,7 @@ export interface WorktreeBindingTechnical {
     readonly operationId: string;
     readonly parentSessionId: string;
     readonly plannedChildSessionId: string;
-    readonly requestedCwd: string;
+    readonly requestedCwd: string | null;
     readonly actualChildSessionId: string | null;
     readonly actualCwd: string | null;
     readonly acceptance: WorktreeBindingValue['acceptance'];

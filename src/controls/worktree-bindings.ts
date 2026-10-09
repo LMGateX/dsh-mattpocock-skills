@@ -11,7 +11,8 @@ export interface WorktreeBindingIntent {
   readonly parentSessionId: string
   /** Caller supplies this as native spec.sessionId; never generate a new identity on retry. */
   readonly plannedChildSessionId: string
-  readonly requestedCwd: string
+  /** Absolute native cwd, or null when the lane inherits its parent's actual cwd. */
+  readonly requestedCwd: string | null
   readonly task?: string
   /** Tickets this lane works; recorded on the binding so a ticket can be traced to its lanes. */
   readonly ticketIds?: readonly string[]
@@ -54,7 +55,7 @@ export interface WorktreeBindingsLegacyDocument {
   readonly rows: readonly WorktreeBindingRow[]
 }
 export interface WorktreeBindingTechnical {
-  readonly operationId: string; readonly parentSessionId: string; readonly plannedChildSessionId: string; readonly requestedCwd: string
+  readonly operationId: string; readonly parentSessionId: string; readonly plannedChildSessionId: string; readonly requestedCwd: string | null
   readonly actualChildSessionId: string | null; readonly actualCwd: string | null
   readonly acceptance: WorktreeBindingValue['acceptance']; readonly businessState: WorktreeBindingValue['business']['state']
 }
@@ -150,7 +151,7 @@ function parseIntent(value: unknown): WorktreeBindingIntent {
   if (rawTicketIds.length > 32) invalid('ticketIds is bounded to 32')
   const ticketIds = rawTicketIds.map(value => id(value, 'ticketId'))
   if (new Set(ticketIds).size !== ticketIds.length) invalid('ticketIds must be unique')
-  return freeze({ operationId: id(r.operationId, 'operationId'), parentSessionId, plannedChildSessionId, requestedCwd: cwd(r.requestedCwd), ...(ticketIds.length === 0 ? {} : { ticketIds }),
+  return freeze({ operationId: id(r.operationId, 'operationId'), parentSessionId, plannedChildSessionId, requestedCwd: r.requestedCwd === null ? null : cwd(r.requestedCwd), ...(ticketIds.length === 0 ? {} : { ticketIds }),
     ...(r.task === undefined ? {} : { task: text(r.task, 'task') }) })
 }
 function parseValue(value: unknown): WorktreeBindingValue {
@@ -163,7 +164,7 @@ function parseValue(value: unknown): WorktreeBindingValue {
   const actualChildSessionId = r.actualChildSessionId === null ? null : id(r.actualChildSessionId, 'actualChildSessionId')
   const actualCwd = r.actualCwd === null ? null : cwd(r.actualCwd)
   if ((actualChildSessionId === null) !== (actualCwd === null)) invalid('actual child and cwd must be confirmed together')
-  if (actualChildSessionId !== null && (actualChildSessionId !== intent.plannedChildSessionId || actualCwd !== intent.requestedCwd || r.acceptance !== 'accepted')) invalid('actual header contradicts intent')
+  if (actualChildSessionId !== null && (actualChildSessionId !== intent.plannedChildSessionId || (intent.requestedCwd !== null && actualCwd !== intent.requestedCwd) || r.acceptance !== 'accepted')) invalid('actual header contradicts intent')
   if (r.outcome === 'confirmed' && actualCwd === null) invalid('confirmation requires actual header')
   return { ...intent, actualChildSessionId, actualCwd, acceptance: r.acceptance, outcome: r.outcome, diagnostic: r.diagnostic === null ? null : text(r.diagnostic, 'diagnostic'), business: { state: business.state, ...(business.notes === undefined ? {} : { notes: text(business.notes, 'notes') }) } }
 }
@@ -477,7 +478,7 @@ export function createWorktreeBindings(storageForOwner: WorktreeBindingsStorage,
       const raw = record(headerInput, 'actual header', ['sessionId', 'parentSessionId', 'cwd'])
       const header = { sessionId: id(raw.sessionId, 'actual sessionId'), parentSessionId: id(raw.parentSessionId, 'actual parentSessionId'), cwd: cwd(raw.cwd) }
       return change(owner, row => row.value.operationId === operationId, author, operationId, 'program', row => {
-        if (header.sessionId !== row.value.plannedChildSessionId || header.parentSessionId !== row.value.parentSessionId || header.cwd !== row.value.requestedCwd) throw new ControlsError('association-conflict', 'actual header does not match planned child, parent and cwd')
+        if (header.sessionId !== row.value.plannedChildSessionId || header.parentSessionId !== row.value.parentSessionId || (row.value.requestedCwd !== null && header.cwd !== row.value.requestedCwd)) throw new ControlsError('association-conflict', 'actual header does not match planned child, parent and cwd')
         return { ...row.value, actualChildSessionId: header.sessionId, actualCwd: header.cwd, acceptance: 'accepted', outcome: 'confirmed', diagnostic: null }
       })
     },

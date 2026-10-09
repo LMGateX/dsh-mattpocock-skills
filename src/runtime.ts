@@ -768,11 +768,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const saveResult=async(result:HostJson)=>queue.run(async()=>{const old=parseDelegationJournal(await journal.read());if(!await journal.compareAndSwap(old.revision,{revision:increment(old.revision),rows:old.rows.map(row=>row.operationId===operationId?{...row,result}:row)}))throw new ControlsError('concurrent-update','delegation outcome changed')})
       if(intent.replayed){
         if(intent.row.result!==null)return {...record(intent.row.result,'delegation result'),replayed:true}
-        const binding=cwd===undefined?undefined:(await (await openWorktrees(view)).query(view.instance)).rows.find(row=>row.value.operationId===operationId)
+        const binding=(await (await openWorktrees(view)).query(view.instance)).rows.find(row=>row.value.operationId===operationId)
         return {accepted:binding?.value.acceptance==='accepted'?true:null,childId:intent.row.childId,replayed:true,recording:'unknown'}
       }
-      const registry=cwd===undefined?null:await openWorktrees(view)
-      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd!,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})}));if(!registered.dispatch)return {accepted:registered.row.value.acceptance==='accepted',childId:intent.row.childId,replayed:true,recording:registered.row.value.outcome}}
+      await checkGrant()
+      const registry=await openWorktrees(view)
+      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd??null,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})}));if(!registered.dispatch)return {accepted:registered.row.value.acceptance==='accepted',childId:intent.row.childId,replayed:true,recording:registered.row.value.outcome}}
       await checkGrant()
       let dispatch:Dispatch|null=null
       if(view.policy.extensionEnabled&&view.policy.features.windows.requested){

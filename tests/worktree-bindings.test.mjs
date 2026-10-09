@@ -238,6 +238,12 @@ test('a lane binding records the tickets it works and legacy rows without ticket
   assert.deepEqual(row.value.ticketIds, ['T7', 'T8'], 'the tickets survive a reopen')
   await assert.rejects(bindings.registerIntent(owner, author, { ...intent, operationId: 'ticketed-dup', plannedChildSessionId: 'child-D', requestedCwd: '/trees/D', ticketIds: ['T7', 'T7'] }),
     error => error.code === 'invalid-input')
+  const inherited = await bindings.registerIntent(owner, author, { ...intent, operationId: 'inherit-op', plannedChildSessionId: 'child-I', requestedCwd: null })
+  assert.equal(inherited.row.value.requestedCwd, null, 'a null requested cwd records an inherited worktree')
+  await bindings.confirm(owner, 'inherit-op', { sessionId: 'child-I', parentSessionId: 'owner-A', cwd: '/inherited/actual' }, author)
+  const inheritedRow = (await bindings.query(owner)).rows.find(candidate => candidate.value.operationId === 'inherit-op')
+  assert.equal(inheritedRow.value.actualCwd, '/inherited/actual', 'an inherit intent confirms the child actual cwd')
+  await assert.rejects(bindings.confirm(owner, 'inherit-op', { sessionId: 'other-child', parentSessionId: 'owner-A', cwd: '/inherited/actual' }, author), error => error.code === 'association-conflict')
   const unticketed = await bindings.registerIntent(owner, author, { ...intent, operationId: 'plain-op', plannedChildSessionId: 'child-P', requestedCwd: '/trees/P' })
   assert.equal('ticketIds' in unticketed.row.value, false, 'a ticketless lane records no ticket field')
 })
