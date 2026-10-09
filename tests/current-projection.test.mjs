@@ -98,6 +98,7 @@ test('all current categories together stay within 24000 characters without hidin
   f.current.worktreeBindings = f.current.records.workflows.map(({ workflowId: id }) => ({ bindingId: id, revision: 1,
     value: { requestedCwd: '/tree/' + id, actualCwd: '/tree/' + id, actualChildSessionId: 'child-' + id, acceptance: 'accepted', outcome: 'confirmed', business: { state: 'discarded', notes: large } },
     source: 'agent', author: { principalId: 'parent', kind: 'agent' }, recordedAt: 1 }))
+  f.current.worktreeBindings[0] = { ...f.current.worktreeBindings[0], cleanupDue: true }
   f.current.contextConclusions = f.current.records.workflows.map(({ workflowId: id }) => ({ workflowId: id, decisionId: id, result: large, sourceRevision: 1, source: { author: 'owner' } }))
   f.current.health.push({ scope: 'zzz-not-shown', status: 'unknown', reason: 'physical facts unavailable' })
   f.current.records.summary.pendingDecisionCount = 40
@@ -106,6 +107,7 @@ test('all current categories together stay within 24000 characters without hidin
   const result = await f.feed.readForConsumption(identity)
   assert.ok(result.text.length <= 24000, 'total text chars=' + result.text.length)
   const view = facts(result.text)
+  assert.equal(view.worktreeRelations.counts.cleanupDue, 1, 'the injected facts carry the abandoned-uncleaned count')
   const categories = [view.records.workflows, view.records.tickets, view.records.decisions, view.records.summary.statusCounts,
     view.windows.tickets, view.windows.executions, view.resources, view.worktreeRelations, view.contextConclusions, view.capabilities, view.health]
   // Capabilities and health are derived facts with no captured history kind: a locator there

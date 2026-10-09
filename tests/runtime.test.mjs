@@ -1033,6 +1033,20 @@ test('one bounded current view per admitted step, newest facts at the next step'
   assert.equal(repeat.length, 0)
 })
 
+test('a delivered snapshot message is appended and never rewritten in place', async t => {
+  const f = await ready(t, { known: true })
+  await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
+  const first = await f.runtime.preStep(caller('root'), signal(), [], '1:1')
+  assert.equal(first.length, 1)
+  const message = first[0]
+  const recorded = JSON.stringify({ source: message.source, content: message.content })
+  await f.apply('put-ticket', { localTicketId: 'A', value: ticket('repair') })
+  const second = await f.runtime.preStep(caller('root'), signal(), [message], '2:1')
+  assert.equal(second.length, 1)
+  assert.notEqual(second[0], message, 'the next delivery is a new message object')
+  assert.equal(JSON.stringify({ source: message.source, content: message.content }), recorded, 'the previously delivered message is never rewritten')
+})
+
 test('a delivered terminal ticket is reported as pending release and only the agent frees the slot', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, ticketWindowSize: 2 }) })
   const terminalWorkflow = { title: '任务自定义', axes: [{ axisKey: 'delivery', label: '业务交付', counting: 'exclusive',

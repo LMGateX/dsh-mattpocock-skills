@@ -22,7 +22,7 @@ export interface ConsumptionSnapshot {
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
   /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
-  readonly worktreeBindings?: readonly WorktreeBindingCurrent[]
+  readonly worktreeBindings?: readonly (WorktreeBindingCurrent & { readonly cleanupDue?: boolean })[]
   /** Explicitly retained effective conclusions, not resolved question/option histories. */
   readonly contextConclusions?: readonly { readonly decisionId: string; readonly workflowId: string; readonly result: string;
     readonly sourceRevision: number; readonly source: unknown }[]
@@ -198,7 +198,8 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
     worktreeRelations: category(sorted(snapshot.worktreeBindings ?? [], row => row.bindingId).map(row => ({
       bindingId: row.bindingId, sourceRevision: row.revision, value: row.value,
       source: { kind: row.source, author: row.author, recordedAt: row.recordedAt },
-    })), { kind: 'worktree' }),
+      ...(row.cleanupDue === undefined ? {} : { cleanupDue: row.cleanupDue }),
+    })), { kind: 'worktree' }, { cleanupDue: (snapshot.worktreeBindings ?? []).filter(row => row.cleanupDue === true).length }),
     capabilities: category(sorted(snapshot.capabilities, row => row.key), { kind: 'capabilities' }),
     health: category(sorted(snapshot.health, row => row.scope), { kind: 'health' }, {
       unknown: snapshot.health.filter(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status)).length }),

@@ -26,7 +26,9 @@ export interface ConsumptionSnapshot {
     readonly windows: WindowSnapshot | null;
     readonly resources: readonly ResourceView[];
     /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
-    readonly worktreeBindings?: readonly WorktreeBindingCurrent[];
+    readonly worktreeBindings?: readonly (WorktreeBindingCurrent & {
+        readonly cleanupDue?: boolean;
+    })[];
     /** Explicitly retained effective conclusions, not resolved question/option histories. */
     readonly contextConclusions?: readonly {
         readonly decisionId: string;
