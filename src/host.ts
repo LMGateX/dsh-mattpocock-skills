@@ -813,7 +813,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       record(raw, 'history request', allowed)
       await ports.authorizeCaller(caller, caller.sessionId!); return active.historyAction!(caller, caller.sessionId!, parseHostJson(raw), exec.signal)
     })
-    if (active.worktreeAction) tool('mattpocock_worktree', 'Worktree binding instrument: read={action:read}; update={action:update,command:{operationId,bindingId,expectedRevision,state:active|discarded|cleaned,notes?}}; reconcile={action:reconcile,operationId}. Agent status and program-verified native binding facts remain distinct. Does not create, merge or delete Git worktrees.', async (raw, caller, exec) => {
+    if (active.worktreeAction) tool('mattpocock_worktree', 'Worktree binding instrument: read={action:read}; update={action:update,command:{operationId,bindingId,expectedRevision,state:active|discarded|cleaned,notes?}}; reconcile={action:reconcile,operationId}. Agent status and program-verified native binding facts remain distinct. To enter or leave a checkout use the host\'s working_directory tool: cd to the checkout to enter it, and cd back to the project directory it reported to leave; the checkout and branch remain. To create, merge or delete trees and branches use the host\'s own Git tools (create_worktree when provided). This instrument records bindings only.', async (raw, caller, exec) => {
       const action = raw.action
       if (action === 'read') record(raw, 'worktree read', ['action'])
       else if (action === 'update') record(raw, 'worktree update', ['action', 'command'])
@@ -821,17 +821,17 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       else throw new ControlsError('invalid-input', 'read/update/reconcile action required')
       await ports.authorizeCaller(caller, caller.sessionId!); return active.worktreeAction!(caller, caller.sessionId!, parseHostJson(raw), exec.signal)
     })
-    tool('mattpocock_resource', 'Deprecated read-only resource inspection. Git lifecycle writes are disabled; use mattpocock_worktree for recorded bindings, not Git management.', async (raw, caller, exec) => {
+    tool('mattpocock_resource', 'Read one recorded worktree resource row: its Git identity, retention facts and whether it can be retired ({action:"read", resourceId}). Manage Git checkouts and branches with the host\'s own tools — use the host\'s create_worktree when it is provided — and record lane relationships with mattpocock_worktree. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
       const parsed = parseResourceAction(raw)
       if (parsed.action !== 'read') throw new ControlsError('feature-disabled', 'deprecated resource lifecycle writes are disabled; manage Git yourself and use worktree bindings')
       return active.resourceAction(caller, caller.sessionId!, parsed, exec.signal)
     })
-    if (active.delegate) tool('mattpocock_delegate', 'Create a continuable spawn/fork child: description, prompt, optional provider, worktree, operationId, workflowId and ticketIds. Prepare any Git worktree yourself first. Routes inherit the parent/native configuration; model route overrides are not supported. Continue the same child/history/cwd with native send_message; do not create another child for a follow-up. When workflowId is given, ticketIds must name at least one ticket already recorded in this instrument, and the worktree binding row records those ticketIds; omit workflowId entirely for a ticketless research lane. Native acceptance and persisted binding facts are reported separately.', async (raw, caller, exec) => {
+    if (active.delegate) tool('mattpocock_delegate', 'Create a continuable spawn/fork child: description, prompt, optional provider, worktree, operationId, workflowId and ticketIds. Prepare the lane\'s tree first — use the host\'s create_worktree when the host provides it, otherwise run Git yourself — then pass its absolute path as worktree; the child starts there and the binding row records it. Retrying the same operationId never creates a second child; use a new operationId when you want another one. When workflowId is given, ticketIds must name at least one ticket already recorded in this instrument; omit workflowId entirely for a ticketless research lane. If recording is reported unknown or failed, read the binding with mattpocock_worktree before retrying.', async (raw, caller, exec) => {
       record(raw, 'delegation request', ['description', 'prompt', 'provider', 'worktree', 'operationId', 'workflowId', 'ticketIds'])
       await ports.authorizeCaller(caller, caller.sessionId!); return active.delegate!(caller, parseHostJson(raw), exec)
     })
-    if (active.executeManaged) tool('mattpocock_execute', 'Observe native delegation through its existing permission pipeline and record supported execution facts. Never forge execution receipts. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
+    if (active.executeManaged) tool('mattpocock_execute', 'Record one execution fact you actually observed for a native delegation (nativeTool, arguments, optional workflowId and localTicketId). Never record an execution you did not observe. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.executeManaged!(caller, parseHostJson(raw), exec)
     })
     if (active.assign) tool('mattpocock_assign', 'Record only authenticated delegation assignments; never self-grant user policy access. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {

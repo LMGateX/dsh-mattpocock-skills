@@ -589,7 +589,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // diagnostic, so the hook stays unrestricted; the refresh gate inside prepare keeps an
     // unchanged projection from being rebuilt per call.
     async postExecute(caller,exec,_result,stepKey){if(stepKey!==undefined)currentStepKey=stepKey;return prepare(caller,exec.signal)},
-    context(caller){return caller.sessionId!==null&&cachedSessions.has(caller.sessionId)?'Collaboration instruments: use mattpocock_record for current records, mattpocock_history for scoped history, mattpocock_worktree for recorded bindings. Fresh bounded state is sent when changed or its exact baseline is missing from the effective input; old chat messages are not deleted.':''},
+    context(caller){return caller.sessionId!==null&&cachedSessions.has(caller.sessionId)?'Collaboration instruments: use mattpocock_record for current records, mattpocock_history for scoped history, mattpocock_worktree for recorded bindings. Re-read with mattpocock_record when the injected snapshot is missing or stale.':''},
     async executeManaged(caller,input:HostJson,exec:ToolRunContext){
       const r=record(input,'managed execution',['nativeTool','arguments','workflowId','localTicketId'])
       if(r.nativeTool!=='subagent'&&r.nativeTool!=='subagent_fork'&&r.nativeTool!=='send_message')throw new ControlsError('invalid-input','unsupported managed native tool; accepted nativeTool values: subagent, subagent_fork, send_message')

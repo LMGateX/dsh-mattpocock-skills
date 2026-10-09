@@ -351,7 +351,9 @@ test('deprecated resource tool and old UI service are read-only before reaching 
   assert.equal((await execute(f, 'mattpocock_resource', { action: 'borrow', path: '/prepared/tree' })).isError, true)
   await assert.rejects(f.invoke('resourceAction', { sessionId: 'owner', request: { action: 'retain', resourceId: 'R' } }), { code: 'feature-disabled' })
   assert.equal(requests.length, 1)
-  assert.match(f.ctx.tools.get('mattpocock_resource').description, /deprecated|read.only/i)
+  // Model-visible text states what to do; it does not narrate our deprecation or switch state.
+  assert.match(f.ctx.tools.get('mattpocock_resource').description, /create_worktree/)
+  assert.doesNotMatch(f.ctx.tools.get('mattpocock_resource').description, /deprecated|disabled|read.only/i)
 })
 
 test('delegate tool preserves native permission pipeline and accepts only safe creation fields', options, async t => {
@@ -370,7 +372,7 @@ test('delegate tool preserves native permission pipeline and accepts only safe c
   t.after(remove)
   assert.equal((await execute(f, 'mattpocock_delegate', request)).isError, true)
   assert.equal(calls.length, 1)
-  assert.match(f.ctx.tools.get('mattpocock_delegate').description, /send_message/)
+  assert.match(f.ctx.tools.get('mattpocock_delegate').description, /operationId/)
 })
 
 test('worktree service routes strict operator input and rejects unavailable old runtimes explicitly', options, async t => {
