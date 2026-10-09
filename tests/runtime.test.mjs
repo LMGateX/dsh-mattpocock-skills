@@ -92,6 +92,7 @@ test('future controlled native activity: managed ticket assignment narrows new c
 
 test('future controlled native activity: only exact disposed object releases S; idle/end/business text do not', async t => {
   const f = await ready(t, { known: true })
+  for (const id of ['A', 'B', 'C']) await f.apply('put-ticket', { localTicketId: id, value: ticket() })
   await f.window('reserve', 'A'); await f.window('reserve', 'B')
   const first = nativeChild(f, 'same-session')
   await f.managed({ workflowId: 'flow', localTicketId: 'A' })
@@ -150,6 +151,8 @@ test('actual installed host ports nativeActivity is false with actual objects: u
   assert.equal(actual.reason, 'all-native-activity-enumeration-unsupported')
   assert(actual.liveAgents.includes(f.root)); assert(actual.liveAgents.includes(f.child))
   await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'installed-wf', expectedRevision: 0, action: 'put-workflow', workflowId: 'flow', value: workflow }, signal())
+  await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'installed-tk-A', expectedRevision: 1, action: 'put-ticket', workflowId: 'flow', localTicketId: 'A', value: ticket() }, signal())
   const T = await f.execute('mattpocock_window', { request: { action: 'reserve', operationId: 'installed-T', workflowId: 'flow', localTicketId: 'A' } })
   assert.equal(T.isError, false)
   let nativeCalls = 0
@@ -258,6 +261,8 @@ test('default-off controls leave actual immutable Skill provider registered and 
 
 test('T-only configured capacity remains usable with S unset and does not invent an S limit', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, ticketWindowSize: 1 }) })
+  await f.apply('put-workflow', { value: workflow })
+  await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
   await f.window('reserve', 'A')
   const snap = await f.read()
   assert.equal(snap.windows.T.used, 1); assert.equal(snap.windows.T.capacity, 1)
@@ -273,6 +278,8 @@ test('S-only configured capacity permits ticketless admission with T unset and d
   const snap = await f.read()
   assert.equal(snap.windows.S.used, 1); assert.equal(snap.windows.S.capacity, 1)
   assert.equal(snap.windows.T.capacity, null); assert.equal(snap.windows.T.used, 0)
+  await f.apply('put-workflow', { value: workflow })
+  await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
   await f.window('reserve', 'A')
   assert.equal((await f.read()).windows.T.capacity, null)
 })

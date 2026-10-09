@@ -177,6 +177,16 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     cachedSessions.set(sessionId,view);nativeWindows.set(sessionId,view.policy.extensionEnabled&&view.policy.features.windows.requested)
     signal?.throwIfAborted();return view
   }
+  /** A ticket window may only name tickets this instrument already knows; unverifiable reads never veto work. */
+  const registeredTickets=async(caller:HostCaller,sessionId:string):Promise<ReadonlySet<string>|null>=>{
+    try{const read=await instruments.read(caller.principalId,sessionId);return new Set(read.tickets.map(row=>row.localTicketId))}
+    catch{return null}
+  }
+  const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
+    const known=await registeredTickets(caller,sessionId)
+    if(known===null||known.has(localTicketId))return
+    throw new ControlsError('invalid-input','ticket "'+localTicketId+'" is not registered in this instrument; record it with mattpocock_record put-ticket (workflowId "'+workflowId+'", localTicketId "'+localTicketId+'") first, or omit workflowId for a ticketless research lane')
+  }
   const scope=async(principal:string,sessionId:string,view:SessionControlsView):Promise<InstrumentScope>=>{
     if(principal===ports.operatorPrincipal||sessionId===view.instance.ownerSessionId)return {kind:'coordinator'}
     const row=(await load()).assignments.find(a=>a.sessionId===sessionId)
@@ -436,7 +446,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const owner=cachedSessions.get(ownerSessionId);if(owner)consumptionProgram.trackCommit(owner.instance.instrumentInstanceId,commit)
       await commit
     },
-    async applyTicketWindow(caller,sessionId,command:TicketWindowCommand,signal){const view=await identity(caller,sessionId,signal);return track(view.instance.instrumentInstanceId,async()=>{signal.throwIfAborted();await check(caller,sessionId,signal);const result=await windows.apply(caller.principalId,sessionId,command);await captureSafely(view,()=>captureOthers(view,caller));return result})},
+    async applyTicketWindow(caller,sessionId,command:TicketWindowCommand,signal){const view=await identity(caller,sessionId,signal);return track(view.instance.instrumentInstanceId,async()=>{signal.throwIfAborted();await check(caller,sessionId,signal);if(command.action!=='release')await requireRegisteredTicket(caller,sessionId,command.workflowId,command.localTicketId);const result=await windows.apply(caller.principalId,sessionId,command);await captureSafely(view,()=>captureOthers(view,caller));return result})},
     async resourceAction(caller,sessionId,input:ResourceAction,signal){
       const request=parseResourceAction(input),view=await identity(caller,sessionId,signal)
       return track(view.instance.instrumentInstanceId,async()=>{
@@ -537,6 +547,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(workflowId===null&&localTicketId!==null)throw new ControlsError('invalid-input','ticket needs a declared workflow')
       const view=await identity(caller,caller.sessionId!,exec.signal),executionId=id(exec.callId,'execution callId')
       const permission=await scope(caller.principalId,caller.sessionId!,view)
+      if(localTicketId!==null&&workflowId!==null)await requireRegisteredTicket(caller,caller.sessionId!,workflowId,localTicketId)
       if(permission.kind==='assigned'&&(workflowId!==null&&workflowId!==permission.workflowId||localTicketId!==null&&!permission.ticketIds.includes(localTicketId)))denied('managed assignment exceeds actual parent scope')
       const fence=await ports.openUnitStorage('native_calls_'+createHash('sha256').update(view.instance.instrumentInstanceId).digest('hex').slice(0,48),parseDelegationJournal)
       await track(view.instance.instrumentInstanceId,async()=>{
@@ -721,6 +732,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
       const checkGrant=async()=>{await check(caller,caller.sessionId!,exec.signal);const permission=await scope(caller.principalId,caller.sessionId!,await controls.readSession(caller.principalId,caller.sessionId!));if(permission.kind==='assigned'&&((workflowId!==null&&permission.workflowId!==workflowId)||ticketIds.some(ticket=>!permission.ticketIds.includes(ticket))))denied('delegation exceeds actual parent assignment scope')}
       await checkGrant()
+      if(workflowId!==null){
+        if(ticketIds.length===0)throw new ControlsError('invalid-input','delegation on workflow "'+workflowId+'" must name recorded ticketIds; record the ticket first, or omit workflowId for a ticketless research lane')
+        for(const ticket of ticketIds)await requireRegisteredTicket(caller,caller.sessionId!,workflowId,ticket)
+      }
       if(!ports.createContinuable)throw new ResourceError('unsupported','native continuable creation is unavailable; no child was requested')
       const cwd=r.worktree===undefined?undefined:typeof r.worktree==='string'&&isAbsolute(r.worktree)&&normalize(r.worktree)===r.worktree&&!r.worktree.includes('\0')?r.worktree:(()=>{throw new ControlsError('invalid-input','worktree must be normalized absolute path')})()
       if(cwd!==undefined&&ports.capabilities.nativeInitialChildCwd!=='supported')throw new ResourceError('unsupported','nativeInitialChildCwd unsupported; no child was requested')
