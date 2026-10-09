@@ -72,6 +72,13 @@ async function consume(feed, nativeMessages, signal) {
   return { result, messages }
 }
 
+test('a held window slot whose ticket sits in a terminal status is reported for authored release', async () => {
+  const f = fixture()
+  f.current = { ...f.current, pendingRelease: [{ workflowId: 'flow', localTicketId: 'A', generation: 2, label: '已交付' }] }
+  const { result } = await consume(f.feed, [])
+  assert.match(result.text, /T pending release: A \(已交付\) — call mattpocock_window release/)
+})
+
 test('pure emitted module has no Node, SDK or runtime dependency imports', () => {
   assert.doesNotMatch(output, /(?:import\s|from\s|require\()[^\n]*(?:node:|@deepseek|\.js)/)
   assert.match(output, /export class InstrumentConsumption/)
@@ -98,7 +105,7 @@ test('current records and minimal protocol append independently without touching
   assert.doesNotMatch(result.text, /"capability":/)
   assert.match(result.text, /Ticket discipline: every ticket you reserve or delegate work on must already exist in this instrument/)
   assert.doesNotMatch(result.text, /work one held ticket to convergence before admitting another|one at a time/i)
-  assert.match(result.text, /a ticket that reaches its declared delivered state has its T slot released automatically/)
+  assert.match(result.text, /Work-in-progress discipline: the T window is how many tickets may be in flight at once/)
   assert.doesNotMatch(result.text, /never split one ticket|shall not be released/i)
   assert.equal(result.snapshot.windows.S.used, 1)
   assert.equal(f.feed.cachedText(identity), result.text)

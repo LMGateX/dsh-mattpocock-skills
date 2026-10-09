@@ -12,6 +12,13 @@ export interface ConsumptionIdentity {
     readonly ownerSessionId: string;
 }
 export interface ConsumptionSnapshot {
+    /** Held T slots whose ticket already sits in a terminal status; the agent releases them. */
+    readonly pendingRelease?: readonly {
+        readonly workflowId: string;
+        readonly localTicketId: string;
+        readonly generation: number;
+        readonly label: string | null;
+    }[];
     readonly sessionId: string;
     readonly instance: InstrumentInstance;
     readonly policy: EffectivePolicy;

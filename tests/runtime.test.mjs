@@ -1033,7 +1033,7 @@ test('one bounded current view per admitted step, newest facts at the next step'
   assert.equal(repeat.length, 0)
 })
 
-test('a terminal ticket status releases its held T slot through the program reconcile', async t => {
+test('a delivered terminal ticket is reported as pending release and only the agent frees the slot', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, ticketWindowSize: 2 }) })
   const terminalWorkflow = { title: '任务自定义', axes: [{ axisKey: 'delivery', label: '业务交付', counting: 'exclusive',
     statuses: [{ statusKey: 'partial', label: '部分交付' }, { statusKey: 'delivered', label: '已交付', terminal: true }] }] }
@@ -1044,6 +1044,10 @@ test('a terminal ticket status releases its held T slot through the program reco
   assert.equal((await f.read()).windows.T.used, 1)
   await f.apply('put-ticket', { localTicketId: 'A', value: terminalTicket('delivered') })
   const snap = await f.read()
-  assert.equal(snap.windows.T.used, 0, 'a terminal status frees the held slot without an authored release')
-  assert.equal(snap.records.tickets.find(row => row.localTicketId === 'A').value.statuses.delivery[0], 'delivered')
+  assert.equal(snap.windows.T.used, 1, 'the program never frees a slot for the agent; release stays authored')
+  assert.deepEqual(snap.pendingRelease, [{ workflowId: 'flow', localTicketId: 'A', generation: 1, label: '已交付' }], 'the held slot is reported for authored release')
+  await f.window('release', 'A', { generation: 1 })
+  const released = await f.read()
+  assert.equal(released.windows.T.used, 0)
+  assert.deepEqual(released.pendingRelease, [], 'nothing is pending once the agent released the slot')
 })

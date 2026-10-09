@@ -13,6 +13,8 @@ export interface ConsumptionIdentity {
   readonly ownerSessionId: string
 }
 export interface ConsumptionSnapshot {
+  /** Held T slots whose ticket already sits in a terminal status; the agent releases them. */
+  readonly pendingRelease?: readonly { readonly workflowId: string; readonly localTicketId: string; readonly generation: number; readonly label: string | null }[]
   readonly sessionId: string
   readonly instance: InstrumentInstance
   readonly policy: EffectivePolicy
@@ -202,6 +204,7 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
       unknown: snapshot.health.filter(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status)).length }),
   }
 }
+function pendingReleaseRows(snapshot: ConsumptionSnapshot): readonly { readonly localTicketId: string; readonly label: string | null }[] { return snapshot.pendingRelease ?? [] }
 function protocol(snapshot: ConsumptionSnapshot): string {
   const p = snapshot.policy
   const lines = ['Instrument state: current effective policy supersedes earlier instrument instructions.',
@@ -214,7 +217,10 @@ function protocol(snapshot: ConsumptionSnapshot): string {
   else if (p.workspaceEnabled === false) lines.push('Management feature is OFF for this workspace: existing records and execution facts remain.')
   else if (p.features.windows.status === 'configured') {
     lines.push('Windows explicitly enabled: mattpocock_window records explicit T reserve/release/reacquire independently of S. Only trusted program receipts release S, never a business completion label.')
-    lines.push('Ticket discipline: every ticket you reserve or delegate work on must already exist in this instrument. Record it first with mattpocock_record put-ticket (workflowId + localTicketId + title + statuses); mattpocock_window reserve and mattpocock_delegate reject an unregistered ticket, and the rejection names it. One T slot per in-flight ticket; a ticket that reaches its declared delivered state has its T slot released automatically, and you release it yourself when the work is blocked or abandoned. Ticketless research runs are allowed only by omitting workflowId entirely — then there is no ticket and no T requirement.')
+    lines.push('Ticket discipline: every ticket you reserve or delegate work on must already exist in this instrument. Record it first with mattpocock_record put-ticket (workflowId + localTicketId + title + statuses); mattpocock_window reserve and mattpocock_delegate reject an unregistered ticket, and the rejection names it. Ticketless research runs are allowed only by omitting workflowId entirely — then there is no ticket and no T requirement.')
+    lines.push('Work-in-progress discipline: the T window is how many tickets may be in flight at once, not a quota. Take each ticket to its declared delivered state (or record it blocked by name) before opening the next one on that lane — spreading partial progress over many tickets is exactly what T exists to prevent. An empty slot needs no excuse; a held slot whose ticket has already reached a delivered or blocked state is yours to release with mattpocock_window release, and nothing releases it for you.')
+    const pendingRelease=pendingReleaseRows(snapshot)
+    if(pendingRelease.length>0)lines.push('T pending release: '+pendingRelease.map(row=>row.localTicketId+(row.label===null?'':' ('+row.label+')')).join(', ')+' — call mattpocock_window release with that ticket\'s generation; the slot stays held until you do.')
   }
   else if (p.features.windows.status === 'disabled') lines.push('Windows are OFF: preserve existing execution facts and records.')
   else lines.push('Windows are unsupported for this policy: usage coverage remains explicit in capabilities; missing facts are not known/free slots.')

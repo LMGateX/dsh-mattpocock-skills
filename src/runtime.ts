@@ -182,29 +182,20 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     try{const read=await instruments.read(caller.principalId,sessionId);return new Set(read.tickets.map(row=>row.localTicketId))}
     catch{return null}
   }
-  /**
-   * A ticket whose workflow marks its reached status `terminal` no longer needs its T slot. The release
-   * is a program reconcile authored on the owning session; it is never inferred from message text or labels.
-   */
-  const reconcileDeliveredTickets=async(caller:HostCaller,sessionId:string):Promise<void>=>{
-    try{
-      const view=await identity(caller,sessionId)
-      const owner=view.instance.ownerSessionId,ownerCaller=callerFor('agent:'+owner,owner,ports.operatorPrincipal)
-      const ledger=await instruments.read(ownerCaller.principalId,owner)
-      const terminal=new Map<string,ReadonlySet<string>>()
-      for(const flow of ledger.workflows){const marks=new Set<string>();for(const axis of flow.value.axes)for(const state of axis.statuses)if(state.terminal===true)marks.add(state.statusKey);if(marks.size>0)terminal.set(flow.workflowId,marks)}
-      if(terminal.size===0)return
-      const held=await windows.read(ownerCaller.principalId,owner)
-      for(const row of held.tickets){
-        if(!row.held)continue
-        const marks=terminal.get(row.workflowId);if(marks===undefined)continue
-        const ticket=ledger.tickets.find(candidate=>candidate.workflowId===row.workflowId&&candidate.localTicketId===row.localTicketId),statuses=ticket?.value.statuses
-        if(statuses===undefined)continue
-        const done=Object.values(statuses).some(list=>Array.isArray(list)&&list.some(key=>marks.has(String(key))))
-        if(!done)continue
-        try{await windows.apply(ownerCaller.principalId,owner,{operationId:'ticket-reconcile:'+row.localTicketId+':'+row.generation,workflowId:row.workflowId,localTicketId:row.localTicketId,action:'release',generation:row.generation})}catch{/* A failed reconcile keeps the slot held; it never invents a delivery. */}
-      }
-    }catch{/* Maintenance only: an unavailable ledger or window never fails the authored command. */}
+  /** Held T slots whose ticket already sits in a terminal status: the agent releases them, nothing else does. */
+  function pendingReleaseFor(records:RuntimeSnapshot['records'],windows:RuntimeSnapshot['windows']):readonly {readonly workflowId:string;readonly localTicketId:string;readonly generation:number;readonly label:string|null}[] {
+    if(records===null||windows===null)return []
+    const terminal=new Map<string,ReadonlySet<string>>(),labels=new Map<string,string>()
+    for(const flow of records.workflows){const marks=new Set<string>();for(const axis of flow.value.axes)for(const status of axis.statuses){labels.set(flow.workflowId+'\u0000'+status.statusKey,status.label);if(status.terminal===true)marks.add(status.statusKey)}if(marks.size>0)terminal.set(flow.workflowId,marks)}
+    if(terminal.size===0)return []
+    const rows:{workflowId:string;localTicketId:string;generation:number;label:string|null}[]=[]
+    for(const row of windows.tickets){
+      if(!row.held)continue
+      const marks=terminal.get(row.workflowId);if(marks===undefined)continue
+      const ticket=records.tickets.find(candidate=>candidate.workflowId===row.workflowId&&candidate.localTicketId===row.localTicketId);if(ticket===undefined)continue
+      for(const key of Object.values(ticket.value.statuses).flat())if(marks.has(String(key))){rows.push({workflowId:row.workflowId,localTicketId:row.localTicketId,generation:row.generation,label:labels.get(row.workflowId+'\u0000'+String(key))??null});break}
+    }
+    return rows
   }
   const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
     const known=await registeredTickets(caller,sessionId)
@@ -274,7 +265,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(windowView&&!windowView.runtimeKnowledge.known)health.push({scope:'execution-admission',status:'unsupported',reason:windowView.runtimeKnowledge.reason})
     signal.throwIfAborted()
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...(await load()).assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,
+    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,pendingRelease:pendingReleaseFor(records,windowView),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     project.record(projectionBase,epoch)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
@@ -448,7 +439,6 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const result=await track(view.instance.instrumentInstanceId,async()=>{
         signal.throwIfAborted();await check(caller,sessionId,signal)
         const applied=await instruments.apply(caller.principalId,sessionId,command)
-        if(command.action==='put-ticket')await reconcileDeliveredTickets(caller,sessionId)
         let notificationFailure:string|null=null
         if(command.action!=='set-decision-view'&&(caller.kind==='user'||sessionId!==view.instance.ownerSessionId)){
           const notificationId=createHash('sha256').update(JSON.stringify([view.instance.instrumentInstanceId,command.operationId])).digest('hex')
