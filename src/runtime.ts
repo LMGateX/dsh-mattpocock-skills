@@ -815,7 +815,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const reservation=await track(view.instance.instrumentInstanceId,()=>windowsProgram.reserveExecution(caller.principalId,caller.sessionId!,{operationId:'delegate-reserve:'+operationId,executionId:operationId,workflowId,localTicketId:ticketIds.length===1?ticketIds[0]!:null}))
           if(reservation.replayed||!reservation.dispatchable)throw new ControlsError('operation-conflict','delegation reservation replay is not permission to redispatch')
           dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds,children:new Set(),live:new Set(),released:false,accepting:true}
-        }catch(error){exec.signal.throwIfAborted();if(error instanceof ControlsError&&['access-denied','invalid-input','operation-conflict'].includes(error.code))throw error}
+        }catch(error){exec.signal.throwIfAborted();if(error instanceof ControlsError&&['access-denied','invalid-input','operation-conflict'].includes(error.code)){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:'failed',diagnostic:String(error)},caller))}catch{/* A refused reservation still reports its failed intent. */}throw error}}
       }
       let receipt:Awaited<ReturnType<NonNullable<HostPorts['createContinuable']>>>
       try{const create=()=>ports.createContinuable!(exec,{provider,label:r.description as string,prompt:r.prompt as string,childId:intent.row.childId,...(cwd===undefined?{}:{cwd})});receipt=await (dispatch?nativeDispatch.run(dispatch,create):create())}
