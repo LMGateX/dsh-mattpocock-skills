@@ -14,6 +14,14 @@
 
 该宿主已删除 `startContinuable` 并改用公开 `startActivation`，且 `SubagentStartRequest.cwd` 由提供者自行解析并经会话工作目录 owner 记录。因此本插件在该宿主上直接使用原生 seam，不需要也不装载随包兼容提供者；导入前组合 guard 仍按实际服务与版本把原行留给 stock，不会用陈旧的 alpha.1 服务替换宿主。随包兼容提供者继续服务没有该 seam 的宿主（含 `0.2.1-alpha.1`）。
 
+### 官方插件会话记录接口：已评估，暂不采用（2026-10-09，所有者认可延后）
+
+`@deepseek-ai/dsh-session` 在 `0.2.1-alpha.2` 新增 `appendPluginRecord` / `pluginRecordOf`：类型文法 `plugin:<段>`，写入会话日志的 `ignorable` 事件，不进模型可见面，fork/resume 随日志携带。本插件**不使用**该接口：
+
+- 它是**单会话的追加日志**：没有修订号、没有比较交换、不能就地更新或删除；而本插件的仪器记录、窗口、工作树绑定与资源是**跨会话、带 revision 的 CAS 状态机**，并有显式 purge/compact 语义。改用官方记录是降级而不是采用官方能力。
+- 它是**实验面**，alpha 之间可能变化，采用会把插件与它的演进绑定。
+
+若将来确有需要（例如会话导出需自证工作树来历），只做**只读镜像**：账本始终是唯一权威，官方记录不得用于判定业务状态。
 ## 当前源码进度与验收边界
 
 0.4.2 发布线已将版本固定的[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>)、[公开来源与变换记录](<../compatibility/native-subagent.provenance.json>)、[真实包装入口](<../src/compatibility/native-subagent.ts>)与[只读启动准备观测](<../src/compatibility/readiness.ts>)纳入精确文件／exports 清单，并通过[编译后启动选择器](<../src/compatibility/composition.ts>)生成公开 bundle 覆盖。历史 0.4.1 Release 不含此实现；发行包内容不等于当前进程安装／启用事实。
