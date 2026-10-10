@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.29",
+    "private": true
+  },
+  "source": {
+    "commit": "778d336b699c6182576d728bf040eab89514e023",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.29.tgz",
+    "bytes": 398722,
+    "sha256": "46c5f3a27672f7a1f15c07b0401547213c7953741bb2ce606d0958ade1fddc69",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.2"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.2",
+    "compat": "0.2.1-alpha.1 (scratch prefix, nested npm install)"
+  },
+  "validation": {
+    "rootTests": {
+      "total": 837,
+      "passed": 643,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 194
+    },
+    "rootTestsBothRoots": {
+      "total": 863,
+      "passed": 863,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 837,
+      "passed": 545,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 292
+    },
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 14,
+      "actualPluginManager": 13
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.1"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "readPathBenchmark": {
+      "liveDescendants": 2000,
+      "reads": 50,
+      "firstMs": 2,
+      "averageMs": 0.62,
+      "worstMs": 4,
+      "catalogCallsDuringReads": 0,
+      "catalogState": "answers never",
+      "note": "membership is the live Agent index; catalog enumeration runs once in the background under a 1500 ms budget that races the call"
+    },
+    "liveStorageEvidence": "the owner subtree of the reporting profile holds 2048 session logs and 2.1 GB; one owner log is 25.9 MB compressed and 106 MB decoded, which is the per-descendant cost the removed walk paid",
+    "buildModules": 66,
+    "fixedFiles": 85,
+    "vendorFiles": 85,
+    "packedFiles": 170,
+    "clientBytes": 173862
+  },
+  "upstream": {
+    "distribution": "v0.3.0",
+    "skills": "v1.3.1",
+    "channels": {
+      "beta": 27,
+      "stable": 27
+    },
+    "vendorBytes": 279662,
+    "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+  },
+  "review": {
+    "baseline": "v0.4.28",
+    "independentReview": "Owner-reported: after upgrading, sending a message left it queued forever, the agent never started, and every session showed state unknown with no error anywhere. The installed SDK's listDescendants issues one session-log read per descendant; the 0.4.27 baseline walk sat on the admission and snapshot read paths, and the reporting workspace holds 2048 descendant logs and 2.1 GB, so that walk never completed. Membership is now the live Agent index absorbed synchronously per read, catalogs are background enrichment under a 1500 ms budget that races the call, and no read waits for queued work. Measured with 2000 resident descendants and a catalog that never answers: first read 2 ms, 50 reads average 0.62 ms, worst 4 ms, zero catalog calls per read. Also fixes the window-document validation that rejected pre-0.4.27 documents and documents the narrowed total semantics."
+  }
+}
