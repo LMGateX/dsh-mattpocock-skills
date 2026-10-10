@@ -51,7 +51,6 @@ export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChil
     readonly nativeInitialChildCwd: 'supported' | 'unsupported';
     readonly allNativeWakeAdmission: 'supported' | 'unsupported';
 };
-/** One node-reconciliation mismatch between the expected-run ledger and the live running count. */
 export interface NativeCountDrift {
     /** The counted run whose live Agent disappeared without a paired `subagent/end`. */
     readonly sessionId: string;

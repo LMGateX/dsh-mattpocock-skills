@@ -113,32 +113,6 @@ function nativeSubagentLister(ctx: Context): NativeSubagentLister | undefined {
   if (service === undefined || typeof service.listDescendants !== 'function' && typeof service.listChildren !== 'function') return undefined
   return service
 }
-/** Fallback for a host that exposes only direct children: the same pre-order walk and
- * branch diagnostics as listDescendants, so one unreadable branch never certifies a total. */
-async function listNativeDescendantsByChildren(list: NonNullable<NativeSubagentLister['listChildren']>, root: SessionId, signal: AbortSignal): Promise<readonly NativeSubagentRow[]> {
-  const rows: NativeSubagentRow[] = []
-  const visited = new Set<string>([String(root)])
-  const walk = async (parent: SessionId): Promise<void> => {
-    signal.throwIfAborted()
-    const children = await list(parent, signal)
-    for (const child of children) {
-      const childId = String(child.id)
-      if (visited.has(childId)) continue
-      visited.add(childId)
-      if (child.kind !== 'child' || child.mode === 'unknown') { rows.push({ id: child.id, kind: 'diagnostic', reason: child.kind === 'child' ? 'unsupported' : child.reason ?? 'unavailable' }); continue }
-      rows.push(child)
-      if (child.mode === 'external') continue
-      try { await walk(SessionId(childId)) }
-      catch (error) {
-        signal.throwIfAborted()
-        rows.push({ id: child.id, kind: 'diagnostic', reason: 'unavailable' })
-      }
-    }
-  }
-  await walk(root)
-  return rows
-}
-/** One node-reconciliation mismatch between the expected-run ledger and the live running count. */
 export interface NativeCountDrift {
   /** The counted run whose live Agent disappeared without a paired `subagent/end`. */
   readonly sessionId: string
@@ -190,6 +164,26 @@ export interface NativeSubagentStop {
 export interface NativeSubagentStopEvent extends NativeSubagentStop {
   readonly ownerSessionId: string
 }
+/** Await a catalog call for at most its deadline: a callee that ignores its own signal, or a
+ * single catalog read that never returns, still cannot hold a step or a snapshot read open. */
+async function withinDeadline<T>(task: Promise<T>, deadline: AbortSignal): Promise<T> {
+  const timeout = new Promise<{ readonly timedOut: true; readonly value: undefined; readonly error: undefined }>(resolve => {
+    const fire = () => resolve({ timedOut: true, value: undefined, error: undefined })
+    if (deadline.aborted) fire()
+    else deadline.addEventListener('abort', fire, { once: true })
+  })
+  const settled = task.then(
+    value => ({ timedOut: false as const, value, error: undefined }),
+    error => ({ timedOut: false as const, value: undefined, error }))
+  const outcome = await Promise.race([settled, timeout])
+  if (outcome.timedOut) throw new ControlsError('deadline-exceeded', 'native subagent catalog did not answer within its budget')
+  if (outcome.error !== undefined) throw outcome.error
+  return outcome.value as T
+}
+/** A read path waits at most this long for the native catalog before stating a lower bound. */
+const NATIVE_CATALOG_BUDGET_MS = 1_500
+/** A read path waits at most this long for queued walk work before stating the state it has. */
+const NATIVE_SETTLE_BUDGET_MS = 1_500
 interface NativeRunningMembership {
   readonly ids: Set<string>
   known: boolean
@@ -314,11 +308,23 @@ class NativeRunningCounter {
     return next
   }
   /** Await the owner's serial queue to quiescence: a task it queues must not be missed by a read. */
-  async #settle(owner: string): Promise<void> {
+  async #settle(owner: string, budgetMs?: number): Promise<void> {
+    if (budgetMs === undefined) {
+      for (;;) {
+        const pending = this.#tails.get(owner)
+        if (pending === undefined) return
+        await pending
+        if (this.#tails.get(owner) === pending) return
+      }
+    }
+    const until = Date.now() + budgetMs
     for (;;) {
       const pending = this.#tails.get(owner)
       if (pending === undefined) return
-      await pending
+      const remaining = until - Date.now()
+      if (remaining <= 0) return
+      await Promise.race([pending.then(() => undefined, () => undefined),
+        new Promise(resolve => setTimeout(resolve, remaining))])
       if (this.#tails.get(owner) === pending) return
     }
   }
@@ -338,26 +344,58 @@ class NativeRunningCounter {
       return
     }
     const control = signal ?? this.#signal
+    const deadline = AbortSignal.timeout(NATIVE_CATALOG_BUDGET_MS)
+    const bounded = control === undefined ? deadline : AbortSignal.any([control, deadline])
     let rows: readonly NativeSubagentRow[]
     try {
-      rows = typeof list.listDescendants === 'function'
-        ? await list.listDescendants(SessionId(owner), control)
-        : await listNativeDescendantsByChildren(list.listChildren!, SessionId(owner), control ?? new AbortController().signal)
+      // Exactly one direct-children read. The full-subtree walk this replaces reads every
+      // descendant's own session log, which is unbounded work on a read path (measured on a
+      // live profile: 2048 descendant logs, 2.1 GB, a baseline walk that never finished); the
+      // resident subtree comes from the live Agent index instead, whose parent chains already
+      // describe it, and the deadline keeps an unavailable catalog from blocking the caller.
+      const listing = typeof list.listChildren === 'function'
+        ? list.listChildren(SessionId(owner), bounded)
+        : list.listDescendants!(SessionId(owner), bounded)
+      listing.catch(() => undefined)
+      rows = await withinDeadline(listing, deadline)
     } catch (error) {
-      if (control?.aborted) throw error
-      if (current !== undefined) { current.known = false; current.reason = 'native-subagent-listing-rejected' }
-      else this.#members.set(owner, { ids: new Set(), known: false, reason: 'native-subagent-listing-rejected', total: 0 })
+      if (control?.aborted === true) throw error
+      const reason = deadline.aborted ? 'native-subagent-listing-timeout' : 'native-subagent-listing-rejected'
+      if (current !== undefined) { current.known = false; current.reason = reason }
+      else this.#members.set(owner, { ids: new Set(), known: false, reason, total: 0 })
       return
     }
     const children = rows.filter(row => row.kind === 'child')
     const diagnostic = rows.find(row => row.kind !== 'child')
-    const ids = new Set(children.map(row => String(row.id)))
-    this.#members.set(owner, { ids, total: children.length, known: diagnostic === undefined,
+    const ids = new Set<string>(current?.ids ?? [])
+    for (const row of children) ids.add(String(row.id))
+    for (const member of this.#liveSubtree(owner, ids)) ids.add(member)
+    this.#members.set(owner, { ids, total: Math.max(ids.size, children.length), known: diagnostic === undefined,
       reason: diagnostic === undefined ? null : 'native-subagent-diagnostic-' + (diagnostic.reason ?? 'unknown') })
     for (const childId of ids) {
       const owners = this.#idOwners.get(childId) ?? new Set<string>()
       owners.add(owner); this.#idOwners.set(childId, owners)
     }
+  }
+  /** Resident subtree membership from the live Agent index alone: the direct children admit
+   * their own resident children, transitively. Reads no session log, bounded by the live count. */
+  #liveSubtree(owner: string, known: ReadonlySet<string>): string[] {
+    const live = this.#liveIndex(), members = new Set(known), added: string[] = []
+    for (let pass = 0; pass < 64; pass += 1) {
+      let grew = false
+      for (const agent of live.values()) {
+        if (agent.session.header.origin !== 'subagent') continue
+        const sessionId = String(agent.id)
+        if (members.has(sessionId)) continue
+        const parent = agent.session.header.parentSession
+        if (parent === undefined) continue
+        const candidate = String(parent)
+        if (candidate !== owner && !members.has(candidate)) continue
+        members.add(sessionId); added.push(sessionId); grew = true
+      }
+      if (!grew) break
+    }
+    return added
   }
   #liveIndex(): Map<string, Agent> {
     const index = new Map<string, Agent>()
@@ -547,12 +585,12 @@ class NativeRunningCounter {
   }
   async read(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> {
     const owner = id(ownerSessionId, 'ownerSessionId')
-    await this.#settle(owner)
+    await this.#settle(owner, NATIVE_SETTLE_BUDGET_MS)
     let membership = this.#members.get(owner), ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
-      // Load/restart baseline: one catalog walk plus ctx.agents.list().
+      // Load/restart baseline: one bounded catalog read plus ctx.agents.list().
       await this.#refresh(owner, signal)
-      await this.#settle(owner)
+      await this.#settle(owner, NATIVE_SETTLE_BUDGET_MS)
       membership = this.#members.get(owner)
       if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
       ledger = { runs: new Map(), drifts: [], stops: new Map(), unresolved: new Set(), generations: new Map() }

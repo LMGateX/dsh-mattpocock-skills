@@ -184,6 +184,9 @@ test('the native running count reads live Agent status, never catalog residency'
     { kind: 'child', id: 'child-idle', mode: 'one-shot', activity: 'running', hasChildren: false, parentId: 'root', depth: 1 },
   ]
   const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    // The fixture's own live child is dropped so the listing under test is the only membership
+    // source: resident live agents are added by the live index, never by a subtree walk.
+    agents.delete('child')
     const running = actualAgent('child-running', { parent: 'root', managed: true }); running.status = 'running'
     const idle = actualAgent('child-idle', { parent: 'root', managed: true }); idle.status = 'idle'
     agents.set(running.id, running); agents.set(idle.id, idle)
@@ -205,6 +208,7 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     { kind: 'diagnostic', id: 'unreadable-branch', parentId: 'root', depth: 1, reason: 'corrupt' },
   ]
   const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    agents.delete('child')
     const readable = actualAgent('readable-running', { parent: 'root', managed: true }); readable.status = 'running'
     agents.set(readable.id, readable)
     ctx.provide('subagents', { listDescendants: async () => await listing() })
@@ -225,27 +229,37 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected' })
 })
 
-test('a host without listDescendants falls back to a recursive listChildren walk with branch diagnostics', async t => {
+test('a host exposing only direct children resolves the resident subtree without recursing', async t => {
   const children = {
     root: [{ kind: 'child', id: 'branch-a', mode: 'continuable', activity: 'running', hasChildren: true }],
     'branch-a': [{ kind: 'child', id: 'leaf-b', mode: 'one-shot', activity: 'running', hasChildren: false }],
     'leaf-b': [],
   }
+  const calls = []
   const listing = async id => {
+    calls.push(String(id))
     const rows = children[id]
     if (rows === undefined) throw new Error('unreadable child catalog')
     return rows
   }
   const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    agents.delete('child')
     for (const [childId, parent] of [['branch-a', 'root'], ['leaf-b', 'branch-a']]) {
       const running = actualAgent(childId, { parent, managed: true }); running.status = 'running'; agents.set(childId, running)
     }
     ctx.provide('subagents', { listChildren: listing })
   } })
+  // One catalog read for the owner; the deeper resident members come from the live index, whose
+  // parent chains already describe them. Reading every descendant's own session log is what made
+  // a baseline walk unbounded on a large workspace, so no deeper catalog is consulted.
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null })
+  assert.deepEqual(calls, ['root'], 'only the owner catalog is read, never a deeper branch')
+  // A branch whose own catalog is unreadable can no longer hide a running member: the live index
+  // still reports it, and the stated total stays the known resident subtree.
   children['branch-a'] = undefined
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'branch-a' } })
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-unavailable' })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null })
+  assert.deepEqual(calls, ['root', 'root'], 'the retry reads the owner catalog again, never the unreadable branch')
 })
 
 test('fresh preStep/postExecute snapshots retain source authors; disabled/hide does not erase obligations', async t => {

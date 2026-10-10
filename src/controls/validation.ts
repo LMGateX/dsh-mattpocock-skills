@@ -1,6 +1,7 @@
 export type ControlsErrorCode =
   | 'invalid-input' | 'invalid-state' | 'revision-conflict'
   | 'unknown-session' | 'unknown-workspace' | 'association-conflict' | 'concurrent-update' | 'storage-uncertain' | 'access-denied' | 'operation-conflict' | 'feature-disabled'
+  | 'deadline-exceeded'
 
 /** Mechanical diagnostics only; never business blockers or approval requests. */
 export class ControlsError extends Error {
