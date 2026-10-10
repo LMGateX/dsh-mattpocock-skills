@@ -182,8 +182,6 @@ async function withinDeadline<T>(task: Promise<T>, deadline: AbortSignal): Promi
 }
 /** A read path waits at most this long for the native catalog before stating a lower bound. */
 const NATIVE_CATALOG_BUDGET_MS = 1_500
-/** A read path waits at most this long for queued walk work before stating the state it has. */
-const NATIVE_SETTLE_BUDGET_MS = 1_500
 interface NativeRunningMembership {
   readonly ids: Set<string>
   known: boolean
@@ -307,27 +305,6 @@ class NativeRunningCounter {
     this.#tails.set(owner, next.then(() => undefined, () => undefined))
     return next
   }
-  /** Await the owner's serial queue to quiescence: a task it queues must not be missed by a read. */
-  async #settle(owner: string, budgetMs?: number): Promise<void> {
-    if (budgetMs === undefined) {
-      for (;;) {
-        const pending = this.#tails.get(owner)
-        if (pending === undefined) return
-        await pending
-        if (this.#tails.get(owner) === pending) return
-      }
-    }
-    const until = Date.now() + budgetMs
-    for (;;) {
-      const pending = this.#tails.get(owner)
-      if (pending === undefined) return
-      const remaining = until - Date.now()
-      if (remaining <= 0) return
-      await Promise.race([pending.then(() => undefined, () => undefined),
-        new Promise(resolve => setTimeout(resolve, remaining))])
-      if (this.#tails.get(owner) === pending) return
-    }
-  }
   #refresh(owner: string, signal?: AbortSignal): Promise<void> {
     return this.#serial(owner, () => this.#refreshNow(owner, signal))
   }
@@ -377,10 +354,31 @@ class NativeRunningCounter {
       owners.add(owner); this.#idOwners.set(childId, owners)
     }
   }
+  /** Membership from the live Agent index alone: no catalog, no session log, no IO. Every
+   * running subagent is a live agent whose parent chain reaches this owner, so the running
+   * count is complete without enumerating cold descendants. */
+  #adoptLiveMembership(owner: string, live: Map<string, Agent>): void {
+    const membership: NativeRunningMembership = { ids: new Set<string>(), total: 0, known: true, reason: null }
+    this.#absorbLiveMembership(owner, membership, live)
+    this.#members.set(owner, membership)
+  }
+  /** Add every resident member the live index can see right now. Called on each read, so a child
+   * created a moment ago is counted by the very next read with no catalog round trip; catalog
+   * enumeration then only ever adds non-resident descendants and branch diagnostics. */
+  #absorbLiveMembership(owner: string, membership: NativeRunningMembership, live: Map<string, Agent> = this.#liveIndex()): void {
+    const added = this.#liveSubtree(owner, membership.ids, live)
+    if (added.length === 0) return
+    for (const member of added) {
+      membership.ids.add(member)
+      const owners = this.#idOwners.get(member) ?? new Set<string>()
+      owners.add(owner); this.#idOwners.set(member, owners)
+    }
+    membership.total = Math.max(membership.total, membership.ids.size)
+  }
   /** Resident subtree membership from the live Agent index alone: the direct children admit
    * their own resident children, transitively. Reads no session log, bounded by the live count. */
-  #liveSubtree(owner: string, known: ReadonlySet<string>): string[] {
-    const live = this.#liveIndex(), members = new Set(known), added: string[] = []
+  #liveSubtree(owner: string, known: ReadonlySet<string>, live: Map<string, Agent> = this.#liveIndex()): string[] {
+    const members = new Set(known), added: string[] = []
     for (let pass = 0; pass < 64; pass += 1) {
       let grew = false
       for (const agent of live.values()) {
@@ -585,31 +583,38 @@ class NativeRunningCounter {
   }
   async read(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> {
     const owner = id(ownerSessionId, 'ownerSessionId')
-    await this.#settle(owner, NATIVE_SETTLE_BUDGET_MS)
-    let membership = this.#members.get(owner), ledger = this.#ledgers.get(owner)
+    // The read never touches a session catalog or a child log: membership is the live Agent
+    // index, so this is O(live agents) memory work. Catalog enumeration and branch diagnostics
+    // are enrichment that runs off this path, which is why no step or snapshot read can be held
+    // by a slow, huge or unreadable catalog.
+    // One live index per read: it is the only membership source on this path.
+    const live = this.#liveIndex()
+    if (this.#lister() === undefined) {
+      // No native service: nothing can be enumerated, and the index alone is not a promise of
+      // completeness, so the count stays an explicit unknown rather than a live-derived guess.
+      const held = this.#members.get(owner)
+      const running = held === undefined ? 0 : this.#running(live, held).size
+      return { known: false, running, total: held === undefined ? 0 : Math.max(held.total, running), reason: 'native-subagent-service-unavailable' }
+    }
+    if (!this.#members.has(owner)) {
+      this.#adoptLiveMembership(owner, live)
+      this.#afterWalk(owner, () => this.#reconcile(owner))
+    }
+    const membership = this.#members.get(owner)
+    if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
+    this.#absorbLiveMembership(owner, membership, live)
+    let ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
-      // Load/restart baseline: one bounded catalog read plus ctx.agents.list().
-      await this.#refresh(owner, signal)
-      await this.#settle(owner, NATIVE_SETTLE_BUDGET_MS)
-      membership = this.#members.get(owner)
-      if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
       ledger = { runs: new Map(), drifts: [], stops: new Map(), unresolved: new Set(), generations: new Map() }
-      for (const runId of this.#running(this.#liveIndex(), membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, runId: null, settle: null })
+      for (const runId of this.#running(live, membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, runId: null, settle: null })
       this.#ledgers.set(owner, ledger)
     }
-    if (membership === undefined || ledger === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
-    if (this.#lister() === undefined) {
-      const running = this.#running(this.#liveIndex(), membership).size
-      return { known: false, running, total: Math.max(membership.total, running), reason: 'native-subagent-service-unavailable' }
-    }
-    // A live descendant the membership does not know is itself a membership-change node.
-    const live = this.#liveIndex()
+    // A live descendant outside the membership is a membership-change node; the refresh that
+    // resolves it is queued, never awaited, so the stated count stays immediate.
     const unknown = this.#unknownLiveMembers(owner, membership, ledger, live)
     if (unknown.length > 0) {
-      await this.#refresh(owner, signal)
-      await this.#settle(owner)
-      membership = this.#members.get(owner) ?? membership
-      for (const candidate of unknown) if (membership.ids.has(candidate)) ledger.unresolved.delete(candidate); else ledger.unresolved.add(candidate)
+      for (const candidate of unknown) ledger.unresolved.add(candidate)
+      this.#afterWalk(owner, () => this.#reconcile(owner))
     }
     const running = this.#running(live, membership).size, total = Math.max(membership.total, running)
     if (!membership.known) return { known: false, running, total, reason: membership.reason }

@@ -54,26 +54,27 @@ test('window reads never re-walk the native catalog while membership is fresh', 
   const first = await read()
   assert.equal(first.windows.S.used, 0)
   assert.equal(first.windows.S.countKnown, true)
-  assert.equal(walks, 1, 'the baseline read performs exactly one catalog walk')
+  // Membership is adopted from the live index, so the read path never reads a catalog at all;
+  // the catalog refresh is background enrichment that may land at any later point.
+  await waitFor(() => walks >= 1)
+  const background = walks
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const snap = await read()
     assert.equal(snap.windows.S.used, 0)
     assert.equal(snap.windows.S.countKnown, true)
   }
-  assert.equal(walks, 1, 'N reads with no membership change perform zero further walks')
-  // A status flip updates the count with zero walks: the read computes live Agent.status.
+  assert.equal(walks, background, 'N reads with no membership change perform zero further catalog reads')
+  // A status flip updates the count with no catalog read at all: the read computes live Agent.status.
   const idle = f.agents.get('resident-idle')
   idle.status = 'running'
   f.ctx.emit('agent/status', { agent: idle, status: 'running' })
   assert.equal((await read()).windows.S.used, 1)
-  assert.equal(walks, 1, 'a status flip never walks the catalog')
-  // A new live descendant the membership does not know causes exactly one walk.
+  assert.equal(walks, background, 'a status flip never reads the catalog')
+  // A new live descendant is visible to the very next read, without waiting for any catalog.
   catalog.push('fresh-runner')
   f.agents.set('fresh-runner', child('fresh-runner', 'running'))
   assert.equal((await read()).windows.S.used, 2)
-  assert.equal(walks, 2, 'one new unknown live subagent id causes exactly one walk')
   assert.equal((await read()).windows.S.used, 2)
-  assert.equal(walks, 2, 'the id is known after that walk; a later read does not repeat it')
 })
 
 test('only live running descendants count, and a natively started child counts once known', async t => {
@@ -93,7 +94,6 @@ test('only live running descendants count, and a natively started child counts o
   f.agents.set('native-child', child('native-child', 'running'))
   const after = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(after.windows.S.used, 2)
-  assert.equal(walks, 2)
   assert.deepEqual(after.nativeStops, [])
 })
 

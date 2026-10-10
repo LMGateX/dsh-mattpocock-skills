@@ -213,6 +213,11 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     agents.set(readable.id, readable)
     ctx.provide('subagents', { listDescendants: async () => await listing() })
   } })
+  // The catalog read is background enrichment: poll until it lands, then the diagnostic stands.
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if ((await f.mounted.ports.nativeSubagentActivity('root')).known === false) break
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt' })
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
@@ -226,6 +231,10 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
   // A membership-change node retries the walk; a failed walk keeps the retained readable row as
   // a stated lower bound and never certifies a known total.
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'readable-running' } })
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if ((await f.mounted.ports.nativeSubagentActivity('root')).reason === 'native-subagent-listing-rejected') break
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected' })
 })
 
