@@ -53,6 +53,14 @@ export interface RuntimeKnowledge {
     readonly runtimeId: string | null;
     readonly known: boolean;
     readonly reason: string | null;
+    /** Prior runtime identity whose durable observation this runtime replaced; never a stop signal. */
+    readonly previousRuntimeId?: string;
+}
+/** Native count provenance. A durable observation from another runtime is re-established quietly. */
+export interface NativeCountBaseline {
+    readonly reestablished: boolean;
+    readonly runtimeId: string;
+    readonly previousRuntimeId: string | null;
 }
 export interface RuntimeObservation {
     readonly operationId: string;
@@ -142,7 +150,7 @@ export interface WindowStorage {
 export interface WindowUsage {
     /** Saved advisory reference, never an execution authorization limit. */
     readonly capacity: number | null;
-    /** T: held tickets. S: running subagents read from the native host at read time. */
+    /** T: held tickets. S: the native host's live run status (live Agent.status), not catalog residency. */
     readonly used: number;
     /** Headroom against the reference; null means disabled/unconfigured. Never gates dispatch. */
     readonly available: number | null;
@@ -173,6 +181,8 @@ export interface WindowSnapshot {
     readonly reason: string | null;
     readonly scope: InstrumentScope;
     readonly runtimeKnowledge: RuntimeKnowledge;
+    /** Whether this runtime re-established a count a prior runtime observed, and which runtime. */
+    readonly nativeBaseline: NativeCountBaseline;
     readonly tickets: readonly TicketLease[];
     readonly executions: readonly ExecutionWindowView[];
     /** Always instance totals, even when detail is assignment-filtered. */

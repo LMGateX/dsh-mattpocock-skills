@@ -41,7 +41,7 @@ assignment：
 | author 与 assignment | operator/agent 作者保留；old/new child 仅看与改授权票；null scope 不变成 coordinator |
 | 无票研究 | future-controlled child/grandchild null scope；root S 聚合，T=0，无虚构业务 workflow |
 | T/S 独立、逐项 refill | T 释放不释放 S；exact disposed 对象释放 S 不释放 T；立即补入；T-only/S-only unset 不猜默认容量 |
-| 安装版活动真值 | 提供 subagents catalog 的宿主上，S 读实际 listDescendants 结果；未提供该 seam 的 fixture／组合里 actual mounted ports.nativeActivity 仍返回 known:false 并包含真实 registry 对象，不假装空集合，S 是明示下界；任何情况下 S 都不否决本来有效的派发，T 独立可用 |
+| 安装版活动真值 | 提供 subagents catalog 的宿主上，S 的成员资格来自实际 listDescendants 结果、running 取 live `Agent.status`，读取不再重复走目录；未提供该 seam 的 fixture／组合里 actual mounted ports.nativeActivity 仍返回 known:false 并包含真实 registry 对象，不假装空集合，S 是明示下界；任何情况下 S 都不否决本来有效的派发，T 独立可用 |
 | ctx.tools guards | managed nested native 经过原注册器 guards，精确 caller/parent token；direct-parent 进度/问题立即允许，无需 idle/end/disposal，不按正文 JSON 分类 |
 | 未初始化 child | pre-descriptor one-shot 的 guard cache 缺口在 windows on 时 fail closed，off 时允许 |
 | S receipt 证据 | idle、subagent/end、结果文字、缺 actualAgent 不能释放；精确 old/new 同 sid 不同对象的 token 互不释放；缺 proof/unmanaged 保留 unknown |
@@ -61,7 +61,7 @@ assignment：
 
 默认 fixture 不提供 subagents catalog，因此 known:false、reason=native-subagent-service-unavailable。唯一覆盖 actual ctx.tools managed nesting 的 future test 在创建 runtime 时给它一个显式 activity override，原 mounted.ports.nativeActivity 仍返回 known:false，测试对此有断言。模拟的 native execute 可以调用 facade.created/observe 提交精确程序对象；模拟的 known:true 只证明机械接线，不代替真实宿主目录遍历。
 
-安装版的实际计数路径是宿主公开的 subagents catalog（listDescendants，或仅有直接子级时的 listChildren 递归），能力行只在 seam 实际加载时为 supported。观测不等于准入控制：没有覆盖所有 native wake/inbox 路径的 veto，也不承诺强 S gate。initial-child cwd binding、multi-root write scope、所有 cold/native entrances closure 仍未取得证明。resourceLifecycle.verifyInitialBinding=false，closeEntrypoints 返回 closed:false/nativeColdResumeClosed:false；测试不伪造这些事实，不运行裸 spawn，不移改 child cwd。
+安装版的实际计数路径是宿主公开的 subagents catalog（listDescendants，或仅有直接子级时的 listChildren 递归）加 live `Agent.status`：目录只在成员变更节点读取（created/disposed/`subagent/catalog`/未知 id 的 start-end/基线/读取发现未知 live 后代），状态翻转零遍历更新计数，能力行只在 seam 实际加载时为 supported。观测不等于准入控制：没有覆盖所有 native wake/inbox 路径的 veto，也不承诺强 S gate。initial-child cwd binding、multi-root write scope、所有 cold/native entrances closure 仍未取得证明。resourceLifecycle.verifyInitialBinding=false，closeEntrypoints 返回 closed:false/nativeColdResumeClosed:false；测试不伪造这些事实，不运行裸 spawn，不移改 child cwd。
 
 同 sid 新旧对象测试验证不同执行 leases 的对象 fence；相同 executionId 的 generation-specific tombstone 验证由真实 [window tests](<../tests/windows.test.mjs>) 另行覆盖。这里不将它扩称为安装版真实 continuable wake/disposal 的端到端证明。
 

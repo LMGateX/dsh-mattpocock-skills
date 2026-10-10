@@ -25,6 +25,22 @@ export interface ConsumptionSnapshot {
     readonly records: InstrumentSnapshot | null;
     readonly windows: WindowSnapshot | null;
     readonly resources: readonly ResourceView[];
+    /** Re-established native count provenance; null means no window facts were read. */
+    readonly nativeCount?: {
+        readonly reestablished: boolean;
+        readonly runtimeId: string;
+        readonly previousRuntimeId: string | null;
+    } | null;
+    /** Open silent-stop items the main agent must handle; never a count source. */
+    readonly nativeStops?: readonly {
+        readonly itemId: string;
+        readonly sessionId: string;
+        readonly observed: string;
+        readonly lane: {
+            readonly workflowId: string | null;
+            readonly localTicketId: string | null;
+        } | null;
+    }[];
     /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
     readonly worktreeBindings?: readonly (WorktreeBindingCurrent & {
         readonly cleanupDue?: boolean;

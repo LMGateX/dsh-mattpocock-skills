@@ -13,7 +13,7 @@
 |---|---|---|
 | R1 | DSH **插件页面**可开关 worktree 绑定，并指定哪些工作区启用/禁用 | 全局策略、工作区覆盖、生效结果与关闭原因可见 |
 | R2 | 工作树生命周期仪器，让 agent 知道使用中、空闲、待处理、待合并与退休情况 | agent 可查询状态、识别可退休资源、申请安全退休，减少遗留目录 |
-| R3 | 独立的 tickets / running subagents **滑动窗口**，各自逐项释放、逐项补入；无票阶段不强制 T | T 按模型显式票占位/处置更新，S 按真实程序释放；主代理看到空位，不等待整批完成 |
+| R3 | 独立的 tickets / running subagents **滑动窗口**，各自逐项释放、逐项补入；无票阶段不强制 T | T 按模型显式票占位/处置更新，S 按宿主实时运行状态与真实程序释放；主代理看到空位，不等待整批完成 |
 | R4 | 仪器策略按工作区配置，不同工作区可分别启用/禁用并有不同窗口容量 | 工作区提供策略，session 持有独立实例；配置继承不等于状态共享 |
 | R5 | Session 内的 tickets 进度仪器，状态种类/含义由 agent 按任务提供 | 摘要与详情按声明状态动态计数；部分完成等状态原样保留，不套固定分类或预设阶段；业务报告与控制事实区分 |
 | R6 | Session 内的待裁决事项仪器 | 新问题不会被对话淹没；待裁决、已裁决待落实及关联阻塞可见 |
@@ -147,7 +147,7 @@ canRetire 是**计算结果**，带检查时间、ledger revision 和 reasons；
 
 ### 4.2 subagents 窗口：执行结束就可补入下一项执行
 
-容量 S 约束本 session 实例已准入待运行与正在执行/停止中的 subagent 执行，覆盖受管 continuable、one-shot 及其登记的后台 subagent Jobs；不是累计 childId、保留 worktree 或整个 residency 数量。其他 bash/测试 jobs 可占工作树资源，不能全部冒充 running subagents。
+容量 S 与该 session 实例的受管执行审计对照，其 used 是宿主实时运行状态（该 owner 子树内 live `Agent.status` 为 running 的子代理数），覆盖受管 continuable、one-shot 及原生启动的子代理；不是累计 childId、保留 worktree 或整个 residency 数量，目录 `activity` 的 idle 常驻不计。其他 bash/测试 jobs 可占工作树资源，不能全部冒充 running subagents。
 快照区分 reserved/scheduled、running、stopping、idle，slotUsed 包含为防并发超额而保留的执行名额；历史可续聊 child 已真实 idle 且没有已接受的执行不占位，不要求永远等待其会话被销毁。
 
 - 任务取得执行名额后才能 start/wake；一个执行真实结束/安全中止并确认释放后，该名额立即可给另一项执行。
@@ -177,7 +177,7 @@ D 若需要 subagent，仍须等待/取得 S；不会只因 T 有空位就超额
 
 ### 4.5 稳定安排与死锁保护
 
-仪器自动提供 activeTickets、runningSubagents（读取时向宿主查询的在跑数）与预留执行审计、各自容量/占用/可用、待合并/待处理、角色与下一步候选；主代理不必凭旧对话手算窗口。
+仪器自动提供 activeTickets、runningSubagents（宿主的实时运行状态，读取为 O(live agents) 内存投影）与预留执行审计、各自容量/占用/可用、待合并/待处理、角色与下一步候选；主代理不必凭旧对话手算窗口。
 主代理依据 Skill/文档和当前快照决定新工作、合并或补修次序；仪器不建立自己的业务优先级/依赖调度。S=1 可以串行安排；空位不要求填满，不恢复整批屏障。
 root coordinator＋leaf workers 优先；嵌套父子等待只有在真实停止/挂起父执行并可重获准入时才可释放父 slot，否则明确显示 hold/wait 状态，不能改一个计数骗出空间。
 模型明确 reopen/恢复占位后按当前容量处理，是否优先及如何安排由模型决定。实际占用超过缩小后的 T/S 显示 overcommitted，暂停新准入直到有空位，不强杀、不抹账、不因业务判断自动 reopen。

@@ -84,28 +84,30 @@ receipt 只确认 token 对应的程序事实。迟到旧代次及已经 release
 
 ### 1.3 未追踪 native activity / 初始知识核对
 
-RuntimeKnowledge 独立于已登记 execution leases；不虚造一个 execution，也不把 native 缺口当作已确认的零占用。schema 1 文档持久保存 knowledge 和程序观察 journal；快照 runtimeKnowledge 显式给出 runtimeId/known/reason。RuntimeKnowledge 只描述执行账本是否与当前 runtime 对齐；S 的 used/countKnown 来自读取时的宿主原生子代理活动查询，两者不互相推导。
+RuntimeKnowledge 独立于已登记 execution leases；不虚造一个 execution，也不把 native 缺口当作已确认的零占用。schema 1 文档持久保存 knowledge 和程序观察 journal；快照 runtimeKnowledge 显式给出 runtimeId/known/reason。RuntimeKnowledge 只描述执行账本是否与当前 runtime 对齐；S 的 used/countKnown 来自宿主的实时运行状态（读取时的内存投影），两者不互相推导。
 
-- requireKnownRuntime=true 时，即使新 blank instance 的执行审计为空，snapshot 也为 reconciling（runtimeKnowledge.known=false）；S 的 used/countKnown 仍来自宿主查询，不因账本知识而被改写成 0。T 模型占位不需要此程序证据。宿主先枚举实际 active/accepted children、jobs 和待运行事实，确认无缺口后才通过 program port 提交 known。
+- requireKnownRuntime=true 时，即使新 blank instance 的执行审计为空，snapshot 也为 reconciling（runtimeKnowledge.known=false）；S 的 used/countKnown 仍来自宿主实时运行状态，不因账本知识而被改写成 0。T 模型占位不需要此程序证据。宿主在成员变更节点核对实际后代成员资格，确认无缺口后才通过 program port 提交 known。
 - requireKnownRuntime 默认 false，只适用于显式约定「只管理已登记路径」的 embedders/本地 mechanical fixture，不宣称观察全部 native activity。真实 host 集成必须传 true。
 - unmanaged native 执行、遗漏回执/映射等由 trusted program observation 提交 unknown + 机械 reason，仅阻止新 managed S 执行准入，不阻止 T 模型占位意图。即使显示关闭、配置关闭或 startup inspection=false，也不能清除已观察的 unknown。
 - known 必须 reason=null，unknown 必须非空机械 reason；clear 只有 trusted coordinator scope 的 program capability 可做，模型业务字段、children 的 assignment scope 没有此入口。
-- host restart 换 runtimeId，使旧 knowledge 失效；旧 known operationId 的幂等重放不会变成新 runtime 证据，必须重新观察并使用新 operationId。
+- host restart 换 runtimeId，使旧 knowledge 失效；旧 known operationId 的幂等重放不会变成新 runtime 证据，必须重新观察并使用新 operationId。durable knowledge 保留被替换的 runtimeId 作为 `previousRuntimeId`，供 nativeBaseline 把重建归因为 re-establishment，而不是一次静默消失。
 - known observation **不会释放/核对任何 execution token**。已有 lease unknown 仍作为审计行保留，必须逐项匹配 receipt 真核对；它不改变读取时的宿主原生 S 计数，也不是派发禁令。
 
 ## 2. 计数、配置与恢复
 
-T 计已 held 的票；S 的 used 是读取时向宿主查询的该 owner session 在跑子代理数（`nativeActivity(ownerSessionId)`），capacity 与 used 的比较、注入快照和客户端面板都只用这个数，reserve/receipt/重准入留下的 execution leases 仅作派发审计。宿主遍历完整且无 diagnostic 行时 `countKnown=true`、数字精确；服务缺失、根目录读取被拒或任何 `corrupt/unsupported/unavailable` diagnostic 行都使 `countKnown=false`、`countReason` 给出机械原因、`used` 是明示下界（总数未知），绝不把 0 当作已知事实。byState 仍分开显示预留、接受、排队、运行、停止、未知与历史释放，但它不再决定 S.used。无票 request 必须显式 localTicketId=null；执行快照 ticketApplicable=false、ticketReason=no-ticket-assignment，只有 S，不创建假票、不清掉其他 workflows 的 T。
+T 计已 held 的票；S 的 used 是宿主报告的实时运行状态——属于该 owner 子树、在成员资格内、且当前运行时的 `Agent.status === 'running'` 的子代理数（`nativeActivity(ownerSessionId)`，读取时为 O(live agents) 内存投影）。capacity 与 used 的比较、注入快照和客户端面板都只用这个数，reserve/receipt/重准入留下的 execution leases 仅作派发审计。目录行的 `activity` 是会话驻留而非执行，因此 idle 常驻子代理不计入；原生启动的子代理进入成员资格后计入。成员资格只在成员变更节点（`agent/created`、`agent/disposed`、`subagent/catalog`、未知 id 的 start/end、首次基线读取、读取发现未知 live 后代）刷新，`agent/status` 翻转零遍历更新计数，普通读取不重复走目录。宿主遍历完整且无 diagnostic 行时 `countKnown=true`、数字精确；服务缺失、根目录读取被拒或任何 `corrupt/unsupported/unavailable` diagnostic 行都使 `countKnown=false`、`countReason` 给出机械原因、`used` 是明示下界（总数未知），绝不把 0 当作已知事实。byState 仍分开显示预留、接受、排队、运行、停止、未知与历史释放，但它不再决定 S.used。无票 request 必须显式 localTicketId=null；执行快照 ticketApplicable=false、ticketReason=no-ticket-assignment，只有 S，不创建假票、不清掉其他 workflows 的 T。
 
-一个 T 的显式释放即可补一个 T；S 的数量由宿主查询给出，一次真实 release 只更新审计行，不再是补名额的动作。
+**漂移归因与 silent stop。** 一个被计为 running 的 run 在同一 runtime、成员资格新鲜的情况下，既无 `subagent/end` 也无 `agent/status idle` 却离开 running 集合，才记为 silent stop。它进入快照的 `nativeStops`（每 child 至多一条，带 `itemId`、`sessionId`、`observed` 与该 child 最后已知的 managed dispatch 或持久 binding lane），并由既有 notification 通道唤醒 main agent；重新观测到 running 或迟到 end 后清除，重复未恢复的观测使 `countKnown=false`、`countReason=native-subagent-silent-stop`。基线读取、插件热重载与 DSH 重启由 durable `knowledge.runtimeId`/前一个 runtimeId 归因，`nativeBaseline` 与 `nativeCount` 明示 re-established，只重建计数，不产生 item、不唤醒。目录不可读时不宣称 silent stop，只保留明示下界。
 
-**两个轴的准入与 available 严格独立。** execution/knowledge unknown、旧 S runtime、S 满/overcommitted 或原生 S 枚举缺口（服务缺失、查询被拒、diagnostic 行），只影响 S；T 仍仅按已有模型意图、可信业务 scope、当前窗口请求/开关/工作区与 T 容量取得/释放/恢复。T 不索要 native execution 枚举或 program release proof，也不需要造 known。反向 T 满/overcommitted 不阻止无票 S reserve/run/receipt/refill。`capability` 描述实际 S host seam，而不是限制 T deterministic bookkeeping；公共 summary status 可为 reconciling/unsupported，同时 T.available 正常，消费者不能把共同 status 当 T gate。不等待批次，T 与 S 独立且可不同；S=1 可串行安排。票释放不结束仍在跑的 worker，worker 释放不自动完成票。启动票关联执行时，windows configured 要求已有 held T；模块不会自己猜模型的票准入意图。
+一个 T 的显式释放即可补一个 T；S 的数量由宿主的实时运行状态给出，一次真实 release 只更新审计行，不再是补名额的动作。
 
-容量来自当前 controls 的有效策略，没有猜出的数字。缺省容量保持 null，不猜值，公共策略健康可显示 unsupported；每轴独立使用自己的明确容量：T 已配置、S 未配置时 T 可用；S 已配置、T 未配置时无票 S 可用。未配置的那个轴仍为 available=null，并拒绝该轴的有界新准入。capability 始终准确为 S host seam 的 cooperative/unsupported，能力行在原生目录 seam 可用时为 supported。没有 native/human/internal wake veto 覆盖时，不用 prompt 伪装全路径 gate；S 的 used 始终来自宿主活动查询，宿主不可枚举时它是明示下界，而不是任何插件侧账本、resident pool 或推测值。
+**两个轴的准入与 available 严格独立。** execution/knowledge unknown、旧 S runtime、S 满/overcommitted 或原生 S 缺口（服务缺失、查询被拒、diagnostic 行、成员资格不可读、未恢复的 silent stop），只影响 S；T 仍仅按已有模型意图、可信业务 scope、当前窗口请求/开关/工作区与 T 容量取得/释放/恢复。T 不索要 native execution 枚举或 program release proof，也不需要造 known。反向 T 满/overcommitted 不阻止无票 S reserve/run/receipt/refill。`capability` 描述实际 S host seam，而不是限制 T deterministic bookkeeping；公共 summary status 可为 reconciling/unsupported，同时 T.available 正常，消费者不能把共同 status 当 T gate。不等待批次，T 与 S 独立且可不同；S=1 可串行安排。票释放不结束仍在跑的 worker，worker 释放不自动完成票。启动票关联执行时，windows configured 要求已有 held T；模块不会自己猜模型的票准入意图。
+
+容量来自当前 controls 的有效策略，没有猜出的数字。缺省容量保持 null，不猜值，公共策略健康可显示 unsupported；每轴独立使用自己的明确容量：T 已配置、S 未配置时 T 可用；S 已配置、T 未配置时无票 S 可用。未配置的那个轴仍为 available=null，并拒绝该轴的有界新准入。capability 始终准确为 S host seam 的 cooperative/unsupported，能力行在原生目录 seam 可用时为 supported。没有 native/human/internal wake veto 覆盖时，不用 prompt 伪装全路径 gate；S 的 used 始终来自宿主实时运行状态，宿主不可枚举时它是明示下界，而不是任何插件侧账本、resident pool 或推测值。
 
 热缩容立即反映 overcommitted，保持已有 leases，不强杀；实际使用超过新 cap 时仅该轴新准入被机械拒绝，不交叉阻挡另一个窗口。display 字段不参与计数。配置 off 不清账：已有 T 可释放，新 T reserve/reacquire disabled；trusted S 继续记账但不执行 cap，available=null 明示未设有效 cap。重新开启按保留占用检查。任何 execution/runtime unknown 在 off 时也继续阻止新受管 S 执行准入，不能借 off 伪造执行释放。
 
-重建 module 不更换 owner instance。旧 runtime 的所有未 released leases 读取时投影为 unknown 并保留为审计行；S 的 used/countKnown 仍由宿主查询决定，T.available 与模型占位不受旧 S lease 影响；不靠超时/沉默/业务标签释放。真实 runtime 核对通过 receipt 更新对应 lease；读取本身不写文档，不触发模型，也不把未知自动归零。
+重建 module 不更换 owner instance。旧 runtime 的所有未 released leases 读取时投影为 unknown 并保留为审计行；S 的 used/countKnown 由宿主实时运行状态决定并标注是否 re-established，T.available 与模型占位不受旧 S lease 影响；不靠超时/沉默/业务标签释放。真实 runtime 核对通过 receipt 更新对应 lease；读取本身不写文档，不触发模型，也不把未知自动归零。
 
 **配置排序限制：** controls 文档和 windows 文档分别 CAS，核心每次尝试读当前已保存策略，但没有跨文档原子事务。若 host 要声明 hot-policy-save 与 admission 严格线性化，必须在其 injected coordinator 的同一序列 scope 内排序 policy save 与窗口准入。不能把两次独立读写包装成已实现跨域事务。
 

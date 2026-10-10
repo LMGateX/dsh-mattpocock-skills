@@ -224,7 +224,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }}
   const instruments=new SessionInstruments(controls,ports.instrumentStorage,authority)
   let windowsProgram!:WindowProgramPort, consumptionProgram!:ConsumptionProgramPort
-  // S is queried from the native host at read time; the execution ledger below stays audit only.
+  // S is the host's live run status (live Agent.status over event-maintained membership); the ledger stays audit only.
   const windows=new SessionWindows(controls,ports.windowStorage,authority,{runtimeId,capability:'cooperative',requireKnownRuntime:false,
     nativeActivity:ownerSessionId=>ports.nativeSubagentActivity(ownerSessionId),
     bindProgram:port=>{windowsProgram=port}})
@@ -290,7 +290,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const view=await identity(caller,sessionId,signal,false)
     const permission=await scope(caller.principalId,sessionId,view)
     const projectionBase=caller.principalId+'|'+sessionId
-    const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision
+    // The native running count is derived from live Agents and the counter's state, so both are
+    // part of the freshness key: a newly live child rebuilds the projection even with no document
+    // write, and a counter stop/degradation is never masked by a cached snapshot.
+    const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length
     const epoch=project.epoch()
     const projection=projectionCache.get(projectionBase)
     if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase))return projection.value
@@ -310,9 +313,30 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(windowView)health.push(windowView.S.countKnown
       ?{scope:'execution-admission',status:'current',reason:null}
       :{scope:'execution-admission',status:'unsupported',reason:windowView.S.countReason??'native-subagent-activity-unavailable'})
+    // Open silent-stop items are actionable and must reach the main agent; the lane names the
+    // last known managed dispatch or persisted binding for that child when one exists.
+    let nativeStops:NonNullable<RuntimeSnapshot['nativeStops']>=[]
+    let nativeCount:RuntimeSnapshot['nativeCount']
+    if(windowView!==null){
+      const raw=ports.nativeSubagentStops?.(view.instance.ownerSessionId)??[]
+      if(raw.length>0){
+        const doc=await load()
+        nativeStops=raw.map(stop=>{
+          const managed=managedExecutions.get(stop.sessionId)
+          const binding=doc.bindings.find(row=>row.sessionId===stop.sessionId&&!row.released)
+          const lease=binding===undefined?undefined:windowView.executions.find(row=>row.executionId===binding.executionId&&row.instrumentInstanceId===binding.instrumentInstanceId&&row.generation===binding.generation)
+          const lane=managed!==undefined?{workflowId:managed.workflowId,localTicketId:managed.ticketIds.length===1?managed.ticketIds[0]!:null}
+            :lease===undefined?null:{workflowId:lease.workflowId,localTicketId:lease.localTicketId}
+          return {itemId:stop.itemId,sessionId:stop.sessionId,observed:stop.observed,lane}
+        })
+        for(const stop of nativeStops)health.push({scope:'native-subagent-stop',status:'unsupported',reason:'session '+stop.sessionId+' left the running set with no subagent/end'+(stop.lane===null||stop.lane.workflowId===null&&stop.lane.localTicketId===null?'':' (lane '+String(stop.lane.workflowId??'ticketless')+(stop.lane.localTicketId===null?'':'/'+stop.lane.localTicketId)+')')})
+      }
+      nativeCount={reestablished:windowView.nativeBaseline.reestablished,runtimeId:windowView.nativeBaseline.runtimeId,previousRuntimeId:windowView.nativeBaseline.previousRuntimeId}
+      health.push({scope:'native-count',status:'current',reason:nativeCount.reestablished?'re-established after runtime '+String(nativeCount.previousRuntimeId):null})
+    }
     signal.throwIfAborted()
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...(await load()).assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,pendingRelease:pendingReleaseFor(records,windowView),
+    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     project.record(projectionBase,epoch)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
@@ -387,6 +411,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return flight
   }
   const scheduleNotification=(ownerSessionId:string,retryAccepted=false):void=>{void flushNotifications(ownerSessionId,retryAccepted).catch(()=>undefined)}
+  /** One wake per silent-stop item: the existing notification path, no second lifecycle. */
+  const reportNativeStop=(event:Extract<HostEvent,{kind:'native-stop'}>):Promise<void>=>queue.run(async()=>{
+    const view=cachedSessions.get(event.ownerSessionId)
+    if(view===undefined)return
+    const notificationId='native-stop:'+event.itemId
+    if(!(await load()).notifications.some(n=>n.notificationId===notificationId))await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-count',state:'pending',messageId:null}]})
+    scheduleNotification(event.ownerSessionId)
+  })
   const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
   // The host may assemble one admitted model request several times, and a PTC step may complete
   // several nested dispatches; all of them share one turn:step identity. Those passes can be seconds
@@ -572,6 +604,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     },
     async observe(event:HostEvent){
+      // A silent stop reported by the native count is an actionable item, not a log line:
+      // it takes the existing owner-notification path before any ledger bookkeeping.
+      if(event.kind==='native-stop'){await reportNativeStop(event);return}
       // A disposed session never prepares again: drop its baseline so the retained Agent, its
       // Session log and the injected message are not kept alive for the process lifetime.
       if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key);for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)}
@@ -579,8 +614,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(attached){
         const commit=track(attached.token.instrumentInstanceId,async()=>{
           if(event.kind==='agent-disposed'){
-            // This run ended: the lane stops running, so its slot is released. A later wake re-admits
-            // it through a fresh generation, which is what keeps S equal to the running subagent count.
+            // This run ended: the lane stops running, so its audit slot is released. A later wake
+            // re-admits it through a fresh generation, which keeps the dispatch audit aligned with
+            // the host's live run status (S itself never reads this ledger).
             const managed=managedExecutions.get(actual!.id)
             attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!);attached.released=true
             if(managed)managed.released=true

@@ -124,7 +124,7 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 
 1. business records 是作者报告，不是程序 S 回执或物理资源证明；保留当前作者与引用，业务状态名称/定义不折算。
 2. Skills、用户约定与任务文档决定交付、完成、暂停、取消、reopen 和提问；模型认为必要时登记待裁决，没有统一审批 gate。
-3. windows **显式 configured** 时才注入 T reserve/release/reacquire 引导。T 与程序 S 独立；S 的 used 是从宿主查询的在跑子代理数，宿主枚举不完整时明示为下界，执行释放只更新审计行；不等待整批；无票 assignment 不造票/不造 T。
+3. windows **显式 configured** 时才注入 T reserve/release/reacquire 引导。T 与程序 S 独立；S 的 used 是宿主的实时运行状态（live `Agent.status`，idle 常驻不计；成员资格只在成员变更节点刷新），宿主枚举不完整时明示为下界，无结束回执消失会产生 `nativeStops` item 并唤醒主代理，执行释放只更新审计行；不等待整批；无票 assignment 不造票/不造 T。
 4. 受管执行工具 mattpocock_execute，业务登记 mattpocock_record，显式 T 工具 mattpocock_window。列出真实 capabilities，包括 unsupported 与原因；configured 不伪装所有 native 路径均可强制。
 5. binding/lifecycle configured 时提醒退休须依实际身份、引用/租约和授权操作；业务“完成”不能当删除授权。
 6. feature OFF 的最新快照明确覆盖旧 window/admission 协议；不停止已接受执行、不清记录/资源义务。display OFF 只改显示，不改仪器消费。

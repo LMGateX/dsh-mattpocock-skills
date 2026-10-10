@@ -51,6 +51,14 @@ export interface RuntimeKnowledge {
   readonly runtimeId: string | null
   readonly known: boolean
   readonly reason: string | null
+  /** Prior runtime identity whose durable observation this runtime replaced; never a stop signal. */
+  readonly previousRuntimeId?: string
+}
+/** Native count provenance. A durable observation from another runtime is re-established quietly. */
+export interface NativeCountBaseline {
+  readonly reestablished: boolean
+  readonly runtimeId: string
+  readonly previousRuntimeId: string | null
 }
 export interface RuntimeObservation {
   readonly operationId: string
@@ -127,7 +135,7 @@ export interface WindowStorage {
 export interface WindowUsage {
   /** Saved advisory reference, never an execution authorization limit. */
   readonly capacity: number | null
-  /** T: held tickets. S: running subagents read from the native host at read time. */
+  /** T: held tickets. S: the native host's live run status (live Agent.status), not catalog residency. */
   readonly used: number
   /** Headroom against the reference; null means disabled/unconfigured. Never gates dispatch. */
   readonly available: number | null
@@ -158,6 +166,8 @@ export interface WindowSnapshot {
   readonly reason: string | null
   readonly scope: InstrumentScope
   readonly runtimeKnowledge: RuntimeKnowledge
+  /** Whether this runtime re-established a count a prior runtime observed, and which runtime. */
+  readonly nativeBaseline: NativeCountBaseline
   readonly tickets: readonly TicketLease[]
   readonly executions: readonly ExecutionWindowView[]
   /** Always instance totals, even when detail is assignment-filtered. */
@@ -254,13 +264,14 @@ function parseObservation(value: unknown): RuntimeObservation {
   return freeze({ operationId: id(raw.operationId, 'operationId'), state: raw.state, reason })
 }
 function parseKnowledge(value: unknown): RuntimeKnowledge {
-  const raw = record(value, 'runtime knowledge', ['runtimeId', 'known', 'reason'])
+  const raw = record(value, 'runtime knowledge', ['runtimeId', 'known', 'reason', 'previousRuntimeId'])
   const runtimeId = raw.runtimeId === null ? null : id(raw.runtimeId, 'knowledge runtimeId')
   const known = boolean(raw.known, 'runtime known')
   const reason = raw.reason === null ? null : id(raw.reason, 'knowledge reason')
+  const previousRuntimeId = raw.previousRuntimeId === undefined ? undefined : id(raw.previousRuntimeId, 'knowledge previousRuntimeId')
   if (known && (runtimeId === null || reason !== null)) invalid('known runtime requires inspected identity and no unknown reason')
   if (!known && reason === null) invalid('unknown runtime requires reason')
-  return { runtimeId, known, reason }
+  return { runtimeId, known, reason, ...(previousRuntimeId === undefined ? {} : { previousRuntimeId }) }
 }
 /** The native port is program-only, but a malformed value must degrade to unknown, never leak. */
 function parseNativeActivity(value: unknown): NativeSubagentActivity {
@@ -401,7 +412,11 @@ function parseDocument(value: unknown): WindowDocument {
       } else if (op.generation !== existing.generation || op.leaseId !== existing.leaseId || existing.runtimeId !== op.runtimeId || existing.state === 'unknown') invalid('repeat reservation changed lease or skipped reconciliation')
     } else if (op.kind === 'knowledge') {
       const observation = parseObservation(JSON.parse(op.fingerprint))
-      projectedKnowledge = { runtimeId: op.runtimeId, known: observation.state === 'known', reason: observation.reason }
+      // The write path records the replaced runtime identity; the journal reconstructs exactly
+      // the same fact from the prior projected runtime, so state and history cannot diverge.
+      const prior = projectedKnowledge
+      const previousRuntimeId = prior.runtimeId !== null && prior.runtimeId !== op.runtimeId ? prior.runtimeId : prior.previousRuntimeId
+      projectedKnowledge = { runtimeId: op.runtimeId, known: observation.state === 'known', reason: observation.reason, ...(previousRuntimeId === undefined ? {} : { previousRuntimeId }) }
     } else {
       if (op.runtimeId === null) invalid('receipt requires trusted runtime')
       const receipt = parseReceipt(JSON.parse(op.fingerprint))
@@ -754,8 +769,12 @@ export class SessionWindows {
       const prior = this.#prior(current, 'knowledge', context.caller, observation)
       if (prior) return freeze({ appliedRevision: prior.revision, replayed: true, ignored: false })
       const op = this.#operation(current, 'knowledge', context.caller, observation, 0, null, false)
+      // A different durable runtimeId is the mechanical proof of a re-establishment; keep it so
+      // the snapshot can state the count was re-established instead of reading as a gap.
+      const previousRuntimeId = current.knowledge.runtimeId !== null && current.knowledge.runtimeId !== this.#runtimeId
+        ? current.knowledge.runtimeId : current.knowledge.previousRuntimeId
       const next = parseWindowDocument({ ...current, revision: op.revision,
-        knowledge: { runtimeId: this.#runtimeId, known: observation.state === 'known', reason: observation.reason }, operations: [...current.operations, op] })
+        knowledge: { runtimeId: this.#runtimeId, known: observation.state === 'known', reason: observation.reason, ...(previousRuntimeId === undefined ? {} : { previousRuntimeId }) }, operations: [...current.operations, op] })
       if (await this.#storage.compareAndSwap(current.instrumentInstanceId, current.revision, next)) return freeze({ appliedRevision: op.revision, replayed: false, ignored: false })
     }
     return this.#contention()
@@ -874,7 +893,7 @@ export class SessionWindows {
       && context.controls.policy.workspaceVerified && lease.runtimeId === this.#runtimeId && lease.state === 'reserved'
     return freeze({ appliedRevision, replayed, dispatchable, token: token(lease), snapshot })
   }
-  /** S is the native host's own descendant activity; the ledger below is audit only. */
+  /** S is the native host's live run status (live Agent.status), never catalog residency; the ledger below is audit only. */
   async #nativeCount(ownerSessionId: string): Promise<NativeSubagentActivity> {
     if (this.#nativeActivity === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unavailable' }
     try { return parseNativeActivity(await this.#nativeActivity(ownerSessionId)) }
@@ -890,6 +909,9 @@ export class SessionWindows {
     const runtimeKnowledge: RuntimeKnowledge = this.#capability === 'unsupported'
       ? { runtimeId: document.knowledge.runtimeId, known: false, reason: 'host-observation-unsupported' }
       : knowledgeUnknown ? { runtimeId: document.knowledge.runtimeId, known: false, reason: document.knowledge.runtimeId === this.#runtimeId ? document.knowledge.reason : 'runtime-not-reconciled' } : document.knowledge
+    const previousRuntimeId = document.knowledge.previousRuntimeId
+      ?? (document.knowledge.runtimeId !== null && document.knowledge.runtimeId !== this.#runtimeId ? document.knowledge.runtimeId : null)
+    const nativeBaseline: NativeCountBaseline = { reestablished: previousRuntimeId !== null, runtimeId: this.#runtimeId, previousRuntimeId }
     const unknown = byState.unknown > 0 || knowledgeUnknown
     const ticketConfigured = policy.extensionEnabled && feature.requested && policy.workspaceVerified && policy.windows.ticketWindowSize !== null
     const usage = (capacity: number | null, used: number, configured: boolean): WindowUsage => ({ capacity, used,
@@ -898,7 +920,7 @@ export class SessionWindows {
       overage: capacity === null ? null : Math.max(0, used - capacity),
       gap: capacity === null ? null : capacity - used })
     const T = usage(policy.windows.ticketWindowSize, document.tickets.filter(row => row.held).length, ticketConfigured)
-    // The running count is queried from the host; reservations and re-admission never feed it.
+    // The running count is the host's live-run fact (idle resident children excluded); reservations and re-admission never feed it.
     const S = { ...usage(policy.windows.runningSubagentLimit, native.running,
       policy.extensionEnabled && feature.requested && policy.workspaceVerified && policy.windows.runningSubagentLimit !== null),
       countKnown: native.known, countReason: native.known ? null : native.reason, byState }
@@ -906,7 +928,7 @@ export class SessionWindows {
     return freeze({ instance: { instrumentInstanceId: document.instrumentInstanceId, ownerSessionId: document.ownerSessionId, controlWorkspaceId: document.controlWorkspaceId },
       revision: document.revision, configurationRevision: policy.configurationRevision, capability: this.#capability, status,
       reason: unknown ? (knowledgeUnknown ? runtimeKnowledge.reason : 'execution-reconciliation-required') : this.#capability === 'unsupported' ? 'host-admission-unsupported' : feature.reason,
-      scope: context.scope, runtimeKnowledge, tickets: document.tickets.filter(row => allowed(context.scope, row)), executions: executions.filter(row => allowed(context.scope, row)), T, S })
+      scope: context.scope, runtimeKnowledge, nativeBaseline, tickets: document.tickets.filter(row => allowed(context.scope, row)), executions: executions.filter(row => allowed(context.scope, row)), T, S })
   }
   #contention(): never { throw new ControlsError('concurrent-update', 'window changed repeatedly; retry against durable state') }
 }

@@ -178,13 +178,19 @@ test('actual installed host ports nativeActivity is false with actual objects: u
   assert.equal(snap.windows.runtimeKnowledge.known, false)
 })
 
-test('native subagent catalog yields an exact running count and a supported capability row', async t => {
+test('the native running count reads live Agent status, never catalog residency', async t => {
   const rows = [
     { kind: 'child', id: 'child-running', mode: 'continuable', label: 'one', activity: 'running', hasChildren: false, parentId: 'root', depth: 1 },
-    { kind: 'child', id: 'child-idle', mode: 'one-shot', activity: 'inactive', hasChildren: false, parentId: 'root', depth: 1 },
+    { kind: 'child', id: 'child-idle', mode: 'one-shot', activity: 'running', hasChildren: false, parentId: 'root', depth: 1 },
   ]
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => ctx.provide('subagents', { listDescendants: async () => rows }) })
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    const running = actualAgent('child-running', { parent: 'root', managed: true }); running.status = 'running'
+    const idle = actualAgent('child-idle', { parent: 'root', managed: true }); idle.status = 'idle'
+    agents.set(running.id, running); agents.set(idle.id, idle)
+    ctx.provide('subagents', { listDescendants: async () => rows })
+  } })
   assert.equal(f.mounted.ports.capabilities.allNativeWakeAdmission, 'supported')
+  // The idle row has catalog activity 'running' (resident) but Agent.status 'idle': not counted.
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 1, total: 2, reason: null })
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
@@ -198,7 +204,11 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     { kind: 'child', id: 'readable-running', mode: 'one-shot', activity: 'running', hasChildren: false, parentId: 'root', depth: 1 },
     { kind: 'diagnostic', id: 'unreadable-branch', parentId: 'root', depth: 1, reason: 'corrupt' },
   ]
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => ctx.provide('subagents', { listDescendants: async () => await listing() }) })
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    const readable = actualAgent('readable-running', { parent: 'root', managed: true }); readable.status = 'running'
+    agents.set(readable.id, readable)
+    ctx.provide('subagents', { listDescendants: async () => await listing() })
+  } })
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt' })
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
@@ -209,7 +219,10 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
   const health = snap.health.find(row => row.scope === 'execution-admission')
   assert.equal(health.status, 'unsupported'); assert.equal(health.reason, 'native-subagent-diagnostic-corrupt')
   listing = async () => { throw new Error('session query unavailable') }
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 0, total: 0, reason: 'native-subagent-listing-rejected' })
+  // A membership-change node retries the walk; a failed walk keeps the retained readable row as
+  // a stated lower bound and never certifies a known total.
+  f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'readable-running' } })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected' })
 })
 
 test('a host without listDescendants falls back to a recursive listChildren walk with branch diagnostics', async t => {
@@ -223,9 +236,15 @@ test('a host without listDescendants falls back to a recursive listChildren walk
     if (rows === undefined) throw new Error('unreadable child catalog')
     return rows
   }
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => ctx.provide('subagents', { listChildren: listing }) })
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    for (const [childId, parent] of [['branch-a', 'root'], ['leaf-b', 'branch-a']]) {
+      const running = actualAgent(childId, { parent, managed: true }); running.status = 'running'; agents.set(childId, running)
+    }
+    ctx.provide('subagents', { listChildren: listing })
+  } })
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null })
   children['branch-a'] = undefined
+  f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'branch-a' } })
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-unavailable' })
 })
 
@@ -436,7 +455,8 @@ test('late inherited native AsyncLocalStorage cannot bind a new object or reuse 
 
 test('future controlled native activity traverses actual ctx.tools native guards with the exact managed parent token', async t => {
   const f = await mountedFixture(t, { futureNativeActivityKnown: true })
-  assert.equal((await f.mounted.ports.nativeActivity('root')).known, false)
+  // The fixture provides a catalog over live fixture children, so the host port is known here.
+  assert.equal((await f.mounted.ports.nativeActivity('root')).known, true)
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   const seen = []
   let wrapperToken
@@ -447,7 +467,7 @@ test('future controlled native activity traverses actual ctx.tools native guards
   f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'future program-event simulation only', parameters: {},
     output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) {
       assert.equal(exec.agent, f.root); assert.equal(exec.parent, wrapperToken)
-      const child = actualAgent('registry-managed-child', { parent: 'root', managed: true })
+      const child = actualAgent('registry-managed-child', { parent: 'root', managed: true }); child.status = 'running'
       f.agents.set(child.id, child)
       await f.runtime.created(caller(child.id), exec.signal, child)
       return null
@@ -640,7 +660,7 @@ test('full advisory S does not refuse native follow-up or alter the child identi
 test('managed child-to-parent ordinary messages immediately traverse actual registry permissions at full S without another lease', async t => {
   const f = await mountedFixture(t, { futureNativeActivityKnown: true })
   await f.runtime.savePolicy(operator, policy({ enabled: true, ticketWindowSize: 1, runningSubagentLimit: 1 }), 0, signal())
-  const worker = actualAgent('managed-notifier', { parent: 'root', managed: true })
+  const worker = actualAgent('managed-notifier', { parent: 'root', managed: true }); worker.status = 'running'
   f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'future created program simulation', parameters: {},
     output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) {
       f.agents.set(worker.id, worker)

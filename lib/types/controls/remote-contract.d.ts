@@ -37,6 +37,22 @@ export interface RuntimeSnapshot {
     readonly windows: WindowSnapshot | null;
     readonly resources: readonly ResourceView[];
     readonly worktreeBindings?: readonly import('./worktree-bindings.js').WorktreeBindingCurrent[];
+    /** Native count provenance: a runtime re-establishment is never a silent-stop signal. */
+    readonly nativeCount?: {
+        readonly reestablished: boolean;
+        readonly runtimeId: string;
+        readonly previousRuntimeId: string | null;
+    };
+    /** Open silent-stop items the main agent must handle; never a count source. */
+    readonly nativeStops?: readonly {
+        readonly itemId: string;
+        readonly sessionId: string;
+        readonly observed: string;
+        readonly lane: {
+            readonly workflowId: string | null;
+            readonly localTicketId: string | null;
+        } | null;
+    }[];
     readonly capabilities: readonly {
         readonly key: string;
         readonly status: string;

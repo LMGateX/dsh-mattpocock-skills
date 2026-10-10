@@ -203,14 +203,21 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
   const domain = new sdk.DomainFacility(ctx, { backend: 'fixture' }); ctx.provide('storageDomain', domain)
   let runtime, runtimeStorage
   configureBeforeMount?.({ ctx, root, child, agents })
+  // The opt-in mechanical simulator asserts known activity and a catalog over live fixture
+  // children, so the host's event-driven counter stays the one S source. Tests that configure
+  // their own subagents provider keep it.
+  if (futureNativeActivityKnown && ctx.get('subagents') === undefined) {
+    ctx.provide('subagents', { async listDescendants() {
+      return [...nativeLive].map(id => ({ kind: 'child', id, mode: 'continuable', label: 'fixture-live', activity: 'running', hasChildren: false }))
+    } })
+  }
   const mounted = await host.mountHost(ctx, { async createRuntime(ports) {
     const openRuntime = ports.openRuntimeStorage.bind(ports)
     ports.openRuntimeStorage = async parse => { runtimeStorage = await openRuntime(parse); return runtimeStorage }
-    // Only this explicitly opt-in mechanical simulator asserts known activity.
-    // The installed mounted.ports.nativeActivity remains truthful known:false.
+    // Only nativeActivity is simulated here; nativeSubagentActivity stays the host counter
+    // under test, so idle/resident versus running semantics are the real implementation's.
     const runtimePorts = futureNativeActivityKnown ? { ...ports,
       async nativeActivity() { return { known: true, reason: null, liveAgents: [...agents.values()] } },
-      async nativeSubagentActivity() { return { known: true, running: nativeLive.size, total: nativeLive.size, reason: null } },
     } : ports
     runtime = await createRuntime(runtimePorts); runtimeCreated?.(runtime); return runtime
   } })

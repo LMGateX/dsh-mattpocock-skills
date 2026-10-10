@@ -41,13 +41,17 @@ This document is the authoritative implementation contract. A later implementati
 - 随包兼容提供者、recipe 与 `host-patches/` 继续交付，服务没有原生 seam 的宿主；本决策不改变 0.4.3 的用户入口、启动时采样、实际 header 核对，也不增加第二个 cwd 来源。
 - 授权、持久意图、原生副作用边界复验与确认序列不变：宿主原生不豁免预检查，省略 cwd 仍不写任何目录值。
 
-## 宿主原生子代理活动计数（2026-10-10，已获所有者认可）
+## 宿主原生实时运行状态计数（2026-10-10 决策，同日按所有者要求修订）
 
-- 已核对 DSH `0.2.1-alpha.2` 的公开 `@deepseek-ai/dsh-subagent`：`SubagentRuntime.listDescendants(rootSessionId, signal?)` 返回带 `activity: 'running'|'inactive'` 的目录行，并把分支缺口表达为 `kind:'diagnostic'` 加 `corrupt/unsupported/unavailable`；直接子级变体是 `listChildren`。`0.2.1-alpha.1` 同样暴露该公开方法。实际加载的服务具备该方法（或仅 `listChildren`）时，本插件用它查询某个 owner session 的在跑子代理数；缺失时按直接子级递归回退，仍缺失才是 unsupported。
-- 执行账本不再决定 S：reserve/receipt/重启重准入只保留为派发审计；S.used、capacity 比较、注入快照与客户端面板都读取 `nativeSubagentActivity(ownerSessionId)`。宿主遍历完整且无 diagnostic 行时 `known=true`、数字精确；服务缺失、根目录读取被拒或出现 diagnostic 行时 `known=false`、reason 说明原因、`running` 是明示下界，绝不报告“0 且 known=true”。
-- 能力与健康行如实反映 seam：seam 可用时 `allNativeWakeAdmission` 为 supported、`execution-admission` 为 current；不可用或枚举不完整时仍为 unsupported 并给出机械原因，模型可见文本说明在跑数来自宿主。
-- ticketWindowSize/T、票、绑定、资源与接管规则不变；runningSubagentLimit 仍只是与原生计数比较的策略参考值，不是派发禁令。旧 `runtimeKnowledge` 继续描述执行账本与当前 runtime 的对齐程度，不再参与 S 计数。
-- 该决策取代此前「以登记租约近似 S、并在缺少原生枚举时以 unknown 作为唯一诚实表达」的旧机制；旧机制会漏掉原生启动的子代理和重载后的在跑子代理，并让账本噪声影响容量比较。
+- 已核对 DSH `0.2.1-alpha.2` 的公开 `@deepseek-ai/dsh-subagent`：`SubagentRuntime.listDescendants(rootSessionId, signal?)` 返回带 `kind: 'child'|'diagnostic'`、`activity: 'running'|'inactive'` 的目录行，并把分支缺口表达为 diagnostic 加 `corrupt/unsupported/unavailable`；直接子级变体是 `listChildren`。`0.2.1-alpha.1` 同样暴露该公开方法。实际加载的服务具备该方法（或仅 `listChildren`）时，本插件用它建立某个 owner session 的后代**成员资格**；缺失时按直接子级递归回退，仍缺失才是 unsupported。
+- 目录行的 `activity` 描述会话驻留（resident session），**不是执行**；真正的在跑事实是运行时的 `Agent.status === 'running'`。S.used 因此是「属于该 owner 子树、在成员资格内、且当前 `Agent.status` 为 running 的子代理数」。常驻但 idle 的子代理不计入；原生启动（未经本插件派发）的子代理一旦进入成员资格同样计入；mode 为 external、没有本地 Agent 的子代理明确排除。
+- 读取路径是 O(live agents) 的内存投影：成员资格只在成员变更节点刷新（`agent/created`、`agent/disposed`、`subagent/catalog`、未知 id 的 `subagent/start/end`、一次基线读取，以及读取时发现未知的 live 后代）；`agent/status` 翻转零遍历更新计数。读取本身不重复走 `ctx.subagents.listDescendants`，因此每次注入/面板读取不再产生约 196 次目录 IO。
+- 执行账本不再决定 S：reserve/receipt/重启重准入只保留为派发审计；capacity 比较、注入快照与客户端面板都用实时运行状态。宿主遍历完整且无 diagnostic 行时 `known=true`、数字精确；服务缺失、根目录读取被拒或出现 diagnostic 行时 `known=false`、reason 给出机械原因、`running` 是明示下界，绝不报告“0 且 known=true”。
+- 计数漂移必须归因、可行动：只有「被计为 running 的 run、同一 runtime、成员资格新鲜、既无 `subagent/end` 也无 `agent/status idle` 却离开 running 集合」才记为 silent stop。该事实进入注入快照的 `nativeStops` 并沿用既有 notification 通道唤醒主代理，每个 child 至多一条，重新观测到 running 或迟到 end 后清除；重复未恢复会使 `S.countKnown=false`、reason=`native-subagent-silent-stop`。基线、插件热重载与 DSH 重启通过 durable `knowledge.runtimeId` 的变化归因为 re-establishment（`nativeBaseline`/`nativeCount`），只重建计数、不产生 item、不唤醒。目录不可读时不宣称 silent stop，只保留明示下界。
+- 拒绝以 TTL 代替事件：以「目录结果最多 N 毫秒有效」的近似既无法区分常驻 idle 与真正在跑，也无法把消失归因为基线/重启/静默停止；TTL 过期后的重查重新引入读路径 IO，并在成员快照陈旧时产生无法归因的计数抖动。事件驱动成员资格加 live `Agent.status` 是同一事实的唯一来源，读取只做内存投影。
+- 能力与健康行如实反映 seam：seam 可用时 `allNativeWakeAdmission` 为 supported；`execution-admission` 为 current 当且仅当 `S.countKnown`；silent-stop item 另有 `native-subagent-stop` 行，re-establishment 有 `native-count` 行。不可用或枚举不完整时仍为 unsupported 并给出机械原因，模型可见文本说明 S 是宿主实时运行状态、未知时是明示下界。
+- ticketWindowSize/T、票、绑定、资源与接管规则不变；runningSubagentLimit 仍只是与该实时计数比较的策略参考值，不是派发禁令。旧 `runtimeKnowledge` 继续描述执行账本与当前 runtime 的对齐程度，不再参与 S 计数。
+- 该决策取代此前「以登记租约近似 S、并在缺少原生枚举时以 unknown 作为唯一诚实表达」的旧机制，也取代同日早先「读取时查询目录并以目录 `activity` 计 running」的版本：旧机制会漏掉原生启动的子代理和重载后的在跑子代理，并让账本噪声影响容量比较；目录 `activity` 则会把 idle 常驻子代理误计为在跑。
 
 ## 既有 Profile 原生依赖接入修复
 

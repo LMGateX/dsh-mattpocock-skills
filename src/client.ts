@@ -183,9 +183,12 @@ export function WindowProjection(props: { readonly view: ClientSessionSnapshot }
   const failed = props.view.health.find(row => row.scope === 'windows' && row.status === 'unknown')
   const windows = props.view.windows
   if (failed || windows === null) return diagnostic('窗口观测未知：' + (failed?.reason ?? '未返回 T/S；不是 0 或默认容量'))
+  const stops = props.view.nativeStops ?? []
   return h('section', { 'aria-label': '窗口观测' },
     diagnostic('T/S 是参考值，不是硬名额；超出或统计未知不拒绝派发，也不要求额外审批。'),
-    diagnostic('S 是宿主报告的在跑子代理数；countKnown 为 false 时它是已知下界（总数未知），available 只是参考余量，不是全机可派发数量。'),
+    diagnostic('S 是宿主的实时运行状态（当前 Agent.status 为 running 的后代子代理；idle 常驻子代理不算在跑）；countKnown 为 false 时它是明示下界（总数未知），available 只是参考余量，不是全机可派发数量。'),
+    ...(props.view.nativeCount?.reestablished === true ? [diagnostic('S 计数已由新 runtime 依据实时事实重建（前一个 ' + String(props.view.nativeCount.previousRuntimeId) + '），不是静默停止。')] : []),
+    ...(stops.length > 0 ? [diagnostic('原生子代理停止待处理：' + stops.map(row => row.sessionId).join('、') + ' — 曾被计为 running 且无 subagent/end；重新观测到运行或收到结束回执后清除。')] : []),
     diagnostic(windowSummary(windows, props.view.health).join(' · ')), pretty(windows))
 }
 /** Aggregate read health controls the count; per-resource physical inspection never erases metadata. */

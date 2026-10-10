@@ -577,7 +577,7 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   assert(projection)
   const projected = client.WindowProjection(projection.props)
   assert.match(JSON.stringify(projected), /不是硬名额.*不.*额外审批/)
-  assert.match(JSON.stringify(projected), /S 是宿主报告的在跑子代理数.*available 只是参考余量.*不是全机可派发数量/)
+  assert.match(JSON.stringify(projected), /S 是宿主的实时运行状态.*idle 常驻子代理不算在跑.*available 只是参考余量.*不是全机可派发数量/)
   assert.match(JSON.stringify(projected), /countKnown.*false/)
   assert(!JSON.stringify(projected).includes('可以派'))
   const failed = client.WindowProjection({ view: snapshot('A', { windows, health: [{ scope: 'windows', status: 'unknown', reason: 'window ledger read failed' }] }) })

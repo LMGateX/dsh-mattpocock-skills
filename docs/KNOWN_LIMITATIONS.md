@@ -80,8 +80,8 @@ the cleanup scans.
 ## 4. Write amplification on repeated unmanaged-activity knowledge observations
 
 Every observed unmanaged native child still writes another `knowledge` operation even though the effective
-knowledge does not change. The projected S count no longer depends on this knowledge — it is queried from the
-host's native subagent catalog at read time — but the redundant journal writes remain. Measured on live domain
+knowledge does not change. The projected S count no longer depends on this knowledge — it is the host's live
+run status, projected in memory from event-maintained membership — but the redundant journal writes remain. Measured on live domain
 documents (identifiers withheld): instance A carried 369 `knowledge` operations of which **276 were
 identical in state and reason** (`unknown` / `unmanaged-native-execution-observed`); instance B showed
 103 operations with 77 redundant; instance C 34 with 20.

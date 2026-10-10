@@ -21,6 +21,10 @@ export interface ConsumptionSnapshot {
   readonly records: InstrumentSnapshot | null
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
+  /** Re-established native count provenance; null means no window facts were read. */
+  readonly nativeCount?: { readonly reestablished: boolean; readonly runtimeId: string; readonly previousRuntimeId: string | null } | null
+  /** Open silent-stop items the main agent must handle; never a count source. */
+  readonly nativeStops?: readonly { readonly itemId: string; readonly sessionId: string; readonly observed: string; readonly lane: { readonly workflowId: string | null; readonly localTicketId: string | null } | null }[]
   /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
   readonly worktreeBindings?: readonly (WorktreeBindingCurrent & { readonly cleanupDue?: boolean })[]
   /** Explicitly retained effective conclusions, not resolved question/option histories. */
@@ -200,6 +204,8 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
       source: { kind: row.source, author: row.author, recordedAt: row.recordedAt },
       ...(row.cleanupDue === undefined ? {} : { cleanupDue: row.cleanupDue }),
     })), { kind: 'worktree' }, { cleanupDue: (snapshot.worktreeBindings ?? []).filter(row => row.cleanupDue === true).length }),
+    nativeCount: snapshot.nativeCount ?? null,
+    nativeStops: category(sorted(snapshot.nativeStops ?? [], row => row.sessionId), { kind: 'native-stops' }),
     capabilities: category(sorted(snapshot.capabilities, row => row.key), { kind: 'capabilities' }),
     health: category(sorted(snapshot.health, row => row.scope), { kind: 'health' }, {
       unknown: snapshot.health.filter(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status)).length }),
@@ -210,7 +216,7 @@ function protocol(snapshot: ConsumptionSnapshot): string {
   const p = snapshot.policy
   const lines = ['Instrument state: current effective policy supersedes earlier instrument instructions.',
     'Business records are author reports, not program execution/S receipts or physical resource proof. Skills, user agreements and task documents govern completion, delivery, pause, cancellation, reopening and questions. Register pending decisions when you judge them necessary.',
-    'T and S are this session\'s configured limits; S is the running subagent count read from the host, and countKnown false means S.used is a known lower bound with the total unknown. Limits, registered usage and program-fact coverage are reported below; null means unknown, never zero. Native host permissions still apply.',
+    'T and S are this session\'s configured limits; S is the host\'s live run status (descendant Agents currently running; an idle resident child is not running), and countKnown false means S.used is a stated lower bound with the total unknown. Limits, registered usage and program-fact coverage are reported below; null means unknown, never zero. Native host permissions still apply.',
     'mattpocock_record records business progress and decisions; mattpocock_execute records supported execution facts. Capability/health facts below state actual coverage. Display preferences do not erase obligations.',
     'Worktree relationships record the actual child/worktree binding and your authored use and cleanup reports. Prepare each lane\'s tree before delegating — the host\'s create_worktree when it is provided, otherwise Git — and use the host\'s working_directory to enter it, then cd back to the project directory to leave. A tree you detached but did not clean up still needs a disposition.',
     'This is a bounded current view, not complete history. Each category reports shown/total/more and query locators; truncated fields retain source pointers. Use session history queries for omitted details.']
@@ -222,6 +228,8 @@ function protocol(snapshot: ConsumptionSnapshot): string {
     lines.push('Work-in-progress discipline: the T window is how many tickets may be in flight at once, not a quota. Take each ticket to its declared delivered state (or record it blocked by name) before opening the next one on that lane — spreading partial progress over many tickets is exactly what T exists to prevent. An empty slot needs no excuse; a held slot whose ticket has already reached a delivered or blocked state is yours to release with mattpocock_window release, and nothing releases it for you.')
     const pendingRelease=pendingReleaseRows(snapshot)
     if(pendingRelease.length>0)lines.push('T pending release: '+pendingRelease.map(row=>row.localTicketId+(row.label===null?'':' ('+row.label+')')).join(', ')+' — call mattpocock_window release with that ticket\'s generation; the slot stays held until you do.')
+    const nativeStops=snapshot.nativeStops??[]
+    if(nativeStops.length>0)lines.push('Native stops to handle: '+nativeStops.map(row=>row.sessionId+(row.lane!==null&&row.lane.workflowId!==null?' (lane '+row.lane.workflowId+(row.lane.localTicketId===null?'':'/'+row.lane.localTicketId)+')':'')).join(', ')+' — each child was counted running and left the running set with no subagent/end; the item clears when the child is observed running again or its end arrives.')
   }
   else if (p.features.windows.status === 'disabled') lines.push('Windows are OFF: preserve existing execution facts and records.')
   else lines.push('Windows are unsupported for this policy: usage coverage remains explicit in capabilities; missing facts are not known/free slots.')

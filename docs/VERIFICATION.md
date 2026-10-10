@@ -12,17 +12,19 @@
 
 本条只记录未发布的工作树源码与隔离验证，**未**发布、**未**安装到本机 Profile、**未**重启任何服务。
 
-## 未发布源码改动：宿主原生运行中子代理计数（2026-10-10）
+## 未发布源码改动：宿主原生实时运行状态计数（2026-10-10，同日修订）
 
-`src/controls/windows.ts` 的 S 计数改为读取时查询宿主：`HostPorts.nativeSubagentActivity(ownerSessionId)` 经 `ctx.subagents.listDescendants`（仅暴露直接子级时用 `listChildren` 递归回退）返回 `{known, running, total, reason}`；本插件的执行租约只保留为派发审计，不再进入 used、容量比较或注入快照。遍历完整且无 diagnostic 行时 known=true、数字精确；服务缺失、根目录读取被拒或任何 corrupt/unsupported/unavailable diagnostic 行返回 known=false、机械 reason 与可读 running 下界。能力行 `allNativeWakeAdmission` 只在 seam 实际加载时为 supported，健康行 `execution-admission` 只在 S.countKnown 时为 current；模型可见文本说明在跑数来自宿主。
+`src/host.ts` 新增事件驱动的 `NativeRunningCounter`：成员资格来自 `ctx.subagents.listDescendants`（仅暴露直接子级时用 `listChildren` 递归回退），只在成员变更节点（`agent/created`、`agent/disposed`、`subagent/catalog`、未知 id 的 start/end、首次基线读取、读取发现未知 live 后代）刷新；S.used 是「属于该 owner 子树、在成员资格内、且当前运行时 `Agent.status === 'running'` 的子代理数」——目录 `activity` 的 idle 常驻不计、原生启动子代理计入、external 子代理排除。`src/controls/windows.ts` 的读取路径因此是 O(live agents) 内存投影，不再每次读取遍历目录；快照新鲜度键纳入计数 revision 与 live agent 数，缓存不会掩盖新 child、item 或降级；`agent/status` 翻转零遍历更新计数。执行租约只保留为派发审计，不再进入 used、容量比较或注入快照。遍历完整且无 diagnostic 行时 known=true、数字精确；服务缺失、根目录读取被拒或任何 corrupt/unsupported/unavailable diagnostic 行返回 known=false、机械 reason 与可读 running 下界。
+
+计数漂移按构造归因：被计为 running 的 run 在同一 runtime、成员资格新鲜时，既无 `subagent/end` 也无 idle 转换却消失，才形成 `nativeStops` item（每 child 一条，含 itemId/sessionId/observed/最近已知 lane）并经既有 `notifyOwner` 通道唤醒主代理；重新观测到 running 或迟到 end 后清除，重复未恢复使 `S.countKnown=false`、reason=`native-subagent-silent-stop`。基线读取、插件热重载与 DSH 重启由 durable `knowledge.runtimeId`（`previousRuntimeId`）归因为 re-establishment，只重建计数，不产生 item、不唤醒；目录不可读时不宣称 silent stop，只保留明示下界。该归因路径取代先前按 TTL 近似目录结果的方案：TTL 无法区分常驻 idle 与真正在跑，也无法把消失归因为基线/重启/静默停止，并且到期重查会重新引入读路径 IO。
 
 开发工作树三组验收（Node 24.17.0，`node --test tests/*.test.mjs`）：
 
-- 规范 alpha.2 根：**808** 项、614 通过、0 失败、194 个桥用例带诊断 skip。
-- 双根（alpha.2 + alpha.1 兼容根 `DSH_CONTROLS_COMPAT_HOST_ROOT`）：**834** 项、834 通过、0 失败、0 skip。
-- 无宿主根：**808** 项、516 通过、0 失败、292 个环境门禁 skip。
+- 规范 alpha.2 根：**815** 项、621 通过、0 失败、194 个桥用例带诊断 skip。
+- 双根（alpha.2 + alpha.1 兼容根 `DSH_CONTROLS_COMPAT_HOST_ROOT`）：**841** 项、841 通过、0 失败、0 skip。
+- 无宿主根：**815** 项、523 通过、0 失败、292 个环境门禁 skip。
 
-生成物已重建并复核：`node_modules/.bin/tsc --project tsconfig.json`、`node scripts/build-client.mjs --out lib/client.js --declaration`、`node scripts/build-compatibility-patch.mjs --check`；`controls-package` 的 src 与 lib 一致性门禁在重建后通过。新增用例覆盖宿主目录精确计数、diagnostic 下界、被拒 listing、`listChildren` 递归回退、服务缺失，以及面板/注入文本的下界表达。该源码与生成物均未发布、未安装、未重启任何服务。
+生成物已重建并复核：`node_modules/.bin/tsc --project tsconfig.json`、`node scripts/build-client.mjs --out lib/client.js --declaration`、`node scripts/build-compatibility-patch.mjs --check`；`controls-package` 的 src 与 lib 一致性门禁在重建后通过。新增 [native-running-count](<../tests/native-running-count.test.mjs>) 覆盖：读取零遍历（N 次读取 walk 计数不变、状态翻转零遍历、新未知 id 恰好一次）、idle 常驻不计而 turn-running 与原生启动计、silent-stop item 与唤醒恰好一次并在重新 running 后清除、基线/重启 re-establishment 无 item 无唤醒、目录不可读只给下界不宣称 silent stop、服务缺失下界，以及用已安装 cordis/dsh-scope 动态复现 `scopeTarget(agent, agent)` 载体经 `emit` 到达未加 scope 的 root listener、child-scoped listener 只收自己 child 的 `agent/status`。原有 runtime 用例同步改写了目录精确计数、diagnostic 下界、被拒 listing、`listChildren` 递归回退与服务缺失断言。该源码与生成物均未发布、未安装、未重启任何服务。
 
 ## 双宿主测试根：规范 alpha.2 与兼容桥 alpha.1（2026-10-10）
 

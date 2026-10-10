@@ -51,6 +51,27 @@ export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChil
     readonly nativeInitialChildCwd: 'supported' | 'unsupported';
     readonly allNativeWakeAdmission: 'supported' | 'unsupported';
 };
+/** One node-reconciliation mismatch between the expected-run ledger and the live running count. */
+export interface NativeCountDrift {
+    /** The counted run whose live Agent disappeared without a paired `subagent/end`. */
+    readonly sessionId: string;
+    /** The running-count delta the node event expected; +1 for every unpaired local start. */
+    readonly expectedDelta: number;
+    /** Live running descendants observed at the reconciling node. */
+    readonly observed: number;
+}
+/** One open silent-stop item the main agent is expected to handle. */
+export interface NativeSubagentStop {
+    /** Stable item identity; a later stop of the same child is a new item. */
+    readonly itemId: string;
+    readonly sessionId: string;
+    /** Mechanical observation; never a guessed cause. */
+    readonly observed: string;
+}
+/** A stop item plus its owner, queued for the main-agent wake notification. */
+export interface NativeSubagentStopEvent extends NativeSubagentStop {
+    readonly ownerSessionId: string;
+}
 export interface ContinuableChildRequest {
     readonly provider: 'spawn' | 'fork';
     readonly label: string;
@@ -84,6 +105,12 @@ export type HostEvent = ({
     readonly provider: string;
     readonly local: boolean;
     readonly stopReason: string;
+} | {
+    readonly kind: 'native-stop';
+    readonly ownerSessionId: string;
+    readonly sessionId: string;
+    readonly itemId: string;
+    readonly observed: string;
 }) & {
     readonly actualAgent?: Agent;
 };
@@ -159,6 +186,12 @@ export interface HostPorts {
     }>;
     /** Native host descendant activity for one owner session; the projected S count source. */
     nativeSubagentActivity(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity>;
+    /** Node-reconciliation drifts for one owner; mechanical evidence, never a count source. */
+    nativeSubagentDrift(ownerSessionId: string): readonly NativeCountDrift[];
+    /** Open silent-stop items for one owner; the snapshot items the main agent must handle. */
+    nativeSubagentStops(ownerSessionId: string): readonly NativeSubagentStop[];
+    /** Monotone native-count state revision; part of snapshot freshness, never a count. */
+    nativeSubagentCountRevision(ownerSessionId: string): number;
     openRuntimeStorage<T extends {
         readonly revision: number;
     }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>;
