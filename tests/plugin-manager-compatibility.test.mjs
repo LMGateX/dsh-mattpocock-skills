@@ -500,7 +500,7 @@ async function worker(scenario, tarball) {
     assert.equal(result.application, 'applied', JSON.stringify(result))
     assert.equal(result.bundle, pluginName)
     assert.equal(result.changed, true)
-    assert.equal(result.version, '0.4.26')
+    assert.equal(result.version, '0.4.27')
     const installed = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName)
     assert.equal(installed.installed, true)
     assert.equal(installed.enabled, true)
@@ -563,13 +563,13 @@ before(async () => {
   await run('tar', ['-xzf', tarball, '-C', fixtureRoot], { timeout: 60000 })
   const fixture = join(fixtureRoot, 'package'), manifestPath = join(fixture, 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  assert.equal(manifest.version, '0.4.26')
+  assert.equal(manifest.version, '0.4.27')
   for (const version of ['0.4.5', '0.4.6']) {
     await writeFile(manifestPath, JSON.stringify({ ...manifest, version }, null, 2) + '\n')
     await run('pnpm', ['pack', '--pack-destination', join(scratch, 'pack')], { cwd: fixture, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
     upgrades.set(version, join(scratch, 'pack', 'lmgatex-dsh-mattpocock-skills-' + version + '.tgz'))
   }
-  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.26')
+  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.4.27')
   profiles = { canonical: join(scratch, 'canonical-home/profiles/web'), compat: join(scratch, 'compat-home/profiles/web') }
   for (const dir of Object.values(profiles)) await mkdir(dir, { recursive: true })
 })
