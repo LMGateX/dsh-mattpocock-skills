@@ -200,3 +200,11 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.26.tgz`（**383511** bytes，sha256 `4009268e2b452fe64c8e300bfec530ea830577f2ed293e51acfdfcb77541630a`，170 成员，源提交 `f7a61b5`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.2` 下 804 用例 **610 通过／0 失败**（194 个 beta 期桥用例按诊断跳过）、双宿主 **830／830 全通过且零跳过**、无宿主根 804 中 512 通过／292 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.2 与 0.2.1-alpha.1 两个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。完整记录见 `dist/verification-0.4.26.json`。
 
 本版修复面向模型的契约不一致：mattpocock_execute／mattpocock_assign 现在与 mattpocock_delegate 一样把省略等同于 null（ticketIds 等同于空数组），非法值的拒绝信息明确给出 null 这一出路，工具描述补齐了此前只隐含的形状（execute 的无票规则与 nativeTool 取值、assign 的请求键、controls 的 intent 与 patch 键、resource 的只读范围）；provider、worktree、history 的拒绝信息现在列出可接受取值。回归由 tests/model-contract.test.mjs 钉住。
+
+## 0.4.27 制品验收（2026-10-10）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.27.tgz`（**397733** bytes，sha256 `b6633ec745c0b47e2c33ffa7586efd918578654a97d005fbfb30ce819db128ee`，170 成员，源提交 `0ff2c33`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.2` 下 832 用例 **638 通过／0 失败**（194 个 beta 期桥用例按诊断跳过）、双宿主 **858／858 全通过且零跳过**、无宿主根 832 中 540 通过／292 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.2 与 0.2.1-alpha.1 两个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。完整记录见 `dist/verification-0.4.27.json`。
+
+本版把在跑子代理数与异常结局都改为宿主原生事实：S 是本会话后裔中 Agent `status==='running'` 的数量（目录的 activity 表示常驻，空闲待唤不计入），成员集合只在成员变化节点刷新，read 为进程内求交、零目录遍历；异常结局不再推断，按宿主公开词汇分类——`error`（附 LlmFailure 原文）、`interrupted`（回合从未正常结束）、`max-tokens`、`blocked`、`refusal`、他人 `aborted`——每一失败回合生成一条去重待处置项并唤醒主 agent 一次，自己取消的不报，日志不可读时报“结局不可观测”并附证据指针。
+
+本版同时记录一项**已实测否决**的优化：窗口 operations 日志的自动上限已实现、实测为净亏（整文档写入 + 无损折叠对每条操作同时保留 dedup 摘要与 retained 正文，60 条操作的探针由 20.9 KB 变成 43.6 KB），遂撤销；可选方案与代价已写入仓库文档，暂时接受文档随寿命增长。

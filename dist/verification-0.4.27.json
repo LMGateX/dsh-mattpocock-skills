@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.27",
+    "private": true
+  },
+  "source": {
+    "commit": "0ff2c33dc12baf55a7fa62321f0a9023d07b552a",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.27.tgz",
+    "bytes": 397733,
+    "sha256": "b6633ec745c0b47e2c33ffa7586efd918578654a97d005fbfb30ce819db128ee",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.2"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.2",
+    "compat": "0.2.1-alpha.1 (scratch prefix, nested npm install)"
+  },
+  "validation": {
+    "rootTests": {
+      "total": 832,
+      "passed": 638,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 194
+    },
+    "rootTestsBothRoots": {
+      "total": 858,
+      "passed": 858,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 832,
+      "passed": 540,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 292
+    },
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 14,
+      "actualPluginManager": 13
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "dsh": "0.2.1-alpha.2 and 0.2.1-alpha.1",
+      "hosts": [
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.1"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "nativeCountEvidence": "one baseline catalog walk, then zero walks across repeated reads and live-status flips, one walk when an unknown live child appears",
+    "nativeOutcomeEvidence": "error (LlmFailure verbatim), interrupted, max-tokens, blocked, refusal and foreign aborted each open one deduped item and one wake; own cancellations and completed runs do not; an absent or unreadable turn/end is reported as unobservable with an evidence pointer",
+    "buildModules": 66,
+    "fixedFiles": 85,
+    "vendorFiles": 85,
+    "packedFiles": 170,
+    "clientBytes": 173862
+  },
+  "upstream": {
+    "distribution": "v0.3.0",
+    "skills": "v1.3.1",
+    "channels": {
+      "beta": 27,
+      "stable": 27
+    },
+    "vendorBytes": 279662,
+    "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+  },
+  "review": {
+    "baseline": "v0.4.26",
+    "independentReview": "Owner-reported: several subagents were running while the instrument showed zero. Root cause was a count derived from our own dispatch reservations, which misses natively started children and reloads, plus a catalog field whose 'running' means resident rather than executing. The count is now the host's live run status over a membership set refreshed only at membership-change nodes, so reads cost no catalog walk. The 'silent stop' inference was replaced by the host's published terminal vocabulary: error with the LlmFailure facts, interrupted for a turn that never ended normally, max-tokens, blocked, refusal and aborted with its cancel cause, deduplicated per session:run:turn through a durable row and never guessed when the child log cannot be read. A time-based cache was proposed and rejected by the owner: subagent activity changes at dispatch and return, so it is maintained from those events instead. Bounding the window operations journal was implemented, measured as a net loss (whole-document writes, lossless compaction duplicating each operation) and reverted; the measured options are documented."
+  }
+}
