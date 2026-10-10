@@ -433,7 +433,14 @@ function parseDocument(value: unknown): WindowDocument {
     }
   }
   const sortedTickets = (rows: readonly TicketLease[]) => [...rows].sort((a, b) => JSON.stringify([a.workflowId, a.localTicketId]).localeCompare(JSON.stringify([b.workflowId, b.localTicketId])))
-  if (JSON.stringify(projectedKnowledge) !== JSON.stringify(knowledge)
+  // The baseline field is optional, and a document written before it existed stores the legacy
+  // shape only, while the journal replay derives the field for every runtime replacement it
+  // reconstructs. Compare the shape the document actually carries; a document that records the
+  // field is still compared in full, so a wrong baseline stays invalid.
+  const recordsBaseline = knowledge.previousRuntimeId !== undefined
+  const comparableKnowledge = (value: { readonly runtimeId: string | null; readonly known: boolean; readonly reason: string | null; readonly previousRuntimeId?: string }) =>
+    recordsBaseline ? value : { runtimeId: value.runtimeId, known: value.known, reason: value.reason }
+  if (JSON.stringify(comparableKnowledge(projectedKnowledge)) !== JSON.stringify(comparableKnowledge(knowledge))
     || JSON.stringify(sortedTickets(projectedTickets)) !== JSON.stringify(sortedTickets(tickets))
     || JSON.stringify(projectedExecutions) !== JSON.stringify(executions)) invalid('window state differs from typed operation history')
   const current = { ...instance, revision: docRevision, knowledge, tickets, executions, operations }
