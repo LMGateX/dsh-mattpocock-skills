@@ -20,6 +20,25 @@ export type RemoteMethod = typeof REMOTE_METHODS[number]
 export type HostJson = null | boolean | number | string | HostJson[] | { [key: string]: HostJson }
 export interface HostCaller { readonly kind: 'user' | 'agent'; readonly principalId: string; readonly sessionId: string | null }
 export interface WorkspaceRow { readonly id: string; readonly path: string; readonly title: string; readonly status: 'ok' | 'missing-dir'; readonly sessionIds?: readonly string[] }
+/** One open terminal-outcome row for the main agent: the published outcome, never a guessed cause. */
+export interface NativeStopRow {
+  /** Durable dedup key: child session id + turn, plus the host runId when the host supplied one. */
+  readonly itemId: string
+  readonly sessionId: string
+  /** The turn whose outcome this row reports; null when no turn could be read. */
+  readonly turn: number | null
+  /** Published outcome vocabulary, or 'unobservable' when no readable fact exists. */
+  readonly outcome: string
+  /** Published aborted cancel cause; null when unreadable or not an abort. */
+  readonly cancelCause: string | null
+  /** Published LlmFailure facts (code/message verbatim); null when the host supplied none. */
+  readonly diagnostic: string | null
+  /** Evidence pointer carried only by an 'unobservable' outcome. */
+  readonly evidence: { readonly sessionId: string; readonly turn: number | null; readonly seq: number | null } | null
+  /** One-line mechanical observation; never a guessed cause. */
+  readonly observed: string
+  readonly lane: { readonly workflowId: string | null; readonly localTicketId: string | null } | null
+}
 export interface RuntimeSnapshot {
   readonly sessionId: string
   readonly caller: HostCaller
@@ -30,10 +49,10 @@ export interface RuntimeSnapshot {
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
   readonly worktreeBindings?: readonly import('./worktree-bindings.js').WorktreeBindingCurrent[]
-  /** Native count provenance: a runtime re-establishment is never a silent-stop signal. */
+  /** Native count provenance: a runtime re-establishment is never a terminal-outcome signal. */
   readonly nativeCount?: { readonly reestablished: boolean; readonly runtimeId: string; readonly previousRuntimeId: string | null }
-  /** Open silent-stop items the main agent must handle; never a count source. */
-  readonly nativeStops?: readonly { readonly itemId: string; readonly sessionId: string; readonly observed: string; readonly lane: { readonly workflowId: string | null; readonly localTicketId: string | null } | null }[]
+  /** Open terminal-outcome items the main agent must handle; never a count source. */
+  readonly nativeStops?: readonly NativeStopRow[]
   readonly capabilities: readonly { readonly key: string; readonly status: string; readonly reason: string | null }[]
   readonly health: readonly { readonly scope: string; readonly status: string; readonly reason: string | null }[]
 }

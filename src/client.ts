@@ -20,7 +20,7 @@ import type { DecisionRecord, InstrumentCommand } from './controls/instrument-st
 import type { WindowSnapshot } from './controls/windows.js'
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js'
 import { REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants } from './controls/remote-contract.js'
-import type { ControlsRemote as HostControlsRemote, HostJson, HostCaller, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js'
+import type { ControlsRemote as HostControlsRemote, HostJson, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js'
 
 export const PACKAGE_NAME = '@lmgatex/dsh-mattpocock-skills'
 export const TAB_KIND = 'mattpocock-collaboration'
@@ -169,6 +169,18 @@ type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & Sessi
 function countText(value: unknown): string { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : '未知' }
 function capacityText(value: unknown): string { return value === null ? '未配置' : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? String(value) : '未知' }
 /** T is explicit bookkeeping; S tracking is not proof that all runtime work is known. */
+/** State the published outcome; 'unobservable' reads as unobservable, never as a cause. */
+export function nativeStopText(row: NativeStopRow): string {
+  const where = row.sessionId + (row.turn === null ? '' : ' 第' + row.turn + '回合')
+  const outcome = row.outcome === 'unobservable'
+    ? '结局不可观测（无可读 turn/end' + (row.evidence !== null && row.evidence.seq !== null ? '；最后观测 seq ' + row.evidence.seq : '') + '）'
+    : row.outcome === 'error' ? '回合失败' + (row.diagnostic === null ? '' : '（' + row.diagnostic + '）')
+    : row.outcome === 'interrupted' ? '回合从未正常结束（崩溃或强制停止）'
+    : row.outcome === 'aborted' ? '回合被取消' + (row.cancelCause === null ? '（取消原因不可观测）' : '（原因 ' + row.cancelCause + '）')
+    : '结局 ' + row.outcome
+  const lane = row.lane !== null && row.lane.workflowId !== null ? '（lane ' + row.lane.workflowId + (row.lane.localTicketId === null ? '' : '/' + row.lane.localTicketId) + '）' : ''
+  return where + '：' + outcome + lane
+}
 export function windowSummary(windows: WindowSnapshot | null, health: ClientSessionSnapshot['health'] = []): readonly string[] {
   if (windows === null || health.some(row => row.scope === 'windows' && row.status === 'unknown')) return ['T 未知', 'S 未知']
   const signed = (value: unknown): string => typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '未知'
@@ -187,8 +199,8 @@ export function WindowProjection(props: { readonly view: ClientSessionSnapshot }
   return h('section', { 'aria-label': '窗口观测' },
     diagnostic('T/S 是参考值，不是硬名额；超出或统计未知不拒绝派发，也不要求额外审批。'),
     diagnostic('S 是宿主的实时运行状态（当前 Agent.status 为 running 的后代子代理；idle 常驻子代理不算在跑）；countKnown 为 false 时它是明示下界（总数未知），available 只是参考余量，不是全机可派发数量。'),
-    ...(props.view.nativeCount?.reestablished === true ? [diagnostic('S 计数已由新 runtime 依据实时事实重建（前一个 ' + String(props.view.nativeCount.previousRuntimeId) + '），不是静默停止。')] : []),
-    ...(stops.length > 0 ? [diagnostic('原生子代理停止待处理：' + stops.map(row => row.sessionId).join('、') + ' — 曾被计为 running 且无 subagent/end；重新观测到运行或收到结束回执后清除。')] : []),
+    ...(props.view.nativeCount?.reestablished === true ? [diagnostic('S 计数已由新 runtime 依据实时事实重建（前一个 ' + String(props.view.nativeCount.previousRuntimeId) + '），不是未归因的消失。')] : []),
+    ...(stops.length > 0 ? [diagnostic('原生子代理结局待处理：' + stops.map(row => nativeStopText(row)).join('；') + '。每项对应一个子代理回合的宿主公开结局或明示不可观测；子代理重新运行或其结束回执到达后清除。')] : []),
     diagnostic(windowSummary(windows, props.view.health).join(' · ')), pretty(windows))
 }
 /** Aggregate read health controls the count; per-resource physical inspection never erases metadata. */

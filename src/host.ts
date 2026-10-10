@@ -147,15 +147,46 @@ export interface NativeCountDrift {
   /** Live running descendants observed at the reconciling node. */
   readonly observed: number
 }
-/** One open silent-stop item the main agent is expected to handle. */
+/** The published terminal outcome vocabulary for one child turn. `unobservable` is never a cause. */
+export type NativeOutcomeKind = 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'refusal' | 'interrupted' | 'unobservable'
+/** One `turn/end` fact read from a child's own log, exactly as the session vocabulary publishes it. */
+export interface NativeTurnEndFact {
+  /** `unknown` marks a merge-extended kind this build cannot classify; it is never reported as a cause. */
+  readonly kind: 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'interrupted' | 'forked' | 'unknown'
+  readonly turn: number
+  readonly seq: number
+  /** Published `TurnCancelCause` kind for an aborted turn; null when the log carried none. */
+  readonly cause: string | null
+  /** Published `LlmFailure` code/message verbatim (joined for display); null when none was published. */
+  readonly diagnostic: string | null
+}
+/** A child's own log tail: its last `turn/end`, when one exists, plus the last observed turn/seq. */
+export interface NativeTurnObservation {
+  readonly end: NativeTurnEndFact | null
+  readonly lastTurn: number | null
+  readonly lastSeq: number | null
+}
+/** Reads ONLY one child's own log. A rejected read is unobservable, never a guessed outcome. */
+export type NativeTurnReader = (sessionId: string, signal?: AbortSignal) => Promise<NativeTurnObservation>
+/** One open terminal-outcome item the main agent is expected to handle. */
 export interface NativeSubagentStop {
-  /** Stable item identity; a later stop of the same child is a new item. */
+  /** Durable dedup key: child session id + turn, plus the host runId when the host supplied one. */
   readonly itemId: string
   readonly sessionId: string
-  /** Mechanical observation; never a guessed cause. */
+  /** The turn whose outcome this item reports; null when no turn could be read. */
+  readonly turn: number | null
+  /** The published outcome. `unobservable` states the absence of a readable fact, never a cause. */
+  readonly outcome: NativeOutcomeKind
+  /** Published aborted cancel cause; null when unreadable or not an abort. */
+  readonly cancelCause: string | null
+  /** Published failure facts (LlmFailure code/message verbatim); null when the host supplied none. */
+  readonly diagnostic: string | null
+  /** Evidence pointer carried only by an `unobservable` outcome. */
+  readonly evidence: { readonly sessionId: string; readonly turn: number | null; readonly seq: number | null } | null
+  /** One-line mechanical observation; never a guessed cause. */
   readonly observed: string
 }
-/** A stop item plus its owner, queued for the main-agent wake notification. */
+/** An outcome item plus its owner, queued for the main-agent wake notification. */
 export interface NativeSubagentStopEvent extends NativeSubagentStop {
   readonly ownerSessionId: string
 }
@@ -168,21 +199,64 @@ interface NativeRunningMembership {
 interface NativeRunState {
   /** True once the live Agent was observed `running`, so the run was part of the count. */
   counted: boolean
-  /** True when an idle transition already explains a loss, so it is not a silent stop. */
+  /** True when an idle transition already explains a loss, so the run is not a suspect. */
   sawIdle: boolean
-  /** Open stop item for this run, or null. */
-  itemId: string | null
+  /** Host runId for this activation, when a start/end edge supplied one. */
+  runId: string | null
+  /** In-flight classification token; null when none is pending. */
+  settle: number | null
 }
 interface NativeRunningLedger {
   /** Runs observed running (or started) with no paired end; seeded at the first read. */
   readonly runs: Map<string, NativeRunState>
   readonly drifts: NativeCountDrift[]
-  /** Open stop items keyed by child session id; at most one per child. */
+  /** Open outcome items keyed by the durable dedup itemId; one open item per failed turn. */
   readonly stops: Map<string, NativeSubagentStop>
-  mismatches: number
-  degraded: boolean
   /** Live subagent ids a walk already failed to list, so a read never repeats that walk for them. */
   readonly unresolved: Set<string>
+  /** Per-child activation generation: a stale classification never opens an item after a new run. */
+  readonly generations: Map<string, number>
+}
+/** Cancellations this owner side caused: a parent turn cancellation or the run's own disposal. */
+const OWN_CANCEL_CAUSES = new Set(['parent', 'disposed'])
+function jsonRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+function boundedText(value: unknown, max: number): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= max && !value.includes('\u0000') ? value : null
+}
+function safeIndex(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+}
+/**
+ * Read a child's own event suffix into the published turn-end vocabulary. Nothing is synthesized:
+ * a reason kind this build does not recognize stays `unknown`, an aborted cause is the published
+ * `TurnCancelCause` kind, and a failure diagnostic is the published `LlmFailure` code/message.
+ */
+export function observeNativeTurn(events: readonly SessionEvent[]): NativeTurnObservation {
+  let lastTurn: number | null = null, lastSeq: number | null = null, end: NativeTurnEndFact | null = null
+  for (const event of events) {
+    const data = jsonRecord((event as { readonly data?: unknown }).data)
+    const turn = safeIndex(data?.turn), seq = safeIndex((event as { readonly seq?: unknown }).seq)
+    if (turn !== null) lastTurn = turn
+    if (seq !== null) lastSeq = seq
+    if ((event as { readonly type?: unknown }).type !== 'turn/end' || data === undefined || turn === null || seq === null) continue
+    const reason = jsonRecord(data.reason), kind = reason?.kind
+    if (kind === 'error') {
+      const failure = jsonRecord(reason?.error)
+      const code = boundedText(failure?.code, 256), message = boundedText(failure?.message, 4096)
+      const parts = [code, message].filter((part): part is string => part !== null)
+      end = freeze({ kind, turn, seq, cause: null, diagnostic: parts.length === 0 ? null : parts.join(': ') })
+    } else if (kind === 'aborted') {
+      end = freeze({ kind, turn, seq, cause: boundedText(jsonRecord(reason?.reason)?.kind, 64), diagnostic: null })
+    } else if (kind === 'completed' || kind === 'blocked' || kind === 'max-tokens' || kind === 'interrupted' || kind === 'forked') {
+      end = freeze({ kind, turn, seq, cause: null, diagnostic: null })
+    } else {
+      // Merge-extended kind: a turn ended, but this build cannot claim why.
+      end = freeze({ kind: 'unknown', turn, seq, cause: null, diagnostic: null })
+    }
+  }
+  return freeze({ end, lastTurn, lastSeq })
 }
 /**
  * Event-driven native running count for one mount.
@@ -198,30 +272,39 @@ interface NativeRunningLedger {
  * resident children stay out of the count. External children own no local Agent and are never
  * counted.
  *
- * `subagent/start` / `subagent/end` only build an expected-run ledger. The installed host
+ * `subagent/start` / `subagent/end` build an expected-run ledger. The installed host
  * publishes `subagent/start` before the child's driver wakes (dsh-subagent emits the start edge
  * during materialization and delivers the initial prompt afterwards), so a start's own node does
- * not reconcile it; the following node reconciles it against the live set. Only a run that was
- * observed `running` and then lost its live Agent with no paired end and no idle transition is a
- * silent stop; it opens one stop item per child, queues one wake event, and a repeated
- * observation without a clean reconciliation degrades reads to a stated unknown. A run that never
- * entered the count is never reported, and an unreadable catalog never produces a silent-stop
- * claim.
+ * not reconcile it; the following node reconciles it against the live set.
+ *
+ * Terminal outcomes come from the host's own vocabulary, never from inference:
+ * - Primary path: a `subagent/end` edge carries the published `stopReason`; any non-`completed`
+ *   reason opens one item (a `completed` run is an ordinary slot release).
+ * - Reconciliation path: a counted run that lost its live Agent with no paired end and no idle
+ *   transition is a suspect; ONLY that child's own log is read, its last `turn/end` is classified
+ *   with the public kind vocabulary, and an unreadable log or missing `turn/end` yields an
+ *   `unobservable` item carrying an evidence pointer - never a guessed cause.
+ * Items dedup on child session id + turn (plus the host runId when supplied), so a repeated node
+ * observation reuses the same durable item and a later failing turn is a new item. An item clears
+ * when the child runs again, its start edge arrives, or a late end arrives. A run that never
+ * entered the count is never reported, and an unreadable catalog never produces an outcome claim.
  */
 class NativeRunningCounter {
   readonly #liveAgents: () => readonly Agent[]
   readonly #lister: () => NativeSubagentLister | undefined
   readonly #signal: AbortSignal | undefined
   readonly #onStop: ((event: NativeSubagentStopEvent) => void) | undefined
+  readonly #turnReader: NativeTurnReader
   readonly #members = new Map<string, NativeRunningMembership>()
   readonly #ledgers = new Map<string, NativeRunningLedger>()
   readonly #idOwners = new Map<string, Set<string>>()
   readonly #tails = new Map<string, Promise<unknown>>()
   readonly #revisions = new Map<string, number>()
   readonly #opened: NativeSubagentStopEvent[] = []
-  #items = 0
-  constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly lister: () => NativeSubagentLister | undefined; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void }) {
+  #settles = 0
+  constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly lister: () => NativeSubagentLister | undefined; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
     this.#liveAgents = options.liveAgents; this.#lister = options.lister; this.#signal = options.signal; this.#onStop = options.onStop
+    this.#turnReader = options.turnReader ?? (async () => { throw new ControlsError('feature-disabled', 'child session log observation is unavailable') })
   }
   /** Serialize per-owner refreshes so a read after a node awaits that node's walk, never a second one. */
   #serial<T>(owner: string, task: () => Promise<T>): Promise<T> {
@@ -230,9 +313,14 @@ class NativeRunningCounter {
     this.#tails.set(owner, next.then(() => undefined, () => undefined))
     return next
   }
+  /** Await the owner's serial queue to quiescence: a task it queues must not be missed by a read. */
   async #settle(owner: string): Promise<void> {
-    const pending = this.#tails.get(owner)
-    if (pending !== undefined) await pending
+    for (;;) {
+      const pending = this.#tails.get(owner)
+      if (pending === undefined) return
+      await pending
+      if (this.#tails.get(owner) === pending) return
+    }
   }
   #refresh(owner: string, signal?: AbortSignal): Promise<void> {
     return this.#serial(owner, () => this.#refreshNow(owner, signal))
@@ -321,52 +409,141 @@ class NativeRunningCounter {
     direct(agent?.session.header.parentSession === undefined ? undefined : String(agent.session.header.parentSession))
     return owners
   }
-  /** Attribute each run loss by construction; only a counted run with no end and no idle transition is a silent stop. */
+  #generation(ledger: NativeRunningLedger, sessionId: string): number {
+    return ledger.generations.get(sessionId) ?? 0
+  }
+  /** Every new activation invalidates an in-flight classification of the previous run. */
+  #activate(ledger: NativeRunningLedger, sessionId: string): void {
+    ledger.generations.set(sessionId, this.#generation(ledger, sessionId) + 1)
+  }
+  /** Durable dedup key: sessionId[:runId]:turn; `unknown` is the turn slot when none could be read. */
+  #itemId(sessionId: string, runId: string | null, turn: number | null): string {
+    return sessionId + ':' + (runId === null ? '' : runId + ':') + (turn === null ? 'unknown' : String(turn))
+  }
+  /** Open exactly one durable dedup item and queue exactly one wake for it. */
+  #openStop(owner: string, ledger: NativeRunningLedger, item: NativeSubagentStop): void {
+    if (ledger.stops.has(item.itemId)) return
+    ledger.stops.set(item.itemId, item)
+    this.#bump(owner)
+    const queued: NativeSubagentStopEvent = { ownerSessionId: owner, ...item }
+    this.#opened.push(queued)
+    this.#onStop?.(queued)
+  }
+  /** An item clears when the child runs again, its start edge arrives, or a late end arrives. */
+  #closeSessionStops(owner: string, ledger: NativeRunningLedger, sessionId: string): void {
+    let closed = false
+    for (const [itemId, item] of ledger.stops) if (item.sessionId === sessionId) { ledger.stops.delete(itemId); closed = true }
+    if (closed) this.#bump(owner)
+  }
+  /** An `unobservable` item carries the evidence pointer and never a cause. */
+  #unobservable(sessionId: string, runId: string | null, turn: number | null, seq: number | null, observed: string): NativeSubagentStop {
+    return freeze({ itemId: this.#itemId(sessionId, runId, turn), sessionId, turn, outcome: 'unobservable', cancelCause: null, diagnostic: null,
+      evidence: freeze({ sessionId, turn, seq }), observed })
+  }
+  /**
+   * Reconciliation path: classify one suspect child from its own log tail. `observation === null`
+   * means the log could not be read; both that and a missing `turn/end` are unobservable.
+   */
+  async #classifySuspect(owner: string, run: NativeRunState, token: number, sessionId: string, runIdFact: string | null, generation: number): Promise<void> {
+    let observation: NativeTurnObservation | null = null
+    try { observation = await this.#turnReader(sessionId, this.#signal) } catch { observation = null }
+    const ledger = this.#ledgers.get(owner)
+    if (ledger === undefined || this.#signal?.aborted === true) return
+    // A newer activation, a late end or an already-settled check owns the child now: drop this result.
+    if (ledger.runs.get(sessionId) !== run || run.settle !== token || this.#generation(ledger, sessionId) !== generation) return
+    run.settle = null
+    // The run is terminal once classified; retire it so a later node never repeats this log read.
+    ledger.runs.delete(sessionId)
+    const item = observation === null ? this.#unobservable(sessionId, runIdFact, null, null, 'child log could not be read') : this.#itemFromTurn(sessionId, runIdFact, observation)
+    if (item !== null) this.#openStop(owner, ledger, item)
+  }
+  /** Classify one child's own log tail; null means a normal return that opens no item. */
+  #itemFromTurn(sessionId: string, runIdFact: string | null, observation: NativeTurnObservation): NativeSubagentStop | null {
+    const end = observation.end
+    if (end === null) return this.#unobservable(sessionId, runIdFact, observation.lastTurn, observation.lastSeq, 'no turn/end in the readable child log')
+    if (end.kind === 'completed' || end.kind === 'forked') return null
+    if (end.kind === 'aborted') {
+      // Our own cancellation (the parent turn was cancelled or the run was disposed) needs no item.
+      if (end.cause !== null && OWN_CANCEL_CAUSES.has(end.cause)) return null
+      const item: NativeSubagentStop = freeze({ itemId: this.#itemId(sessionId, runIdFact, end.turn), sessionId, turn: end.turn, outcome: 'aborted', cancelCause: end.cause, diagnostic: null, evidence: null,
+        observed: end.cause === null ? 'turn/end: aborted; cancel cause not readable' : 'turn/end: aborted by ' + end.cause })
+      return item
+    }
+    if (end.kind === 'unknown') return this.#unobservable(sessionId, runIdFact, end.turn, end.seq, 'unrecognized turn/end kind')
+    const diagnostic = end.kind === 'error' ? end.diagnostic : null
+    const item: NativeSubagentStop = freeze({ itemId: this.#itemId(sessionId, runIdFact, end.turn), sessionId, turn: end.turn, outcome: end.kind, cancelCause: null, diagnostic, evidence: null,
+      observed: 'turn/end: ' + end.kind + (diagnostic === null ? '' : ' (' + diagnostic + ')') })
+    return item
+  }
+  /**
+   * Primary path: the host's `subagent/end` edge publishes the terminal reason. The child's own log
+   * is consulted only for the turn number, the aborted cancel cause and any LlmFailure facts.
+   */
+  async #classifyEnd(owner: string, sessionId: string, runIdFact: string | null, stopReason: string, generation: number): Promise<void> {
+    let observation: NativeTurnObservation | null = null
+    try { observation = await this.#turnReader(sessionId, this.#signal) } catch { observation = null }
+    const ledger = this.#ledgers.get(owner)
+    if (ledger === undefined || this.#signal?.aborted === true || this.#generation(ledger, sessionId) !== generation) return
+    const end = observation?.end ?? null
+    const turn = end?.turn ?? observation?.lastTurn ?? null
+    const itemId = this.#itemId(sessionId, runIdFact, turn)
+    if (stopReason === 'aborted') {
+      // Report only a cancellation this owner side did not cause; an unreadable cause stays unobservable.
+      if (end?.kind === 'aborted' && end.cause !== null && OWN_CANCEL_CAUSES.has(end.cause)) return
+      const cause = end?.kind === 'aborted' ? end.cause : null
+      const item: NativeSubagentStop = freeze({ itemId, sessionId, turn, outcome: 'aborted', cancelCause: cause, diagnostic: null, evidence: null,
+        observed: cause === null ? 'subagent/end: aborted; cancel cause not observable' : 'subagent/end: aborted by ' + cause })
+      this.#openStop(owner, ledger, item)
+      return
+    }
+    if (stopReason === 'error') {
+      const diagnostic = end?.kind === 'error' ? end.diagnostic : null
+      const item: NativeSubagentStop = freeze({ itemId, sessionId, turn, outcome: 'error', cancelCause: null, diagnostic, evidence: null,
+        observed: 'subagent/end: error' + (diagnostic === null ? '' : ' (' + diagnostic + ')') })
+      this.#openStop(owner, ledger, item)
+      return
+    }
+    if (stopReason === 'max-tokens' || stopReason === 'refusal') {
+      const item: NativeSubagentStop = freeze({ itemId, sessionId, turn, outcome: stopReason, cancelCause: null, diagnostic: null, evidence: null, observed: 'subagent/end: ' + stopReason })
+      this.#openStop(owner, ledger, item)
+      return
+    }
+    if (stopReason === 'completed') return
+    // A merge-extended reason this build cannot classify: keep the host fact, claim no cause.
+    this.#openStop(owner, ledger, this.#unobservable(sessionId, runIdFact, turn, end?.seq ?? observation?.lastSeq ?? null, 'subagent/end: ' + stopReason + ' (unrecognized reason)'))
+  }
+  /**
+   * Attribute each expected-delta mismatch by construction; only a counted run with no end and no
+   * idle transition is a suspect, and only that child's own log is read.
+   */
   #reconcile(owner: string, skip?: string): void {
     const ledger = this.#ledgers.get(owner), membership = this.#members.get(owner)
     if (ledger === undefined || membership === undefined) return
     this.#bump(owner)
     // An unreadable catalog cannot distinguish a stopped run from an unlisted branch: keep the
-    // stated lower bound instead of inventing a silent stop.
+    // stated lower bound instead of inventing an outcome.
     if (!membership.known) return
     const live = this.#liveIndex(), running = this.#running(live, membership)
-    let mismatched = false
     for (const [runId, run] of ledger.runs) {
       if (runId === skip || running.has(runId)) continue
       const agent = live.get(runId)
       if (agent !== undefined) {
         // A live Agent that is not running is a parked inbox or a driver that has not woken yet,
-        // not a stopped run; an idle observation explains any later loss.
-        if (agent.status === 'idle') { run.sawIdle = true; this.#closeStop(ledger, runId, run) }
+        // not a lost run; an idle observation explains any later loss.
+        if (agent.status === 'idle') run.sawIdle = true
         continue
       }
-      // Never counted running: the expectation never materialized, so this is not a silent stop.
-      if (!run.counted) { ledger.runs.delete(runId); continue }
-      // An observed idle transition explains the loss; a later end is expected, not required.
-      if (run.sawIdle) { ledger.runs.delete(runId); this.#closeStop(ledger, runId, run); continue }
-      // Silent stop: counted running, Agent gone, and neither a subagent/end nor an idle
-      // transition was observed. One item per child; repeats degrade, they never re-notify.
+      // Never counted running, or an observed idle transition already explained the loss.
+      if (!run.counted || run.sawIdle) { ledger.runs.delete(runId); continue }
+      if (run.settle !== null) continue
+      // Expected-delta mismatch: mechanical drift evidence, then classification from this child's
+      // own log only. No other child is read and an ordinary count read never reaches here.
       ledger.drifts.push({ sessionId: runId, expectedDelta: 1, observed: running.size })
       if (ledger.drifts.length > 64) ledger.drifts.splice(0, ledger.drifts.length - 64)
-      if (run.itemId === null) {
-        const itemId = runId + ':' + (++this.#items)
-        run.itemId = itemId
-        const item: NativeSubagentStop = { itemId, sessionId: runId, observed: 'left-running-set-without-end' }
-        ledger.stops.set(runId, item)
-        const queued: NativeSubagentStopEvent = { ownerSessionId: owner, ...item }
-        this.#opened.push(queued)
-        this.#onStop?.(queued)
-      }
-      ledger.mismatches += 1
-      mismatched = true
+      run.settle = ++this.#settles
+      const token = run.settle, runIdFact = run.runId, generation = this.#generation(ledger, runId)
+      void this.#serial(owner, () => this.#classifySuspect(owner, run, token, runId, runIdFact, generation)).catch(() => undefined)
     }
-    if (mismatched) { if (ledger.mismatches >= 2) ledger.degraded = true }
-    else { ledger.mismatches = 0; ledger.degraded = false }
-  }
-  #closeStop(ledger: NativeRunningLedger, runId: string, run: NativeRunState): void {
-    if (run.itemId === null) return
-    run.itemId = null
-    ledger.stops.delete(runId)
   }
   async read(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> {
     const owner = id(ownerSessionId, 'ownerSessionId')
@@ -378,8 +555,8 @@ class NativeRunningCounter {
       await this.#settle(owner)
       membership = this.#members.get(owner)
       if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
-      ledger = { runs: new Map(), drifts: [], stops: new Map(), mismatches: 0, degraded: false, unresolved: new Set() }
-      for (const runId of this.#running(this.#liveIndex(), membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, itemId: null })
+      ledger = { runs: new Map(), drifts: [], stops: new Map(), unresolved: new Set(), generations: new Map() }
+      for (const runId of this.#running(this.#liveIndex(), membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, runId: null, settle: null })
       this.#ledgers.set(owner, ledger)
     }
     if (membership === undefined || ledger === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
@@ -397,7 +574,6 @@ class NativeRunningCounter {
       for (const candidate of unknown) if (membership.ids.has(candidate)) ledger.unresolved.delete(candidate); else ledger.unresolved.add(candidate)
     }
     const running = this.#running(live, membership).size, total = Math.max(membership.total, running)
-    if (ledger.degraded) return { known: false, running, total, reason: 'native-subagent-silent-stop' }
     if (!membership.known) return { known: false, running, total, reason: membership.reason }
     return { known: true, running, total, reason: null }
   }
@@ -405,16 +581,16 @@ class NativeRunningCounter {
     const ledger = this.#ledgers.get(String(ownerSessionId))
     return ledger === undefined ? [] : [...ledger.drifts]
   }
-  /** Open silent-stop items for one owner; the never-dropped item set behind the snapshot items. */
+  /** Open terminal-outcome items for one owner; the durable dedup set behind the snapshot rows. */
   stops(ownerSessionId: string): readonly NativeSubagentStop[] {
     const ledger = this.#ledgers.get(String(ownerSessionId))
     return ledger === undefined ? [] : [...ledger.stops.values()]
   }
-  /** New stop items since the previous call; each item is queued exactly once. */
+  /** New outcome items since the previous call; each item is queued exactly once. */
   takeOpened(): readonly NativeSubagentStopEvent[] {
     return this.#opened.splice(0, this.#opened.length)
   }
-  /** Monotone count-state revision so a cached snapshot cannot mask a stop or a degradation. */
+  /** Monotone count-state revision so a cached snapshot cannot mask an item or a count change. */
   revision(ownerSessionId: string): number {
     return this.#revisions.get(String(ownerSessionId)) ?? 0
   }
@@ -426,7 +602,10 @@ class NativeRunningCounter {
       if (ledger === undefined) continue
       const run = ledger.runs.get(sessionId)
       if (status === 'running') {
-        if (run !== undefined) { run.counted = true; run.sawIdle = false; this.#closeStop(ledger, sessionId, run) }
+        // Running again is a new activation: any open item is resolved by the existing clearing path.
+        if (run !== undefined) { run.counted = true; run.sawIdle = false; run.settle = null }
+        this.#activate(ledger, sessionId)
+        this.#closeSessionStops(owner, ledger, sessionId)
         this.#reconcile(owner, sessionId)
       } else if (run !== undefined) run.sawIdle = true
     }
@@ -450,29 +629,41 @@ class NativeRunningCounter {
       this.#afterWalk(owner, () => this.#reconcile(owner))
     }
   }
-  start(sessionId: string, local: boolean, agent?: Agent): void {
+  start(sessionId: string, local: boolean, agent?: Agent, runId?: string): void {
     for (const owner of this.#ownersFor(sessionId, agent)) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
       if (local) {
-        const run = ledger.runs.get(sessionId) ?? { counted: false, sawIdle: false, itemId: null }
+        const run = ledger.runs.get(sessionId) ?? { counted: false, sawIdle: false, runId: null, settle: null }
         run.sawIdle = false
-        this.#closeStop(ledger, sessionId, run)
+        run.settle = null
+        if (runId !== undefined) run.runId = runId
+        this.#activate(ledger, sessionId)
+        this.#closeSessionStops(owner, ledger, sessionId)
         ledger.runs.set(sessionId, run)
       }
       if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcile(owner, sessionId)
       else this.#afterWalk(owner, () => this.#reconcile(owner, sessionId))
     }
   }
-  end(sessionId: string, local: boolean, agent?: Agent): void {
+  /**
+   * Primary outcome edge. The published `stopReason` is used directly; a non-`completed` reason
+   * opens one item after this child's own log supplied the turn/cause/failure detail. A late end
+   * also clears any open item for the same child through the existing clearing path.
+   */
+  end(sessionId: string, local: boolean, agent?: Agent, stopReason?: string, runId?: string): void {
     for (const owner of this.#ownersFor(sessionId, agent)) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
       const run = ledger.runs.get(sessionId)
-      if (run !== undefined) this.#closeStop(ledger, sessionId, run)
-      if (local) ledger.runs.delete(sessionId)
+      const hostRunId = runId ?? run?.runId ?? null
+      if (run !== undefined) { run.settle = null; ledger.runs.delete(sessionId) }
+      this.#closeSessionStops(owner, ledger, sessionId)
       if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcile(owner)
       else this.#afterWalk(owner, () => this.#reconcile(owner))
+      if (!local || stopReason === undefined || stopReason === 'completed') continue
+      const generation = this.#generation(ledger, sessionId)
+      void this.#serial(owner, () => this.#classifyEnd(owner, sessionId, hostRunId, stopReason, generation)).catch(() => undefined)
     }
   }
   catalog(sessionId: string, childId: string | undefined): void {
@@ -545,7 +736,7 @@ export type HostEvent = (
   | { readonly kind: 'agent-disposed'; readonly sessionId: string }
   | { readonly kind: 'subagent-start'; readonly sessionId: string; readonly runId: string; readonly provider: string; readonly local: boolean }
   | { readonly kind: 'subagent-end'; readonly sessionId: string; readonly runId: string; readonly provider: string; readonly local: boolean; readonly stopReason: string }
-  | { readonly kind: 'native-stop'; readonly ownerSessionId: string; readonly sessionId: string; readonly itemId: string; readonly observed: string }
+  | { readonly kind: 'native-stop'; readonly ownerSessionId: string; readonly item: NativeSubagentStop }
 ) & { readonly actualAgent?: Agent }
 
 /** The core is supplied by the package composition, not fabricated by this adapter. */
@@ -606,7 +797,7 @@ export interface HostPorts {
   nativeSubagentActivity(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity>
   /** Node-reconciliation drifts for one owner; mechanical evidence, never a count source. */
   nativeSubagentDrift(ownerSessionId: string): readonly NativeCountDrift[]
-  /** Open silent-stop items for one owner; the snapshot items the main agent must handle. */
+  /** Open terminal-outcome items for one owner; the snapshot items the main agent must handle. */
   nativeSubagentStops(ownerSessionId: string): readonly NativeSubagentStop[]
   /** Monotone native-count state revision; part of snapshot freshness, never a count. */
   nativeSubagentCountRevision(ownerSessionId: string): number
@@ -1030,7 +1221,20 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     // One event-driven count per mount: membership walks happen only at membership-change
     // nodes, so the panel/tool read path is O(live agents) with no catalog IO.
     let forwardNativeStop: (event: NativeSubagentStopEvent) => void = () => {}
-    const nativeCounter = new NativeRunningCounter({ liveAgents: () => ctx.agents.list(), lister: () => nativeSubagentLister(ctx), signal: lifetime.signal, onStop: event => forwardNativeStop(event) })
+    // The reconciliation path reads ONLY the suspect child's own log. A live child's owned events
+    // are already in memory; a cold child is observed through the public session query, never
+    // resumed, and is never walked as a tree.
+    const readNativeTurn: NativeTurnReader = async (rawSessionId, signal) => {
+      const sessionId = SessionId(id(rawSessionId, 'sessionId'))
+      const live = ctx.agents.get(sessionId)
+      if (live !== undefined && live.session.header.origin === 'subagent') return observeNativeTurn(live.session.ownEvents())
+      interface NativeTurnQuery { observeSession(id: SessionId, options?: { readonly projectionMode?: 'none'; readonly signal?: AbortSignal }): Promise<{ readonly inheritedEventCount: number; readonly events: readonly SessionEvent[] } & Disposable> }
+      const query = ctx.get('sessionQuery') as NativeTurnQuery | undefined
+      if (query === undefined || typeof query.observeSession !== 'function') throw new ControlsError('feature-disabled', 'child session log observation is unavailable')
+      const observation = await query.observeSession(sessionId, { projectionMode: 'none', ...(signal === undefined ? {} : { signal }) })
+      try { return observeNativeTurn(observation.events.slice(observation.inheritedEventCount)) } finally { observation[Symbol.dispose]() }
+    }
+    const nativeCounter = new NativeRunningCounter({ liveAgents: () => ctx.agents.list(), lister: () => nativeSubagentLister(ctx), signal: lifetime.signal, onStop: event => forwardNativeStop(event), turnReader: readNativeTurn })
     const readNativeActivity = async (sessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> => {
       const ownerSessionId = id(sessionId, 'sessionId')
       const control = signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal])
@@ -1304,9 +1508,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     if (active.context) disposers.push(ctx.systemPrompt.context({ name: 'mattpocock-controls', order: 130,
       text: assembly => assembly.agent ? active.context!(agentCaller(ctx, assembly.agent)) : '' }))
     const observe = (event: HostEvent) => { void track(() => active.observe(Object.freeze(event))).catch(error => ctx.logger('mattpocock-controls').warn(error)) }
-    // One wake event per new silent-stop item; the item itself stays in the counter until the
-    // child runs again, a late end arrives, or the runtime clears it.
-    forwardNativeStop = stop => observe({ kind: 'native-stop', ownerSessionId: stop.ownerSessionId, sessionId: stop.sessionId, itemId: stop.itemId, observed: stop.observed })
+    // One wake event per new terminal-outcome item; the item stays in the counter until the
+    // child runs again, its start edge arrives, or a late end arrives.
+    forwardNativeStop = stop => { const { ownerSessionId, ...item } = stop; observe({ kind: 'native-stop', ownerSessionId, item }) }
     disposers.push(ctx.on('agent/status', ({ agent, status }) => {
       nativeCounter.status(agent, status)
       observe({ kind: 'agent-status', sessionId: agent.id, status, actualAgent: agent })
@@ -1318,12 +1522,12 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     }))
     disposers.push(ctx.on('subagent/start', info => {
       const agent = info.local ? ctx.agents.get(info.id) : undefined
-      nativeCounter.start(String(info.id), info.local, agent)
+      nativeCounter.start(String(info.id), info.local, agent, String(info.runId))
       observe({ kind: 'subagent-start', sessionId: info.id, runId: info.runId, provider: info.provider, local: info.local, ...(agent ? { actualAgent: agent } : {}) })
     }))
     disposers.push(ctx.on('subagent/end', info => {
       const agent = info.local ? ctx.agents.get(info.id) : undefined
-      nativeCounter.end(String(info.id), info.local, agent)
+      nativeCounter.end(String(info.id), info.local, agent, info.stopReason, String(info.runId))
       observe({ kind: 'subagent-end', sessionId: info.id, runId: info.runId, provider: info.provider, local: info.local, stopReason: info.stopReason, ...(agent ? { actualAgent: agent } : {}) })
     }))
     ctx.effect(() => dispose)

@@ -60,18 +60,59 @@ export interface NativeCountDrift {
     /** Live running descendants observed at the reconciling node. */
     readonly observed: number;
 }
-/** One open silent-stop item the main agent is expected to handle. */
+/** The published terminal outcome vocabulary for one child turn. `unobservable` is never a cause. */
+export type NativeOutcomeKind = 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'refusal' | 'interrupted' | 'unobservable';
+/** One `turn/end` fact read from a child's own log, exactly as the session vocabulary publishes it. */
+export interface NativeTurnEndFact {
+    /** `unknown` marks a merge-extended kind this build cannot classify; it is never reported as a cause. */
+    readonly kind: 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'interrupted' | 'forked' | 'unknown';
+    readonly turn: number;
+    readonly seq: number;
+    /** Published `TurnCancelCause` kind for an aborted turn; null when the log carried none. */
+    readonly cause: string | null;
+    /** Published `LlmFailure` code/message verbatim (joined for display); null when none was published. */
+    readonly diagnostic: string | null;
+}
+/** A child's own log tail: its last `turn/end`, when one exists, plus the last observed turn/seq. */
+export interface NativeTurnObservation {
+    readonly end: NativeTurnEndFact | null;
+    readonly lastTurn: number | null;
+    readonly lastSeq: number | null;
+}
+/** Reads ONLY one child's own log. A rejected read is unobservable, never a guessed outcome. */
+export type NativeTurnReader = (sessionId: string, signal?: AbortSignal) => Promise<NativeTurnObservation>;
+/** One open terminal-outcome item the main agent is expected to handle. */
 export interface NativeSubagentStop {
-    /** Stable item identity; a later stop of the same child is a new item. */
+    /** Durable dedup key: child session id + turn, plus the host runId when the host supplied one. */
     readonly itemId: string;
     readonly sessionId: string;
-    /** Mechanical observation; never a guessed cause. */
+    /** The turn whose outcome this item reports; null when no turn could be read. */
+    readonly turn: number | null;
+    /** The published outcome. `unobservable` states the absence of a readable fact, never a cause. */
+    readonly outcome: NativeOutcomeKind;
+    /** Published aborted cancel cause; null when unreadable or not an abort. */
+    readonly cancelCause: string | null;
+    /** Published failure facts (LlmFailure code/message verbatim); null when the host supplied none. */
+    readonly diagnostic: string | null;
+    /** Evidence pointer carried only by an `unobservable` outcome. */
+    readonly evidence: {
+        readonly sessionId: string;
+        readonly turn: number | null;
+        readonly seq: number | null;
+    } | null;
+    /** One-line mechanical observation; never a guessed cause. */
     readonly observed: string;
 }
-/** A stop item plus its owner, queued for the main-agent wake notification. */
+/** An outcome item plus its owner, queued for the main-agent wake notification. */
 export interface NativeSubagentStopEvent extends NativeSubagentStop {
     readonly ownerSessionId: string;
 }
+/**
+ * Read a child's own event suffix into the published turn-end vocabulary. Nothing is synthesized:
+ * a reason kind this build does not recognize stays `unknown`, an aborted cause is the published
+ * `TurnCancelCause` kind, and a failure diagnostic is the published `LlmFailure` code/message.
+ */
+export declare function observeNativeTurn(events: readonly SessionEvent[]): NativeTurnObservation;
 export interface ContinuableChildRequest {
     readonly provider: 'spawn' | 'fork';
     readonly label: string;
@@ -108,9 +149,7 @@ export type HostEvent = ({
 } | {
     readonly kind: 'native-stop';
     readonly ownerSessionId: string;
-    readonly sessionId: string;
-    readonly itemId: string;
-    readonly observed: string;
+    readonly item: NativeSubagentStop;
 }) & {
     readonly actualAgent?: Agent;
 };
@@ -188,7 +227,7 @@ export interface HostPorts {
     nativeSubagentActivity(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity>;
     /** Node-reconciliation drifts for one owner; mechanical evidence, never a count source. */
     nativeSubagentDrift(ownerSessionId: string): readonly NativeCountDrift[];
-    /** Open silent-stop items for one owner; the snapshot items the main agent must handle. */
+    /** Open terminal-outcome items for one owner; the snapshot items the main agent must handle. */
     nativeSubagentStops(ownerSessionId: string): readonly NativeSubagentStop[];
     /** Monotone native-count state revision; part of snapshot freshness, never a count. */
     nativeSubagentCountRevision(ownerSessionId: string): number;

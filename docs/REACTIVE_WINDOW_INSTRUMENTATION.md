@@ -49,7 +49,7 @@ instrument 查询与 UI 都是所属实例账本的投影，不是另外几套�
 管理模块把这些可信信号转换为自己的 execution/lease 状态；适配后的 execution-released 是拟设计的内部回执，不冒充已有 DSH 事件。关闭信号按具体实例/执行代次/lease 匹配，一次释放，迟到信号不能关闭续用后的新执行。订阅放在仍存活的管理 scope，不能把唯一关闭监控绑定在已销毁的 child scope。
 缺少关闭/释放回执时保持 unknown/reconcile，核对实际运行事实；不回退到正则、关键词、LLM 判断、沉默时长或模型自报状态。
 
-**S 以正在运行的子代理为准（0.4.21 执行审计规则；当前计数改由宿主实时运行状态提供）**：continuable child 的一次 run 结束会让内置 AgentLoop 移出该 Agent 实例（`agent/disposed`），这个实例确实不在运行，因此受管 execution 按原语义发 `released`、释放槽位（`released → running` 会被状态机按回退拒绝，不能原地复活）。durable session 随后被唤醒、实例重建时，插件用同一 `executionId` 走一次新的 reservation（新 generation、新 leaseId；`windows.ts` 明确支持 `released` 执行的重新准入），补 `running` 回执并更新绑定，唤醒的 lane 重新占用 S 槽位。未匹配已知绑定的唤醒仍如实报未登记原生活动。唤醒与重准入仍按上述机制更新执行审计行；投影的 `S.used`（输入框上方进度行里的数）现在读取宿主实时运行状态：成员资格由原生目录在成员变更节点刷新，running 事实取 live `Agent.status`，因此宿主可枚举时等于**当前正在运行的子代理数**（常驻 idle 不计），不可枚举时是明示下界。被计为 running 的 run 无 end、无 idle 转换却消失时，快照给出 `nativeStops` 并唤醒主代理；基线、热重载与重启只归因为 re-establishment。
+**S 以正在运行的子代理为准（0.4.21 执行审计规则；当前计数改由宿主实时运行状态提供）**：continuable child 的一次 run 结束会让内置 AgentLoop 移出该 Agent 实例（`agent/disposed`），这个实例确实不在运行，因此受管 execution 按原语义发 `released`、释放槽位（`released → running` 会被状态机按回退拒绝，不能原地复活）。durable session 随后被唤醒、实例重建时，插件用同一 `executionId` 走一次新的 reservation（新 generation、新 leaseId；`windows.ts` 明确支持 `released` 执行的重新准入），补 `running` 回执并更新绑定，唤醒的 lane 重新占用 S 槽位。未匹配已知绑定的唤醒仍如实报未登记原生活动。唤醒与重准入仍按上述机制更新执行审计行；投影的 `S.used`（输入框上方进度行里的数）现在读取宿主实时运行状态：成员资格由原生目录在成员变更节点刷新，running 事实取 live `Agent.status`，因此宿主可枚举时等于**当前正在运行的子代理数**（常驻 idle 不计），不可枚举时是明示下界。被计为 running 的 run 无 end、无 idle 转换却消失时，只读该 child 自身日志的最后一个 `turn/end`（或 `subagent/end` 的 stopReason），按公开词表在快照的 `nativeStops` 给出真实结局或明示 `unobservable`（附证据指针）并唤醒主代理；基线、热重载与重启只归因为 re-establishment。
 
 ## 3. 优先路线：现有插件入口实现同一步消费
 

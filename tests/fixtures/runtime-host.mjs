@@ -180,7 +180,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
 }
 
 // Installed SDK registries + actual mountHost/RuntimeFacade composition. No GUI/profile boot.
-export async function mountedFixture(t, { futureNativeActivityKnown = false, seedUnits = new Map(), configureBeforeMount, runtimeCreated } = {}) {
+export async function mountedFixture(t, { futureNativeActivityKnown = false, seedUnits = new Map(), sessionLogs = new Map(), configureBeforeMount, runtimeCreated } = {}) {
   const ctx = new sdk.Context(), agents = new Map(), nativeLive = new Set()
   const root = actualAgent('root'), child = actualAgent('child', { parent: 'root', managed: true })
   agents.set(root.id, root); agents.set(child.id, child)
@@ -189,7 +189,16 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
   ctx.provide('agents', { get: id => agents.get(id), list: () => [...agents.values()] })
   const workspace = { id: 'W', path: '/fixture', title: 'Fixture', status: async () => 'ok' }
   ctx.provide('workspaceRegistry', { get: id => id === 'W' ? workspace : undefined, list: () => [workspace], resolveByPath: async path => path === '/fixture' ? workspace : undefined })
-  ctx.provide('sessionQuery', { async observeSession() { throw new Error('No cold session activation') } })
+  // Controlled cold-log fixture: only the child session ids a test registered have a readable
+  // own-event suffix; every other id is an unreadable log (never invented data).
+  const sessionReads = []
+  ctx.provide('sessionQuery', { async observeSession(id) {
+    const key = String(id)
+    sessionReads.push(key)
+    const events = sessionLogs.get(key)
+    if (events === undefined) throw new Error('No cold session log for ' + key)
+    return { header: { id: key, version: 4, createdAt: 0, cwd: '/fixture' }, inheritedEventCount: 0, events, [Symbol.dispose]() {} }
+  } })
   new sdk.TypertRegistry(ctx); new sdk.SystemPrompt(ctx, {}); new sdk.ToolRuntime(ctx, {})
   const units = new Map([...seedUnits].map(([name, rows]) => [name, new Map(rows)]))
   const backend = { kv: { async open(descriptor) {
@@ -233,7 +242,7 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
     return await observe(event)
   }
   t.after(async () => { await mounted.dispose(); await domain.closeAll() })
-  return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, get runtimeStorage() { return runtimeStorage },
+  return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, sessionLogs, sessionReads, get runtimeStorage() { return runtimeStorage },
     execute(name, args = {}, agent = root) { return ctx.tools.execute({ name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }) },
   }
 }

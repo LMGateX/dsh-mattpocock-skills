@@ -4,6 +4,7 @@ import type { InstrumentSnapshot } from './instruments.js'
 import type { WindowSnapshot } from './windows.js'
 import type { ResourceView } from './resources.js'
 import type { WorktreeBindingCurrent } from './worktree-bindings.js'
+import type { NativeStopRow } from './remote-contract.js'
 
 /** Supplied by authenticated host associations, never parsed from a model/wire command. */
 export interface ConsumptionIdentity {
@@ -23,8 +24,8 @@ export interface ConsumptionSnapshot {
   readonly resources: readonly ResourceView[]
   /** Re-established native count provenance; null means no window facts were read. */
   readonly nativeCount?: { readonly reestablished: boolean; readonly runtimeId: string; readonly previousRuntimeId: string | null } | null
-  /** Open silent-stop items the main agent must handle; never a count source. */
-  readonly nativeStops?: readonly { readonly itemId: string; readonly sessionId: string; readonly observed: string; readonly lane: { readonly workflowId: string | null; readonly localTicketId: string | null } | null }[]
+  /** Open terminal-outcome items the main agent must handle; never a count source. */
+  readonly nativeStops?: readonly NativeStopRow[]
   /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
   readonly worktreeBindings?: readonly (WorktreeBindingCurrent & { readonly cleanupDue?: boolean })[]
   /** Explicitly retained effective conclusions, not resolved question/option histories. */
@@ -212,6 +213,18 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
   }
 }
 function pendingReleaseRows(snapshot: ConsumptionSnapshot): readonly { readonly localTicketId: string; readonly label: string | null }[] { return snapshot.pendingRelease ?? [] }
+/** Render one published outcome; 'unobservable' reads as unobservable, never as a cause. */
+function nativeOutcomeText(row: NativeStopRow): string {
+  const where = row.sessionId + (row.turn === null ? '' : ' turn ' + row.turn)
+  const lane = row.lane !== null && row.lane.workflowId !== null ? ' (lane ' + row.lane.workflowId + (row.lane.localTicketId === null ? '' : '/' + row.lane.localTicketId) + ')' : ''
+  const outcome = row.outcome === 'unobservable'
+    ? 'outcome unobservable (no readable turn/end' + (row.evidence !== null && row.evidence.seq !== null ? '; last observed seq ' + row.evidence.seq : '') + ')'
+    : row.outcome === 'error' ? 'turn failed' + (row.diagnostic === null ? '' : ' (' + row.diagnostic + ')')
+    : row.outcome === 'interrupted' ? 'turn never ended normally (crash or forced stop)'
+    : row.outcome === 'aborted' ? 'turn cancelled' + (row.cancelCause === null ? ' (cancel cause unobservable)' : ' by ' + row.cancelCause)
+    : 'ended with ' + row.outcome
+  return where + ' — ' + outcome + lane
+}
 function protocol(snapshot: ConsumptionSnapshot): string {
   const p = snapshot.policy
   const lines = ['Instrument state: current effective policy supersedes earlier instrument instructions.',
@@ -229,7 +242,7 @@ function protocol(snapshot: ConsumptionSnapshot): string {
     const pendingRelease=pendingReleaseRows(snapshot)
     if(pendingRelease.length>0)lines.push('T pending release: '+pendingRelease.map(row=>row.localTicketId+(row.label===null?'':' ('+row.label+')')).join(', ')+' — call mattpocock_window release with that ticket\'s generation; the slot stays held until you do.')
     const nativeStops=snapshot.nativeStops??[]
-    if(nativeStops.length>0)lines.push('Native stops to handle: '+nativeStops.map(row=>row.sessionId+(row.lane!==null&&row.lane.workflowId!==null?' (lane '+row.lane.workflowId+(row.lane.localTicketId===null?'':'/'+row.lane.localTicketId)+')':'')).join(', ')+' — each child was counted running and left the running set with no subagent/end; the item clears when the child is observed running again or its end arrives.')
+    if(nativeStops.length>0)lines.push('Native child outcomes to handle: '+nativeStops.map(row=>nativeOutcomeText(row)).join('; ')+'. Each item names one child turn from the host\'s published outcome vocabulary, or states that the outcome is unobservable; the item clears when the child runs again or its end arrives.')
   }
   else if (p.features.windows.status === 'disabled') lines.push('Windows are OFF: preserve existing execution facts and records.')
   else lines.push('Windows are unsupported for this policy: usage coverage remains explicit in capabilities; missing facts are not known/free slots.')

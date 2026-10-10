@@ -111,7 +111,8 @@ test('a counted run lost with no end opens one main-agent item and one wake, the
   assert.equal(snap.windows.S.used, 1)
   assert.deepEqual(snap.nativeStops, [])
   assert.equal(notices.length, 0)
-  // Silent stop: the counted run's live Agent is gone, no subagent/end, same runtime, fresh membership.
+  // Expected-delta mismatch: the counted run's live Agent is gone, no subagent/end, same runtime,
+  // fresh membership. The child's log is unreadable here, so the outcome is unobservable.
   f.agents.delete('worker')
   f.ctx.emit('agent/disposed', { agent: worker })
   await waitFor(() => notices.length === 1)
@@ -119,18 +120,23 @@ test('a counted run lost with no end opens one main-agent item and one wake, the
   assert.equal(snap.windows.S.countKnown, true, 'one mismatch is an open item; only a repeat degrades')
   assert.equal(snap.nativeStops.length, 1)
   assert.equal(snap.nativeStops[0].sessionId, 'worker')
-  assert.equal(snap.nativeStops[0].observed, 'left-running-set-without-end')
+  assert.equal(snap.nativeStops[0].outcome, 'unobservable')
+  assert.equal(snap.nativeStops[0].turn, null)
+  assert.equal(snap.nativeStops[0].diagnostic, null, 'an unreadable log never yields an invented cause')
+  assert.deepEqual(snap.nativeStops[0].evidence, { sessionId: 'worker', turn: null, seq: null })
+  assert.equal(snap.nativeStops[0].observed, 'child log could not be read')
   assert.match(notices[0].notificationId, /^native-stop:worker:/)
-  assert.equal(snap.health.some(row => row.scope === 'native-subagent-stop' && row.reason.includes('worker')), true)
+  assert.equal(snap.health.some(row => row.scope === 'native-subagent-outcome' && row.reason.includes('worker') && row.reason.includes('outcome unobservable')), true)
   assert.deepEqual(f.mounted.ports.nativeSubagentDrift('root'), [{ sessionId: 'worker', expectedDelta: 1, observed: 0 }])
-  // A repeated node observation must not re-notify; the count degrades instead of staying stale.
+  // A repeated node observation re-derives the same failed turn and must not re-notify or re-read:
+  // the classified run is retired and the durable item keeps its identity.
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'worker' } })
   snap = await read()
   await new Promise(resolve => setTimeout(resolve, 20))
-  assert.equal(notices.length, 1, 'one open item per child is never re-notified at later nodes')
+  assert.equal(notices.length, 1, 'one open item per failed turn is never re-notified at later nodes')
   assert.equal(snap.nativeStops.length, 1)
-  assert.equal(snap.windows.S.countKnown, false)
-  assert.equal(snap.windows.S.countReason, 'native-subagent-silent-stop')
+  assert.equal(snap.nativeStops[0].itemId, 'worker:unknown')
+  assert.equal(snap.windows.S.countKnown, true, 'a classified outcome item is not a count degradation')
   // Observed running again clears the item and restores the count through the same live fact.
   f.agents.set('worker', worker)
   worker.status = 'running'

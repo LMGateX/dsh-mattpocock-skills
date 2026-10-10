@@ -10,7 +10,7 @@ import type { InstrumentSnapshot } from './controls/instruments.js';
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js';
 import type { WindowSnapshot } from './controls/windows.js';
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js';
-import type { ControlsRemote as HostControlsRemote, HostCaller, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js';
+import type { ControlsRemote as HostControlsRemote, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js';
 export declare const PACKAGE_NAME = "@lmgatex/dsh-mattpocock-skills";
 export declare const TAB_KIND = "mattpocock-collaboration";
 export declare const TAB_ID: string;
@@ -90,6 +90,8 @@ interface SessionFace {
 }
 type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SessionFace;
 /** T is explicit bookkeeping; S tracking is not proof that all runtime work is known. */
+/** State the published outcome; 'unobservable' reads as unobservable, never as a cause. */
+export declare function nativeStopText(row: NativeStopRow): string;
 export declare function windowSummary(windows: WindowSnapshot | null, health?: ClientSessionSnapshot['health']): readonly string[];
 export declare function WindowProjection(props: {
     readonly view: ClientSessionSnapshot;

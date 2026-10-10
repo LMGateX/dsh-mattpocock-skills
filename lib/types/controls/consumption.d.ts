@@ -4,6 +4,7 @@ import type { InstrumentSnapshot } from './instruments.js';
 import type { WindowSnapshot } from './windows.js';
 import type { ResourceView } from './resources.js';
 import type { WorktreeBindingCurrent } from './worktree-bindings.js';
+import type { NativeStopRow } from './remote-contract.js';
 /** Supplied by authenticated host associations, never parsed from a model/wire command. */
 export interface ConsumptionIdentity {
     readonly principalId: string;
@@ -31,16 +32,8 @@ export interface ConsumptionSnapshot {
         readonly runtimeId: string;
         readonly previousRuntimeId: string | null;
     } | null;
-    /** Open silent-stop items the main agent must handle; never a count source. */
-    readonly nativeStops?: readonly {
-        readonly itemId: string;
-        readonly sessionId: string;
-        readonly observed: string;
-        readonly lane: {
-            readonly workflowId: string | null;
-            readonly localTicketId: string | null;
-        } | null;
-    }[];
+    /** Open terminal-outcome items the main agent must handle; never a count source. */
+    readonly nativeStops?: readonly NativeStopRow[];
     /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
     readonly worktreeBindings?: readonly (WorktreeBindingCurrent & {
         readonly cleanupDue?: boolean;

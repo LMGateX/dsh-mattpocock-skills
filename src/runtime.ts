@@ -199,6 +199,21 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     return rows
   }
+/**
+ * Mechanical outcome text for the main-agent health row. 'unobservable' states the absence of a
+ * readable turn/end (with its evidence pointer) and is never rendered as a cause.
+ */
+  const nativeOutcomeText=(stop:NonNullable<RuntimeSnapshot['nativeStops']>[number]):string=>{
+    const where='session '+stop.sessionId+(stop.turn===null?'':' turn '+stop.turn)
+    const outcome=stop.outcome==='unobservable'
+      ?'outcome unobservable (no readable turn/end'+(stop.evidence!==null&&stop.evidence.seq!==null?'; last observed seq '+stop.evidence.seq:'')+')'
+      :stop.outcome==='error'?'turn failed'+(stop.diagnostic===null?'':' ('+stop.diagnostic+')')
+      :stop.outcome==='interrupted'?'turn never ended normally (crash or forced stop)'
+      :stop.outcome==='aborted'?'turn cancelled'+(stop.cancelCause===null?' (cancel cause unobservable)':' by '+stop.cancelCause)
+      :'ended with '+stop.outcome
+    const lane=stop.lane===null||stop.lane.workflowId===null&&stop.lane.localTicketId===null?'':' (lane '+String(stop.lane.workflowId??'ticketless')+(stop.lane.localTicketId===null?'':'/'+stop.lane.localTicketId)+')'
+    return where+' '+outcome+lane
+  }
 /** Absent and explicit null both mean "no ticket"; a present value must still be a real id. */
   const optionalTicketId=(value:unknown,where:string):string|null=>{
     if(value===undefined||value===null)return null
@@ -313,8 +328,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(windowView)health.push(windowView.S.countKnown
       ?{scope:'execution-admission',status:'current',reason:null}
       :{scope:'execution-admission',status:'unsupported',reason:windowView.S.countReason??'native-subagent-activity-unavailable'})
-    // Open silent-stop items are actionable and must reach the main agent; the lane names the
-    // last known managed dispatch or persisted binding for that child when one exists.
+    // Open terminal-outcome items are actionable and must reach the main agent; each row states
+    // the published outcome (or that it is unobservable) and the lane names the last known managed
+    // dispatch or persisted binding for that child when one exists.
     let nativeStops:NonNullable<RuntimeSnapshot['nativeStops']>=[]
     let nativeCount:RuntimeSnapshot['nativeCount']
     if(windowView!==null){
@@ -327,9 +343,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const lease=binding===undefined?undefined:windowView.executions.find(row=>row.executionId===binding.executionId&&row.instrumentInstanceId===binding.instrumentInstanceId&&row.generation===binding.generation)
           const lane=managed!==undefined?{workflowId:managed.workflowId,localTicketId:managed.ticketIds.length===1?managed.ticketIds[0]!:null}
             :lease===undefined?null:{workflowId:lease.workflowId,localTicketId:lease.localTicketId}
-          return {itemId:stop.itemId,sessionId:stop.sessionId,observed:stop.observed,lane}
+          return {...stop,lane}
         })
-        for(const stop of nativeStops)health.push({scope:'native-subagent-stop',status:'unsupported',reason:'session '+stop.sessionId+' left the running set with no subagent/end'+(stop.lane===null||stop.lane.workflowId===null&&stop.lane.localTicketId===null?'':' (lane '+String(stop.lane.workflowId??'ticketless')+(stop.lane.localTicketId===null?'':'/'+stop.lane.localTicketId)+')')})
+        for(const stop of nativeStops)health.push({scope:'native-subagent-outcome',status:'unsupported',reason:nativeOutcomeText(stop)})
       }
       nativeCount={reestablished:windowView.nativeBaseline.reestablished,runtimeId:windowView.nativeBaseline.runtimeId,previousRuntimeId:windowView.nativeBaseline.previousRuntimeId}
       health.push({scope:'native-count',status:'current',reason:nativeCount.reestablished?'re-established after runtime '+String(nativeCount.previousRuntimeId):null})
@@ -411,12 +427,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return flight
   }
   const scheduleNotification=(ownerSessionId:string,retryAccepted=false):void=>{void flushNotifications(ownerSessionId,retryAccepted).catch(()=>undefined)}
-  /** One wake per silent-stop item: the existing notification path, no second lifecycle. */
+  /**
+   * One wake per terminal-outcome item through the existing notification path. The durable row is
+   * also the dedup ledger: the item key is the child session id + turn (+ runId when the host gave
+   * one), so a repeated observation, a plugin hot reload or a DSH restart reuses the stored row
+   * instead of reporting the same failed turn again.
+   */
   const reportNativeStop=(event:Extract<HostEvent,{kind:'native-stop'}>):Promise<void>=>queue.run(async()=>{
     const view=cachedSessions.get(event.ownerSessionId)
     if(view===undefined)return
-    const notificationId='native-stop:'+event.itemId
-    if(!(await load()).notifications.some(n=>n.notificationId===notificationId))await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-count',state:'pending',messageId:null}]})
+    const stop=event.item
+    const notificationId='native-stop:'+stop.itemId
+    if(!(await load()).notifications.some(n=>n.notificationId===notificationId))await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-outcome',state:'pending',messageId:null}]})
     scheduleNotification(event.ownerSessionId)
   })
   const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
@@ -604,7 +626,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     },
     async observe(event:HostEvent){
-      // A silent stop reported by the native count is an actionable item, not a log line:
+      // A terminal-outcome item reported by the native counter is actionable, not a log line:
       // it takes the existing owner-notification path before any ledger bookkeeping.
       if(event.kind==='native-stop'){await reportNativeStop(event);return}
       // A disposed session never prepares again: drop its baseline so the retained Agent, its

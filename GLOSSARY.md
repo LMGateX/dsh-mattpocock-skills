@@ -36,7 +36,10 @@ _Avoid_：硬配额、强制准入上限
 
 **票窗口（T window）**：主会话当前选择纳入推进范围的票占位集合，其参考上限用于提示推进规模。它与实际执行数量独立，超出参考值不意味着操作不被允许。
 
-**执行窗口（S window）**：占用数以宿主报告的实时运行状态计算——属于该 owner 子树、在成员资格内、且当前 `Agent.status` 为 running 的子代理数——并以本插件执行租约作为派发审计的参考窗口；其参考上限用于提示并行规模。目录行的 `activity` 是会话驻留而非执行，常驻 idle 子代理不计入。宿主枚举完整时数字精确；缺失、被拒、存在 diagnostic 行或成员资格不可读时 used 是明示下界、总数未知。被计为 running 的 run 无结束回执就消失时会形成可行动的 silent-stop item 并唤醒主代理；基线、热重载与重启只归因为 re-establishment。执行事实的可靠程度与是否超限分别表达，未知或超限本身不构成派发禁令。
+**执行窗口（S window）**：占用数以宿主报告的实时运行状态计算——属于该 owner 子树、在成员资格内、且当前 `Agent.status` 为 running 的子代理数——并以本插件执行租约作为派发审计的参考窗口；其参考上限用于提示并行规模。目录行的 `activity` 是会话驻留而非执行，常驻 idle 子代理不计入。宿主枚举完整时数字精确；缺失、被拒、存在 diagnostic 行或成员资格不可读时 used 是明示下界、总数未知。被计为 running 的 run 无结束回执就消失时会按该 child 自身日志的公开结局词表形成可行动的 item（无法读取时为 `unobservable`）并唤醒主代理；基线、热重载与重启只归因为 re-establishment。执行事实的可靠程度与是否超限分别表达，未知或超限本身不构成派发禁令。
+
+**子代理结局（Native child outcome）**：一条子代理 run 的宿主公开终局事实，取自 `subagent/end` 的 `stopReason` 或子代理自身日志最后一个 `turn/end` 的 `TurnEndReason` 词表；去重键为 child session id + turn（宿主给出 runId 时含 runId）。读不到日志或无 `turn/end` 时表示为 `unobservable`，附 session id 与最后观测到的 turn/seq 作为证据指针，不构成原因。
+_Avoid_：silent stop、推断的停止原因、把不可观测写成失败
 
 **执行释放（Execution release）**：某次受管执行已由可信程序回执确认结束且释放其执行名额。它不表示票已交付、持久会话已退休或工作树可以删除。
 
