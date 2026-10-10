@@ -81,6 +81,9 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
   const agents = new Map()
   for (const a of [actualAgent('root'), actualAgent('other'), actualAgent('fork', { parent: 'root' }),
     actualAgent('old-child', { parent: 'root', managed: true, cwd: '/different-worktree' })]) agents.set(a.id, a)
+  // This fixture is the native host: created children are live sessions and a disposed
+  // session is gone. The S count under test reads these facts, never the plugin's ledger.
+  const nativeLive = new Set()
   const cold = new Map(), observations = [], nativeCalls = [], gitCalls = [], guards = [], notificationCalls = []
   const controlsStorage = new core.MemoryControlsStorage()
   const instrumentStorage = new core.MemoryInstrumentStorage()
@@ -114,7 +117,8 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     liveAgent: id => agents.get(id), liveAgents: () => [...agents.values()],
     // Controlled program-port fixture only; real path authorization is exercised by Host tests.
     async authorizeInitialChildCwd(exec,cwd) { exec.signal.throwIfAborted(); if(agents.get(exec.agent.id)!==exec.agent)throw new Error('fixture parent changed'); if(typeof cwd!=='string'||!cwd.startsWith('/'))throw new Error('fixture cwd malformed') },
-    async nativeActivity() { return { known, reason: known ? null : 'all-native-activity-enumeration-unsupported', liveAgents: [...agents.values()] } },
+    async nativeActivity() { return { known, reason: known ? null : 'native-subagent-activity-lower-bound', liveAgents: [...agents.values()] } },
+    async nativeSubagentActivity() { return { known, running: nativeLive.size, total: nativeLive.size, reason: known ? null : 'native-subagent-activity-lower-bound' } },
     installNativeGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     installManagedGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     async executeNative(exec, name, args) { nativeCalls.push({ exec, name, args }); return native(exec, name, args) },
@@ -127,13 +131,29 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     gitRunnerForSession(sessionId, control) { gitCalls.push({ sessionId, signal: control }); return runnerFactory(sessionId, control) },
     resourceLifecycle: { async verifyInitialBinding() { return false }, async closeEntrypoints() { return { closed: false, nativeColdResumeClosed: false } } },
   }
-  runtime = await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs })
+  // The native host would report a created child as live and a disposed one as gone;
+  // both observations reach the fixture through the runtime facade the test drives.
+  const wrapRuntime = instance => {
+    const created = instance.created.bind(instance), observe = instance.observe.bind(instance)
+    instance.created = async (who, control, agent) => { nativeLive.add(agent.id); return await created(who, control, agent) }
+    instance.observe = async event => {
+      // A session stays native-live while its current Agent object is resident; disposing a
+      // superseded run of the same session id is not the session going away.
+      if (event.kind === 'agent-disposed') {
+        const current = event.actualAgent === undefined ? undefined : agents.get(event.actualAgent.id)
+        if (current === undefined || current === event.actualAgent) nativeLive.delete(event.sessionId)
+      }
+      return await observe(event)
+    }
+    return instance
+  }
+  runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs }))
   t.after(() => runtime.dispose())
   if (initialPolicy) await runtime.savePolicy(operator, initialPolicy, 0, signal())
-  const f = { runtime, ports, agents, cold, ctx, controlsStorage, instrumentStorage, windowStorage, resourceStorage,
+  const f = { runtime, ports, agents, nativeLive, cold, ctx, controlsStorage, instrumentStorage, windowStorage, resourceStorage,
     units, grants, observations, nativeCalls, gitCalls, guards, notificationCalls,
     setNotify(fn) { notify = fn },
-    async reopen() { await runtime.dispose(); runtime = await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs }); f.runtime = runtime; return runtime },
+    async reopen() { await runtime.dispose(); runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs })); f.runtime = runtime; return runtime },
     setNative(fn) { native = fn }, setRunner(fn) { runnerFactory = fn },
     async read(id = 'root', who = caller(id)) { return runtime.readSession(who, id, signal()) },
     async save(intent) { return runtime.savePolicy(operator, intent, (await runtime.readPolicy(operator, signal())).revision, signal()) },
@@ -161,7 +181,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
 
 // Installed SDK registries + actual mountHost/RuntimeFacade composition. No GUI/profile boot.
 export async function mountedFixture(t, { futureNativeActivityKnown = false, seedUnits = new Map(), configureBeforeMount, runtimeCreated } = {}) {
-  const ctx = new sdk.Context(), agents = new Map()
+  const ctx = new sdk.Context(), agents = new Map(), nativeLive = new Set()
   const root = actualAgent('root'), child = actualAgent('child', { parent: 'root', managed: true })
   agents.set(root.id, root); agents.set(child.id, child)
   const peer = { id: 'operator', ctx, async dispose() {} }
@@ -190,11 +210,23 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
     // The installed mounted.ports.nativeActivity remains truthful known:false.
     const runtimePorts = futureNativeActivityKnown ? { ...ports,
       async nativeActivity() { return { known: true, reason: null, liveAgents: [...agents.values()] } },
+      async nativeSubagentActivity() { return { known: true, running: nativeLive.size, total: nativeLive.size, reason: null } },
     } : ports
     runtime = await createRuntime(runtimePorts); runtimeCreated?.(runtime); return runtime
   } })
+  // The mounted host is the native side here too: a created child becomes a live
+  // session the native activity query can see, and disposal removes it.
+  const created = runtime.created.bind(runtime), observe = runtime.observe.bind(runtime)
+  runtime.created = async (who, control, agent) => { nativeLive.add(agent.id); return await created(who, control, agent) }
+  runtime.observe = async event => {
+    if (event.kind === 'agent-disposed') {
+      const current = event.actualAgent === undefined ? undefined : agents.get(event.actualAgent.id)
+      if (current === undefined || current === event.actualAgent) nativeLive.delete(event.sessionId)
+    }
+    return await observe(event)
+  }
   t.after(async () => { await mounted.dispose(); await domain.closeAll() })
-  return { ctx, root, child, agents, peer, runtime, mounted, get runtimeStorage() { return runtimeStorage },
+  return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, get runtimeStorage() { return runtimeStorage },
     execute(name, args = {}, agent = root) { return ctx.tools.execute({ name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }) },
   }
 }

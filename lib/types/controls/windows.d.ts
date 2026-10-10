@@ -142,15 +142,26 @@ export interface WindowStorage {
 export interface WindowUsage {
     /** Saved advisory reference, never an execution authorization limit. */
     readonly capacity: number | null;
-    /** Registered held tickets/execution leases; S is not an unobserved native total. */
+    /** T: held tickets. S: running subagents read from the native host at read time. */
     readonly used: number;
-    /** Registered-ledger headroom; null means disabled/unconfigured. Never gates dispatch. */
+    /** Headroom against the reference; null means disabled/unconfigured. Never gates dispatch. */
     readonly available: number | null;
     readonly overcommitted: boolean;
     /** Amount above the reference; null when no reference is configured. */
     readonly overage: number | null;
-    /** Signed reference minus registered usage, including negative overage. */
+    /** Signed reference minus observed usage, including negative overage. */
     readonly gap: number | null;
+}
+/** Native host descendant activity for one owner session; never this plugin's ledger. */
+export interface NativeSubagentActivity {
+    /** True only when the host enumerated every descendant without a diagnostic row. */
+    readonly known: boolean;
+    /** Running descendants the host could read; a lower bound when known is false. */
+    readonly running: number;
+    /** Readable descendant rows; a lower bound when known is false. */
+    readonly total: number;
+    /** Mechanical cause when known is false; null when known. */
+    readonly reason: string | null;
 }
 export interface WindowSnapshot {
     readonly instance: InstrumentInstance;
@@ -167,8 +178,11 @@ export interface WindowSnapshot {
     /** Always instance totals, even when detail is assignment-filtered. */
     readonly T: WindowUsage;
     readonly S: WindowUsage & {
-        /** False means used is only the registered count, not a known complete native count. */
+        /** True only when the host enumerated every descendant without diagnostics; then used is exact. */
         readonly countKnown: boolean;
+        /** Cause of an incomplete native count; null when countKnown. */
+        readonly countReason: string | null;
+        /** Ledger audit of our own dispatches; never the count source. */
         readonly byState: Readonly<Record<ExecutionState, number>>;
     };
 }
@@ -206,6 +220,8 @@ export interface WindowOptions {
     readonly capability: WindowCapability;
     /** Compatibility flag: marks uninspected runtime reconciling, but never blocks reservations. */
     readonly requireKnownRuntime?: boolean;
+    /** Native host descendant activity for one owner; absent means no native count is available. */
+    readonly nativeActivity?: (ownerSessionId: string) => Promise<NativeSubagentActivity>;
     readonly bindProgram: (port: WindowProgramPort) => void;
     readonly newLeaseId?: () => string;
 }

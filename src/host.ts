@@ -35,7 +35,7 @@ import type { InstrumentCommand } from './controls/instrument-state.js'
 import { parsePolicyIntent, parsePolicySnapshot } from './controls/policy.js'
 import type { PolicyIntent, PolicySnapshot } from './controls/policy.js'
 import { createDomainWindowStorage, parseWindowDocument, parseTicketWindowCommand } from './controls/windows.js'
-import type { WindowStorage, TicketWindowCommand } from './controls/windows.js'
+import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js'
 import { createDomainResourceStorage, parseResourceDocument } from './controls/resources.js'
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js'
 import { createDomainVersionedStorage } from './controls/versioned-storage.js'
@@ -71,8 +71,9 @@ export const HOST_CAPABILITIES = freeze({
   multiRootGitWriteScopes: 'unsupported', managedToolRouting: 'supported',
   nativeLifecycleObservation: 'supported', dynamicContext: 'supported',
 } as const)
-export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChildCwd'> & {
+export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChildCwd' | 'allNativeWakeAdmission'> & {
   readonly nativeInitialChildCwd: 'supported' | 'unsupported'
+  readonly allNativeWakeAdmission: 'supported' | 'unsupported'
 }
 /** Which live seam carries an explicit initial child directory. `native` is the
  * upstream activation contract (0.2.1-alpha.2 and later, where the provider itself
@@ -94,6 +95,68 @@ function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
 }
 function initialChildCwdSupported(ctx: Context): boolean {
   return initialChildCwdSeam(ctx) !== 'unsupported'
+}
+/** Structural view of the native subagent catalog seam; no Agent or provider class is fabricated. */
+interface NativeSubagentRow {
+  readonly id: unknown
+  readonly kind: string
+  readonly mode?: string
+  readonly activity?: string
+  readonly reason?: string
+}
+interface NativeSubagentLister {
+  readonly listDescendants?: (rootSessionId: SessionId, signal?: AbortSignal) => Promise<readonly NativeSubagentRow[]>
+  readonly listChildren?: (parentSessionId: SessionId, signal?: AbortSignal) => Promise<readonly NativeSubagentRow[]>
+}
+function nativeSubagentLister(ctx: Context): NativeSubagentLister | undefined {
+  const service = ctx.get('subagents') as NativeSubagentLister | undefined
+  if (service === undefined || typeof service.listDescendants !== 'function' && typeof service.listChildren !== 'function') return undefined
+  return service
+}
+/** Fallback for a host that exposes only direct children: the same pre-order walk and
+ * branch diagnostics as listDescendants, so one unreadable branch never certifies a total. */
+async function listNativeDescendantsByChildren(list: NonNullable<NativeSubagentLister['listChildren']>, root: SessionId, signal: AbortSignal): Promise<readonly NativeSubagentRow[]> {
+  const rows: NativeSubagentRow[] = []
+  const visited = new Set<string>([String(root)])
+  const walk = async (parent: SessionId): Promise<void> => {
+    signal.throwIfAborted()
+    const children = await list(parent, signal)
+    for (const child of children) {
+      const childId = String(child.id)
+      if (visited.has(childId)) continue
+      visited.add(childId)
+      if (child.kind !== 'child' || child.mode === 'unknown') { rows.push({ id: child.id, kind: 'diagnostic', reason: child.kind === 'child' ? 'unsupported' : child.reason ?? 'unavailable' }); continue }
+      rows.push(child)
+      if (child.mode === 'external') continue
+      try { await walk(SessionId(childId)) }
+      catch (error) {
+        signal.throwIfAborted()
+        rows.push({ id: child.id, kind: 'diagnostic', reason: 'unavailable' })
+      }
+    }
+  }
+  await walk(root)
+  return rows
+}
+/** One native listing per call; unknown is explicit and never a guessed zero. */
+async function readNativeSubagentActivity(ctx: Context, ownerSessionId: string, signal: AbortSignal): Promise<NativeSubagentActivity> {
+  const list = nativeSubagentLister(ctx)
+  if (list === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
+  let rows: readonly NativeSubagentRow[]
+  try {
+    rows = typeof list.listDescendants === 'function'
+      ? await list.listDescendants(SessionId(ownerSessionId), signal)
+      : await listNativeDescendantsByChildren(list.listChildren!, SessionId(ownerSessionId), signal)
+  } catch (error) {
+    signal.throwIfAborted()
+    return { known: false, running: 0, total: 0, reason: 'native-subagent-listing-rejected' }
+  }
+  const children = rows.filter(row => row.kind === 'child')
+  const diagnostic = rows.find(row => row.kind !== 'child')
+  const running = children.filter(row => row.activity === 'running').length
+  return diagnostic === undefined
+    ? { known: true, running, total: children.length, reason: null }
+    : { known: false, running, total: children.length, reason: 'native-subagent-diagnostic-' + (diagnostic.reason ?? 'unknown') }
 }
 /** Initial cwd is a file-scope change, not merely an accessible-directory check. */
 async function authorizeInitialChildCwd(ctx: Context, parent: Agent, cwd: string, signal: AbortSignal): Promise<() => void> {
@@ -212,6 +275,8 @@ export interface HostPorts {
   liveAgent(sessionId: string): Agent | undefined
   liveAgents(): readonly Agent[]
   nativeActivity(sessionId: string): Promise<{ readonly known: boolean; readonly reason: string | null; readonly liveAgents: readonly Agent[] }>
+  /** Native host descendant activity for one owner session; the projected S count source. */
+  nativeSubagentActivity(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity>
   openRuntimeStorage<T extends { readonly revision: number }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>
   openUnitStorage<T extends { readonly revision: number }>(suffix: string, parse: (value: unknown) => T): Promise<VersionedStorage<T>>
   readPolicyGrants(): Promise<PolicyGrants>
@@ -629,9 +694,17 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     const resourceStorage = createDomainResourceStorage(await open('resources', parseResourceDocument))
     const grants = createDomainVersionedStorage(await open('policy_grants', parsePolicyGrants), 'state', parsePolicyGrants)
     const identity = createHostAuthority(ctx, controlsStorage, grants)
+    const readNativeActivity = async (sessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> => {
+      const ownerSessionId = id(sessionId, 'sessionId')
+      const control = signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal])
+      control.throwIfAborted()
+      return await readNativeSubagentActivity(ctx, ownerSessionId, control)
+    }
     const ports: HostPorts = {
       controlsStorage, instrumentStorage, windowStorage, resourceStorage, ...identity,
-      capabilities: freeze({ ...HOST_CAPABILITIES, get nativeInitialChildCwd(): HostCapabilities['nativeInitialChildCwd'] { return initialChildCwdSupported(ctx) ? 'supported' : 'unsupported' } }),
+      capabilities: freeze({ ...HOST_CAPABILITIES,
+        get nativeInitialChildCwd(): HostCapabilities['nativeInitialChildCwd'] { return initialChildCwdSupported(ctx) ? 'supported' : 'unsupported' },
+        get allNativeWakeAdmission(): HostCapabilities['allNativeWakeAdmission'] { return nativeSubagentLister(ctx) === undefined ? 'unsupported' : 'supported' } }),
       makeSnapshotMessage, notificationObserverReady,
       snapshotVisible(caller, actualAgent, message) {
         try {
@@ -744,11 +817,11 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       liveAgent(sessionId) { return ctx.agents.get(SessionId(id(sessionId, 'sessionId'))) },
       liveAgents() { return ctx.agents.list() },
       async nativeActivity(sessionId) {
-        id(sessionId, 'sessionId')
-        // AgentRegistry is complete for local live Agents, not external provider runs,
-        // unpublished preparations or every native activation. Absence is not proof.
-        return { known: false, reason: 'all-native-activity-enumeration-unsupported', liveAgents: ctx.agents.list() }
+        const activity = await readNativeActivity(sessionId)
+        // Complete only when the native catalog traversal succeeded without diagnostics.
+        return { known: activity.known, reason: activity.reason, liveAgents: ctx.agents.list() }
       },
+      nativeSubagentActivity(sessionId, signal) { return readNativeActivity(sessionId, signal) },
       async openRuntimeStorage(parse) { return ports.openUnitStorage('runtime_bindings', parse) },
       async openUnitStorage<T extends { readonly revision: number }>(suffix: string, parse: (value: unknown) => T) {
         if (closing) throw new ControlsError('access-denied', 'host is disposing')

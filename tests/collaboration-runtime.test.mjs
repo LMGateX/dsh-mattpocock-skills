@@ -297,12 +297,15 @@ test('a reload re-admits lanes that are still running instead of dropping S to u
  const first=await f.runtime.delegate(caller('root'),{description:'Reloaded lane',prompt:'Keep working'},f.exec())
  assert.equal(first.accepted,true)
  assert.equal(calls.length,1)
+ // The native host keeps the session resident across the plugin reload.
+ f.nativeLive.add(first.childId)
  f.agents.get(first.childId).status='running'
  await f.reopen()
  const after=await f.read()
- assert.equal(after.windows.S.used,1,'a still-running lane is re-admitted across a reload')
- // The reload downgrades the previous runtime's row; the sweep re-admits the still-running lane
- assert.equal(after.windows.S.used,1)
+ assert.equal(after.windows.S.used,1,'the native host count survives a plugin reload')
+ assert.equal(after.windows.S.countKnown,true)
+ // The reload downgrades the previous runtime's row; the ledger row itself is not dropped.
+ assert.equal(after.windows.executions.filter(row=>row.state!=='released').length,1)
 })
 
 test('an assigned lane may run ticketless research but never work outside its ticket scope',async t=>{
@@ -317,6 +320,8 @@ test('an assigned lane may run ticketless research but never work outside its ti
  const researchRow=rows.find(row=>row.value.plannedChildSessionId===research.childId)
  assert.equal(researchRow.value.requestedCwd,'/trees/research','the research lane keeps its own worktree')
  assert.equal('ticketIds' in researchRow.value,false,'a research lane records no ticket')
- assert.equal((await f.read()).windows.S.used,2,'both lanes are running')
+ // Both native sessions are resident; the count is the host's, not our two reservations.
+ f.nativeLive.add(child.childId); f.nativeLive.add(research.childId)
+ assert.equal((await f.read()).windows.S.used,2,'both native lanes are running')
  await assert.rejects(f.runtime.delegate(caller(child.childId),{description:'escape',prompt:'w',workflowId:'other',ticketIds:['A']},f.exec(child.childId)),/not registered in workflow|assignment|scope/)
 })

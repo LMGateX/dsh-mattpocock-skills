@@ -10,7 +10,7 @@ import type { ControlsAuthority, TrustedSession } from './controls/index.js';
 import type { InstrumentStorage } from './controls/instrument-storage.js';
 import type { InstrumentCommand } from './controls/instrument-state.js';
 import type { PolicyIntent, PolicySnapshot } from './controls/policy.js';
-import type { WindowStorage, TicketWindowCommand } from './controls/windows.js';
+import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js';
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js';
 import type { VersionedStorage } from './controls/versioned-storage.js';
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow } from './controls/remote-contract.js';
@@ -47,8 +47,9 @@ export declare const HOST_CAPABILITIES: {
     readonly nativeLifecycleObservation: "supported";
     readonly dynamicContext: "supported";
 };
-export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChildCwd'> & {
+export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChildCwd' | 'allNativeWakeAdmission'> & {
     readonly nativeInitialChildCwd: 'supported' | 'unsupported';
+    readonly allNativeWakeAdmission: 'supported' | 'unsupported';
 };
 export interface ContinuableChildRequest {
     readonly provider: 'spawn' | 'fork';
@@ -156,6 +157,8 @@ export interface HostPorts {
         readonly reason: string | null;
         readonly liveAgents: readonly Agent[];
     }>;
+    /** Native host descendant activity for one owner session; the projected S count source. */
+    nativeSubagentActivity(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity>;
     openRuntimeStorage<T extends {
         readonly revision: number;
     }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>;

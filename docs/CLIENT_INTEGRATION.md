@@ -113,7 +113,7 @@ expectedRevision 必须来自 query 返回的 sourceRevisions.records/windows/wo
 
 旧 resourceAction 创建、合并、实际退役没有新的 UI 引导；旧资源仅在折叠只读区保留历史观测。这里不新增生命周期审批/清理准入流程。
 
-T/S 展示 capacity（参考值）、used（登记用量）、available（登记账本余量）、overage、signed gap 与 S.countKnown。未知完整执行统计绝不从已登记 used=0 或 available/free 推导“全机可派发数量”。界面说明超出参考值/统计未知本身不拒绝派发、不要求另行审批；窗口聚合读取失败也不显示零用量。此改动是 browser-only React projection，不改变执行准入、业务策略或实际 Git。
+T/S 展示 capacity（参考值）、used（S 为宿主查询到的在跑子代理数）、available（相对参考值的余量）、overage、signed gap 与 S.countKnown/S.countReason。宿主枚举不完整时界面明确写“已知下界（总数未知）”，绝不把 0 当作已知事实，也不从可用余量推导“全机可派发数量”。界面说明超出参考值/统计未知本身不拒绝派发、不要求另行审批；窗口聚合读取失败也不显示零用量。此改动是 browser-only React projection，不改变执行准入、业务策略或实际 Git。
 
 ## Selected Session and observation lifetime
 

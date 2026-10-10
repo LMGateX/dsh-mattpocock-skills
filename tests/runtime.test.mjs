@@ -90,7 +90,7 @@ test('future controlled native activity: managed ticket assignment narrows new c
 })
 
 
-test('future controlled native activity: only exact disposed object releases S; idle/end/business text do not', async t => {
+test('future controlled native activity: only a disposed resident session releases S; idle/end/business text do not', async t => {
   const f = await ready(t, { known: true })
   for (const id of ['A', 'B', 'C']) await f.apply('put-ticket', { localTicketId: id, value: ticket() })
   await f.window('reserve', 'A'); await f.window('reserve', 'B')
@@ -107,10 +107,11 @@ test('future controlled native activity: only exact disposed object releases S; 
   const replacement = nativeChild(f, first.id)
   await f.managed({ workflowId: 'flow', localTicketId: 'B' })
   assert.notEqual(first, replacement)
-  assert.equal((await f.read()).windows.S.used, 2)
+  // The host counts the one resident session, not the plugin's two lease generations.
+  assert.equal((await f.read()).windows.S.used, 1)
   await f.event(first)
   root = await f.read()
-  assert.equal(root.windows.S.used, 1)
+  assert.equal(root.windows.S.used, 1, 'a superseded run of a still-resident session is not a release')
   assert.equal(root.windows.executions.at(-1).state, 'accepted')
   await f.event(replacement)
   root = await f.read()
@@ -118,16 +119,23 @@ test('future controlled native activity: only exact disposed object releases S; 
   nativeChild(f, 'refill')
   await f.managed({ workflowId: 'flow', localTicketId: 'B' })
   assert.equal((await f.read()).windows.S.used, 1)
+  assert.equal((await f.read()).windows.S.countKnown, true)
 })
 
 test('future controlled native activity: output/message JSON and absent object proof retain unknown capacity', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy() })
-  f.setNative(async () => ({ isError: false, value: { state: 'released', sessionId: 'old-child', receipt: { S: 0 } } }))
+  f.setNative(async () => {
+    // The host has a running child the plugin never received an object for; the JSON
+    // text claiming "released" is not an activity fact.
+    f.nativeLive.add('native-child-without-object-proof')
+    return { isError: false, value: { state: 'released', sessionId: 'old-child', receipt: { S: 0 } } }
+  })
   await f.managed()
   await f.runtime.observe({ kind: 'agent-disposed', sessionId: 'old-child' })
   await f.event(f.agents.get('old-child'), 'subagent-end', { runId: 'json-released', provider: 'spawn', local: true, stopReason: 'released' })
   const snap = await f.read()
-  assert.equal(snap.windows.S.used, 1)
+  assert.equal(snap.windows.S.used, 1, 'the native host count, not the release JSON, is authoritative')
+  assert.equal(snap.windows.S.countKnown, true)
   assert.equal(snap.windows.executions[0].state, 'unknown')
   assert.equal(snap.windows.S.available, 1)
   await f.managed()
@@ -148,8 +156,12 @@ test('actual installed host ports nativeActivity is false with actual objects: u
   const f = await mountedFixture(t)
   const actual = await f.mounted.ports.nativeActivity('root')
   assert.equal(actual.known, false)
-  assert.equal(actual.reason, 'all-native-activity-enumeration-unsupported')
+  assert.equal(actual.reason, 'native-subagent-service-unavailable')
   assert(actual.liveAgents.includes(f.root)); assert(actual.liveAgents.includes(f.child))
+  const activity = await f.mounted.ports.nativeSubagentActivity('root')
+  assert.equal(activity.known, false)
+  assert.equal(activity.reason, 'native-subagent-service-unavailable')
+  assert.equal(activity.running, 0); assert.equal(activity.total, 0)
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'installed-wf', expectedRevision: 0, action: 'put-workflow', workflowId: 'flow', value: workflow }, signal())
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'installed-tk-A', expectedRevision: 1, action: 'put-ticket', workflowId: 'flow', localTicketId: 'A', value: ticket() }, signal())
@@ -164,6 +176,57 @@ test('actual installed host ports nativeActivity is false with actual objects: u
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.T.used, 1)
   assert.equal(snap.windows.runtimeKnowledge.known, false)
+})
+
+test('native subagent catalog yields an exact running count and a supported capability row', async t => {
+  const rows = [
+    { kind: 'child', id: 'child-running', mode: 'continuable', label: 'one', activity: 'running', hasChildren: false, parentId: 'root', depth: 1 },
+    { kind: 'child', id: 'child-idle', mode: 'one-shot', activity: 'inactive', hasChildren: false, parentId: 'root', depth: 1 },
+  ]
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => ctx.provide('subagents', { listDescendants: async () => rows }) })
+  assert.equal(f.mounted.ports.capabilities.allNativeWakeAdmission, 'supported')
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 1, total: 2, reason: null })
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const snap = await f.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(snap.windows.S.used, 1); assert.equal(snap.windows.S.countKnown, true); assert.equal(snap.windows.S.countReason, null)
+  assert.equal(snap.health.find(row => row.scope === 'execution-admission').status, 'current')
+  assert.equal(snap.capabilities.find(row => row.key === 'allNativeWakeAdmission').status, 'supported')
+})
+
+test('a diagnostic row or a rejected listing is a stated lower bound, never a known zero', async t => {
+  let listing = async () => [
+    { kind: 'child', id: 'readable-running', mode: 'one-shot', activity: 'running', hasChildren: false, parentId: 'root', depth: 1 },
+    { kind: 'diagnostic', id: 'unreadable-branch', parentId: 'root', depth: 1, reason: 'corrupt' },
+  ]
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => ctx.provide('subagents', { listDescendants: async () => await listing() }) })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt' })
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const snap = await f.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(snap.windows.S.used, 1, 'the readable running row is a stated lower bound')
+  assert.equal(snap.windows.S.countKnown, false)
+  assert.equal(snap.windows.S.countReason, 'native-subagent-diagnostic-corrupt')
+  assert.equal(snap.windows.S.available, 1, 'headroom is computed against the stated lower bound, never a fabricated total')
+  const health = snap.health.find(row => row.scope === 'execution-admission')
+  assert.equal(health.status, 'unsupported'); assert.equal(health.reason, 'native-subagent-diagnostic-corrupt')
+  listing = async () => { throw new Error('session query unavailable') }
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 0, total: 0, reason: 'native-subagent-listing-rejected' })
+})
+
+test('a host without listDescendants falls back to a recursive listChildren walk with branch diagnostics', async t => {
+  const children = {
+    root: [{ kind: 'child', id: 'branch-a', mode: 'continuable', activity: 'running', hasChildren: true }],
+    'branch-a': [{ kind: 'child', id: 'leaf-b', mode: 'one-shot', activity: 'running', hasChildren: false }],
+    'leaf-b': [],
+  }
+  const listing = async id => {
+    const rows = children[id]
+    if (rows === undefined) throw new Error('unreadable child catalog')
+    return rows
+  }
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => ctx.provide('subagents', { listChildren: listing }) })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null })
+  children['branch-a'] = undefined
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-unavailable' })
 })
 
 test('fresh preStep/postExecute snapshots retain source authors; disabled/hide does not erase obligations', async t => {
@@ -364,7 +427,8 @@ test('late inherited native AsyncLocalStorage cannot bind a new object or reuse 
   assert.equal(lateGuard, false)
   const snap = await f.read(late.id)
   assert.deepEqual(snap.records.scope, { kind: 'assigned', workflowId: null, ticketIds: [] })
-  assert.equal(snap.windows.S.used, 1)
+  // Both native children are resident now, even though the late one never bound the dispatch.
+  assert.equal(snap.windows.S.used, 2)
   assert.equal(snap.windows.runtimeKnowledge.known, false)
   const bindings = await f.units.get('runtime_bindings').read()
   assert.deepEqual(bindings.bindings.map(row => row.sessionId), [accepted.id])

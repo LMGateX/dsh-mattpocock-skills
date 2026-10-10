@@ -31,7 +31,9 @@ const { WorkspaceControls, MemoryControlsStorage, SessionInstruments, MemoryInst
 const { SessionWindows, MemoryWindowStorage, createDomainWindowStorage, parseWindowDocument } = await import('../src/controls/windows.ts')
 const { ControlsError } = await import('../src/controls/validation.ts')
 let fixtureSerial = 0
-async function fixture({ T = 3, S = 2, capability = 'cooperative', runtimeId = 'boot-1', storage = new MemoryWindowStorage(), disabled = false, unset = false, requireKnownRuntime = false, childWorkflowId = 'flow' } = {}) {
+/** The native host count under test; never derived from the plugin's ledger. */
+const native = (running, { known = true, total = running, reason = null } = {}) => async () => ({ known, running, total, reason })
+async function fixture({ T = 3, S = 2, capability = 'cooperative', runtimeId = 'boot-1', storage = new MemoryWindowStorage(), disabled = false, unset = false, requireKnownRuntime = false, childWorkflowId = 'flow', nativeActivity } = {}) {
   const serial = ++fixtureSerial
   const controls = new WorkspaceControls(new MemoryControlsStorage(), {
     async authorizePolicy(p) { if (p !== 'owner') throw new ControlsError('access-denied', 'policy denied') },
@@ -57,9 +59,11 @@ async function fixture({ T = 3, S = 2, capability = 'cooperative', runtimeId = '
   await controls.ensureSession('owner', 'grandchild')
   await controls.ensureSession('owner', 'other')
   let leaseSerial = 0
+  let nativeFor = nativeActivity ?? native(0)
   function open(runtime = runtimeId, cap = capability) {
     let port
     const windows = new SessionWindows(controls, storage, authority, { runtimeId: runtime, capability: cap, requireKnownRuntime,
+      nativeActivity: owner => nativeFor(owner),
       bindProgram(value) { port = value }, newLeaseId: () => 'lease-' + serial + '-' + ++leaseSerial })
     return { windows, port }
   }
@@ -69,7 +73,8 @@ async function fixture({ T = 3, S = 2, capability = 'cooperative', runtimeId = '
   const reserveTicket = (ticket, session = 'root', workflowId = 'flow') => opened.windows.apply('owner', session, { operationId: op(), workflowId, localTicketId: ticket, action: 'reserve' })
   const reserve = (executionId, localTicketId = null, session = 'root', workflowId = 'flow') => opened.port.reserveExecution('owner', session, { operationId: op(), executionId, workflowId, localTicketId })
   const receipt = (reservation, state, port = opened.port) => port.receipt({ ...reservation.token, operationId: op(), state })
-  return { ...opened, controls, authority, storage, op, reserveTicket, reserve, receipt, configure, open }
+  return { ...opened, controls, authority, storage, op, reserveTicket, reserve, receipt, configure, open,
+    setNativeActivity(fn) { nativeFor = fn } }
 }
 const rejectsCode = (promise, code) => assert.rejects(promise, error => error.code === code)
 
@@ -77,17 +82,19 @@ test('T advisory limit permits overage; explicit release updates T independently
   const f = await fixture({ T: 3, S: 2 })
   for (const ticket of ['A', 'B', 'C']) await f.reserveTicket(ticket)
   const A = await f.reserve('worker-A', 'A'); await f.reserve('worker-B', 'B')
+  f.setNativeActivity(native(2))
   const over = await f.reserveTicket('D')
   assert.equal(over.snapshot.T.capacity, 3); assert.equal(over.snapshot.T.used, 4)
   assert.equal(over.snapshot.T.available, 0); assert.equal(over.snapshot.T.overcommitted, true)
   await f.receipt(A, 'released')
+  f.setNativeActivity(native(1)) // the host reports that child gone; our receipt is never the source
   let snap = await f.windows.read('owner', 'root')
   assert.equal(snap.T.used, 4); assert.equal(snap.S.used, 1)
   const merge = await f.reserve('merger-A', 'A')
   await f.windows.apply('owner', 'root', { operationId: f.op(), action: 'release', workflowId: 'flow', localTicketId: 'A', generation: 1 })
   await f.reserveTicket('D')
   snap = await f.windows.read('owner', 'root')
-  assert.equal(snap.T.used, 3); assert.equal(snap.S.used, 2)
+  assert.equal(snap.T.used, 3); assert.equal(snap.S.used, 1, 'a new reservation is not a running subagent')
   assert.deepEqual(snap.tickets.filter(t => t.held).map(t => t.localTicketId).sort(), ['B', 'C', 'D'])
   assert.equal(snap.executions.find(e => e.leaseId === merge.token.leaseId).state, 'reserved')
 })
@@ -97,14 +104,17 @@ test('S=1 remains advisory throughout trusted execution states; ticketless resea
   const A = await f.reserve('research')
   for (const state of ['accepted', 'scheduled', 'running', 'stopping']) {
     await f.receipt(A, state)
+    f.setNativeActivity(native(1))
     const snap = await f.windows.read('owner', 'root')
     assert.equal(snap.S.used, 1); assert.equal(snap.S.byState[state], 1); assert.equal(snap.T.used, 0)
+    f.setNativeActivity(native(2)) // the host now reports the second child running
     const extra = await f.reserve('next')
     assert.equal(extra.dispatchable, true); assert.equal(extra.snapshot.S.used, 2)
     assert.equal(extra.snapshot.S.available, 0); assert.equal(extra.snapshot.S.overcommitted, true)
     await f.receipt(extra, 'released')
   }
   await f.receipt(A, 'released')
+  f.setNativeActivity(native(1))
   await f.reserve('next')
   const snap = await f.windows.read('owner', 'root')
   assert.equal(snap.S.used, 1); assert.equal(snap.S.available, 0); assert.equal(snap.T.used, 0)
@@ -128,6 +138,7 @@ test('same ticket and same live execution are not double counted; operation repl
   assert.equal(replayExecution.replayed, true); assert.equal(replayExecution.dispatchable, false)
   await rejectsCode(f.windows.apply('someone-else', 'root', command), 'operation-conflict')
   await rejectsCode(f.port.reserveExecution('owner', 'root', { ...request, localTicketId: null }), 'operation-conflict')
+  f.setNativeActivity(native(1))
   const snap = await f.windows.read('owner', 'root')
   assert.equal(snap.T.used, 1); assert.equal(snap.S.used, 1)
 })
@@ -156,6 +167,7 @@ test('late/duplicate old S release never releases cold-wake generation; token fo
   assert.equal(live.token.generation, 2); assert.notEqual(live.token.leaseId, old.token.leaseId)
   assert.equal((await f.port.receipt(oldReceipt)).replayed, true)
   assert.equal((await f.port.receipt({ ...oldReceipt, operationId: f.op() })).ignored, true)
+  f.setNativeActivity(native(1))
   assert.equal((await f.windows.read('owner', 'root')).S.used, 1)
   for (const corrupt of [{ instrumentInstanceId: 'wrong' }, { executionId: 'wrong' }, { generation: 9 }, { leaseId: 'wrong' }]) {
     await rejectsCode(f.port.receipt({ ...live.token, ...corrupt, operationId: f.op(), state: 'released' }), 'association-conflict')
@@ -169,6 +181,7 @@ test('parallel reservations preserve all valid over-reference T and S facts, inc
   const executions = await Promise.allSettled([f.reserve('nested-research', null, 'grandchild'), f.reserve('root-research')])
   assert.equal(executions.filter(r => r.status === 'fulfilled').length, 2)
   assert.equal(executions.every(r => r.value.dispatchable), true)
+  f.setNativeActivity(native(2))
   const snap = await f.windows.read('owner', 'root')
   assert.equal(snap.T.used, 2); assert.equal(snap.S.used, 2)
   assert.equal(snap.T.overage, 1); assert.equal(snap.S.overage, 1)
@@ -176,6 +189,9 @@ test('parallel reservations preserve all valid over-reference T and S facts, inc
 
 test('root workflows share advisory usage; independent owners in same workspace do not', async () => {
   const f = await fixture({ T: 1, S: 1 })
+  // S is per owner: descendants of the root owner share the root instance, an
+  // independent owner session gets only its own native count.
+  f.setNativeActivity(async owner => await (owner === 'other' ? native(1) : native(2))())
   await f.reserveTicket('A')
   await f.reserveTicket('A', 'root', 'another-flow')
   const root = await f.reserve('root-execution')
@@ -192,6 +208,7 @@ test('root workflows share advisory usage; independent owners in same workspace 
 test('assigned scopes cannot borrow another ticket or workflow; filtered details retain full instance totals', async () => {
   const f = await fixture()
   await f.reserveTicket('A'); await f.reserveTicket('B'); await f.reserve('B-worker', 'B')
+  f.setNativeActivity(native(1))
   const child = await f.windows.read('owner', 'child')
   assert.equal(child.T.used, 2); assert.equal(child.S.used, 1)
   assert.equal(child.tickets.length, 1); assert.equal(child.executions.length, 0)
@@ -207,10 +224,12 @@ test('restart recovery retains T and all S holds; replay cannot authorize dispat
   const request = { operationId: f.op(), executionId: 'worker', workflowId: 'flow', localTicketId: 'A' }
   const reservation = await f.port.reserveExecution('owner', 'root', request)
   await f.receipt(reservation, 'running')
+  f.setNativeActivity(native(1)) // the child keeps running across the plugin restart
   const restarted = f.open('boot-2')
   let snap = await restarted.windows.read('owner', 'root')
   assert.equal(snap.status, 'reconciling'); assert.equal(snap.S.used, 1); assert.equal(snap.S.available, 2); assert.equal(snap.T.used, 1)
-  assert.equal(snap.S.countKnown, false)
+  assert.equal(snap.S.countKnown, true); assert.equal(snap.S.byState.unknown, 1, 'the old-runtime ledger row stays visible as audit')
+  assert.equal(snap.S.countReason, null)
   const replay = await restarted.port.reserveExecution('owner', 'root', request)
   assert.equal(replay.replayed, true); assert.equal(replay.dispatchable, false)
   const fresh = await restarted.port.reserveExecution('owner', 'root', { operationId: f.op(), executionId: 'new', workflowId: 'flow', localTicketId: null })
@@ -220,6 +239,7 @@ test('restart recovery retains T and all S holds; replay cannot authorize dispat
   snap = await restarted.windows.read('owner', 'root')
   assert.equal(snap.status, 'ready'); assert.equal(snap.S.used, 1); assert.equal(snap.S.available, 2)
   await f.receipt(reservation, 'released', restarted.port)
+  f.setNativeActivity(native(0))
   assert.equal((await restarted.windows.read('owner', 'root')).S.used, 0)
 })
 
@@ -227,9 +247,10 @@ test('unknown retains registered usage including config off; new dispatch stays 
   const f = await fixture({ S: 3 })
   const held = await f.reserve('uncertain')
   await f.receipt(held, 'unknown')
+  f.setNativeActivity(native(1))
   let snap = await f.windows.read('owner', 'root')
   assert.equal(snap.S.used, 1); assert.equal(snap.S.available, 2); assert.equal(snap.S.byState.unknown, 1)
-  assert.equal(snap.S.countKnown, false)
+  assert.equal(snap.S.countKnown, true, 'the native listing is complete even though our ledger row is unknown')
   await f.configure({ windows: { enabled: false } })
   const fresh = await f.reserve('new-identity-with-unknown')
   assert.equal(fresh.dispatchable, true)
@@ -244,13 +265,16 @@ test('hot shrink is overcommitted without killing; display off changes no accoun
   for (const ticket of ['A', 'B', 'C']) await f.reserveTicket(ticket)
   const executions = []
   for (const ticket of ['A', 'B', 'C']) executions.push(await f.reserve('worker-' + ticket, ticket))
+  f.setNativeActivity(native(3))
   await f.configure({ windows: { ticketWindowSize: 1, runningSubagentLimit: 1 }, display: { header: false, inputSummary: false, rightPanel: false, sessionList: false, timeline: false } })
   let snap = await f.windows.read('owner', 'root')
   assert.equal(snap.status, 'overcommitted'); assert.equal(snap.T.used, 3); assert.equal(snap.S.used, 3)
   assert.equal(snap.T.overcommitted, true); assert.equal(snap.S.overcommitted, true)
+  f.setNativeActivity(native(4)) // the host reports the newly dispatched child running too
   const over = await f.reserve('new')
   assert.equal(over.dispatchable, true); assert.equal(over.snapshot.S.overage, 3)
   await f.receipt(executions[0], 'released')
+  f.setNativeActivity(native(3))
   snap = await f.windows.read('owner', 'root')
   assert.equal(snap.S.used, 3); assert.equal(snap.S.available, 0); assert.equal(snap.S.overage, 2)
 })
@@ -258,6 +282,7 @@ test('hot shrink is overcommitted without killing; display off changes no accoun
 test('config off preserves leases, permits trusted release, disables new T and explicitly lifts S cap', async () => {
   const f = await fixture({ T: 1, S: 1 })
   await f.reserveTicket('A'); const held = await f.reserve('existing', 'A')
+  f.setNativeActivity(native(1))
   await f.configure({ windows: { enabled: false } })
   let snap = await f.windows.read('owner', 'root')
   assert.equal(snap.status, 'disabled'); assert.equal(snap.T.used, 1); assert.equal(snap.S.used, 1); assert.equal(snap.S.available, null)
@@ -268,12 +293,14 @@ test('config off preserves leases, permits trusted release, disables new T and e
   snap = await f.windows.read('owner', 'root')
   assert.equal(snap.T.used, 0); assert.equal(snap.S.used, 1)
   await f.configure({ windows: { enabled: true } })
+  f.setNativeActivity(native(2))
   const reenabled = await f.reserve('re-enabled-full')
   assert.equal(reenabled.dispatchable, true); assert.equal(reenabled.snapshot.S.overage, 1)
 })
 
 test('unset capacity and unsupported host capabilities never guess a default or claim enforcement', async () => {
   const unset = await fixture({ unset: true })
+  unset.setNativeActivity(native(1))
   const snap = await unset.windows.read('owner', 'root')
   assert.equal(snap.status, 'unsupported'); assert.equal(snap.T.capacity, null); assert.equal(snap.S.capacity, null)
   const unconfigured = await unset.reserve('research')
@@ -282,6 +309,7 @@ test('unset capacity and unsupported host capabilities never guess a default or 
   const ticket = await unset.reserveTicket('A')
   assert.equal(ticket.snapshot.T.used, 1); assert.equal(ticket.snapshot.T.available, null)
   const unsupported = await fixture({ capability: 'unsupported' })
+  unsupported.setNativeActivity(native(1))
   const noCoverage = await unsupported.windows.read('owner', 'root')
   assert.equal(noCoverage.capability, 'unsupported')
   assert.equal(noCoverage.runtimeKnowledge.known, false)
@@ -297,6 +325,7 @@ test('business interface is closed: no receipt tool, text, labels, model release
   assert.deepEqual(Object.getOwnPropertyNames(SessionWindows.prototype).sort(), ['apply', 'constructor', 'read'])
   assert.deepEqual(Object.keys(f.windows), [])
   assert.equal(Object.isFrozen(f.port), true)
+  f.setNativeActivity(native(1))
   const reservation = await f.reserve('worker')
   for (const extra of [{ receipt: { ...reservation.token, state: 'released' } }, { state: 'released' }, { label: 'done' }, { principal: 'owner' }, { silenceMs: 1000000 }, { message: 'I finished' }]) {
     await rejectsCode(f.windows.apply('owner', 'root', { operationId: f.op(), action: 'reserve', workflowId: 'flow', localTicketId: 'A', ...extra }), 'invalid-input')
@@ -307,6 +336,7 @@ test('business interface is closed: no receipt tool, text, labels, model release
 
 test('ticket-linked execution does not require T occupancy; execution assignment remains fenced on reuse', async () => {
   const f = await fixture()
+  f.setNativeActivity(native(1))
   const linked = await f.reserve('linked', 'A')
   assert.equal(linked.dispatchable, true)
   assert.equal(linked.snapshot.T.used, 0); assert.equal(linked.snapshot.S.used, 1)
@@ -355,6 +385,7 @@ test('single-table adapter shares first-write serialization and indeterminate fa
   const storage = createDomainWindowStorage(table)
   assert.equal(storage, createDomainWindowStorage(table))
   const f = await fixture({ T: 1, S: 1, storage })
+  f.setNativeActivity(native(2)) // the host, not the ledger, reports the two running children
   const race = await Promise.allSettled([f.reserve('one'), f.reserve('two')])
   assert.equal(race.filter(r => r.status === 'fulfilled').length, 2)
   assert.equal(table.writes, 2)
@@ -365,21 +396,25 @@ test('single-table adapter shares first-write serialization and indeterminate fa
   await rejectsCode(uncertain.windows.read('owner', 'root'), 'storage-uncertain')
   await rejectsCode(uncertain.windows.read('owner', 'other'), 'storage-uncertain')
   const freshHandle = mechanicalTable({ seed: failingTable.rows })
-  let port
+  let port, reopenedRunning = 1
   const reopened = new SessionWindows(uncertain.controls, createDomainWindowStorage(freshHandle), uncertain.authority,
-    { runtimeId: 'fresh-boot', capability: 'cooperative', bindProgram(value) { port = value } })
+    { runtimeId: 'fresh-boot', capability: 'cooperative',
+      nativeActivity: async () => ({ known: true, running: reopenedRunning, total: reopenedRunning, reason: null }),
+      bindProgram(value) { port = value } })
   const recovered = await reopened.read('owner', 'root')
   assert.equal(recovered.S.used, 1); assert.equal(recovered.S.byState.unknown, 1); assert.equal(recovered.S.available, 1)
-  assert.equal(recovered.S.countKnown, false)
+  assert.equal(recovered.S.countKnown, true)
   await rejectsCode(port.receipt({ ...recovered.executions[0], operationId: uncertain.op(), state: 'released', workflowId: undefined }), 'invalid-input')
   const held = recovered.executions[0]
   await port.receipt({ instrumentInstanceId: held.instrumentInstanceId, executionId: held.executionId, generation: held.generation, leaseId: held.leaseId, operationId: uncertain.op(), state: 'released' })
+  reopenedRunning = 0 // the native host reports the child gone
   assert.equal((await reopened.read('owner', 'root')).S.used, 0)
 })
 
 test('concurrent same execution reservations converge on one slot; ticketless assignment preserves other T', async () => {
   const f = await fixture({ T: 1, S: 1 })
   await f.reserveTicket('A')
+  f.setNativeActivity(native(1))
   const results = await Promise.all([f.reserve('shared'), f.reserve('shared', null, 'child')])
   assert.deepEqual(results[0].token, results[1].token)
   const snapshot = await f.windows.read('owner', 'root')
@@ -394,6 +429,7 @@ test('CAS retry refreshes saved controls policy rather than using an old capacit
     return base.compareAndSwap(id, expected, next)
   } }
   const f = await fixture({ T: 2, S: 2, storage })
+  f.setNativeActivity(native(2))
   await f.reserve('already-held')
   intercept = () => f.configure({ windows: { runningSubagentLimit: 1 } })
   const result = await f.reserve('uses-current-reference')
@@ -408,12 +444,15 @@ test('all nonterminal restart states hold S; terminal tombstones remain released
     const f = await fixture()
     const reservation = await f.reserve('execution')
     if (initialState !== 'reserved') await f.receipt(reservation, initialState)
+    // The native host reports the running child whichever ledger state we recorded.
+    f.setNativeActivity(native(initialState === 'released' ? 0 : 1))
     const restarted = f.open('new-boot')
     const snapshot = await restarted.windows.read('owner', 'root')
     assert.equal(snapshot.S.used, initialState === 'released' ? 0 : 1)
     assert.equal(snapshot.S.byState.unknown, initialState === 'released' ? 0 : 1)
     assert.equal(snapshot.S.available, initialState === 'released' ? 2 : 1)
-    if (initialState !== 'released') assert.equal(snapshot.S.countKnown, false)
+    assert.equal(snapshot.S.countKnown, true)
+    assert.equal(snapshot.executions[0].state, initialState === 'released' ? 'released' : 'unknown', 'the ledger keeps its nonterminal hold as unknown after restart')
   }
 })
 
@@ -435,15 +474,16 @@ test('command detachment and actual-author checks prevent mutable intent and ide
 
 test('capability downgrade marks unknown coverage without blocking a valid live reservation', async () => {
   const f = await fixture()
+  f.setNativeActivity(native(1))
   const request = { operationId: f.op(), executionId: 'existing', workflowId: 'flow', localTicketId: null }
   await f.port.reserveExecution('owner', 'root', request)
   const unsupported = f.open('boot-1', 'unsupported')
   const replay = await unsupported.port.reserveExecution('owner', 'root', request)
   assert.equal(replay.dispatchable, false); assert.equal(replay.snapshot.S.used, 1)
-  assert.equal(replay.replayed, true); assert.equal(replay.snapshot.S.countKnown, false)
+  assert.equal(replay.replayed, true); assert.equal(replay.snapshot.S.countKnown, true)
   assert.equal(replay.snapshot.status, 'unsupported')
   const fresh = await unsupported.port.reserveExecution('owner', 'root', { ...request, operationId: f.op(), executionId: 'new-without-native-coverage' })
-  assert.equal(fresh.dispatchable, true); assert.equal(fresh.snapshot.S.countKnown, false)
+  assert.equal(fresh.dispatchable, true); assert.equal(fresh.snapshot.S.countKnown, true)
 })
 
 test('bounded repeated CAS contention gives a mechanical diagnostic and never publishes phantom usage', async () => {
@@ -452,14 +492,15 @@ test('bounded repeated CAS contention gives a mechanical diagnostic and never pu
   const f = await fixture({ storage: { read: id => base.read(id), async compareAndSwap() { attempts++; return false } } })
   await rejectsCode(f.reserve('cannot-commit'), 'concurrent-update')
   assert.equal(attempts, 32)
-  assert.equal((await f.windows.read('owner', 'root')).S.used, 0)
+  const snap = await f.windows.read('owner', 'root')
+  assert.equal(snap.S.used, 0); assert.equal(snap.S.countKnown, true)
 })
 
 test('runtime knowledge remains factual and advisory; unknown never blocks new execution identities', async () => {
   const f = await fixture({ requireKnownRuntime: true })
   let snapshot = await f.windows.read('owner', 'root')
   assert.equal(snapshot.status, 'reconciling'); assert.equal(snapshot.runtimeKnowledge.known, false)
-  assert.equal(snapshot.S.used, 0); assert.equal(snapshot.S.available, 2); assert.equal(snapshot.S.countKnown, false)
+  assert.equal(snapshot.S.used, 0); assert.equal(snapshot.S.available, 2); assert.equal(snapshot.S.countKnown, true, 'the native count is independent of ledger reconciliation')
   const initial = await f.reserve('before-enumeration')
   assert.equal(initial.dispatchable, true)
   await f.receipt(initial, 'released')
@@ -467,9 +508,10 @@ test('runtime knowledge remains factual and advisory; unknown never blocks new e
   await f.port.reconcileKnowledge('owner', 'root', known)
   const held = await f.reserve('managed')
   await f.port.reconcileKnowledge('owner', 'root', { operationId: f.op(), state: 'unknown', reason: 'unmanaged-native-active' })
+  f.setNativeActivity(native(1))
   snapshot = await f.windows.read('owner', 'root')
   assert.equal(snapshot.status, 'reconciling'); assert.equal(snapshot.runtimeKnowledge.reason, 'unmanaged-native-active')
-  assert.equal(snapshot.S.used, 1); assert.equal(snapshot.S.available, 1); assert.equal(snapshot.S.countKnown, false)
+  assert.equal(snapshot.S.used, 1); assert.equal(snapshot.S.available, 1); assert.equal(snapshot.S.countKnown, true)
   const duringGap = await f.reserve('native-observation-gap')
   assert.equal(duringGap.dispatchable, true)
   assert.equal(duringGap.snapshot.runtimeKnowledge.known, false)
@@ -482,7 +524,7 @@ test('runtime knowledge remains factual and advisory; unknown never blocks new e
   await f.port.reconcileKnowledge('owner', 'root', { operationId: f.op(), state: 'known', reason: null })
   snapshot = await f.windows.read('owner', 'root')
   assert.equal(snapshot.runtimeKnowledge.known, true); assert.equal(snapshot.S.byState.unknown, 1); assert.equal(snapshot.S.available, 1)
-  assert.equal(snapshot.S.countKnown, false)
+  assert.equal(snapshot.S.countKnown, true)
   await f.receipt(held, 'released')
   await f.reserve('after-program-proof')
 })
@@ -513,6 +555,7 @@ test('trusted unknown observation survives config off without blocking valid dis
 
 test('pre-workflow research reserves only S; null-scoped descendants inherit no business permissions', async () => {
   const f = await fixture({ T: 1, S: 3, childWorkflowId: null })
+  f.setNativeActivity(native(3)) // three dispatched children are running on the host
   const rootResearch = await f.reserve('pre-workflow-root', null, 'root', null)
   const childResearch = await f.reserve('pre-workflow-child', null, 'grandchild', null)
   await f.reserveTicket('A')
@@ -568,11 +611,12 @@ test('nullable execution workflow remains strict in persisted leases and trusted
 
 test('unknown execution facts remain counted; T and new S reservations stay independent', async () => {
   const f = await fixture({ T: 1, S: 2 })
+  f.setNativeActivity(native(1))
   const unknown = await f.reserve('uncertain-native-proof', null, 'root', null)
   await f.receipt(unknown, 'unknown')
   let snapshot = await f.windows.read('owner', 'root')
   assert.equal(snapshot.S.available, 1); assert.equal(snapshot.T.available, 1)
-  assert.equal(snapshot.S.countKnown, false)
+  assert.equal(snapshot.S.countKnown, true); assert.equal(snapshot.S.byState.unknown, 1)
   await f.reserveTicket('A')
   await f.windows.apply('owner', 'root', { operationId: f.op(), action: 'release', workflowId: 'flow', localTicketId: 'A', generation: 1 })
   await f.reserveTicket('B')
@@ -581,6 +625,7 @@ test('unknown execution facts remain counted; T and new S reservations stay inde
   await f.windows.apply('owner', 'root', { operationId: f.op(), action: 'release', workflowId: 'flow', localTicketId: 'B', generation: 1 })
   const reacquired = await f.windows.apply('owner', 'root', { operationId: f.op(), action: 'reacquire', workflowId: 'flow', localTicketId: 'A', generation: 1 })
   assert.equal(reacquired.generation, 2); assert.equal(reacquired.snapshot.T.used, 1)
+  f.setNativeActivity(native(2))
   const fresh = await f.reserve('new-independent-execution')
   assert.equal(fresh.dispatchable, true); assert.equal(fresh.snapshot.S.used, 2)
   assert.equal(fresh.snapshot.S.byState.unknown, 1)
@@ -588,6 +633,7 @@ test('unknown execution facts remain counted; T and new S reservations stay inde
 
 test('S hot-shrink overcommit never consumes or blocks T availability/refill', async () => {
   const f = await fixture({ T: 1, S: 3 })
+  f.setNativeActivity(native(3)) // the host reports three running children
   for (const id of ['one', 'two', 'three']) await f.reserve(id, null, 'root', null)
   await f.configure({ windows: { runningSubagentLimit: 1 } })
   let snapshot = await f.windows.read('owner', 'root')
@@ -619,15 +665,16 @@ test('unsupported S/native knowledge does not require fake known proof for T boo
   const f = await fixture({ T: 1, capability: 'unsupported', requireKnownRuntime: true })
   const initial = await f.windows.read('owner', 'root')
   assert.equal(initial.runtimeKnowledge.known, false); assert.equal(initial.S.available, 2); assert.equal(initial.T.available, 1)
-  assert.equal(initial.S.countKnown, false)
+  assert.equal(initial.S.countKnown, true, 'the native count is independent of the legacy window capability flag')
   await f.reserveTicket('A')
   await f.windows.apply('owner', 'root', { operationId: f.op(), action: 'release', workflowId: 'flow', localTicketId: 'A', generation: 1 })
   await f.reserveTicket('B')
   const snapshot = await f.windows.read('owner', 'root')
   assert.equal(snapshot.T.used, 1); assert.equal(snapshot.runtimeKnowledge.known, false)
+  f.setNativeActivity(native(1))
   const unobserved = await f.reserve('unsupported-S', null, 'root', null)
   assert.equal(unobserved.dispatchable, true); assert.equal(unobserved.snapshot.S.used, 1)
-  assert.equal(unobserved.snapshot.S.countKnown, false)
+  assert.equal(unobserved.snapshot.S.countKnown, true)
 })
 
 test('each configured axis is usable without guessing the other unset capacity', async () => {
@@ -653,24 +700,25 @@ test('advisory snapshot reports reference gap and overage independently of unkno
   const f = await fixture({ T: 2, S: 2, requireKnownRuntime: true })
   let snap = await f.windows.read('owner', 'root')
   assert.deepEqual(snap.T, { capacity: 2, used: 0, available: 2, overcommitted: false, overage: 0, gap: 2 })
-  assert.equal(snap.S.used, 0); assert.equal(snap.S.countKnown, false)
+  assert.equal(snap.S.used, 0); assert.equal(snap.S.countKnown, true)
   assert.equal(snap.S.available, 2); assert.equal(snap.S.gap, 2); assert.equal(snap.S.overage, 0)
   await f.reserveTicket('A'); await f.reserveTicket('B')
+  f.setNativeActivity(native(2))
   await f.reserve('one'); await f.reserve('two')
   snap = await f.windows.read('owner', 'root')
   assert.equal(snap.T.available, 0); assert.equal(snap.T.gap, 0); assert.equal(snap.T.overage, 0); assert.equal(snap.T.overcommitted, false)
   assert.equal(snap.S.available, 0); assert.equal(snap.S.gap, 0); assert.equal(snap.S.overage, 0); assert.equal(snap.S.overcommitted, false)
-  await f.reserveTicket('C'); const third = await f.reserve('three')
+  await f.reserveTicket('C'); f.setNativeActivity(native(3)); const third = await f.reserve('three')
   snap = third.snapshot
   assert.equal(third.dispatchable, true)
   assert.equal(snap.T.gap, -1); assert.equal(snap.T.overage, 1); assert.equal(snap.T.available, 0)
   assert.equal(snap.S.gap, -1); assert.equal(snap.S.overage, 1); assert.equal(snap.S.available, 0)
-  assert.equal(snap.T.overcommitted, true); assert.equal(snap.S.overcommitted, true); assert.equal(snap.S.countKnown, false)
+  assert.equal(snap.T.overcommitted, true); assert.equal(snap.S.overcommitted, true); assert.equal(snap.S.countKnown, true)
   await f.port.reconcileKnowledge('owner', 'root', { operationId: f.op(), state: 'known', reason: null })
   assert.equal((await f.windows.read('owner', 'root')).S.countKnown, true)
   await f.receipt(third, 'unknown')
   snap = await f.windows.read('owner', 'root')
-  assert.equal(snap.S.used, 3); assert.equal(snap.S.byState.unknown, 1); assert.equal(snap.S.countKnown, false)
+  assert.equal(snap.S.used, 3); assert.equal(snap.S.byState.unknown, 1); assert.equal(snap.S.countKnown, true)
   const unset = await fixture({ unset: true })
   snap = await unset.windows.read('owner', 'root')
   assert.equal(snap.T.gap, null); assert.equal(snap.T.overage, null)
@@ -692,6 +740,23 @@ test('accepted execution reservation replay reconnects its token without redispa
   }
   const fresh = await f.reserve('different-activation', null, 'root', null)
   assert.equal(fresh.dispatchable, true)
+})
+
+test('native diagnostics and unreadable providers state a lower bound and a reason, never a known zero', async () => {
+  const f = await fixture({ S: 2 })
+  f.setNativeActivity(async () => ({ known: false, running: 2, total: 3, reason: 'native-subagent-diagnostic-corrupt' }))
+  const snap = await f.windows.read('owner', 'root')
+  assert.equal(snap.S.countKnown, false)
+  assert.equal(snap.S.countReason, 'native-subagent-diagnostic-corrupt')
+  assert.equal(snap.S.used, 2)
+  assert.equal(snap.S.available, 0)
+  assert.equal(snap.S.overcommitted, false)
+  f.setNativeActivity(async () => { throw new Error('listing rejected') })
+  const rejected = await f.windows.read('owner', 'root')
+  assert.equal(rejected.S.countKnown, false); assert.equal(rejected.S.countReason, 'native-subagent-activity-unreadable'); assert.equal(rejected.S.used, 0)
+  f.setNativeActivity(async () => ({ known: true, running: -1, total: 0, reason: null }))
+  const malformed = await f.windows.read('owner', 'root')
+  assert.equal(malformed.S.countKnown, false); assert.equal(malformed.S.countReason, 'native-subagent-activity-unreadable'); assert.equal(malformed.S.used, 0)
 })
 
 test('receipt dedup cannot substitute a different state, and execution state cannot silently regress', async () => {

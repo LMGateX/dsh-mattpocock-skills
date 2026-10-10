@@ -349,7 +349,7 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   const text = JSON.stringify(rendered)
   assert.match(text, /票 7/); assert.match(text, /部分接口可评审 3/)
   assert.match(text, /待用户裁决 2/); assert.match(text, /待落实 1/)
-  assert.match(text, /T 2\/4/); assert.match(text, /S 在跑 0\/3.*总数未知/); assert.match(text, /资源 1/)
+  assert.match(text, /T 2\/4/); assert.match(text, /S 在跑 0\/3.*（下界）.*总数未知/); assert.match(text, /资源 1/)
   assert(!text.includes('S 0/3')); assert(!text.includes('%')); assert(!text.includes('in_progress'))
   assert.equal(view.policy.display.inputSummary, false)
   const healthyS = { ...windows, capability: 'cooperative', runtimeKnowledge: { runtimeId: 'runtime-one', known: true, reason: null }, S: { ...windows.S, used: 1, countKnown: true } }
@@ -577,7 +577,7 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   assert(projection)
   const projected = client.WindowProjection(projection.props)
   assert.match(JSON.stringify(projected), /不是硬名额.*不.*额外审批/)
-  assert.match(JSON.stringify(projected), /available 只是账本余量.*不是全机可派发数量/)
+  assert.match(JSON.stringify(projected), /S 是宿主报告的在跑子代理数.*available 只是参考余量.*不是全机可派发数量/)
   assert.match(JSON.stringify(projected), /countKnown.*false/)
   assert(!JSON.stringify(projected).includes('可以派'))
   const failed = client.WindowProjection({ view: snapshot('A', { windows, health: [{ scope: 'windows', status: 'unknown', reason: 'window ledger read failed' }] }) })

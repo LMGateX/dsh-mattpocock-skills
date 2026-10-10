@@ -39,7 +39,7 @@ const registerTest = childMode ? () => {} : test
 const instance = { instrumentInstanceId: 'cleanup-instance', ownerSessionId: 'root', controlWorkspaceId: 'workspace' }
 const rejectsCode = (promise, code) => assert.rejects(promise, error => error.code === code)
 
-async function fixture({ storage = new MemoryWindowStorage(), runtimeId = 'cleanup-runtime', beforeResolveAccess } = {}) {
+async function fixture({ storage = new MemoryWindowStorage(), runtimeId = 'cleanup-runtime', beforeResolveAccess, nativeRunning = 0 } = {}) {
   const controls = new WorkspaceControls(new MemoryControlsStorage(), {
     async authorizePolicy() {},
     async authorizeSession(p, session) { if (p === 'intruder' || !['root', 'child'].includes(session)) throw new ControlsError('access-denied', 'session denied') },
@@ -53,14 +53,17 @@ async function fixture({ storage = new MemoryWindowStorage(), runtimeId = 'clean
     if (p === 'reader' && access === 'write') throw new ControlsError('access-denied', 'read only')
     return { author: { kind: 'agent', principalId: p, sessionId: session }, scope: session === 'root' ? { kind: 'coordinator' } : { kind: 'assigned', workflowId: null, ticketIds: [] } }
   } }
-  let serial = 0, leaseSerial = 0
+  let serial = 0, leaseSerial = 0, running = nativeRunning
   const operationId = () => 'cleanup-op-' + ++serial
   function open(runtime = runtimeId) {
     let port
-    const windows = new SessionWindows(controls, storage, authority, { runtimeId: runtime, capability: 'cooperative', bindProgram(value) { port = value }, newLeaseId: () => 'cleanup-lease-' + runtime + '-' + ++leaseSerial })
+    // The window fixture reports the host's own descendant activity; never the ledger.
+    const windows = new SessionWindows(controls, storage, authority, { runtimeId: runtime, capability: 'cooperative',
+      nativeActivity: async () => ({ known: true, running, total: running, reason: null }),
+      bindProgram(value) { port = value }, newLeaseId: () => 'cleanup-lease-' + runtime + '-' + ++leaseSerial })
     return { windows, port }
   }
-  return { ...open(), open, storage, operationId }
+  return { ...open(), open, storage, operationId, setNativeRunning(value) { running = value } }
 }
 
 // Test input checksum follows the published schema contract, not an imported helper.
@@ -109,6 +112,7 @@ registerTest('explicit source compaction checkpoints current state, keeps full h
   assert.equal((await f.windows.apply('owner', 'root', ticket)).appliedRevision, 1)
   const replay = await f.port.reserveExecution('owner', 'root', request)
   assert.deepEqual(replay.token, held.token); assert.equal(replay.dispatchable, false)
+  f.setNativeRunning(2) // the host now reports both workers running
   const fresh = await f.port.reserveExecution('owner', 'root', { ...request, operationId: 'execution-second', executionId: 'new-worker' })
   assert.equal(fresh.dispatchable, true); assert.equal(fresh.snapshot.S.used, 2)
   assert.equal(fresh.snapshot.S.overage, 1)
@@ -172,6 +176,7 @@ registerTest('ticket and execution history GC keeps every generation token, firs
   const currentReplay = await f.port.reserveExecution('owner', 'root', currentRequest)
   assert.deepEqual(currentReplay.token, current.token); assert.equal(currentReplay.dispatchable, false)
   assert.equal((await f.windows.apply('owner', 'root', { ...ticket, operationId: 'late-T-release', action: 'release', generation: 1 })).ignored, true)
+  f.setNativeRunning(1) // one native child remains resident after the old run ended
   const after = await f.windows.read('owner', 'root')
   assert.equal(after.T.used, 1); assert.equal(after.tickets[0].generation, 2)
   assert.equal(after.S.used, 1); assert.equal(after.executions[1].generation, 2)
@@ -448,6 +453,7 @@ registerTest('source purge rejects a raced revision rather than deleting from a 
   const compact = await f.port.compactHistory('owner', 'root', { operationId: 'race-compact', expectedRevision: 2 })
   intercept = () => f.port.reserveExecution('owner', 'root', { operationId: 'racing-native-reserve', executionId: 'race-worker', workflowId: null, localTicketId: null })
   await rejectsCode(f.port.purgeHistory('owner', 'root', { operationId: 'raced-purge', expectedRevision: compact.appliedRevision, throughRevision: 2, targets: [{ kind: 'knowledge' }] }), 'revision-conflict')
+  f.setNativeRunning(1) // the raced reservation corresponds to one running native child
   const snapshot = await f.windows.read('owner', 'root')
   assert.equal(snapshot.S.used, 1); assert.equal(snapshot.revision, 4)
   assert.equal(JSON.stringify(await storage.read(instance.instrumentInstanceId)).includes('race-preserve-old-marker'), true)
@@ -537,7 +543,7 @@ registerTest('native JSON source GC removes old plaintext across an independent 
     assert.equal(restored.before.executions[0].state, 'released'); assert.equal(restored.before.executions[1].generation, 2)
     assert.equal(restored.afterLate.S.used, 1); assert.equal(restored.afterLate.executions[1].state, 'unknown')
     assert.equal(restored.fresh.dispatchable, true); assert.equal(restored.fresh.snapshot.S.used, 2)
-    assert.equal(restored.fresh.snapshot.S.countKnown, false)
+    assert.equal(restored.fresh.snapshot.S.countKnown, true)
     assert.equal(restored.rawSource.includes('native-unique-old-reason-marker'), false)
     raw = await readFile(join(root, 'window_source_cleanup.json'), 'utf8')
     assert.equal(raw.includes('native-unique-old-reason-marker'), false)
@@ -547,6 +553,7 @@ registerTest('native JSON source GC removes old plaintext across an independent 
 if (childMode) {
   const f = await openNativeWindowDomain(process.argv[3])
   try {
+    f.setNativeRunning(1) // one native child survived the restart
     const before = await f.windows.read('owner', 'root')
     const oldKnowledgeReplay = await f.port.reconcileKnowledge('owner', 'root', { operationId: 'native-old-knowledge', state: 'unknown', reason: 'native-unique-old-reason-marker' })
     const document = parseWindowDocument(await f.storage.read(instance.instrumentInstanceId))
@@ -556,6 +563,7 @@ if (childMode) {
     const lateOldReceipt = await f.port.receipt({ ...token, operationId: 'native-late-old-release', state: 'released' })
     const afterLate = await f.windows.read('owner', 'root')
     const currentReplay = await f.port.reserveExecution('owner', 'root', { operationId: 'native-execution-current', executionId: 'native-worker', workflowId: 'flow', localTicketId: 'A' })
+    f.setNativeRunning(2) // the fresh dispatch is a second running native child
     const fresh = await f.port.reserveExecution('owner', 'root', { operationId: 'native-new-after-restart', executionId: 'new-native-work', workflowId: null, localTicketId: null })
     const rawSource = JSON.stringify(await f.storage.read(instance.instrumentInstanceId))
     console.log(JSON.stringify({ before, afterLate, oldKnowledgeReplay, oldReceiptReplay, lateOldReceipt, currentReplay, fresh, rawSource }))

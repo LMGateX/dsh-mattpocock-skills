@@ -27,8 +27,9 @@ DSH 的 PTC（programmatic tool calling）模式允许模型在一次 `run_code`
 - 托管路径：模型调用 `mattpocock_execute`，插件以 `windowsProgram.reserveExecution` 预留后，
   在 `nativeDispatch.run(dispatch, () => ports.executeNative(...))`（`src/runtime.ts:488`）内触发原生派发，
   子代理以 `origin==='subagent'` 且 `parentSession` 匹配被识别（`src/runtime.ts:398-409`）。
-- 未托管路径：任何其它来源创建的子代理都会被记为 `unmanaged-native-execution-observed`（`src/runtime.ts:434-437`），
-  事实里呈现为 `execution-admission: unsupported`，而不是「零个执行」。
+- 未托管路径：任何其它来源创建的子代理都会被宿主原生子代理目录计数并进入 S；插件另外把该账本缺口记为
+  `unmanaged-native-execution-observed` 审计，不代表「零个执行」。只有宿主没有可用的原生目录 seam 时，
+  `execution-admission` 才是 unsupported，并给出机械原因。
 
 这两条都基于 SDK 生命周期事件，与子代理是在顶层工具还是 `run_code` 程序里创建无关。
 PTC 嵌套调用持有各自的 `exec`/callId，因此预留、凭据与释放仍按调用粒度对账。
@@ -36,7 +37,7 @@ PTC 嵌套调用持有各自的 `exec`/callId，因此预留、凭据与释放�
 ## 4. 需要明确的边界
 
 - **管理功能关闭的工作区**：`mattpocock_execute` 走非准入路径（`src/runtime.ts:469-473`），
-  插件不做预留与释放对账，子代理一律按未托管原生活动上报。这不是漏判，是策略状态。
+  插件不做预留与释放对账，子代理一律按未托管原生活动记入账本审计；它们仍由宿主原生子代理目录计入在跑数 S。这不是漏判，是策略状态。
 - **无法归因的嵌套调用**：若某个嵌套 `exec` 没有可用的 agent 归属，插件的 post-execute 直接放行，
   该次调用不附带状态块；下一次 pre-step 仍会注入。
 

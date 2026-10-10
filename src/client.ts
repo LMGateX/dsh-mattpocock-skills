@@ -174,9 +174,9 @@ export function windowSummary(windows: WindowSnapshot | null, health: ClientSess
   const signed = (value: unknown): string => typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '未知'
   const reference = (usage: WindowSnapshot['T']): string => '/' + capacityText(usage.capacity) + ' · 超出 ' + countText(usage.overage) + ' · 差额 ' + signed(usage.gap)
   const T = 'T ' + countText(windows.T.used) + reference(windows.T)
-  const knownS = windows.S.countKnown === true && windows.capability === 'cooperative' && windows.runtimeKnowledge?.known === true && windows.S.byState.unknown === 0
+  const knownS = windows.S.countKnown === true && windows.capability === 'cooperative'
   const S = knownS ? 'S ' + countText(windows.S.used) + reference(windows.S)
-    : 'S 在跑 ' + countText(windows.S.used) + reference(windows.S) + ' · 总数未知'
+    : 'S 在跑 ' + countText(windows.S.used) + reference(windows.S) + '（下界） · 总数未知'
   return [T, S]
 }
 export function WindowProjection(props: { readonly view: ClientSessionSnapshot }): ReactElement {
@@ -185,7 +185,7 @@ export function WindowProjection(props: { readonly view: ClientSessionSnapshot }
   if (failed || windows === null) return diagnostic('窗口观测未知：' + (failed?.reason ?? '未返回 T/S；不是 0 或默认容量'))
   return h('section', { 'aria-label': '窗口观测' },
     diagnostic('T/S 是参考值，不是硬名额；超出或统计未知不拒绝派发，也不要求额外审批。'),
-    diagnostic('S 计的是当前观察到的在跑受管执行；存在未登记原生活动时它是已知下界（总数未知），available 只是账本余量，不是全机可派发数量。'),
+    diagnostic('S 是宿主报告的在跑子代理数；countKnown 为 false 时它是已知下界（总数未知），available 只是参考余量，不是全机可派发数量。'),
     diagnostic(windowSummary(windows, props.view.health).join(' · ')), pretty(windows))
 }
 /** Aggregate read health controls the count; per-resource physical inspection never erases metadata. */

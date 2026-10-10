@@ -41,6 +41,14 @@ This document is the authoritative implementation contract. A later implementati
 - 随包兼容提供者、recipe 与 `host-patches/` 继续交付，服务没有原生 seam 的宿主；本决策不改变 0.4.3 的用户入口、启动时采样、实际 header 核对，也不增加第二个 cwd 来源。
 - 授权、持久意图、原生副作用边界复验与确认序列不变：宿主原生不豁免预检查，省略 cwd 仍不写任何目录值。
 
+## 宿主原生子代理活动计数（2026-10-10，已获所有者认可）
+
+- 已核对 DSH `0.2.1-alpha.2` 的公开 `@deepseek-ai/dsh-subagent`：`SubagentRuntime.listDescendants(rootSessionId, signal?)` 返回带 `activity: 'running'|'inactive'` 的目录行，并把分支缺口表达为 `kind:'diagnostic'` 加 `corrupt/unsupported/unavailable`；直接子级变体是 `listChildren`。`0.2.1-alpha.1` 同样暴露该公开方法。实际加载的服务具备该方法（或仅 `listChildren`）时，本插件用它查询某个 owner session 的在跑子代理数；缺失时按直接子级递归回退，仍缺失才是 unsupported。
+- 执行账本不再决定 S：reserve/receipt/重启重准入只保留为派发审计；S.used、capacity 比较、注入快照与客户端面板都读取 `nativeSubagentActivity(ownerSessionId)`。宿主遍历完整且无 diagnostic 行时 `known=true`、数字精确；服务缺失、根目录读取被拒或出现 diagnostic 行时 `known=false`、reason 说明原因、`running` 是明示下界，绝不报告“0 且 known=true”。
+- 能力与健康行如实反映 seam：seam 可用时 `allNativeWakeAdmission` 为 supported、`execution-admission` 为 current；不可用或枚举不完整时仍为 unsupported 并给出机械原因，模型可见文本说明在跑数来自宿主。
+- ticketWindowSize/T、票、绑定、资源与接管规则不变；runningSubagentLimit 仍只是与原生计数比较的策略参考值，不是派发禁令。旧 `runtimeKnowledge` 继续描述执行账本与当前 runtime 的对齐程度，不再参与 S 计数。
+- 该决策取代此前「以登记租约近似 S、并在缺少原生枚举时以 unknown 作为唯一诚实表达」的旧机制；旧机制会漏掉原生启动的子代理和重载后的在跑子代理，并让账本噪声影响容量比较。
+
 ## 既有 Profile 原生依赖接入修复
 
 用户认可继续修复原生依赖冲突及强制开启覆盖诊断。修复仍由同一插件包承担，不修改共享 SDK、Profile 的其他插件依赖或全局模块解析，也不自动重启服务。

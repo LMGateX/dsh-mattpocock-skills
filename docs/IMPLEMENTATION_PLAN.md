@@ -48,7 +48,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 **本段为前一阶段旧规格验收，不是本轮新行为完成声明。** Repository-local TypeScript Host/Client/control implementation and mechanical validation were complete for the then-supported seams. The earlier [completion matrix and verification（本地原始记录不公开；参见验证范围）](<VERIFICATION.md#historical-evidence>) distinguishes implemented features from installed-host unsupported guarantees; usage is in [the shipped guide](../CONTROLS.md). This does not satisfy or authorize the historical Phase 5 behavioral campaign, owner activation or private release gates below.
 
-Current shape: immutable Skill provider plus optional lazy runtime, revisioned workspace policy, durable owner-scoped instruments, independent rolling T/S, safe resource retention, actual consumption, durable owner notices and native UI. Current host gaps remain complete native activity/wake admission, initial independent continuable cwd, cold-resume closure and multi-root Git writes. Preserve unknown/fail-closed/retention rather than inventing enforcement.
+Current shape: immutable Skill provider plus optional lazy runtime, revisioned workspace policy, durable owner-scoped instruments, independent rolling T/S, safe resource retention, actual consumption, durable owner notices and native UI. Current host gaps remain native wake admission gating (2026-10-10 update: the host subagent catalog now provides complete activity observation and drives S; observation is not a gate), initial independent continuable cwd, cold-resume closure and multi-root Git writes. Preserve unknown/fail-closed/retention rather than inventing enforcement.
 
 ## Phase 0 — Repository Baseline
 

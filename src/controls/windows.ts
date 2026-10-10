@@ -127,15 +127,26 @@ export interface WindowStorage {
 export interface WindowUsage {
   /** Saved advisory reference, never an execution authorization limit. */
   readonly capacity: number | null
-  /** Registered held tickets/execution leases; S is not an unobserved native total. */
+  /** T: held tickets. S: running subagents read from the native host at read time. */
   readonly used: number
-  /** Registered-ledger headroom; null means disabled/unconfigured. Never gates dispatch. */
+  /** Headroom against the reference; null means disabled/unconfigured. Never gates dispatch. */
   readonly available: number | null
   readonly overcommitted: boolean
   /** Amount above the reference; null when no reference is configured. */
   readonly overage: number | null
-  /** Signed reference minus registered usage, including negative overage. */
+  /** Signed reference minus observed usage, including negative overage. */
   readonly gap: number | null
+}
+/** Native host descendant activity for one owner session; never this plugin's ledger. */
+export interface NativeSubagentActivity {
+  /** True only when the host enumerated every descendant without a diagnostic row. */
+  readonly known: boolean
+  /** Running descendants the host could read; a lower bound when known is false. */
+  readonly running: number
+  /** Readable descendant rows; a lower bound when known is false. */
+  readonly total: number
+  /** Mechanical cause when known is false; null when known. */
+  readonly reason: string | null
 }
 export interface WindowSnapshot {
   readonly instance: InstrumentInstance
@@ -152,8 +163,11 @@ export interface WindowSnapshot {
   /** Always instance totals, even when detail is assignment-filtered. */
   readonly T: WindowUsage
   readonly S: WindowUsage & {
-    /** False means used is only the registered count, not a known complete native count. */
+    /** True only when the host enumerated every descendant without diagnostics; then used is exact. */
     readonly countKnown: boolean
+    /** Cause of an incomplete native count; null when countKnown. */
+    readonly countReason: string | null
+    /** Ledger audit of our own dispatches; never the count source. */
     readonly byState: Readonly<Record<ExecutionState, number>>
   }
 }
@@ -191,6 +205,8 @@ export interface WindowOptions {
   readonly capability: WindowCapability
   /** Compatibility flag: marks uninspected runtime reconciling, but never blocks reservations. */
   readonly requireKnownRuntime?: boolean
+  /** Native host descendant activity for one owner; absent means no native count is available. */
+  readonly nativeActivity?: (ownerSessionId: string) => Promise<NativeSubagentActivity>
   readonly bindProgram: (port: WindowProgramPort) => void
   readonly newLeaseId?: () => string
 }
@@ -245,6 +261,17 @@ function parseKnowledge(value: unknown): RuntimeKnowledge {
   if (known && (runtimeId === null || reason !== null)) invalid('known runtime requires inspected identity and no unknown reason')
   if (!known && reason === null) invalid('unknown runtime requires reason')
   return { runtimeId, known, reason }
+}
+/** The native port is program-only, but a malformed value must degrade to unknown, never leak. */
+function parseNativeActivity(value: unknown): NativeSubagentActivity {
+  const raw = record(value, 'native subagent activity', ['known', 'running', 'total', 'reason'])
+  const known = boolean(raw.known, 'native activity known')
+  const running = revision(raw.running, 'native running count')
+  const total = revision(raw.total, 'native total count')
+  if (total < running) invalid('native total cannot be smaller than the running count')
+  const reason = raw.reason === null ? null : id(raw.reason, 'native activity reason')
+  if (known !== (reason === null)) invalid('known native activity clears its reason; unknown requires a mechanical reason')
+  return { known, running, total, reason }
 }
 function parseToken(raw: Record<string, unknown>): ExecutionToken {
   return { instrumentInstanceId: id(raw.instrumentInstanceId, 'instrumentInstanceId'), executionId: id(raw.executionId, 'executionId'),
@@ -615,6 +642,7 @@ export class SessionWindows {
   #capability: WindowCapability
   #requireKnownRuntime: boolean
   #newLeaseId: () => string
+  #nativeActivity: WindowOptions['nativeActivity']
   #controls: WorkspaceControls
   #storage: WindowStorage
   #authority: InstrumentAuthority
@@ -623,6 +651,7 @@ export class SessionWindows {
     this.#runtimeId = id(options.runtimeId, 'runtimeId')
     if (options.capability !== 'unsupported' && options.capability !== 'cooperative') invalid('declare unsupported/cooperative host capability')
     this.#requireKnownRuntime = options.requireKnownRuntime === undefined ? false : boolean(options.requireKnownRuntime, 'requireKnownRuntime')
+    this.#nativeActivity = options.nativeActivity
     this.#capability = options.capability; this.#newLeaseId = options.newLeaseId ?? randomUUID
     options.bindProgram(Object.freeze({ reserveExecution: (principal: string, sessionId: string, request: ExecutionRequest) => this.#reserve(principal, sessionId, request),
       receipt: (receipt: ExecutionReceipt) => this.#receipt(receipt),
@@ -632,16 +661,19 @@ export class SessionWindows {
   }
   async read(principal: string, sessionId: string): Promise<WindowSnapshot> {
     const context = await this.#context(principal, sessionId, 'read')
-    return this.#snapshot(await this.#load(context.controls.instance), context)
+    const native = await this.#nativeCount(context.controls.instance.ownerSessionId)
+    return this.#snapshot(await this.#load(context.controls.instance), context, native)
   }
   async apply(principal: string, sessionId: string, input: TicketWindowCommand): Promise<TicketWindowResult> {
     const command = parseTicketWindowCommand(input)
+    let native: NativeSubagentActivity | undefined
     for (let attempt = 0; attempt < 32; attempt += 1) {
       const context = await this.#context(principal, sessionId, 'write')
+      native ??= await this.#nativeCount(context.controls.instance.ownerSessionId)
       checkScope(context.scope, command)
       const current = await this.#load(context.controls.instance)
       const prior = this.#prior(current, 'ticket', context.caller, command)
-      if (prior) return freeze({ appliedRevision: prior.revision, replayed: true, ignored: prior.ignored, generation: prior.generation, snapshot: this.#snapshot(current, context) })
+      if (prior) return freeze({ appliedRevision: prior.revision, replayed: true, ignored: prior.ignored, generation: prior.generation, snapshot: this.#snapshot(current, context, native) })
       const existing = current.tickets.find(row => sameTicket(row, command))
       let nextLease: TicketLease; let ignored = false
       if (command.action === 'reserve') {
@@ -660,21 +692,23 @@ export class SessionWindows {
       }
       const op = this.#operation(current, 'ticket', context.caller, command, ignored ? command.action === 'reserve' ? nextLease.generation : command.generation : nextLease.generation, null, ignored)
       const next = parseWindowDocument({ ...current, revision: op.revision, tickets: [...current.tickets.filter(row => !sameTicket(row, command)), nextLease], operations: [...current.operations, op] })
-      if (await this.#storage.compareAndSwap(current.instrumentInstanceId, current.revision, next)) return freeze({ appliedRevision: op.revision, replayed: false, ignored, generation: op.generation, snapshot: this.#snapshot(next, context) })
+      if (await this.#storage.compareAndSwap(current.instrumentInstanceId, current.revision, next)) return freeze({ appliedRevision: op.revision, replayed: false, ignored, generation: op.generation, snapshot: this.#snapshot(next, context, native) })
     }
     return this.#contention()
   }
   async #reserve(principal: string, sessionId: string, input: ExecutionRequest): Promise<ExecutionReservation> {
     const request = parseRequest(input)
     const leaseId = id(this.#newLeaseId(), 'new leaseId')
+    let native: NativeSubagentActivity | undefined
     for (let attempt = 0; attempt < 32; attempt += 1) {
       const context = await this.#context(principal, sessionId, 'write')
+      native ??= await this.#nativeCount(context.controls.instance.ownerSessionId)
       checkScope(context.scope, request)
       const current = await this.#load(context.controls.instance)
       const prior = this.#prior(current, 'execution', context.caller, request)
       if (prior) {
         const lease = current.executions.find(row => row.leaseId === prior.leaseId)!
-        return this.#reservation(current, context, lease, prior.revision, true)
+        return this.#reservation(current, context, native, lease, prior.revision, true)
       }
       const history = current.executions.filter(row => row.executionId === request.executionId)
       const latest = history.at(-1)
@@ -688,7 +722,7 @@ export class SessionWindows {
       } else if (lease.runtimeId !== this.#runtimeId || lease.state === 'unknown') throw new ControlsError('association-conflict', 'execution needs trusted reconciliation before dispatch')
       const op = this.#operation(current, 'execution', context.caller, request, lease.generation, lease.leaseId, false)
       const next = parseWindowDocument({ ...current, revision: op.revision, executions: current.executions.includes(lease) ? current.executions : [...current.executions, lease], operations: [...current.operations, op] })
-      if (await this.#storage.compareAndSwap(current.instrumentInstanceId, current.revision, next)) return this.#reservation(next, context, lease, op.revision, false)
+      if (await this.#storage.compareAndSwap(current.instrumentInstanceId, current.revision, next)) return this.#reservation(next, context, native, lease, op.revision, false)
     }
     return this.#contention()
   }
@@ -834,13 +868,19 @@ export class SessionWindows {
     if (feature.status === 'disabled') return // off never clears registered execution facts or knowledge
     if (!policy.workspaceVerified) throw new ControlsError('feature-disabled', 'execution window workspace unverified')
   }
-  #reservation(document: WindowDocument, context: Context, lease: ExecutionLease, appliedRevision: number, replayed: boolean): ExecutionReservation {
-    const snapshot = this.#snapshot(document, context)
+  #reservation(document: WindowDocument, context: Context, native: NativeSubagentActivity, lease: ExecutionLease, appliedRevision: number, replayed: boolean): ExecutionReservation {
+    const snapshot = this.#snapshot(document, context, native)
     const dispatchable = !replayed && reservationOrigin(document, lease.leaseId) === appliedRevision
       && context.controls.policy.workspaceVerified && lease.runtimeId === this.#runtimeId && lease.state === 'reserved'
     return freeze({ appliedRevision, replayed, dispatchable, token: token(lease), snapshot })
   }
-  #snapshot(document: WindowDocument, context: Context): WindowSnapshot {
+  /** S is the native host's own descendant activity; the ledger below is audit only. */
+  async #nativeCount(ownerSessionId: string): Promise<NativeSubagentActivity> {
+    if (this.#nativeActivity === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unavailable' }
+    try { return parseNativeActivity(await this.#nativeActivity(ownerSessionId)) }
+    catch { return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unreadable' } }
+  }
+  #snapshot(document: WindowDocument, context: Context, native: NativeSubagentActivity): WindowSnapshot {
     const policy = context.controls.policy; const feature = policy.features.windows
     const executions: ExecutionWindowView[] = document.executions.map(row => ({ ...row,
       state: row.state !== 'released' && row.runtimeId !== this.#runtimeId ? 'unknown' : row.state,
@@ -858,9 +898,10 @@ export class SessionWindows {
       overage: capacity === null ? null : Math.max(0, used - capacity),
       gap: capacity === null ? null : capacity - used })
     const T = usage(policy.windows.ticketWindowSize, document.tickets.filter(row => row.held).length, ticketConfigured)
-    const S = { ...usage(policy.windows.runningSubagentLimit, executions.filter(row => row.state !== 'released').length,
+    // The running count is queried from the host; reservations and re-admission never feed it.
+    const S = { ...usage(policy.windows.runningSubagentLimit, native.running,
       policy.extensionEnabled && feature.requested && policy.workspaceVerified && policy.windows.runningSubagentLimit !== null),
-      countKnown: runtimeKnowledge.known && byState.unknown === 0, byState }
+      countKnown: native.known, countReason: native.known ? null : native.reason, byState }
     const status = unknown ? 'reconciling' : feature.status === 'disabled' ? 'disabled' : feature.status === 'unsupported' || this.#capability === 'unsupported' ? 'unsupported' : T.overcommitted || S.overcommitted ? 'overcommitted' : 'ready'
     return freeze({ instance: { instrumentInstanceId: document.instrumentInstanceId, ownerSessionId: document.ownerSessionId, controlWorkspaceId: document.controlWorkspaceId },
       revision: document.revision, configurationRevision: policy.configurationRevision, capability: this.#capability, status,

@@ -51,6 +51,10 @@ The pre-step adapter first obtains the native decision. Reject means no consumpt
 
 Only actual agent/created, agent/status, agent/disposed and subagent/start/end events enter the program port. Actual Agent identity is retained when supplied/resolved, never serialized to models. Event wrappers are shallow frozen; borrowed Agents are not frozen. Report text, labels and descriptions never determine receipts. Parent attribution uses trusted Session/header/cache; lifecycle payloads omit parent.
 
+## Native subagent activity
+
+The projected S count is queried from the native host at read time, never from this plugin's reservation ledger. HostPorts.nativeSubagentActivity(ownerSessionId, signal?) reads ctx.subagents.listDescendants (a recursive listChildren walk is the fallback when only direct children are exposed) and returns { known, running, total, reason }. known is true only when the whole traversal succeeded without a kind:'diagnostic' row; then running is exact. A missing service, a rejected root listing or any corrupt/unsupported/unavailable diagnostic row returns known:false, a mechanical reason naming the cause, and the readable running rows as a stated lower bound. A missing service or rejected listing is never reported as 0-with-known-true. HOST_CAPABILITIES.allNativeWakeAdmission reports supported only while that seam is actually loaded, and the execution-admission health row is current exactly when S.countKnown is true. Execution leases remain the audit trail for this plugin's own dispatches; they do not feed used, the capacity comparison or the injected snapshot.
+
 ## Owner notification delivery
 
 Startup retries for already-live owners wait on notificationObserverReady. Host resolves this deferred promise only after actual source/receipt and lifecycle registrations are installed; runtime factories return without awaiting background notification flush. Teardown aborts the mount lifetime and resolves the barrier, so a failed mount cannot leave a waiter stranded. No inbox/model delivery acknowledgement is fabricated by this readiness signal.
@@ -68,12 +72,12 @@ Mechanical probes use actual SessionStore.create/append/flush with an isolated g
 | Requirement | Installed Host / adapter behavior |
 | --- | --- |
 | Initial per-child continuable cwd | **unsupported**: seed-only preparation and inherited parent cwd. No header/chdir/catalogue manipulation. |
-| All-native start/wake S admission | **unsupported**: tool guards do not cover every direct Service/Agent inbox/Remote wake. Creation/pre-step is not the missing scheduler seam. |
-| Exact empty native activity after restart | **unknown**: AgentRegistry enumerates local live Agents, not external provider runs or unpublished preparations. nativeActivity returns known=false and real local observations, not false emptiness. |
+| All-native start/wake S admission | **supported when the loaded host exposes the subagent catalog listing**: every descendant of an owner session, including natively started or woken children, is enumerated once per read and drives S. This is observation, not a veto — tool guards still do not cover every direct Service/Agent inbox/Remote wake, so no path becomes gated. |
+| Exact native activity after restart | **known only when the catalog traversal succeeds without diagnostics**: then running is exact. A missing service, rejected root listing or any corrupt/unsupported/unavailable diagnostic row returns known=false with a mechanical reason and the readable running rows as a stated lower bound, never a guessed empty list. |
 | Closing every native/cold resource re-entry | **unsupported**: lifecycle port returns closed=false/nativeColdResumeClosed=false. Resource code must retain rather than delete a resumable resource. |
 | Worktree plus external common-Git-dir write grants | **unsupported**: native file policy has one workspaceRoot, no multi-root Git-ref whitelist. |
 
-T intent, authored records, GUI/context projections and honest lifecycle observations remain independent. A strong S requirement cannot become ready because a managed tool exists or the local list looks empty. Fake program-gate tests can prove future supported composition paths, not certify these missing installed seams.
+T intent, authored records, GUI/context projections and honest lifecycle observations remain independent. An S count is never inferred from a managed tool existing or from an empty registry list; it is either the native catalog result or an explicit lower bound. Fake program-gate tests can prove future supported composition paths, not certify these missing installed seams.
 
 ## Confined typed Git and filesystem
 

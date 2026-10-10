@@ -17,7 +17,7 @@
 ~~~
 
 instrument 查询与 UI 都是所属实例账本的投影，不是另外几套计数器；票业务报告保留 agent 来源，程序执行事实保留可信回执来源，不能混成同一种证明。原生结果仍由 DSH 负责交付，仪器补的是当前状态与安排依据，不再发一份 child 回答。
-需要同时显示 activeTickets 与 runningSubagents、预留/停止/未知占用、各自 used/available、待合并/补修、配置与账本 revision；显示“信息已收到”“票已交付”“执行已释放”“会话/工作树已退休”四种独立事实。
+需要同时显示 activeTickets 与 runningSubagents（在跑数由宿主原生子代理查询在读取时给出，预留/停止/未知只是执行审计）、各自 used/available、待合并/补修、配置与账本 revision；显示“信息已收到”“票已交付”“执行已释放”“会话/工作树已退休”四种独立事实。
 
 **硬约束：运行状态只由可信程序信号驱动，消息正文没有执行生命周期写权限。** child 的进度、提问、阻塞报告、候选结果和文字“我完成了”只传业务信息。即使宿主把程序事件渲染成“已结束”的通知，代码也不解析这段文字释放名额；原生 source 只用于关联消息与程序回执，不单独作为关闭证据。
 程序事件 → 执行状态机/S → 注入；模型显式业务更新 → 票/裁决记录及 T 占位 → 注入；普通业务消息 → 交付原内容＋附快照。仪器不从业务正文猜执行结束，也不替模型裁定业务正确性。
@@ -49,7 +49,7 @@ instrument 查询与 UI 都是所属实例账本的投影，不是另外几套�
 管理模块把这些可信信号转换为自己的 execution/lease 状态；适配后的 execution-released 是拟设计的内部回执，不冒充已有 DSH 事件。关闭信号按具体实例/执行代次/lease 匹配，一次释放，迟到信号不能关闭续用后的新执行。订阅放在仍存活的管理 scope，不能把唯一关闭监控绑定在已销毁的 child scope。
 缺少关闭/释放回执时保持 unknown/reconcile，核对实际运行事实；不回退到正则、关键词、LLM 判断、沉默时长或模型自报状态。
 
-**S 只计正在运行的子代理（0.4.21 实现规则）**：continuable child 的一次 run 结束会让内置 AgentLoop 移出该 Agent 实例（`agent/disposed`），这个实例确实不在运行，因此受管 execution 按原语义发 `released`、释放槽位（`released → running` 会被状态机按回退拒绝，不能原地复活）。durable session 随后被唤醒、实例重建时，插件用同一 `executionId` 走一次新的 reservation（新 generation、新 leaseId；`windows.ts` 明确支持 `released` 执行的重新准入），补 `running` 回执并更新绑定，唤醒的 lane 重新占用 S 槽位。未匹配已知绑定的唤醒仍如实报未登记原生活动。这样 `S.used`（也就是输入框上方进度行里的数）始终等于**当前正在运行的子代理数**，而滑动窗口控制的正是这个数。
+**S 以正在运行的子代理为准（0.4.21 执行审计规则；当前计数改由宿主目录提供）**：continuable child 的一次 run 结束会让内置 AgentLoop 移出该 Agent 实例（`agent/disposed`），这个实例确实不在运行，因此受管 execution 按原语义发 `released`、释放槽位（`released → running` 会被状态机按回退拒绝，不能原地复活）。durable session 随后被唤醒、实例重建时，插件用同一 `executionId` 走一次新的 reservation（新 generation、新 leaseId；`windows.ts` 明确支持 `released` 执行的重新准入），补 `running` 回执并更新绑定，唤醒的 lane 重新占用 S 槽位。未匹配已知绑定的唤醒仍如实报未登记原生活动。唤醒与重准入仍按上述机制更新执行审计行；投影的 `S.used`（输入框上方进度行里的数）现在直接读取宿主原生子代理目录，因此在宿主可枚举时等于**当前正在运行的子代理数**，不可枚举时是明示下界。
 
 ## 3. 优先路线：现有插件入口实现同一步消费
 

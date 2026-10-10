@@ -12,6 +12,18 @@
 
 本条只记录未发布的工作树源码与隔离验证，**未**发布、**未**安装到本机 Profile、**未**重启任何服务。
 
+## 未发布源码改动：宿主原生运行中子代理计数（2026-10-10）
+
+`src/controls/windows.ts` 的 S 计数改为读取时查询宿主：`HostPorts.nativeSubagentActivity(ownerSessionId)` 经 `ctx.subagents.listDescendants`（仅暴露直接子级时用 `listChildren` 递归回退）返回 `{known, running, total, reason}`；本插件的执行租约只保留为派发审计，不再进入 used、容量比较或注入快照。遍历完整且无 diagnostic 行时 known=true、数字精确；服务缺失、根目录读取被拒或任何 corrupt/unsupported/unavailable diagnostic 行返回 known=false、机械 reason 与可读 running 下界。能力行 `allNativeWakeAdmission` 只在 seam 实际加载时为 supported，健康行 `execution-admission` 只在 S.countKnown 时为 current；模型可见文本说明在跑数来自宿主。
+
+开发工作树三组验收（Node 24.17.0，`node --test tests/*.test.mjs`）：
+
+- 规范 alpha.2 根：**808** 项、614 通过、0 失败、194 个桥用例带诊断 skip。
+- 双根（alpha.2 + alpha.1 兼容根 `DSH_CONTROLS_COMPAT_HOST_ROOT`）：**834** 项、834 通过、0 失败、0 skip。
+- 无宿主根：**808** 项、516 通过、0 失败、292 个环境门禁 skip。
+
+生成物已重建并复核：`node_modules/.bin/tsc --project tsconfig.json`、`node scripts/build-client.mjs --out lib/client.js --declaration`、`node scripts/build-compatibility-patch.mjs --check`；`controls-package` 的 src 与 lib 一致性门禁在重建后通过。新增用例覆盖宿主目录精确计数、diagnostic 下界、被拒 listing、`listChildren` 递归回退、服务缺失，以及面板/注入文本的下界表达。该源码与生成物均未发布、未安装、未重启任何服务。
+
 ## 双宿主测试根：规范 alpha.2 与兼容桥 alpha.1（2026-10-10）
 
 宿主升级到 `0.2.1-alpha.2` 后，插件走宿主原生 per-child cwd seam，不再在 alpha.2 上加载版本钉住的兼容桥（0.4.25 的既有行为）。测试套件因此显式区分两个宿主根，不再让一个根同时承担两类断言：

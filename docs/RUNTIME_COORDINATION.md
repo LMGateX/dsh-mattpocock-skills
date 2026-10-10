@@ -41,7 +41,7 @@ assignment：
 | author 与 assignment | operator/agent 作者保留；old/new child 仅看与改授权票；null scope 不变成 coordinator |
 | 无票研究 | future-controlled child/grandchild null scope；root S 聚合，T=0，无虚构业务 workflow |
 | T/S 独立、逐项 refill | T 释放不释放 S；exact disposed 对象释放 S 不释放 T；立即补入；T-only/S-only unset 不猜默认容量 |
-| 安装版活动真值 | actual mounted ports.nativeActivity 返回 known:false，仍包含真实 fixture registry 对象，不假装空集合；S 在任何 native dispatch 前拒绝，T 仍可用 |
+| 安装版活动真值 | 提供 subagents catalog 的宿主上，S 读实际 listDescendants 结果；未提供该 seam 的 fixture／组合里 actual mounted ports.nativeActivity 仍返回 known:false 并包含真实 registry 对象，不假装空集合，S 是明示下界；任何情况下 S 都不否决本来有效的派发，T 独立可用 |
 | ctx.tools guards | managed nested native 经过原注册器 guards，精确 caller/parent token；direct-parent 进度/问题立即允许，无需 idle/end/disposal，不按正文 JSON 分类 |
 | 未初始化 child | pre-descriptor one-shot 的 guard cache 缺口在 windows on 时 fail closed，off 时允许 |
 | S receipt 证据 | idle、subagent/end、结果文字、缺 actualAgent 不能释放；精确 old/new 同 sid 不同对象的 token 互不释放；缺 proof/unmanaged 保留 unknown |
@@ -59,9 +59,9 @@ assignment：
 
 所有名字带 future controlled native activity 的测试都显式采用受控 known:true 活动端口，仅证明可提供完整可信事件的未来 Host 与当前协调算法的机械接线。
 
-默认 fixture known:false。唯一覆盖 actual ctx.tools managed nesting 的 future test 在创建 runtime 时给它一个显式 activity override，原 mounted.ports.nativeActivity 仍返回 known:false，测试对此有断言。模拟的 native execute 可以调用 facade.created/observe 提交精确程序对象；不能据此断言安装版 native providers、所有 wake/resume、外部执行或 unpublished preparations 已可完整枚举。
+默认 fixture 不提供 subagents catalog，因此 known:false、reason=native-subagent-service-unavailable。唯一覆盖 actual ctx.tools managed nesting 的 future test 在创建 runtime 时给它一个显式 activity override，原 mounted.ports.nativeActivity 仍返回 known:false，测试对此有断言。模拟的 native execute 可以调用 facade.created/observe 提交精确程序对象；模拟的 known:true 只证明机械接线，不代替真实宿主目录遍历。
 
-安装版依然没有完整 all-native-wake admission，不能承诺强 S。initial-child cwd binding、multi-root write scope、所有 cold/native entrances closure 也未取得证明。resourceLifecycle.verifyInitialBinding=false，closeEntrypoints 返回 closed:false/nativeColdResumeClosed:false；测试不伪造这些事实，不运行裸 spawn，不移改 child cwd。
+安装版的实际计数路径是宿主公开的 subagents catalog（listDescendants，或仅有直接子级时的 listChildren 递归），能力行只在 seam 实际加载时为 supported。观测不等于准入控制：没有覆盖所有 native wake/inbox 路径的 veto，也不承诺强 S gate。initial-child cwd binding、multi-root write scope、所有 cold/native entrances closure 仍未取得证明。resourceLifecycle.verifyInitialBinding=false，closeEntrypoints 返回 closed:false/nativeColdResumeClosed:false；测试不伪造这些事实，不运行裸 spawn，不移改 child cwd。
 
 同 sid 新旧对象测试验证不同执行 leases 的对象 fence；相同 executionId 的 generation-specific tombstone 验证由真实 [window tests](<../tests/windows.test.mjs>) 另行覆盖。这里不将它扩称为安装版真实 continuable wake/disposal 的端到端证明。
 
@@ -99,10 +99,10 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk \
 
 主代理另修复 guard 未初始化 cache、late inherited ALS、cold read 注册副作用、旧 policy identity 回写 cache 与 oversized snapshot 表示失败；本文对应 regressions 已跑绿。
 
-短尾 future resident message regression 揭示第二个机械反例：known:true simulator 创建 resident child 后 S=1/running；同一对象的 send_message continuation 只产生 running 事件、没有新的 actual created/activation epoch。修复前 runtime 仍 dispatch 并按新的 callId 计第二 S，得到 nativeCalls=2、S=2、states=[running,unknown]。测试要求无法证明 activation epoch 时在 reservation/dispatch 前明确 unsupported，而不是猜新执行。该 fail-first regression 已及时报主代理；主代理已增加 executor-epoch 缺口的 before-reservation 拒绝，原反例与 full-S no-new-lease/no-dispatch/object-history-cwd 保留回归已跑绿。它不是安装版强 S 可用性的证据（安装版 known:false 仍早拒绝）。原生 windows-off send_message 行为也已另测保留。
+短尾 future resident message regression 揭示第二个机械反例：known:true simulator 创建 resident child 后 S=1/running；同一对象的 send_message continuation 只产生 running 事件、没有新的 actual created/activation epoch。修复前 runtime 仍 dispatch 并按新的 callId 计第二 S，得到 nativeCalls=2、S=2、states=[running,unknown]。测试要求无法证明 activation epoch 时在 reservation/dispatch 前明确 unsupported，而不是猜新执行。该 fail-first regression 已及时报主代理；主代理已增加 executor-epoch 缺口的 before-reservation 拒绝，原反例与 full-S no-new-lease/no-dispatch/object-history-cwd 保留回归已跑绿。它不是安装版强 S 可用性的证据（当时安装版 nativeActivity 仍为 known:false）。原生 windows-off send_message 行为也已另测保留。
 
 实际 SDK registry 的 managed child→parent 全上下文回归曾揭示 Host adapter 的 concludesTurn 接收者错误：SDK 方法使用 this 将原 execution 加入 concludingExecutions，Host 将 execution spread 成 signal-controlled clone 后未绑定方法，native concludesTurn=true 被 runtime 转递到 clone，wrapper 最终结果 concludesTurn=undefined。该 P2 已报主代理并由主代理绑定原 execution 方法修复；最新真实 registry 定向回归已通过，确认结论与 source/id/content 保留、原 registry permissions 经过、S 不增。SDK 最终结果会合法 canonical-copy messages；测试在 raw waterfall 验证引用不变，在最终 ToolRuntime 结果验证 id/source/content，不把 SDK 的规范复制误报为 Host 丢失。
 
 通知接线阶段另发现 runtime 漏传 notifyOwner 的 signal，使 Host/FakeHost 抛错且通知一直 pending；已及时反馈，由主代理补 runtime lifetime signal。early committed receipt 先于 accepted 持久化可能丢 ACK 的反例由主代理加入私有 early receipt reconciliation 后跑绿；另有已 return accepted、但 accepted CAS 被共享 effect blocker 挡住的窗口回归，确认此时到达的精确 ACK 最终仍成为 consumed，而非丢失或被 later accepted 覆回。实际 Host steering fixture 捕获并复用 runtime 构造时已打开的真实 domain handle，不为读通知重复打开同域；native session/event 触发真实 Host listener，由受控 sessions.flush checkpoint gate 证明 flush 完成前不 consume。
 
-尚未通过的真实接缝仍是前述完整 native activity/admission、真实 initial child cwd、多根写授权与 cold closure/retirement，以及真实模型与 GUI/profile 行为。
+尚未通过的真实接缝仍是 native wake admission 的强制 gate（目录观测不等于 veto）、真实 initial child cwd、多根写授权与 cold closure/retirement，以及真实模型与 GUI/profile 行为。

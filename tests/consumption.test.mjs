@@ -96,6 +96,8 @@ test('current records and minimal protocol append independently without touching
   assert.match(result.text, /Register pending decisions when you judge them necessary/)
   assert.match(result.text, /mattpocock_record/); assert.match(result.text, /mattpocock_execute/); assert.match(result.text, /mattpocock_window/)
   assert.match(result.text, /explicit T reserve\/release\/reacquire/); assert.match(result.text, /T and S are this session's configured limits/)
+  assert.match(result.text, /S is the running subagent count read from the host/)
+  assert.match(result.text, /countKnown false means S\.used is a known lower bound with the total unknown/)
   assert.match(result.text, /must already exist in this instrument/)
   assert.match(result.text, /Ticketless research runs are allowed only by omitting workflowId entirely/)
   assert.match(result.text, /Partially complete/); assert.match(result.text, /child-author/); assert.match(result.text, /old-obligation/)

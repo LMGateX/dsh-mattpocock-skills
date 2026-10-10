@@ -224,22 +224,26 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }}
   const instruments=new SessionInstruments(controls,ports.instrumentStorage,authority)
   let windowsProgram!:WindowProgramPort, consumptionProgram!:ConsumptionProgramPort
-  const windows=new SessionWindows(controls,ports.windowStorage,authority,{runtimeId,capability:'cooperative',requireKnownRuntime:false,bindProgram:port=>{windowsProgram=port}})
+  // S is queried from the native host at read time; the execution ledger below stays audit only.
+  const windows=new SessionWindows(controls,ports.windowStorage,authority,{runtimeId,capability:'cooperative',requireKnownRuntime:false,
+    nativeActivity:ownerSessionId=>ports.nativeSubagentActivity(ownerSessionId),
+    bindProgram:port=>{windowsProgram=port}})
   const ownerCaller:HostCaller={kind:'user',principalId:ports.operatorPrincipal,sessionId:null}
   const markKnowledge=(view:SessionControlsView,known:boolean,reason:string|null):Promise<unknown>=>windowsProgram.reconcileKnowledge(ports.operatorPrincipal,view.instance.ownerSessionId,{operationId:randomUUID(),state:known?'known':'unknown',reason:known?null:reason??'native-execution-facts-unavailable'})
   const initialize=async(view:SessionControlsView):Promise<void>=>{
     const key=view.instance.instrumentInstanceId
     if(initialized.has(key))return
     const actual=await ports.nativeActivity(view.instance.ownerSessionId)
-    // The installed host truthfully reports unsupported complete enumeration. No guessed empty list.
+    // The host reports complete enumeration only when its catalog traversal had no
+    // diagnostics; an unsupported or rejected listing stays explicitly unknown.
     await markKnowledge(view,actual.known,actual.reason)
     initialized.add(key)
   }
   /**
    * A hot reload or restart drops the in-memory dispatch map while the child keeps running. The
-   * persisted bindings plus live-Agent facts re-admit exactly the lanes that are running now, so S
-   * does not silently collapse after a reload; a lane that cannot be re-admitted stays visible as
-   * unknown window facts instead.
+   * persisted bindings plus live-Agent facts re-admit exactly the lanes that are running now, so the
+   * execution ledger keeps its audit rows; a lane that cannot be re-admitted stays visible as
+   * unknown window facts instead. The projected S count never depends on this re-admission.
    */
   const readmitPersistedLanes=async(view:SessionControlsView):Promise<void>=>{
     try{
@@ -302,7 +306,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }catch(error){signal.throwIfAborted();health.push({scope:'notifications',status:'unknown',reason:String(error).slice(0,1024)})}
     await captureSafely(view,async()=>{await captureBusiness(view,records);await captureOthers(view,caller)})
     const historyFailure=historyFailures.get(view.instance.instrumentInstanceId);if(historyFailure)health.push({scope:'history',status:'unknown',reason:historyFailure})
-    if(windowView&&!windowView.runtimeKnowledge.known)health.push({scope:'execution-admission',status:'unsupported',reason:windowView.runtimeKnowledge.reason})
+    // Execution admission coverage is the native running-count knowledge, not ledger reconciliation.
+    if(windowView)health.push(windowView.S.countKnown
+      ?{scope:'execution-admission',status:'current',reason:null}
+      :{scope:'execution-admission',status:'unsupported',reason:windowView.S.countReason??'native-subagent-activity-unavailable'})
     signal.throwIfAborted()
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...(await load()).assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
     const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,pendingRelease:pendingReleaseFor(records,windowView),
