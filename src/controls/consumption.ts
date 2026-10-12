@@ -4,6 +4,7 @@ import type { InstrumentSnapshot } from './instruments.js'
 import type { WindowSnapshot } from './windows.js'
 import type { ResourceView } from './resources.js'
 import type { WorktreeBindingCurrent } from './worktree-bindings.js'
+import type { WorktreeObservationView } from './worktree-observations.js'
 import type { NativeStopRow } from './remote-contract.js'
 
 /** Supplied by authenticated host associations, never parsed from a model/wire command. */
@@ -28,6 +29,8 @@ export interface ConsumptionSnapshot {
   readonly nativeStops?: readonly NativeStopRow[]
   /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
   readonly worktreeBindings?: readonly (WorktreeBindingCurrent & { readonly cleanupDue?: boolean })[]
+  /** Observed native creations with read-time creator activity; never a directory-usage claim. */
+  readonly worktreeObservations?: readonly WorktreeObservationView[]
   /** Explicitly retained effective conclusions, not resolved question/option histories. */
   readonly contextConclusions?: readonly { readonly decisionId: string; readonly workflowId: string; readonly result: string;
     readonly sourceRevision: number; readonly source: unknown }[]
@@ -205,6 +208,13 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
       source: { kind: row.source, author: row.author, recordedAt: row.recordedAt },
       ...(row.cleanupDue === undefined ? {} : { cleanupDue: row.cleanupDue }),
     })), { kind: 'worktree' }, { cleanupDue: (snapshot.worktreeBindings ?? []).filter(row => row.cleanupDue === true).length }),
+    worktreeObservations: category(sorted(snapshot.worktreeObservations ?? [], row => canonical([row.recordedAt, row.observationId])).map(row => ({
+      observationId: row.observationId, sourceRevision: row.revision, creatorSessionId: row.value.creatorSessionId, creatorActivity: row.creatorActivity,
+      lane: row.lane, path: row.value.path, branch: row.value.branch, repositoryRoot: row.value.repositoryRoot,
+      check: { state: row.value.check.state, checkedAt: row.value.check.checkedAt, diagnostic: row.value.check.diagnostic,
+        facts: row.value.check.facts === null ? null : { gitCommonDir: row.value.check.facts.gitCommonDir, gitDir: row.value.check.facts.gitDir, branchRef: row.value.check.facts.branchRef, branchOid: row.value.check.facts.branchOid, headOid: row.value.check.facts.headOid } },
+      business: row.value.business, source: row.source, recordedAt: row.recordedAt,
+    })), { kind: 'worktree-observations' }, { open: (snapshot.worktreeObservations ?? []).filter(row => row.value.business.state === 'open').length }),
     nativeCount: snapshot.nativeCount ?? null,
     nativeStops: category(sorted(snapshot.nativeStops ?? [], row => row.sessionId), { kind: 'native-stops' }),
     capabilities: category(sorted(snapshot.capabilities, row => row.key), { kind: 'capabilities' }),
@@ -231,7 +241,7 @@ function protocol(snapshot: ConsumptionSnapshot): string {
     'Business records are author reports, not program execution/S receipts or physical resource proof. Skills, user agreements and task documents govern completion, delivery, pause, cancellation, reopening and questions. Register pending decisions when you judge them necessary.',
     'T and S are this session\'s configured limits; S is the host\'s live run status (descendant Agents currently running; an idle resident child is not running), and countKnown false means S.used is a stated lower bound with the total unknown. Limits, registered usage and program-fact coverage are reported below; null means unknown, never zero. Native host permissions still apply.',
     'mattpocock_record records business progress and decisions; mattpocock_execute records supported execution facts. Capability/health facts below state actual coverage. Display preferences do not erase obligations.',
-    'Worktree relationships record the actual child/worktree binding and your authored use and cleanup reports. Prepare each lane\'s tree before delegating — the host\'s create_worktree when it is provided, otherwise Git — and use the host\'s working_directory to enter it, then cd back to the project directory to leave. A tree you detached but did not clean up still needs a disposition.',
+    'Worktree relationships record the actual child/worktree binding and your authored use and cleanup reports; worktreeObservations record every native create_worktree this instrument observed, with its creator, the creator\'s live activity and the verified Git identity. They never claim who uses a directory. Let each lane create its own tree with the host\'s create_worktree (the mattpocock_delegate worktree argument is optional), then have the lane work inside it; use the host\'s working_directory to enter a tree yourself and cd back to the project directory to leave. A tree you detached but did not clean up still needs a disposition; mark an observed tree cleaned with mattpocock_worktree update-observation only when you decided it needs no further attention.',
     'This is a bounded current view, not complete history. Each category reports shown/total/more and query locators; truncated fields retain source pointers. Use session history queries for omitted details.']
   if (!p.extensionEnabled) lines.push('Management feature is OFF: existing records and execution facts remain.')
   else if (p.workspaceEnabled === false) lines.push('Management feature is OFF for this workspace: existing records and execution facts remain.')

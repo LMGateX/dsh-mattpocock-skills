@@ -36,6 +36,54 @@ function objectId(value: string): string { if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$
 function below(root: string, path: string): boolean { const r = relative(root, path); return r !== '' && !isAbsolute(r) && r !== '..' && !r.startsWith('..' + sep) }
 function list(value: string): string[] { return value.split('\0').filter(v => v !== '') }
 function missing(error: unknown): boolean { return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT' }
+export interface WorktreeProbe {
+  readonly exists: boolean
+  readonly repositoryPath: string | null
+  readonly gitCommonDir: string | null
+  readonly gitDir: string | null
+  readonly pathIdentity: string | null
+  readonly branchRef: string | null
+  readonly branchOid: string | null
+  readonly headOid: string | null
+}
+/** Read-only identity probe for one observed checkout path: existence, exact Git worktree root,
+ * common/git directories, branch ref and current OIDs. Uses the same authorized runner and fixed
+ * argv contract as the resource adapter; a missing path is a fact, never an error. */
+export async function probeWorktree(host: AuthorizedGitRunner, input: string, signal?: AbortSignal): Promise<WorktreeProbe> {
+  const p = absolute(input)
+  let stat
+  try { stat = await host.lstat(p, signal) } catch (error) {
+    if (missing(error)) return freeze({ exists: false, repositoryPath: null, gitCommonDir: null, gitDir: null, pathIdentity: null, branchRef: null, branchOid: null, headOid: null })
+    throw error
+  }
+  const git = async (args: readonly string[], cwd: string, accepted: readonly number[] = [0]): Promise<GitRunResult> => {
+    signal?.throwIfAborted()
+    const argv = ['git', '--no-optional-locks', '--no-pager', '-c', 'core.hooksPath=/dev/null', ...args]
+    const result = await host.run(argv, cwd, signal)
+    if (!Number.isSafeInteger(result.exitCode) || typeof result.stdout !== 'string' || typeof result.stderr !== 'string') reject('invalid typed runner result')
+    if (!accepted.includes(result.exitCode)) throw new GitCommandError(argv, result)
+    return result
+  }
+  const output = async (args: readonly string[], cwd: string): Promise<string> => (await git(args, cwd)).stdout.trim()
+  if (stat.kind !== 'directory' || await host.realpath(p, signal) !== p) reject('directory/symlink identity changed: ' + p)
+  const repositoryPath = absolute(await output(['rev-parse', '--show-toplevel'], p))
+  if (repositoryPath !== p) reject('not the exact Git worktree root')
+  const gitCommonDir = absolute(await output(['rev-parse', '--path-format=absolute', '--git-common-dir'], p))
+  const gitDir = absolute(await output(['rev-parse', '--absolute-git-dir'], p))
+  await host.authorize({ operation: 'inspect', paths: [p, dirname(p), gitCommonDir, gitDir] }, signal)
+  // Identity of the metadata directories is part of the proof, not decoration.
+  const commonStat = await host.lstat(gitCommonDir, signal)
+  if (commonStat.kind !== 'directory' || await host.realpath(gitCommonDir, signal) !== gitCommonDir) reject('Git common directory identity changed')
+  const dirStat = await host.lstat(gitDir, signal)
+  if (dirStat.kind !== 'directory') reject('Git directory identity changed')
+  const ref = await git(['symbolic-ref', '--quiet', 'HEAD'], p, [0, 1])
+  const branchRef = ref.exitCode === 1 ? null : ref.stdout.trim()
+  if (branchRef !== null && !branchRef.startsWith('refs/heads/')) reject('HEAD is not a local branch')
+  const headOid = objectId(await output(['rev-parse', '--verify', 'HEAD^{commit}'], p))
+  const branchOid = branchRef === null ? null : objectId(await output(['rev-parse', '--verify', branchRef], p))
+  signal?.throwIfAborted()
+  return freeze({ exists: true, repositoryPath, gitCommonDir, gitDir, pathIdentity: id(stat.identity, 'filesystem identity'), branchRef, branchOid, headOid })
+}
 export function concreteGitAdapter(host: AuthorizedGitRunner): GitWorktreeAdapter {
   const git = async (args: readonly string[], cwd: string, signal?: AbortSignal, accepted: readonly number[] = [0]): Promise<GitRunResult> => {
     signal?.throwIfAborted()

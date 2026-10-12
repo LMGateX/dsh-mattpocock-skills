@@ -10,6 +10,7 @@ import type { InstrumentSnapshot } from './controls/instruments.js';
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js';
 import type { WindowSnapshot } from './controls/windows.js';
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js';
+import type { WorktreeObservationView } from './controls/worktree-observations.js';
 import type { ControlsRemote as HostControlsRemote, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js';
 export declare const PACKAGE_NAME = "@lmgatex/dsh-mattpocock-skills";
 export declare const TAB_KIND = "mattpocock-collaboration";
@@ -119,6 +120,18 @@ export declare function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & 
 export declare function bindingSummary(view: ClientSessionSnapshot): string;
 export declare function WorktreeBindingsPanel(props: {
     readonly view: ClientSessionSnapshot;
+    readonly remote: ControlsRemote;
+    readonly refresh: () => Promise<void>;
+}): ReactElement;
+export declare function observationSummary(view: ClientSessionSnapshot): string;
+export declare function WorktreeObservationsPanel(props: {
+    readonly view: ClientSessionSnapshot;
+    readonly remote: ControlsRemote;
+    readonly refresh: () => Promise<void>;
+}): ReactElement;
+export declare function WorktreeObservationEditor(props: {
+    readonly sessionId: string;
+    readonly row: WorktreeObservationView;
     readonly remote: ControlsRemote;
     readonly refresh: () => Promise<void>;
 }): ReactElement;

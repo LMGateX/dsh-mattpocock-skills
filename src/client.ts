@@ -19,6 +19,7 @@ import type { InstrumentSnapshot } from './controls/instruments.js'
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js'
 import type { WindowSnapshot } from './controls/windows.js'
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js'
+import type { WorktreeObservationView } from './controls/worktree-observations.js'
 import { REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants } from './controls/remote-contract.js'
 import type { ControlsRemote as HostControlsRemote, HostJson, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js'
 
@@ -228,7 +229,7 @@ export function compactInstrumentSummary(view: ClientSessionSnapshot): { readonl
   const [T = 'T 未知', S = 'S 未知'] = windowSummary(view.windows, view.health)
   const resource = resourceSummary(view)
   const parts = ['待用户裁决 ' + (records === null ? '未知' : countText(records.summary.pendingUserDecisionCount)) + ' · 待落实 ' + (records === null ? '未知' : countText(records.summary.awaitingImplementationCount)), ticket, T, S,
-    bindingSummary(view), resource.label]
+    bindingSummary(view), observationSummary(view), resource.label]
   const detail = '实例 ' + view.instance.instrumentInstanceId + ' · ' + (records?.summary.countingScope ?? '统计未知') + ' · ' + parts.join(' · ')
     + (statuses.length ? ' · 完整状态：' + statuses.map(row => row.text).join(' · ') : '') + (resource.reason === null ? '' : ' · 资源读取原因：' + resource.reason)
   return { parts, detail }
@@ -326,6 +327,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
       view.records.decisions.map(decision => h(DecisionEditor, { key: props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId, decision, records: view.records!, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))),
     h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
     h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
+    h(WorktreeObservationsPanel, { key: props.sessionId + ':observations', view, remote: props.remote, refresh: props.observer.refresh }),
     h('details', null, h('summary', null, '旧资源记录（仅只读，不提供创建/实际退役入口）'), ResourceProjection({ view })),
     h('h4', null, '能力与健康（观测标签）'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health }),
     h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }),
@@ -367,6 +369,80 @@ export function WorktreeBindingsPanel(props: { readonly view: ClientSessionSnaps
       diagnostic('当前绑定 ' + rows.length + '（不是完整历史或执行总数）'),
       rows.map(row => h(WorktreeBindingEditor, { key: props.view.sessionId + ':' + row.bindingId, sessionId: props.view.sessionId, row, remote: props.remote, refresh: props.refresh })),
       rows.some(row => row.value.business.state === 'discarded') ? diagnostic('废弃但未清理的工作树仍待处置，不自动隐藏或删除。') : null))
+}
+function observationRows(view: ClientSessionSnapshot): readonly WorktreeObservationView[] | null {
+  const failure = view.health.find(row => row.scope === 'worktree-observations' && row.status === 'unknown')
+  if (failure !== undefined || view.worktreeObservations === undefined) return null
+  if (!Array.isArray(view.worktreeObservations)) throw new Error('工作树观测列表未知')
+  return view.worktreeObservations.map(value => {
+    const row = object(value); nonempty(row.observationId); safeCount(row.revision)
+    const observed = object(row.value)
+    nonempty(observed.creatorSessionId); nonempty(observed.path); nonempty(observed.branch); nonempty(observed.baseCommit); nonempty(observed.repositoryRoot)
+    if (!['running', 'idle', 'gone'].includes(String(row.creatorActivity))) throw new Error('创建者活动性未知')
+    if (!['program', 'replay', 'agent'].includes(String(row.source))) throw new Error('工作树观测来源未知')
+    const check = object(observed.check)
+    if (!['unverified', 'verified', 'failed', 'absent'].includes(String(check.state))) throw new Error('工作树核验状态未知')
+    const business = object(observed.business)
+    if (!['open', 'cleaned'].includes(String(business.state))) throw new Error('工作树观测业务状态未知')
+    if (Object.hasOwn(row, 'history')) throw new Error('当前工作树观测不能夹带完整历史')
+    return value
+  }).filter(row => row.value.business.state !== 'cleaned')
+}
+export function observationSummary(view: ClientSessionSnapshot): string {
+  try { const rows = observationRows(view); return rows === null ? '原生建树未知' : '原生建树 ' + rows.length } catch { return '原生建树未知' }
+}
+export function WorktreeObservationsPanel(props: { readonly view: ClientSessionSnapshot; readonly remote: ControlsRemote; readonly refresh: () => Promise<void> }): ReactElement {
+  let rows: readonly WorktreeObservationView[] | null
+  try { rows = observationRows(props.view) } catch (error) { return diagnostic('工作树观测未知：' + errorText(error)) }
+  const reason = props.view.health.find(row => row.scope === 'worktree-observations' && row.status === 'unknown')?.reason
+  return h('section', { 'aria-label': '工作树观测仪器' }, h('h4', null, '原生建树观测（create_worktree）'),
+    diagnostic('只登记经 DSH 工具管线成功执行的原生 create_worktree；创建者活动性是读取时的宿主事实，树是否存在以受权 Git 核验为准。不记录、不推测目录被谁使用，也不创建或删除任何树。'),
+    rows === null ? diagnostic('工作树观测数量未知：' + (reason ?? '宿主未返回观测投影')) : h('div', null,
+      diagnostic('当前观测 ' + rows.length + '（已登记清理的行退出当前视图，记录与历史保留）'),
+      rows.map(row => h(WorktreeObservationEditor, { key: props.view.sessionId + ':' + row.observationId, sessionId: props.view.sessionId, row, remote: props.remote, refresh: props.refresh }))))
+}
+export function WorktreeObservationEditor(props: { readonly sessionId: string; readonly row: WorktreeObservationView; readonly remote: ControlsRemote; readonly refresh: () => Promise<void> }): ReactElement {
+  const [base, setBase] = useState(props.row)
+  const [state, setState] = useState(props.row.value.business.state)
+  const [notes, setNotes] = useState(props.row.value.business.notes ?? '')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [lifetime] = useState(() => ({ active: false, generation: 0, sessionId: props.sessionId, observationId: props.row.observationId }))
+  useEffect(() => { lifetime.active = true; lifetime.sessionId = props.sessionId; lifetime.observationId = props.row.observationId; lifetime.generation++
+    setBase(props.row); setState(props.row.value.business.state); setNotes(props.row.value.business.notes ?? ''); setBusy(false); setMessage(null)
+    return () => { lifetime.active = false; lifetime.generation++ }
+  }, [props.sessionId, props.row.observationId, props.remote, lifetime])
+  const save = async (): Promise<void> => {
+    if (!lifetime.active || lifetime.sessionId !== props.sessionId || lifetime.observationId !== props.row.observationId) return
+    const generation = ++lifetime.generation; setBusy(true); setMessage(null)
+    try { const request = parseHostJson({ action: 'update-observation', command: { operationId: crypto.randomUUID(), observationId: base.observationId, expectedRevision: base.revision, state, notes } })
+      const response = object(parseHostJson(remoteValue(await props.remote.worktreeAction(props.sessionId, request))))
+      if (!lifetime.active || generation !== lifetime.generation) return
+      if (response.observationId !== base.observationId) throw new Error('工作树观测更新回执归属不一致')
+      safeCount(response.revision)
+      const saved = object(object(response.value).business)
+      if (saved.state !== state || (saved.notes ?? '') !== notes) throw new Error('工作树观测业务回执缺失或与登记不一致')
+      setMessage('已保存作者登记；未执行 Git，程序核验事实不变。')
+      await props.refresh()
+    } catch (error) { if (lifetime.active && generation === lifetime.generation) setMessage('登记结果未知/冲突：' + errorText(error)) }
+    finally { if (lifetime.active && generation === lifetime.generation) setBusy(false) }
+  }
+  if (lifetime.sessionId !== props.sessionId || lifetime.observationId !== props.row.observationId) return diagnostic('工作树观测归属变化；登记草稿未知，等待重新读取。')
+  const check = props.row.value.check
+  return h('article', { 'aria-label': '工作树观测 ' + props.row.observationId },
+    h('strong', null, props.row.value.branch + ' · ' + check.state),
+    diagnostic('目录 ' + props.row.value.path + ' · 仓库 ' + props.row.value.repositoryRoot),
+    diagnostic('创建者 ' + props.row.value.creatorSessionId + '（当前 ' + props.row.creatorActivity + '） · 观测来源 ' + props.row.source + ' · 调用 ' + props.row.value.callId),
+    diagnostic('核验时间 ' + (check.checkedAt ?? '尚未核验') + ' · Git 身份 ' + (check.facts === null ? '未知（未留下已证事实）' : check.facts.gitCommonDir + ' · ' + (check.facts.branchRef ?? '无本地分支') + ' @ ' + (check.facts.branchOid ?? '未知'))),
+    check.diagnostic === null ? null : diagnostic('核验失败原因（未知即未知）：' + check.diagnostic),
+    props.row.lane === null ? diagnostic('票信息未知：该创建者没有可核对的 lane 绑定。') : diagnostic('lane ' + (props.row.lane.workflowId ?? '无工作流') + ' · 票 ' + (props.row.lane.ticketIds.join(', ') || '无') + (props.row.lane.task === null ? '' : ' · ' + props.row.lane.task)),
+    h('label', null, '业务状态 ', h('select', { disabled: busy, value: state, onChange: (event: ChangeEvent<HTMLSelectElement>) => { const next = event.target.value; if (next === 'open' || next === 'cleaned') setState(next) } },
+      h('option', { value: 'open' }, '未处理'), h('option', { value: 'cleaned' }, '登记已处理'))),
+    h('label', null, '业务说明 ', h('textarea', { disabled: busy, value: notes, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setNotes(event.target.value) })),
+    diagnostic('草稿观测修订 ' + base.revision + '；背景刷新不会升级保存修订。已处理只是作者登记，不是此界面执行 Git 的回执。'),
+    h('button', { type: 'button', disabled: busy, onClick: () => { void save() } }, '保存作者登记（不执行 Git）'),
+    h('button', { type: 'button', disabled: busy, onClick: () => { setBase(props.row); setState(props.row.value.business.state); setNotes(props.row.value.business.notes ?? ''); setMessage(null) } }, '重新读取观测（丢弃草稿）'),
+    message === null ? null : diagnostic(message))
 }
 export function WorktreeBindingEditor(props: { readonly sessionId: string; readonly row: WorktreeBindingCurrent; readonly remote: ControlsRemote; readonly refresh: () => Promise<void> }): ReactElement {
   const [base, setBase] = useState(props.row)

@@ -38,6 +38,8 @@ export interface NativeStopRow {
   /** One-line mechanical observation; never a guessed cause. */
   readonly observed: string
   readonly lane: { readonly workflowId: string | null; readonly localTicketId: string | null } | null
+  /** Trees this child created with the native tool, so one terminal item also names its trees. */
+  readonly createdWorktrees?: readonly { readonly path: string; readonly branch: string; readonly businessState: 'open' | 'cleaned' }[]
 }
 export interface RuntimeSnapshot {
   readonly sessionId: string
@@ -49,6 +51,8 @@ export interface RuntimeSnapshot {
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
   readonly worktreeBindings?: readonly import('./worktree-bindings.js').WorktreeBindingCurrent[]
+  /** Observed native create_worktree rows with read-time creator activity and lane; never a usage claim. */
+  readonly worktreeObservations?: readonly import('./worktree-observations.js').WorktreeObservationView[]
   /** Native count provenance: a runtime re-establishment is never a terminal-outcome signal. */
   readonly nativeCount?: { readonly reestablished: boolean; readonly runtimeId: string; readonly previousRuntimeId: string | null }
   /** Open terminal-outcome items the main agent must handle; never a count source. */

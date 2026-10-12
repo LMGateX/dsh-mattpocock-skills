@@ -106,14 +106,14 @@ test('locale metadata verification rejects unknown structure and changed public 
   ]) assert.throws(() => validatePackageLocale('locale/worktree-bridge/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 85 fixed files, 85 vendor files and 66 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 85)
-  assert.equal(EXPECTED_PACKED_FILES, 170)
-  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 66)
+test('exact package inventory contains 87 fixed files, 85 vendor files and 68 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 87)
+  assert.equal(EXPECTED_PACKED_FILES, 172)
+  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 68)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 170)
+  assert.equal(members.size, 172)
   for (const path of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
 })
 

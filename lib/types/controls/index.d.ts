@@ -23,6 +23,7 @@ export * from './remote-contract.js';
 export * from './runtime-state.js';
 export * from './history.js';
 export * from './worktree-bindings.js';
+export * from './worktree-observations.js';
 export * from './startup-state.js';
 export * from './startup-support.js';
 export type TrustedSession = {

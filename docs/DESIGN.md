@@ -57,6 +57,20 @@ This document is the authoritative implementation contract. A later implementati
 - ticketWindowSize/T、票、绑定、资源与接管规则不变；runningSubagentLimit 仍只是与该实时计数比较的策略参考值，不是派发禁令。旧 `runtimeKnowledge` 继续描述执行账本与当前 runtime 的对齐程度，不再参与 S 计数。
 - 该决策取代此前「以登记租约近似 S、并在缺少原生枚举时以 unknown 作为唯一诚实表达」的旧机制，也取代同日早先「读取时查询目录并以目录 `activity` 计 running」的版本：旧机制会漏掉原生启动的子代理和重载后的在跑子代理，并让账本噪声影响容量比较；目录 `activity` 则会把 idle 常驻子代理误计为在跑。
 
+## 工作树创建事件观测（2026-10-13 所有者认可；源码已在隔离工作树实施并机械验收，未安装／未发布）
+
+- 目标：登记由本插件可观测到的宿主原生 `create_worktree` 成功调用，防止废弃工作树堆积；不追求文件级隔离，不自动删除树／分支，不重开 resource retire。
+- 用途边界：只让主 agent 知道“这棵树存在、由谁创建、创建者还在不在、树还在不在”；**不记录“是否被别人使用”**；清理判断属于主 agent，插件不做业务判定也不自动清理。
+- 默认观测 `create_worktree` 工具事件（`tools/post-execute`，含 PTC 嵌套调度）；`working-directory/change` 兜底**暂缓不做**（普通 cwd 变更与堆积目标相关性低、误报成本高）。
+- 事件驱动：观测即追加事件版本（`observed` → `verified`／`verification-failed`）；创建者活动性在读取时从现有 live agent 索引取得，**不写进记录**（避免过期事实）；无周期扫描或轮询，创建本身不唤醒。
+- 两阶段：同步写 `observed`（不得阻断工具结果），异步用受权 Git runner 在 owner 锚点做身份核验；未知即 unknown，不冒充成功。
+- 不新增模型工具：观测写入走宿主程序路径（`tools/post-execute` 分支），不挂任何模型工具；只在既有 `mattpocock_worktree` 上新增作者登记 action `update-observation`。绑定记录语义与“以创建意图开始”的不变量不变，观察记录为独立兄弟记录。
+- 指导文案改为：每个 lane 自己用宿主 `create_worktree` 建树并在其中工作，插件观测并登记；`mattpocock_delegate.worktree` 退为可选。
+- 归属（2026-10-13 简化）：记录只提供两个事实——**树由谁创建**（不可变）与**创建者会话当前是否活动**（读取时的 live 事实）；**不记录、不推测“是否被别人使用”**。外部会话沿用旧树不产生新记录；主 agent 结合自己掌握的信息判断处置。票信息按 creator 关联 lane 绑定（planned/actual child id）；可选 `cleaned`／notes 是作者声明，不是程序证明。
+- 通知：创建不唤醒；托管子代理终局时随已有终局 item 列出它创建的树（纯事实），其余只更新上下文，不新增第二套唤醒类型。
+- cwd 事件兜底（发现绕过原生工具的建树）**暂缓不做**，只作为未来可评估项记录在设计中。
+- 详细设计、变更点、实施记录与验收见 [WORKTREE_OBSERVATION.md](<WORKTREE_OBSERVATION.md>)；本轮改动限于本仓库源码／测试／固定包清单／文档，不改 vendor 字节、不加宿主补丁、不安装本机 DSH 或 Profile、不发布。
+
 ## 既有 Profile 原生依赖接入修复
 
 用户认可继续修复原生依赖冲突及强制开启覆盖诊断。修复仍由同一插件包承担，不修改共享 SDK、Profile 的其他插件依赖或全局模块解析，也不自动重启服务。

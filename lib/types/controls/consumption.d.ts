@@ -4,6 +4,7 @@ import type { InstrumentSnapshot } from './instruments.js';
 import type { WindowSnapshot } from './windows.js';
 import type { ResourceView } from './resources.js';
 import type { WorktreeBindingCurrent } from './worktree-bindings.js';
+import type { WorktreeObservationView } from './worktree-observations.js';
 import type { NativeStopRow } from './remote-contract.js';
 /** Supplied by authenticated host associations, never parsed from a model/wire command. */
 export interface ConsumptionIdentity {
@@ -38,6 +39,8 @@ export interface ConsumptionSnapshot {
     readonly worktreeBindings?: readonly (WorktreeBindingCurrent & {
         readonly cleanupDue?: boolean;
     })[];
+    /** Observed native creations with read-time creator activity; never a directory-usage claim. */
+    readonly worktreeObservations?: readonly WorktreeObservationView[];
     /** Explicitly retained effective conclusions, not resolved question/option histories. */
     readonly contextConclusions?: readonly {
         readonly decisionId: string;

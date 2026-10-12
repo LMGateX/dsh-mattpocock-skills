@@ -51,7 +51,7 @@ test('model-facing rejections name the accepted values', async t => {
   assert.match(text(provider), /accepted provider values: spawn, fork/)
   const worktree = await f.execute('mattpocock_worktree', { request: { action: 'bogus' } })
   assert.equal(worktree.isError, true)
-  assert.match(text(worktree), /read\/update\/reconcile action required|accepted actions: read, update, reconcile/)
+  assert.match(text(worktree), /read\/update\/update-observation\/reconcile action required|accepted actions: read, update, update-observation, reconcile/)
   const history = await f.execute('mattpocock_history', { request: { action: 'bogus' } })
   assert.equal(history.isError, true)
   assert.match(text(history), /accepted actions: query, detail, set-context, purge/)

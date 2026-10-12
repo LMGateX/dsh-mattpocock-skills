@@ -84,7 +84,8 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
   // This fixture is the native host: created children are live sessions and a disposed
   // session is gone. The S count under test reads these facts, never the plugin's ledger.
   const nativeLive = new Set()
-  const cold = new Map(), observations = [], nativeCalls = [], gitCalls = [], guards = [], notificationCalls = []
+  const cold = new Map(), observations = [], nativeCalls = [], gitCalls = [], guards = [], notificationCalls = [], stops = []
+  let stopRevision = 0
   const controlsStorage = new core.MemoryControlsStorage()
   const instrumentStorage = new core.MemoryInstrumentStorage()
   const windowStorage = new core.MemoryWindowStorage()
@@ -119,6 +120,8 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     async authorizeInitialChildCwd(exec,cwd) { exec.signal.throwIfAborted(); if(agents.get(exec.agent.id)!==exec.agent)throw new Error('fixture parent changed'); if(typeof cwd!=='string'||!cwd.startsWith('/'))throw new Error('fixture cwd malformed') },
     async nativeActivity() { return { known, reason: known ? null : 'native-subagent-activity-lower-bound', liveAgents: [...agents.values()] } },
     async nativeSubagentActivity() { return { known, running: nativeLive.size, total: nativeLive.size, reason: known ? null : 'native-subagent-activity-lower-bound' } },
+    nativeSubagentStops() { return stops },
+    nativeSubagentCountRevision() { return stopRevision },
     installNativeGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     installManagedGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     async executeNative(exec, name, args) { nativeCalls.push({ exec, name, args }); return native(exec, name, args) },
@@ -150,7 +153,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
   runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs }))
   t.after(() => runtime.dispose())
   if (initialPolicy) await runtime.savePolicy(operator, initialPolicy, 0, signal())
-  const f = { runtime, ports, agents, nativeLive, cold, ctx, controlsStorage, instrumentStorage, windowStorage, resourceStorage,
+  const f = { runtime, ports, agents, nativeLive, cold, stops, ctx, controlsStorage, instrumentStorage, windowStorage, resourceStorage,
     units, grants, observations, nativeCalls, gitCalls, guards, notificationCalls,
     setNotify(fn) { notify = fn },
     async reopen() { await runtime.dispose(); runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs })); f.runtime = runtime; return runtime },
@@ -173,6 +176,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     async managed({ id = 'root', nativeTool = 'subagent', args = {}, workflowId = null, localTicketId = null, exec = f.exec(id) } = {}) {
       return runtime.executeManaged(caller(id), { nativeTool, arguments: args, workflowId, localTicketId }, exec)
     },
+    stop(item) { stops.push(item); stopRevision += 1 },
     async created(a) { agents.set(a.id, a); await runtime.created(caller(a.id), signal(), a) },
     async event(a, kind = 'agent-disposed', fields = {}) { return runtime.observe({ kind, sessionId: a.id, actualAgent: a, ...fields }) },
   }

@@ -31,4 +31,18 @@ export declare class GitCommandError extends Error {
     readonly name = "GitCommandError";
     constructor(argv: readonly string[], result: GitRunResult);
 }
+export interface WorktreeProbe {
+    readonly exists: boolean;
+    readonly repositoryPath: string | null;
+    readonly gitCommonDir: string | null;
+    readonly gitDir: string | null;
+    readonly pathIdentity: string | null;
+    readonly branchRef: string | null;
+    readonly branchOid: string | null;
+    readonly headOid: string | null;
+}
+/** Read-only identity probe for one observed checkout path: existence, exact Git worktree root,
+ * common/git directories, branch ref and current OIDs. Uses the same authorized runner and fixed
+ * argv contract as the resource adapter; a missing path is a fact, never an error. */
+export declare function probeWorktree(host: AuthorizedGitRunner, input: string, signal?: AbortSignal): Promise<WorktreeProbe>;
 export declare function concreteGitAdapter(host: AuthorizedGitRunner): GitWorktreeAdapter;

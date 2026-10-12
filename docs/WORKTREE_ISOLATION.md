@@ -220,3 +220,8 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk DSH_CONTROLS_COMPAT_HOST_ROOT=/absolute/alp
 
 历史探针仅在本地研究归档中复跑，不是公开仓库命令。该探针每次创建独立测试仓，包含预期拒绝断言；已保存的历史运行 exit=0、assertions=PASS，不代表上述公开测试已在当前修复版重新通过。
 初次实验在断言完成后因误用裸 Cordis Context 的 dispose 方法 exit=1；修正测试脚本收尾后，在新仓重跑 exit=0，保存的是后者。本次没有依靠这次脚本修正规避任何权限拒绝。
+
+## 11. 2026-10-13 后续设计方向
+
+所有者认可把流程修订为“**每个 lane 自己用宿主 `create_worktree` 建树并在其中工作**，插件按事件观测并登记”，用于防止废弃工作树堆积；`working-directory/change` 监控暂缓不做。本节不推翻第 2–7 节的研究结论（Git 元数据访问、依赖准备等前提仍然成立），但在后续实现落地时，第 8 节所述的“父先准备树”路由不再作为默认约定。设计草案与实施记录见[工作树创建事件观测](<WORKTREE_OBSERVATION.md>)；源码已在隔离工作树实施并机械验收，未安装本机 DSH／Profile。
+

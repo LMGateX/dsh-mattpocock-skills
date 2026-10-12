@@ -52,8 +52,10 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/controls/runtime-state.js',
   'lib/controls/history.js',
   'lib/controls/worktree-bindings.js',
+  'lib/controls/worktree-observations.js',
   'lib/types/controls/history.d.ts',
   'lib/types/controls/worktree-bindings.d.ts',
+  'lib/types/controls/worktree-observations.d.ts',
   'lib/types/controls/windows.d.ts',
   'lib/types/controls/resources.d.ts',
   'lib/types/controls/git-worktrees.d.ts',
@@ -142,8 +144,10 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/controls/runtime-state.js',
   'lib/controls/history.js',
   'lib/controls/worktree-bindings.js',
+  'lib/controls/worktree-observations.js',
   'lib/types/controls/history.d.ts',
   'lib/types/controls/worktree-bindings.d.ts',
+  'lib/types/controls/worktree-observations.d.ts',
   'lib/types/controls/windows.d.ts',
   'lib/types/controls/resources.d.ts',
   'lib/types/controls/git-worktrees.d.ts',
@@ -245,7 +249,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 85
+const EXPECTED_FIXED_PACKED_FILES = 87
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

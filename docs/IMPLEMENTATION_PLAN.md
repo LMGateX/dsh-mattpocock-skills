@@ -22,6 +22,24 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 
+## 原生 create_worktree 事件观测实施（2026-10-13，隔离工作树内完成；未安装、未发布）
+
+接受范围见 [DESIGN.md](<DESIGN.md>) 的 2026-10-13 决策节与 [WORKTREE_OBSERVATION.md](<WORKTREE_OBSERVATION.md>)：只观测经 DSH 工具管线成功执行的原生 `create_worktree`（含 PTC 子调度），登记创建事实、读取时创建者活动性与受权 Git 核验；不记录“目录被谁使用”，不自动清理，不新增模型工具。
+
+本阶段授权为**隔离环境内的源码实施与机械验收**：不安装本机 DSH／Profile、不写 `~/.dsh/artifacts`、不 push／Release、不启动第二个服务；pnpm 只以 `exec tsc` 和临时目录内的 `pack` 参与验证。工作树目录名保持 `dsh-mattpocock-skills`，因为既有宿主/兼容用例按该路径段匹配源码加载器（移动工作树而非改测试）。
+
+| 阶段 | 内容 | 门禁（机械） |
+|---|---|---|
+| A 记录核心 | 新 `src/controls/worktree-observations.ts`：严格 parse、事件版本 fold、CAS、query；行身份（创建者会话 + 目录）、调用身份（创建者会话 + callId）、已证 Git 身份不可移动、`cleaned` 不可复活 | `tests/worktree-observations.test.mjs` 7／7 |
+| B Git 核验 | `probeWorktree`：复用受权 runner 与固定 argv 契约，存在性／精确树根／common 与 git 目录／分支 ref 与 OID／路径身份；缺失即 absent，runner 拒绝即 failed + diagnostic | 同上（存在、缺失、非目录、非树根、runner 拒绝） |
+| C 管线 | `postExecute` 成功分支同步 append（经 `track` 进入消费前沿）+ 异步核验；E4 存活子会话回放（source=`replay`）；快照 `worktreeObservations`、健康行、终局 item 附带 `createdWorktrees` | `tests/worktree-observation-runtime.test.mjs` 7／7 |
+| D 呈现与文案 | 消费分类 + 协议文案、客户端只读列表与 `update-observation` 作者登记；`mattpocock_delegate`／`mattpocock_worktree` 文案改为 lane 自建树 + 观测登记 | 消费／客户端／模型契约用例通过 |
+| E 交付面 | 固定包清单精确 +2（87 + 85 vendor = 172）；宿主与客户端重建 | `scripts/verify-package.mjs --prepack` 通过（清洁提交后） |
+
+已观测结果（Node 24.17.0，规范根 DSH `0.2.1-alpha.2`，`DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs`）：**851 项中 654 通过、0 失败、197 个桥用例按环境门禁 skip**。严格构建门禁 `compareCommittedBuild`（scratch tsc 与提交的 `lib/` 逐字节一致）、客户端独立重建、固定包清单（87 固定 + 85 vendor）均通过。本轮没有模型活动，也没有安装、推送或发布；绑定语义、vendor 字节与宿主补丁均未改变。
+
+技术边界（实现中确认，写入设计口径）：快照读路径本身持有单一效果队列，回放与核验写入不得再经 `track` 重入；E4 只覆盖仍存活的受管子会话，冷会话全量补登记需要新的宿主枚举 seam，不在本轮范围。
+
 ## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
 
 本阶段授权为既有 Profile 旧依赖接入与组件强制开启覆盖的代码修复和真实 SDK／Loader／Plugin Manager 验证。新版本 push／Release／同字节本机安装另行确认；不沿用只针对 0.4.3 的发布安装授权，不自动重启 GUI，也不静默清除当前 Profile 的布尔覆盖。

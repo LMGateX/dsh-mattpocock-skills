@@ -151,3 +151,8 @@ compact 请求为 operationId + expectedRevision；purgeHistory 另要求 throug
 工作树源域、records 源域、windows 源域与历史副本域相互独立，没有跨域事务。runtime 的源清理计划先处理关联副本 suppression，再执行选中源域，单独报告已完成步骤与失败/不确定阶段。源域暂不可读时，正常历史域里的保留副本仍可查询，sourceRevisions.worktrees=null 与 sourceRefresh 说明缺口；不把读失败当空 registry。
 
 实际 Git 树清理仍由主代理按 Skills/用户约定执行，完成后记录 cleaned；源旧历史整理只管理仪器数据。已 cleaned 退出持续提醒但其未显式删除历史仍可查；废弃未清理仍提醒。没有默认 TTL，不因时间推进、执行释放或目录不可读自动删除登记或旧正文。跨域协调完整合同见[历史核心源清理](<HISTORY_CORE.md#8-本轮补充源旧历史清理与跨域组合>)。
+
+## 9. 2026-10-13 设计方向：工作树创建事件观测（草案）
+
+所有者已认可新增“工作树创建事件观测”能力：默认观测宿主原生 `create_worktree` 的工具事件并登记；`working-directory/change` 兜底暂缓不做。该记录是绑定登记的**兄弟记录**，用于防止废弃工作树堆积；**不改变本节绑定语义**（`requestedCwd/actualCwd` 仍是创建前意图与不可变 header.cwd，“行必须以创建意图开始”的不变量不放松）。详细设计见[工作树创建事件观测](<WORKTREE_OBSERVATION.md>)。源码已在隔离工作树实施并机械验收，未安装到本机 DSH／Profile、也未发布；绑定语义与不变量不变。
+

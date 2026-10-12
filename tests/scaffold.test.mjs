@@ -79,21 +79,21 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   const sources = entries.filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
   assert.equal(sources.filter(path => !path.includes('/')).length, 6)
-  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 20)
+  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 21)
   const expected = sources.flatMap(path => [
     'lib/' + path.replace(/\.ts$/, '.js'),
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
   const actual = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort()
-  assert.equal(actual.length, 66)
+  assert.equal(actual.length, 68)
   assert.deepEqual(actual, expected)
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), [
     'locale/en.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json', 'locale/zh.json',
   ])
-  assert.equal(FIXED_PACKED_FILES.length, 85)
+  assert.equal(FIXED_PACKED_FILES.length, 87)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 170)
+  assert.equal(EXPECTED_PACKED_FILES, 172)
 })
