@@ -40,6 +40,21 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 技术边界（实现中确认，写入设计口径）：快照读路径本身持有单一效果队列，回放与核验写入不得再经 `track` 重入；E4 只覆盖仍存活的受管子会话，冷会话全量补登记需要新的宿主枚举 seam，不在本轮范围。
 
+## DSH 0.2.1-alpha.4 兼容适配（2026-10-15，隔离安装内完成；未安装、未发布）
+
+接受范围：核对 alpha.3／alpha.4 相对 alpha.2 的宿主变化并适配。**唯一面向插件作者的变化是兼容性判定依据**——声明了 `engines.dsh` 就只按它判断，未声明才回退原有 peer 规则；本插件因此显式声明已实测范围，并补齐宿主侧 fixture 的 Peer 契约。产品运行时代码没有改动。
+
+隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-alpha.4` 得到与 DSH 自身一致的全局布局；未改动本机 DSH 与任何 Profile，未写 `~/.dsh/artifacts`，未 push／Release，未启动第二个服务，未调用模型。
+
+| 阶段 | 内容 | 门禁（机械） |
+|---|---|---|
+| A 门禁声明 | `package.json` 的 `engines` 增加 `dsh: "~0.2.1-alpha.1"`；`verify-package.mjs` 导出 `EXPECTED_ENGINES` 并在 `validatePackagePolicy` 中断言；scaffold 用例同步 | 两版真身 `evaluatePluginCompatibility` × 9 个运行时版本：声明前后逐版本一致 |
+| B 接缝核对 | 21 个宿主包运行时导出清单、`post-execute`、`create_worktree` 结果键、子代理目录／启动方法、会话事件名、技能注册表、`DomainFacility`、6 个客户端插槽键 | 逐项同名存在；导出清单零删除 |
+| C fixture 适配 | 新增 `tests/fixtures/peer.mjs`；[host.test.mjs](<../tests/host.test.mjs>)、[host-startup.test.mjs](<../tests/host-startup.test.mjs>)、[host-collaboration.test.mjs](<../tests/host-collaboration.test.mjs>) 与 `tests/fixtures/runtime-host.mjs` 改用两版都合法的 Peer；客户端原生激活 fixture 在宿主安装不提供 `@deepseek-ai/dsh-client-ui-slots` 时按环境门禁 skip | 四个文件在 alpha.2 与 alpha.4 均 0 失败 |
+| D 回归 | 全量根测试在两个宿主分别运行 | alpha.4：851 项 **648 通过／0 失败／203 skip**；alpha.2：851 项 **654 通过／0 失败／197 skip**（与改动前逐项一致） |
+
+技术边界（核对中确认）：本插件的客户端产物不 require 任何 `@deepseek-ai/*` 模块 id（导入全为 type-only 或服务注入），因此 alpha.4 把 slots 从安装依赖改为 Web 前端 static module 不影响运行时；产品代码不构造 `PeerScope`，新契约只需要测试 fixture 满足。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 alpha.3／alpha.4 小节。
+
 ## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
 
 本阶段授权为既有 Profile 旧依赖接入与组件强制开启覆盖的代码修复和真实 SDK／Loader／Plugin Manager 验证。新版本 push／Release／同字节本机安装另行确认；不沿用只针对 0.4.3 的发布安装授权，不自动重启 GUI，也不静默清除当前 Profile 的布尔覆盖。

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { parse } from 'yaml'
 import { createCompatibilityCompositionPatches } from '../lib/compatibility/composition.js'
-import { PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES, EXPECTED_PACKED_FILES, EXPECTED_PEERS, EXPECTED_PEER_META, EXPECTED_CLIENT, validatePackagePolicy } from '../scripts/verify-package.mjs'
+import { PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES, EXPECTED_PACKED_FILES, EXPECTED_PEERS, EXPECTED_PEER_META, EXPECTED_CLIENT, EXPECTED_ENGINES, validatePackagePolicy } from '../scripts/verify-package.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
@@ -26,6 +26,7 @@ test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
+  assert.deepEqual(packageJson.engines, EXPECTED_ENGINES)
   assert.equal(packageJson.dependencies, undefined)
   assert.equal(packageJson.scripts, undefined)
   assert.deepEqual(packageJson.peerDependencies, EXPECTED_PEERS)

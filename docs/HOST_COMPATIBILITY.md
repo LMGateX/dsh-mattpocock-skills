@@ -6,6 +6,8 @@
 
 `0.2.1-alpha.2` 是第一个需要运行时代码适配的宿主：子代理公开 API 由 `startContinuable` 改为 `startActivation`（并新增 `delivery`／`SubagentStartRequest.cwd`），本插件改用宿主原生 seam 传递显式首次 cwd；技能 provider 契约不变。详见下节。
 
+`0.2.1-alpha.3` 与 `0.2.1-alpha.4` **没有要求运行时代码改动**。alpha.4 改变的是**插件兼容性的判定依据**：声明了 `engines.dsh` 的插件只按该范围判定，未声明时才回退到原有 peer 规则。本插件据此显式声明范围，并补齐宿主侧 fixture 的 Peer 契约。详见后文专门小节。
+
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与最初宿主编译结果**逐字节相同**。
 
 每次必须修改的都是 **`package.json` 中声明的 peer 依赖范围**。这是元数据问题，不是行为问题。两次具体表现不同：
@@ -70,6 +72,27 @@ for (const [name, range] of Object.entries(dependencies)) {
 | `agent/pre-step` 载荷 | 与 alpha.1 相同 |
 
 破坏性变化与处理：`startContinuable` 被 `startActivation` 取代，`ContinuableStartSpec`／`ContinuableStart` 等类型一并移除。本插件按实际加载的公开服务选择 seam：有原生 `startActivation` + 会话工作目录 owner 时走原生，否则仍走随包兼容提供者；导入前组合 guard 在 alpha.2 上把原行留给 stock，不会装载陈旧的 alpha.1 服务。
+
+## 0.2.1-alpha.3 / 0.2.1-alpha.4 核对
+
+在隔离的全局布局安装中进行（`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-alpha.4`，与 DSH 自身的安装层级一致），与 `0.2.1-alpha.2` 对拆；未改动本机 DSH 与任何 Profile，未调用模型。alpha.3 的发布内容限于 Web／桌面端、凭据与宿主启动路径，本插件使用的接缝没有变化；alpha.4 引入一条**面向插件作者的元数据变更**。
+
+| 核对项 | 结果 |
+|---|---|
+| 安装期门禁（`dsh-app-boot/lib/index.js`） | alpha.4 的 `unmetRequirements`：**声明了 `engines.dsh` 就只按它判定**，未声明才回退到原有 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` peer 判定；结果字段由 `peers` 改为 `requirements`，告警文案随之更新 |
+| 门禁真身判定（两版函数 × 9 个运行时版本） | 声明 `engines.dsh: "~0.2.1-alpha.1"` 前后**逐版本一致**：`0.2.1-alpha.1`…`0.2.2-alpha.*` 放行，`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝 |
+| 本插件使用的 21 个宿主包运行时导出清单 | **零删除**；`dsh-typert-protocol` 仅有附加导出 `principalOf`、`isTypertRemoteMethod`、`createTypertRemoteInfo` |
+| `post-execute` 瀑布、`create_worktree` 结果键（`repositoryRoot`／`baseCommit`）、`listChildren`／`listDescendants`／`startActivation`、`tool/call`／`tool/result`／`tool/ptc-dispatch`／`working-directory/change`、技能注册表与 `DomainFacility` | 名称与存在性逐项相同 |
+| `PeerScope` | 新增 `principal`、`signal`、`interactions`（真实浏览器 Peer 以 `principal: { kind: 'owner' }` 创建）；Gateway 的 `invoke` 现在要求请求携带 Peer，并拒绝已释放的 Peer。本插件只读取 `peer.id`，产品代码无需改动 |
+| 客户端插槽键 | 本插件使用的 6 个键（`plugins.bundle.config`、`plugins.row.config`、`conversation.session.header.utilities`、`conversation.input.dock`、`sidebar.right.pane.tab`、`tool.call.toolview`）在两版都存在 |
+| `@deepseek-ai/dsh-client-ui-slots` | **不再作为安装依赖**：alpha.4 把它降为 UI 包的 devDependency，Renderer 仍在运行时 require 该模块 id，由 Web 前端构建产物（`dsh-web-frontend/dist`）以 static module 提供 |
+
+两项处理：
+
+- **声明 `engines.dsh`。** `package.json` 现为 `"engines": { "node": ">=22", "dsh": "~0.2.1-alpha.1" }`。该范围与既有 peer 判定实测逐版本等价，所以 alpha.4 起走声明路径、旧宿主继续走 peer 规则，兼容性判定不变。[包策略校验](<../scripts/verify-package.mjs>)与[脚手架用例](<../tests/scaffold.test.mjs>)固定这条声明，防止它悄悄漂移。
+- **宿主 fixture 补齐 Peer 契约。** 宿主侧用例经真实 `TypertGatewayService` 调用 Remote，alpha.4 会读取 `peer.signal` 与 `peer.principal`；缺少它们的假 Peer 会在进入本插件代码之前抛 `TypeError`。新增 `tests/fixtures/peer.mjs` 构造两版都合法的 Peer，[host.test.mjs](<../tests/host.test.mjs>)、[host-startup.test.mjs](<../tests/host-startup.test.mjs>)、[host-collaboration.test.mjs](<../tests/host-collaboration.test.mjs>) 与 `tests/fixtures/runtime-host.mjs` 使用它。产品代码不构造 Peer，因此没有行为改动。
+
+客户端原生激活 fixture 需要从安装包组装 Renderer，而 alpha.4 的安装布局不再提供该模块，[client-native-activation.test.mjs](<../tests/client-native-activation.test.mjs>) 因此在缺少该包时按环境门禁 skip 并给出诊断，而不是把它记成产品失败。本插件的客户端产物不 require 任何 `@deepseek-ai/*` 模块 id（导入全为 type-only 或服务注入），该虚拟模块变化不影响运行时。
 
 ## 核对范围与方法
 
@@ -153,6 +176,8 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 | 制品在 `0.2.0-rc.2` 上的隔离安装与装载 | `stable` 与 `beta` 各 27 个 Skills、11 个模型可见；checkout 与 tarball 的注册表报告**逐字节一致** |
 | 制品在 `0.2.1-alpha.1` 上的隔离安装与装载 | 同上；且四份注册表报告与 `0.2.0-rc.2` **跨宿主逐字节一致** |
 | 按通道生成 Profile 选择补丁 | 任一 catalog 声明的通道都能被 Profile 选中，不需要提交 fixture |
+| `0.2.1-alpha.4` 隔离安装上的全量根测试（本轮） | **851 项中 648 通过、0 失败、203 skip**；多出的 6 项 skip 来自客户端原生激活 fixture 的宿主安装前置条件 |
+| `0.2.1-alpha.2` 全量根测试回归（本轮） | **851 项中 654 通过、0 失败、197 skip**，与本轮改动前逐项一致；peer 契约 fixture 对两版宿主都成立 |
 | 模型调用 | 无 |
 
 装载插件树时，`0.1.2-rc.1` 由 app 的 `--help` 触发生效；`0.1.7-alpha.2` 的 `--help` 会在装载前提前退出，因此改用「无凭据环境下的一次运行」触发装载——宿主会在调用模型之前以 `MISSING_CREDENTIAL` 结束，插件注册仍然完成。
@@ -167,7 +192,9 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 - 历史兼容性核对之外的 SDK 升级与 Profile 安装是独立步骤，不属于本核对范围。本公开文档不记录个人当前运行版本或 Profile 安装状态；兼容性结论不等于已部署。
 - `0.2.0-rc.2` 与 `0.2.1-alpha.1` 的 Web/GUI 行为未验证。
 - `0.2.1-alpha.1` 未做隔离 `DSH_HOME` 端到端装载：本次只做了门禁真身判定、`lib/` 递归对拆与运行时注册表冒烟，没有像 `0.2.0-rc.1` 那样跑完整插件树装载。
-- `0.3.0-alpha.1` 被现有 peer 上界排除，未验证，也不在兼容性声明范围内。
+- `0.3.0-alpha.1` 被现有 peer 上界排除，未验证，也不在兼容性声明范围内。`0.2.2-alpha.*` 同样被 `~0.2.1-alpha.1` 的预发布语义放进门禁，但没有实际验证，不构成兼容承诺。
+- `0.2.1-alpha.3`／`0.2.1-alpha.4` 的 Web/GUI 行为未验证：本轮只做了门禁真身判定、包级对拆、隔离安装内的全量根测试与 fixture 适配，没有在 GUI 中装载运行。
+- alpha.4 的 Web 前端把 `@deepseek-ai/dsh-client-ui-slots` 作为 static module 提供这一事实，来自其构建产物中的 `staticModules` 种子；本插件不依赖该模块 id，但也没有在真实浏览器会话中验证插件界面。
 
 ## 复现方式
 

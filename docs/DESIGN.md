@@ -71,6 +71,14 @@ This document is the authoritative implementation contract. A later implementati
 - cwd 事件兜底（发现绕过原生工具的建树）**暂缓不做**，只作为未来可评估项记录在设计中。
 - 详细设计、变更点、实施记录与验收见 [WORKTREE_OBSERVATION.md](<WORKTREE_OBSERVATION.md>)；本轮改动限于本仓库源码／测试／固定包清单／文档，不改 vendor 字节、不加宿主补丁、不安装本机 DSH 或 Profile、不发布。
 
+## 宿主引擎兼容声明（2026-10-15 按所有者要求核对 DSH 0.2.1-alpha.4）
+
+- DSH `0.2.1-alpha.4` 起，第三方插件的版本兼容性**优先按 `engines.dsh` 判断**，未声明时沿用原有 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` peer 规则（`dsh-app-boot` 的 `unmetRequirements`）。
+- 本插件显式声明 `engines.dsh: "~0.2.1-alpha.1"`。该范围与既有 peer 判定在两版宿主真身函数上逐版本实测等价：`0.2.1-alpha.1` … `0.2.2-alpha.*` 放行，`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝。声明只记录**已实测**的宿主线，不扩大第 11 节的兼容承诺，也不违反第 13 节「不声明未验证的未来版本」。
+- 范围变化必须同时更新 [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md) 的实测矩阵；[包策略校验](<../scripts/verify-package.mjs>)与[脚手架用例](<../tests/scaffold.test.mjs>)固定当前声明，防止它随版本漂移。
+- alpha.4 的其余变化不触碰产品代码：`PeerScope` 新增 `principal`／`signal`／`interactions`（本插件只读 `peer.id`），宿主侧 fixture 已补齐该契约；`@deepseek-ai/dsh-client-ui-slots` 不再随安装提供（Renderer 仍 require 该模块 id，由 Web 前端构建产物以 static module 提供），本插件客户端产物不 require 任何 `@deepseek-ai/*` 模块 id，因此运行时不受影响。
+- 详细核对表、门禁实测与未验证事项见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>)；本轮改动限于 `package.json` 声明、固定包策略、测试 fixture 与文档，不改 vendor 字节、不加宿主补丁、不安装本机 DSH 或 Profile、不发布。
+
 ## 既有 Profile 原生依赖接入修复
 
 用户认可继续修复原生依赖冲突及强制开启覆盖诊断。修复仍由同一插件包承担，不修改共享 SDK、Profile 的其他插件依赖或全局模块解析，也不自动重启服务。

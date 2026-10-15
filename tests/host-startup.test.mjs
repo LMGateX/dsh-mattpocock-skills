@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { operatorPeer } from './fixtures/peer.mjs'
 import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Approved seams: mounted Host Remote, HostPorts and read-only Node startup adapter.
@@ -45,7 +46,7 @@ const signal = () => new AbortController().signal
 async function assembly(t, { units = new Map(), native = true, bootEpoch, sdkRoot, factory } = {}) {
   const ctx = new sdk.Context(), calls = []
   const owner = { id: 'owner', session: { header: { id: 'owner', version: 4, createdAt: 0, cwd: '/fixture', isSeeded: false }, ownEvents: () => [] } }
-  const operator = { id: 'operator', ctx, async dispose() {} }
+  const operator = operatorPeer(ctx)
   ctx.provide('connection', { operator, rpc: { intercept() { return async () => {} } } })
   ctx.provide('agents', { get: id => id === owner.id ? owner : undefined, list: () => [owner] })
   const workspace = { id: 'W', path: '/fixture', title: 'Fixture', sessionIds: ['owner'], status: async () => 'ok' }
@@ -102,8 +103,10 @@ test('startup settings default off but native capability remains truthful and on
   assert.equal(status.preparation.status, 'ready')
   assert.equal(status.preparation.sdkVersion, null)
   assert.equal(f.mounted.ports.capabilities.nativeInitialChildCwd, 'supported')
-  await assert.rejects(f.invoke('startupStatus', {}, { id: 'agent:owner' }), /operator/)
-  await assert.rejects(f.invoke('saveStartupSettings', { desired: { startupCwdEnabled: true }, expectedRevision: status.revision }, { id: 'agent:owner' }), /operator/)
+  // A live Peer that is not this profile's operator: the id, not the principal kind, is what this plugin checks.
+  const agentPeer = operatorPeer(f.ctx, { id: 'agent:owner' })
+  await assert.rejects(f.invoke('startupStatus', {}, agentPeer), /operator/)
+  await assert.rejects(f.invoke('saveStartupSettings', { desired: { startupCwdEnabled: true }, expectedRevision: status.revision }, agentPeer), /operator/)
   assert.throws(() => f.mounted.service.startupStatus(), /operator/)
   await assert.rejects(f.mounted.ports.authorizeInitialChildCwd(f.exec(), '/fixture/tree'), { code: 'feature-disabled' })
   await assert.rejects(f.mounted.ports.createContinuable(f.exec(), { provider: 'spawn', childId: 'blocked', label: 'blocked', prompt: 'no model', cwd: '/fixture/tree' }), { code: 'feature-disabled' })

@@ -8,7 +8,14 @@ import vm from 'node:vm'
 import React from 'react'
 
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const native = { skip: !hostRoot && 'Set DSH_CONTROLS_HOST_ROOT for native Client activation' }
+const hostRequire = hostRoot ? createRequire(pathToFileURL(join(hostRoot, 'package.json'))) : undefined
+// 0.2.1-alpha.4 still makes the Renderer require the `@deepseek-ai/dsh-client-ui-slots` module id
+// but no longer installs the package: the Web frontend seeds that id from its own bundle
+// (dsh-web-frontend/dist). This fixture assembles the Renderer from installed packages, so it
+// reports the missing precondition instead of a product failure.
+const slotsInstalled = hostRequire !== undefined && (() => { try { hostRequire.resolve('@deepseek-ai/dsh-client-ui-slots'); return true } catch { return false } })()
+const native = { skip: !hostRoot ? 'Set DSH_CONTROLS_HOST_ROOT for native Client activation'
+  : !slotsInstalled ? 'the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly' : false }
 
 async function assembly(t) {
   const require = createRequire(pathToFileURL(join(hostRoot, 'package.json')))

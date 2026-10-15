@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import ts from 'typescript'
+import { operatorPeer } from './peer.mjs'
 
 // Node 24 source-only loader: no lib/package emission, profile, model or AgentLoop.
 const sourceRoot = new URL('../../src/', import.meta.url).href
@@ -188,7 +189,7 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
   const ctx = new sdk.Context(), agents = new Map(), nativeLive = new Set()
   const root = actualAgent('root'), child = actualAgent('child', { parent: 'root', managed: true })
   agents.set(root.id, root); agents.set(child.id, child)
-  const peer = { id: 'operator', ctx, async dispose() {} }
+  const peer = operatorPeer(ctx)
   ctx.provide('connection', { operator: peer, rpc: { intercept() { return async () => {} } } })
   ctx.provide('agents', { get: id => agents.get(id), list: () => [...agents.values()] })
   const workspace = { id: 'W', path: '/fixture', title: 'Fixture', status: async () => 'ok' }

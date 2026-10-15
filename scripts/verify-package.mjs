@@ -192,6 +192,13 @@ export const FIXED_PACKED_FILES = Object.freeze([
 ])
 
 const EXPECTED_VERSION = '0.4.29'
+// DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
+// peers declared below only when it is absent. The declared range therefore repeats the exact
+// verdict those peers already produce on both host lines, measured with the real
+// evaluatePluginCompatibility: 0.2.1-alpha.1 … 0.2.2-alpha.* pass, 0.2.0-rc.2 and
+// 0.3.0-alpha.1 are refused.
+const EXPECTED_DSH_ENGINE = '~0.2.1-alpha.1'
+export const EXPECTED_ENGINES = Object.freeze({ node: '>=22', dsh: EXPECTED_DSH_ENGINE })
 
 export const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/cordis': '^4.0.2 || ~4.0.5-alpha.1',
@@ -335,6 +342,7 @@ export function validatePackagePolicy(packageJson) {
   assert(packageJson.main === './lib/index.js', 'package main target is invalid')
   assert(packageJson.types === './lib/types/index.d.ts', 'package types target is invalid')
   assert(packageJson.packageManager === 'pnpm@11.8.0', 'package manager pin is invalid')
+  assert(sameJson(packageJson.engines, EXPECTED_ENGINES), 'declared DSH engine range differs from the measured compatibility verdict')
   assert(sameJson(packageJson.files, PACKAGE_FILES_ALLOWLIST), 'package files allowlist differs from the accepted Phase 4 allowlist')
   assert(sameJson(packageJson.peerDependencies, EXPECTED_PEERS), 'peer dependency policy differs from the tested host seams')
   assert(sameJson(packageJson.peerDependenciesMeta, EXPECTED_PEER_META), 'optional peer metadata differs from the accepted capability seams')

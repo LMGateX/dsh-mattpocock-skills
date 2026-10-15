@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { operatorPeer } from './fixtures/peer.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
@@ -86,7 +87,7 @@ test('policy writes default denied for agents, exact operator grants are revisio
 })
 async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map()) {
   const ctx = new sdk.Context(), f = authorityFixture()
-  const operator = { id: 'operator', ctx, async dispose() {} }
+  const operator = operatorPeer(ctx)
   ctx.provide('connection', { operator, rpc: { intercept() { return async () => {} } } })
   ctx.provide('agents', { get: id => f.agents.get(id), list: () => [...f.agents.values()] })
   ctx.provide('workspaceRegistry', { ...f.ctx.workspaceRegistry, list: () => [{ id: 'W', path: '/fixture', title: 'Fixture', status: async () => 'ok', sessionIds: ['owner', 'fork', 'cold'] }] })
@@ -126,7 +127,7 @@ test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects fo
   const f = await assembly(t)
   assert.equal((await f.invoke('readPolicy')).revision, 0)
   assert.equal(f.calls[0].principalId, 'user:operator')
-  await assert.rejects(f.invoke('readPolicy', {}, { id: 'stranger', ctx: f.ctx, async dispose() {} }), { code: 'access-denied' })
+  await assert.rejects(f.invoke('readPolicy', {}, operatorPeer(f.ctx, { id: 'stranger' })), { code: 'access-denied' })
   await assert.rejects(f.invoke('readPolicy', { principal: 'user:operator' }))
   await assert.rejects(f.invoke('savePolicy', { intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {}, principal: 'fake' }, expectedRevision: 0 }))
   assert.equal((await f.invoke('readSession', { sessionId: 'owner' })).sessionId, 'owner')
@@ -432,7 +433,7 @@ test('operator workspace navigation exposes actual sessionIds without loading co
   assert.deepEqual(rows[0].sessionIds, ['owner', 'fork', 'cold'])
   assert.deepEqual([...f.units.get('mattpocock_controls')], beforeRows)
   assert.deepEqual(f.mounted.ports.liveAgents(), beforeAgents)
-  await assert.rejects(f.invoke('listWorkspaces', {}, { id: 'unrelated-peer', ctx: f.ctx }))
+  await assert.rejects(f.invoke('listWorkspaces', {}, operatorPeer(f.ctx, { id: 'unrelated-peer' })))
 })
 
 test('controlled wrapper binds this-based native SDK conclusion and deferred contexts to original exec', options, async t => {

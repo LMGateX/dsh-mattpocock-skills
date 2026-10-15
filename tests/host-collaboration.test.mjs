@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { operatorPeer } from './fixtures/peer.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
@@ -49,7 +50,7 @@ function authorityFixture() {
 }
 async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map()) {
   const ctx = new sdk.Context(), f = authorityFixture()
-  const operator = { id: 'operator', ctx, async dispose() {} }
+  const operator = operatorPeer(ctx)
   ctx.provide('connection', { operator, rpc: { intercept() { return async () => {} } } })
   ctx.provide('agents', { get: id => f.agents.get(id), list: () => [...f.agents.values()] })
   ctx.provide('workspaceRegistry', { ...f.ctx.workspaceRegistry, list: () => [{ id: 'W', path: '/fixture', title: 'Fixture', status: async () => 'ok', sessionIds: ['owner', 'fork', 'cold'] }] })
@@ -455,7 +456,7 @@ test('history service authenticates the operator and crosses only strict JSON to
   assert.deepEqual(await f.invoke('historyAction', { sessionId: 'owner', request: { action: 'query', limit: 5 } }), { action: 'query', sessionId: 'owner' })
   assert.equal(calls[0].caller.principalId, 'user:operator')
   assert.equal(calls[0].control.aborted, false)
-  await assert.rejects(f.invoke('historyAction', { sessionId: 'owner', request: { action: 'query' } }, { id: 'stranger', ctx: f.ctx, async dispose() {} }))
+  await assert.rejects(f.invoke('historyAction', { sessionId: 'owner', request: { action: 'query' } }, operatorPeer(f.ctx, { id: 'stranger' })))
   await assert.rejects(f.invoke('historyAction', { sessionId: 'owner', request: { action: 'query', forged: undefined } }))
   assert.equal(calls.length, 1)
 })
