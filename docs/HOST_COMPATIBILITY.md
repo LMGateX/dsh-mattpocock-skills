@@ -75,10 +75,11 @@ for (const [name, range] of Object.entries(dependencies)) {
 
 ## 0.2.1-alpha.3 / 0.2.1-alpha.4 核对
 
-在隔离的全局布局安装中进行（`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-alpha.4`，与 DSH 自身的安装层级一致），与 `0.2.1-alpha.2` 对拆；未改动本机 DSH 与任何 Profile，未调用模型。alpha.3 的发布内容限于 Web／桌面端、凭据与宿主启动路径，本插件使用的接缝没有变化；alpha.4 引入一条**面向插件作者的元数据变更**。
+在隔离的全局布局安装中进行（`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-alpha.4`，与 DSH 自身的安装层级一致），与 `0.2.1-alpha.2` 对拆；未改动本机 DSH 与任何 Profile，未调用模型。alpha.3 与 alpha.4 之间，本插件使用的宿主包（`dsh-tools`、`dsh-session`、`dsh-agent`、`dsh-subagent`、`dsh-storage-domain`、`dsh-typert-protocol`、`dsh-api-gateway`、`dsh-skill`、`dsh-experimental-tool-worktree`、`dsh-workspace`，以及 renderer／session／sidebar-right 客户端包）除各自 `package.json` 版本号外**逐字节相同**；不同的只有 `dsh-app-boot`（门禁）与三个纯 UI 客户端包（conversation／plugin-manager／tool）。alpha.3 的门禁与 alpha.2 一样只读 peer（`engines` 被忽略），`unmetRequirements` 与 `engines.dsh` 判定是 alpha.4 引入的。因此 **alpha.4 是这一线里唯一带来面向插件作者的元数据变更的版本**。
 
 | 核对项 | 结果 |
 |---|---|
+| alpha.3 → alpha.4 包级对拆（本插件使用的 19 个包） | 除 `dsh-app-boot` 与三个纯 UI 客户端包外**逐字节相同**（仅 `package.json` 版本号不同） |
 | 安装期门禁（`dsh-app-boot/lib/index.js`） | alpha.4 的 `unmetRequirements`：**声明了 `engines.dsh` 就只按它判定**，未声明才回退到原有 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` peer 判定；结果字段由 `peers` 改为 `requirements`，告警文案随之更新 |
 | 门禁真身判定（两版函数 × 9 个运行时版本） | 声明 `engines.dsh: "~0.2.1-alpha.1"` 前后**逐版本一致**：`0.2.1-alpha.1`…`0.2.2-alpha.*` 放行，`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝 |
 | 本插件使用的 21 个宿主包运行时导出清单 | **零删除**；`dsh-typert-protocol` 仅有附加导出 `principalOf`、`isTypertRemoteMethod`、`createTypertRemoteInfo` |
