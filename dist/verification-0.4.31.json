@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.31",
+    "private": true
+  },
+  "source": {
+    "commit": "27d57defb732598a42cbef7ddf33df89d74515b4",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.31.tgz",
+    "bytes": 410151,
+    "sha256": "ebea9c37676ffa7b50cbcec242186fc42ae1eb046a98b9c7e4c84520a41cce87",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.4"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.4 (live global install)",
+    "alpha2": "0.2.1-alpha.2 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.1-alpha.4",
+    "rootTests": {
+      "total": 853,
+      "passed": 653,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsAlpha2": {
+      "total": 853,
+      "passed": 659,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 194
+    },
+    "rootTestsBothRoots": {
+      "total": 879,
+      "passed": 879,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 853,
+      "passed": 559,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 294
+    },
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 28,
+      "passed": 28,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 15,
+      "actualPluginManager": 13
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "liveWebMount": {
+      "method": "real dsh web boot with a private DSH_HOME, the live profile composition copied, and a logger exporter injected through an extra --patch plugin (cordis drops warn at its default level, so the plugin failure is otherwise silent)",
+      "before": "with 0.4.30 on 0.2.1-alpha.4 the controls mount aborted in createHostAuthority with TypeError: Cannot read properties of undefined (reading 'id'); the nine mattpocock_* tools were absent while the startup receipt was written",
+      "afterSourceBuild": "global tool view 13 to 22; all nine mattpocock_* tools registered; no warning",
+      "afterPackedArtifact": "same evidence from the verified tarball extracted into the private profile host root"
+    },
+    "skipComposition": "the 194 canonical skips are the 0.2.1-alpha.1 bridge fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT; the 6 extra skips on alpha.4 are the client native-activation fixture, whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package the alpha.4 install no longer ships (its Web frontend seeds the module id instead); without any host root 294 cases skip",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 182709
+  },
+  "compatibility": {
+    "hostRange": "0.2.1-alpha.1 … 0.2.1-alpha.4 verified; the declared engine range also admits 0.2.1-alpha.5 and 0.2.2-alpha.* through prerelease semantics, which are not verified",
+    "runtimeCodeChangesForAlpha4": 1,
+    "runtimeCodeChangesForAlpha4Detail": "the alpha.3+ connection operator Peer (connection.operator to connection.browserPeer); the alpha.4 install-time gate itself needed only the engines.dsh declaration",
+    "engineGateMatrix": {
+      "declaredRange": "~0.2.1-alpha.1",
+      "implementations": [
+        "0.2.1-alpha.2 (dsh peers only)",
+        "0.2.1-alpha.4 (engines.dsh first)"
+      ],
+      "verdictPreservedByDeclaration": true,
+      "accepted": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.5",
+        "0.2.2-alpha.1"
+      ],
+      "refused": [
+        "0.1.2-rc.1",
+        "0.2.0-rc.2",
+        "0.3.0-alpha.1"
+      ]
+    },
+    "connectionOperatorPeer": "0.2.1-alpha.3 replaced connection.operator with the owner Peer connection.browserPeer. 0.4.30 read the old property, so on alpha.3 and later the optional controls plane aborted its mount before registering its nine tools while Skills delivery stayed mounted. 0.4.31 reads connection.operator ?? connection.browserPeer and fails closed with feature-disabled when a host exposes neither.",
+    "alpha3ToAlpha4PackageDiff": "every @deepseek-ai/dsh* package this plugin uses is byte-identical between the two hosts apart from its own package.json version, except dsh-app-boot (the compatibility gate) and three pure UI client bundles (conversation, plugin-manager, tool); dsh-client-connection is byte-identical between alpha.3 and alpha.4, which is why an alpha.3-to-alpha.4 diff alone cannot see the alpha.2-alpha.3 operator change",
+    "peerScope": "alpha.4 added principal/signal/interactions to PeerScope and the Gateway refuses a call whose Peer has no live scope; the plugin reads only peer.id, so only the host-side test fixtures changed"
+  },
+  "upstream": {
+    "distribution": "v0.3.0",
+    "skills": "v1.3.1",
+    "channels": {
+      "stable": 27,
+      "beta": 27
+    },
+    "vendorBytes": 279662,
+    "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+  },
+  "review": {
+    "baseline": "v0.4.30",
+    "upstreamRelease": "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-alpha.4",
+    "independentReview": "This patch release fixes a real compatibility break the v0.4.30 alpha.4 review missed: that review diffed alpha.3 against alpha.4 and never diffed alpha.2 against alpha.3, where dsh-client-connection replaced connection.operator with connection.browserPeer. A live alpha.4 dsh web boot with the installed 0.4.30 reproduced the aborted controls mount; 0.4.31 replaces the two direct property reads with one version-neutral lookup covered by unit tests and a mounted host using the alpha.3+ spelling. Skills delivery was never affected."
+  }
+}

@@ -229,3 +229,11 @@ node scripts/verify-package.mjs --prepack
 
 本版同时按上游 `dsh-v0.2.1-alpha.4` 的兼容性变更声明 `engines.dsh: "~0.2.1-alpha.1"`：alpha.4 起第三方插件的兼容性**优先按声明判定**，未声明才回退 `@deepseek-ai/dsh*` peer 规则。该范围与既有 peer 判定在两版门禁实现上逐版本实测等价（`0.2.1-alpha.1` 到 `0.2.2-alpha.*` 放行，`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝），因此 alpha.4 上无需任何运行时代码改动；宿主 `PeerScope` 新增的 `principal`／`signal`／`interactions` 只影响宿主侧测试 fixture，产品代码只读取 `peer.id`。范围声明由 `scripts/verify-package.mjs` 与 `tests/scaffold.test.mjs` 固定，语义收窄如实记录：`0.2.2-alpha.*` 虽被预发布语义放进门禁，但没有实际验证，不构成兼容承诺。
 
+## 0.4.31 制品验收（2026-10-16）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.31.tgz`（**410151** bytes，sha256 `ebea9c37676ffa7b50cbcec242186fc42ae1eb046a98b9c7e4c84520a41cce87`，172 成员，源提交 `27d57de`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.4` 下 853 用例 **653 通过／0 失败**（200 skip）、隔离 `0.2.1-alpha.2` 下 853 用例 **659 通过／0 失败**（194 skip）、双宿主 **879／879 全通过且零跳过**、无宿主根 853 中 559 通过／294 跳过／0 失败；同归档矩阵 **28／28**（普通 Node 原生 15＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.1、0.2.1-alpha.2、0.2.1-alpha.3、0.2.1-alpha.4** 四个真实宿主上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。
+
+本版修复 alpha.3 起的控制面装载中断：`0.2.1-alpha.3` 把 `connection.operator` 换成 owner 的 `connection.browserPeer`，而插件只读旧属性，因此 `createHostAuthority` 在 `mountHost` 内抛 `TypeError: Cannot read properties of undefined (reading 'id')`，九个模型工具缺席、Skills 分发不受影响；cordis 默认日志级别丢弃 `warn`，实机终端没有任何提示，只能从「工具缺席 + 启动收据已写」看出。修复方式为版本中立地读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者皆无时以 `feature-disabled` 失败关闭），单元与 mount 用例覆盖两种拼写。真机证据：私有 `DSH_HOME` 的 `dsh web` 启动在修复前复现上述失败，修复后源码构建与打包产物都把全局工具视图从 13 提升到 22、注册全部九个 `mattpocock_*` 工具且无警告。
+
+完整记录见 `dist/verification-0.4.31.json`。
+
