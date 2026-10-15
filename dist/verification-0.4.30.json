@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.30",
+    "private": true
+  },
+  "source": {
+    "commit": "901a7abad1b82b27b6276ac46c2c00bbcd6ac339",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.30.tgz",
+    "bytes": 409239,
+    "sha256": "d1aa9b799f1c6ff788f96eb66a6bc684dbab6c55f929cc8cf6603fac25a5c548",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.2"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.2",
+    "alpha4": "0.2.1-alpha.4 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (scratch prefix, global npm install)"
+  },
+  "validation": {
+    "rootTests": {
+      "total": 851,
+      "passed": 657,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 194
+    },
+    "rootTestsAlpha4": {
+      "total": 851,
+      "passed": 651,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 877,
+      "passed": 877,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 851,
+      "passed": 559,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 292
+    },
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 28,
+      "passed": 28,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 15,
+      "actualPluginManager": 13
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.1"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 194 canonical skips are the 0.2.1-alpha.1 bridge fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT; the 6 extra skips on alpha.4 are the client native-activation fixture, whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package the alpha.4 install no longer ships (its Web frontend seeds the module id instead)",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 182709
+  },
+  "compatibility": {
+    "hostRange": "0.2.1-alpha.1 … 0.2.1-alpha.4 verified; the declared engine range also admits 0.2.1-alpha.5 and 0.2.2-alpha.* through prerelease semantics, which are not verified",
+    "runtimeCodeChangesForAlpha4": 0,
+    "engineGateMatrix": {
+      "declaredRange": "~0.2.1-alpha.1",
+      "implementations": [
+        "0.2.1-alpha.2 (dsh peers only)",
+        "0.2.1-alpha.4 (engines.dsh first)"
+      ],
+      "verdictPreservedByDeclaration": true,
+      "accepted": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.5",
+        "0.2.2-alpha.1"
+      ],
+      "refused": [
+        "0.1.2-rc.1",
+        "0.2.0-rc.2",
+        "0.3.0-alpha.1"
+      ]
+    },
+    "alpha3ToAlpha4PackageDiff": "every @deepseek-ai/dsh* package this plugin uses is byte-identical between the two hosts apart from its own package.json version, except dsh-app-boot (the compatibility gate) and three pure UI client bundles (conversation, plugin-manager, tool)",
+    "peerScope": "alpha.4 added principal/signal/interactions to PeerScope and the Gateway refuses a call whose Peer has no live scope; the plugin reads only peer.id, so only the host-side test fixtures changed"
+  },
+  "upstream": {
+    "distribution": "v0.3.0",
+    "skills": "v1.3.1",
+    "channels": {
+      "stable": 27,
+      "beta": 27
+    },
+    "vendorBytes": 279662,
+    "vendorRootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+  },
+  "review": {
+    "baseline": "v0.4.29",
+    "upstreamRelease": "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-alpha.4",
+    "independentReview": "Upstream 0.2.1-alpha.4 changed third-party plugin compatibility: a declared engines.dsh decides alone and the dsh peers become the fallback. The declaration preserves the measured verdict on both gate implementations, alpha.4 required no runtime code change, and the only test-side adaptation is a PeerScope that satisfies both host lines. The native create_worktree observation feature is this release line's own change and is covered by its own focused suites plus the full matrices above."
+  }
+}
