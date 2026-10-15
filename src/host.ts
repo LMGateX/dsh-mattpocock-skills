@@ -868,9 +868,31 @@ export interface HostMount {
   readonly service: MattPocockControlsService; readonly ports: HostPorts; dispose(): Promise<void> }
 
 function deny(message: string): never { throw new ControlsError('access-denied', message) }
+/** The owner-principal Peer shape both connection generations share; only its id names the operator. */
+export interface ConnectionOperatorPeer { readonly id: string }
+/** One generation's spelling of the operator Peer on the connection service. */
+interface ConnectionOperatorView {
+  /** 0.2.1-alpha.1 and alpha.2: the admitted operator Peer itself. */
+  readonly operator?: ConnectionOperatorPeer
+  /** 0.2.1-alpha.3 and later: the owner Peer every authenticated browser request speaks for. */
+  readonly browserPeer?: ConnectionOperatorPeer
+}
+/**
+ * Resolve the connection service's operator Peer without pinning one host generation.
+ * alpha.3 replaced `connection.operator` with `connection.browserPeer`; both carry the
+ * per-process owner identity that `invocation.peer.id` is matched against, so authorization
+ * keeps working and a host exposing neither fails closed with a diagnosable code.
+ */
+export function connectionOperatorPeer(ctx: Context): ConnectionOperatorPeer {
+  const connection = ctx.connection as unknown as ConnectionOperatorView
+  const peer = connection.operator ?? connection.browserPeer
+  if (peer === undefined || typeof peer.id !== 'string' || peer.id.length === 0)
+    throw new ControlsError('feature-disabled', 'this host exposes no operator Peer on the connection service')
+  return peer
+}
 export function operatorCaller(ctx: Context): HostCaller {
   const invocation = ctx.invocation
-  const operator = ctx.connection.operator
+  const operator = connectionOperatorPeer(ctx)
   if (!invocation || invocation.peer.id !== operator.id) return deny('authenticated profile operator invocation required')
   invocation.signal.throwIfAborted()
   return freeze({ kind: 'user', principalId: 'user:' + id(operator.id, 'operator id'), sessionId: null })
@@ -894,7 +916,7 @@ export function classifySession(facts: SessionFacts, retained?: TrustedSession):
 export function createHostAuthority(ctx: Context, storage: ControlsStorage, grants: VersionedStorage<PolicyGrants>): {
   readonly authority: ControlsAuthority; readonly sessionFacts: HostPorts['sessionFacts']; readonly authorizeCaller: HostPorts['authorizeCaller']; readonly operatorPrincipal: string
 } {
-  const operatorPrincipal = 'user:' + id(ctx.connection.operator.id, 'operator id')
+  const operatorPrincipal = 'user:' + id(connectionOperatorPeer(ctx).id, 'operator id')
   // Authorization, association resolution and native-child confirmation read these facts.
   // Only subagent classification consumes the folded event stream; every other caller reads
   // the immutable header. The lightweight persistence port observes one stored session

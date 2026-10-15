@@ -261,6 +261,17 @@ export interface HostMount {
     readonly ports: HostPorts;
     dispose(): Promise<void>;
 }
+/** The owner-principal Peer shape both connection generations share; only its id names the operator. */
+export interface ConnectionOperatorPeer {
+    readonly id: string;
+}
+/**
+ * Resolve the connection service's operator Peer without pinning one host generation.
+ * alpha.3 replaced `connection.operator` with `connection.browserPeer`; both carry the
+ * per-process owner identity that `invocation.peer.id` is matched against, so authorization
+ * keeps working and a host exposing neither fails closed with a diagnosable code.
+ */
+export declare function connectionOperatorPeer(ctx: Context): ConnectionOperatorPeer;
 export declare function operatorCaller(ctx: Context): HostCaller;
 export declare function agentCaller(ctx: Context, agent: Agent | undefined): HostCaller;
 /** Header classification distinguishes ordinary forks from delegated children. */

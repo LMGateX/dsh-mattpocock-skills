@@ -57,6 +57,21 @@ test('host caller identity requires actual invocation operator or exact live Age
   assert.throws(() => api.agentCaller(f.ctx, { ...f.owner }), { code: 'access-denied' })
   assert.throws(() => api.agentCaller(f.ctx), { code: 'access-denied' })
 })
+test('operator identity accepts the alpha.3+ browserPeer spelling and fails closed without one', options, () => {
+  const f = authorityFixture()
+  // 0.2.1-alpha.3 replaced connection.operator with the owner Peer every browser request speaks for.
+  f.ctx.connection = { browserPeer: { id: 'operator' } }
+  f.ctx.invocation = { peer: { id: 'operator' }, signal: signal() }
+  assert.deepEqual(api.connectionOperatorPeer(f.ctx), { id: 'operator' })
+  assert.deepEqual(api.operatorCaller(f.ctx), { kind: 'user', principalId: 'user:operator', sessionId: null })
+  assert.equal(api.createHostAuthority(f.ctx, f.storage, f.grants).operatorPrincipal, 'user:operator')
+  f.ctx.invocation = { peer: { id: 'stranger' }, signal: signal() }
+  assert.throws(() => api.operatorCaller(f.ctx), { code: 'access-denied' })
+  // A host exposing neither spelling fails closed with a diagnosable code instead of a TypeError.
+  f.ctx.connection = {}
+  assert.throws(() => api.connectionOperatorPeer(f.ctx), { code: 'feature-disabled' })
+  assert.throws(() => api.createHostAuthority(f.ctx, f.storage, f.grants), { code: 'feature-disabled' })
+})
 test('owner classifier keeps ordinary forks independent and cold child own descriptor authoritative', options, async () => {
   const f = authorityFixture(), port = api.createHostAuthority(f.ctx, f.storage, f.grants)
   assert.deepEqual(await port.authority.resolveSession('owner'), { kind: 'owner', controlWorkspaceId: 'W' })
@@ -85,10 +100,11 @@ test('policy writes default denied for agents, exact operator grants are revisio
   await f.grants.compareAndSwap(1, { schemaVersion: 1, revision: 2, grants: [{ sessionId: 'owner', enabled: false }] })
   await assert.rejects(port.authority.authorizePolicy('agent:owner', 'write'), { code: 'access-denied' })
 })
-async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map()) {
+async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map(), connectionShape = 'operator') {
   const ctx = new sdk.Context(), f = authorityFixture()
   const operator = operatorPeer(ctx)
-  ctx.provide('connection', { operator, rpc: { intercept() { return async () => {} } } })
+  const connection = { rpc: { intercept() { return async () => {} } } }
+  ctx.provide('connection', connectionShape === 'browserPeer' ? { ...connection, browserPeer: operator } : { ...connection, operator })
   ctx.provide('agents', { get: id => f.agents.get(id), list: () => [...f.agents.values()] })
   ctx.provide('workspaceRegistry', { ...f.ctx.workspaceRegistry, list: () => [{ id: 'W', path: '/fixture', title: 'Fixture', status: async () => 'ok', sessionIds: ['owner', 'fork', 'cold'] }] })
   ctx.provide('sessionQuery', f.ctx.sessionQuery)
@@ -123,6 +139,12 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   const invoke = (method, args = {}, peer = operator) => gateway.invoke({ namespace: 'mattpocockControls', method, args, peer, signal: signal() })
   return { ctx, mounted, gateway, invoke, calls, events, owner: f.owner, owned, units, runtime }
 }
+test('host mount derives the same operator principal from the alpha.3+ browserPeer spelling', options, async t => {
+  const f = await assembly(t, {}, undefined, new Map(), 'browserPeer')
+  assert.equal((await f.invoke('readPolicy')).revision, 0)
+  assert.equal(f.calls[0].principalId, 'user:operator')
+  assert.equal((await f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() })).isError, false)
+})
 test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects forged operator/unknown fields', options, async t => {
   const f = await assembly(t)
   assert.equal((await f.invoke('readPolicy')).revision, 0)
