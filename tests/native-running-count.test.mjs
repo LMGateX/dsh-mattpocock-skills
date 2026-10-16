@@ -197,9 +197,34 @@ test('an unreadable catalog stays a stated lower bound and never claims a silent
 
 test('a host without the native subagent service states a lower bound, never a silent stop', async t => {
   const f = await mountedFixture(t)
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable',
+    depth: { direct: 0, deeper: 0, unknown: 0, levels: {} } })
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.countKnown, false)
   assert.equal(snap.windows.S.countReason, 'native-subagent-service-unavailable')
   assert.deepEqual(snap.nativeStops, [])
+})
+
+test('S.depth structures the running count by edge distance from live parent chains', async t => {
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents, child: directChild }) => {
+    directChild.status = 'running'
+    // A three-level lineage: the owner's direct child, its child and its grandchild.
+    for (const [id, parent] of [['grand', 'child'], ['great', 'grand']]) agents.set(id, child(id, 'running', parent))
+    ctx.provide('subagents', { async listDescendants() { return [catalogRow('child'), catalogRow('grand'), catalogRow('great')] } })
+  } })
+  const snap = await f.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(snap.windows.S.used, 3)
+  assert.deepEqual(snap.windows.S.depth, { direct: 1, deeper: 2, unknown: 0, levels: { '1': 1, '2': 1, '3': 1 } })
+  const depth = snap.windows.S.depth
+  assert.equal(depth.direct + depth.deeper + depth.unknown, snap.windows.S.used,
+    'the structure always sums to the count it decomposes')
+  // The depth structure is a projection of the same live set, so an idle lineage member never
+  // appears in it: only the count source can add or remove a level. The status edge is what both
+  // mutates the live status and invalidates a cached snapshot.
+  const great = f.agents.get('great')
+  great.status = 'idle'
+  f.ctx.emit('agent/status', { agent: great, status: 'idle' })
+  const after = await f.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(after.windows.S.used, 2)
+  assert.deepEqual(after.windows.S.depth, { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } })
 })

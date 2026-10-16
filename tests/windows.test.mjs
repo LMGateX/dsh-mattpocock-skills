@@ -769,3 +769,32 @@ test('receipt dedup cannot substitute a different state, and execution state can
   await rejectsCode(f.receipt(held, 'scheduled'), 'operation-conflict')
   assert.equal((await f.windows.read('owner', 'root')).S.byState.running, 1)
 })
+
+test('S.depth publishes the running count by edge distance and rejects an inconsistent structure', async () => {
+  const f = await fixture({ S: 4 })
+  const depth = { direct: 2, deeper: 1, unknown: 1, levels: { '1': 2, '2': 1 } }
+  f.setNativeActivity(async () => ({ known: true, running: 4, total: 4, reason: null, depth }))
+  const snap = await f.windows.read('owner', 'root')
+  assert.deepEqual(snap.S.depth, depth)
+  assert.equal(snap.S.depth.direct + snap.S.depth.deeper + snap.S.depth.unknown, snap.S.used)
+  assert.equal(snap.S.depth.levels['1'], snap.S.depth.direct)
+  // A source that cannot measure depth says so; it never fabricates a zero structure.
+  f.setNativeActivity(async () => ({ known: true, running: 2, total: 2, reason: null }))
+  assert.equal((await f.windows.read('owner', 'root')).S.depth, null)
+  const malformed = [
+    { running: 2, depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } },
+    { running: 2, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 0 } } },
+    { running: 2, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1 } } },
+    { running: 2, depth: { direct: 2, deeper: 0, unknown: 0, levels: { '1': 1, '2': 1 } } },
+    { running: 1, depth: { direct: 1, deeper: 0, unknown: 0, levels: { x: 1 } } },
+    { running: 1, depth: { direct: 1, deeper: 0, unknown: 0, levels: {} } },
+  ]
+  for (const candidate of malformed) {
+    f.setNativeActivity(async () => ({ known: true, running: candidate.running, total: candidate.running, reason: null, depth: candidate.depth }))
+    const rejected = await f.windows.read('owner', 'root')
+    assert.equal(rejected.S.countKnown, false, JSON.stringify(candidate))
+    assert.equal(rejected.S.countReason, 'native-subagent-activity-unreadable', JSON.stringify(candidate))
+    assert.equal(rejected.S.depth, null)
+  }
+})
+

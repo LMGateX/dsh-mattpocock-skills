@@ -35,7 +35,7 @@ import type { InstrumentCommand } from './controls/instrument-state.js'
 import { parsePolicyIntent, parsePolicySnapshot } from './controls/policy.js'
 import type { PolicyIntent, PolicySnapshot } from './controls/policy.js'
 import { createDomainWindowStorage, parseWindowDocument, parseTicketWindowCommand } from './controls/windows.js'
-import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js'
+import type { NativeRunningDepth, NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js'
 import { createDomainResourceStorage, parseResourceDocument } from './controls/resources.js'
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js'
 import { createDomainVersionedStorage } from './controls/versioned-storage.js'
@@ -400,6 +400,43 @@ class NativeRunningCounter {
     for (const agent of this.#liveAgents()) index.set(String(agent.id), agent)
     return index
   }
+  /**
+   * Edge distance from the owner to one live descendant; a direct child is 1. A chain that never
+   * reaches the owner, a missing live parent or a cycle is unmeasurable and stays null, never a
+   * fabricated depth. Bounded by the same 64-level walk the resident subtree uses.
+   */
+  #depthOf(owner: string, sessionId: string, live: Map<string, Agent>): number | null {
+    const seen = new Set<string>()
+    let cursor = sessionId, depth = 0
+    while (cursor !== owner) {
+      if (seen.has(cursor) || depth >= 64) return null
+      seen.add(cursor)
+      const parent = live.get(cursor)?.session.header.parentSession
+      if (parent === undefined) return null
+      depth += 1
+      cursor = String(parent)
+    }
+    return depth
+  }
+  /** Depth structure of one running set: every counted run lands in exactly one bucket. */
+  #depthStructure(owner: string, running: ReadonlySet<string>, live: Map<string, Agent>): NativeRunningDepth {
+    const levels = new Map<number, number>()
+    let unknown = 0
+    for (const sessionId of running) {
+      const depth = this.#depthOf(owner, sessionId, live)
+      if (depth === null) { unknown += 1; continue }
+      levels.set(depth, (levels.get(depth) ?? 0) + 1)
+    }
+    let direct = 0, deeper = 0
+    const published: Record<string, number> = {}
+    for (const distance of [...levels.keys()].sort((left, right) => left - right)) {
+      const count = levels.get(distance)!
+      published[String(distance)] = count
+      if (distance === 1) direct += count
+      else deeper += count
+    }
+    return freeze({ direct, deeper, unknown, levels: freeze(published) })
+  }
   #running(live: Map<string, Agent>, membership: NativeRunningMembership): Set<string> {
     const running = new Set<string>()
     for (const agent of live.values()) {
@@ -593,15 +630,18 @@ class NativeRunningCounter {
       // No native service: nothing can be enumerated, and the index alone is not a promise of
       // completeness, so the count stays an explicit unknown rather than a live-derived guess.
       const held = this.#members.get(owner)
-      const running = held === undefined ? 0 : this.#running(live, held).size
-      return { known: false, running, total: held === undefined ? 0 : Math.max(held.total, running), reason: 'native-subagent-service-unavailable' }
+      const counted = held === undefined ? new Set<string>() : this.#running(live, held)
+      const running = counted.size
+      return { known: false, running, total: held === undefined ? 0 : Math.max(held.total, running), reason: 'native-subagent-service-unavailable',
+        depth: this.#depthStructure(owner, counted, live) }
     }
     if (!this.#members.has(owner)) {
       this.#adoptLiveMembership(owner, live)
       this.#afterWalk(owner, () => this.#reconcile(owner))
     }
     const membership = this.#members.get(owner)
-    if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable' }
+    if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable',
+      depth: this.#depthStructure(owner, new Set<string>(), live) }
     this.#absorbLiveMembership(owner, membership, live)
     let ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
@@ -616,9 +656,11 @@ class NativeRunningCounter {
       for (const candidate of unknown) ledger.unresolved.add(candidate)
       this.#afterWalk(owner, () => this.#reconcile(owner))
     }
-    const running = this.#running(live, membership).size, total = Math.max(membership.total, running)
-    if (!membership.known) return { known: false, running, total, reason: membership.reason }
-    return { known: true, running, total, reason: null }
+    const counted = this.#running(live, membership)
+    const running = counted.size, total = Math.max(membership.total, running)
+    const depth = this.#depthStructure(owner, counted, live)
+    if (!membership.known) return { known: false, running, total, reason: membership.reason, depth }
+    return { known: true, running, total, reason: null, depth }
   }
   driftFacts(ownerSessionId: string): readonly NativeCountDrift[] {
     const ledger = this.#ledgers.get(String(ownerSessionId))

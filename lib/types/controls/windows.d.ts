@@ -160,6 +160,23 @@ export interface WindowUsage {
     /** Signed reference minus observed usage, including negative overage. */
     readonly gap: number | null;
 }
+/**
+ * Structural decomposition of a native running count by edge distance from its owner session.
+ *
+ * The host pools one active-child capacity per uninterrupted continuable lineage, so a
+ * descendant at any distance consumes the same pool as a direct child; this structure keeps
+ * that whole count reportable without flattening direct children and deeper descendants.
+ */
+export interface NativeRunningDepth {
+    /** Running direct children: edge distance 1 from the owner session. */
+    readonly direct: number;
+    /** Running descendants at edge distance 2 or more: a child's own children and below. */
+    readonly deeper: number;
+    /** Running descendants whose live parent chain could not be measured; normally 0. */
+    readonly unknown: number;
+    /** Exact running count per edge distance; `"1"` is a direct child. Absent levels hold no run. */
+    readonly levels: Readonly<Record<string, number>>;
+}
 /** Native host descendant activity for one owner session; never this plugin's ledger. */
 export interface NativeSubagentActivity {
     /** True only when the host enumerated every descendant without a diagnostic row. */
@@ -170,6 +187,8 @@ export interface NativeSubagentActivity {
     readonly total: number;
     /** Mechanical cause when known is false; null when known. */
     readonly reason: string | null;
+    /** Depth structure of `running`; null when the source cannot measure depth at all. */
+    readonly depth: NativeRunningDepth | null;
 }
 export interface WindowSnapshot {
     readonly instance: InstrumentInstance;
@@ -194,6 +213,12 @@ export interface WindowSnapshot {
         readonly countReason: string | null;
         /** Ledger audit of our own dispatches; never the count source. */
         readonly byState: Readonly<Record<ExecutionState, number>>;
+        /**
+         * Depth structure of `used`: `direct + deeper + unknown` always equals `used`, and
+         * `levels` holds the exact count per edge distance. Null when the native source cannot
+         * measure depth; never a fabricated zero structure.
+         */
+        readonly depth: NativeRunningDepth | null;
     };
 }
 export interface TicketWindowResult {

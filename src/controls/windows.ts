@@ -145,6 +145,23 @@ export interface WindowUsage {
   /** Signed reference minus observed usage, including negative overage. */
   readonly gap: number | null
 }
+/**
+ * Structural decomposition of a native running count by edge distance from its owner session.
+ *
+ * The host pools one active-child capacity per uninterrupted continuable lineage, so a
+ * descendant at any distance consumes the same pool as a direct child; this structure keeps
+ * that whole count reportable without flattening direct children and deeper descendants.
+ */
+export interface NativeRunningDepth {
+  /** Running direct children: edge distance 1 from the owner session. */
+  readonly direct: number
+  /** Running descendants at edge distance 2 or more: a child's own children and below. */
+  readonly deeper: number
+  /** Running descendants whose live parent chain could not be measured; normally 0. */
+  readonly unknown: number
+  /** Exact running count per edge distance; `"1"` is a direct child. Absent levels hold no run. */
+  readonly levels: Readonly<Record<string, number>>
+}
 /** Native host descendant activity for one owner session; never this plugin's ledger. */
 export interface NativeSubagentActivity {
   /** True only when the host enumerated every descendant without a diagnostic row. */
@@ -155,6 +172,8 @@ export interface NativeSubagentActivity {
   readonly total: number
   /** Mechanical cause when known is false; null when known. */
   readonly reason: string | null
+  /** Depth structure of `running`; null when the source cannot measure depth at all. */
+  readonly depth: NativeRunningDepth | null
 }
 export interface WindowSnapshot {
   readonly instance: InstrumentInstance
@@ -179,6 +198,12 @@ export interface WindowSnapshot {
     readonly countReason: string | null
     /** Ledger audit of our own dispatches; never the count source. */
     readonly byState: Readonly<Record<ExecutionState, number>>
+    /**
+     * Depth structure of `used`: `direct + deeper + unknown` always equals `used`, and
+     * `levels` holds the exact count per edge distance. Null when the native source cannot
+     * measure depth; never a fabricated zero structure.
+     */
+    readonly depth: NativeRunningDepth | null
   }
 }
 export interface TicketWindowResult {
@@ -275,14 +300,35 @@ function parseKnowledge(value: unknown): RuntimeKnowledge {
 }
 /** The native port is program-only, but a malformed value must degrade to unknown, never leak. */
 function parseNativeActivity(value: unknown): NativeSubagentActivity {
-  const raw = record(value, 'native subagent activity', ['known', 'running', 'total', 'reason'])
+  const raw = record(value, 'native subagent activity', ['known', 'running', 'total', 'reason', 'depth'])
   const known = boolean(raw.known, 'native activity known')
   const running = revision(raw.running, 'native running count')
   const total = revision(raw.total, 'native total count')
   if (total < running) invalid('native total cannot be smaller than the running count')
   const reason = raw.reason === null ? null : id(raw.reason, 'native activity reason')
   if (known !== (reason === null)) invalid('known native activity clears its reason; unknown requires a mechanical reason')
-  return { known, running, total, reason }
+  return { known, running, total, reason, depth: raw.depth === undefined || raw.depth === null ? null : parseRunningDepth(raw.depth, running) }
+}
+/** Every counted run lands in exactly one bucket, so the structure is checkable against the count. */
+function parseRunningDepth(value: unknown, running: number): NativeRunningDepth {
+  const raw = record(value, 'native running depth', ['direct', 'deeper', 'unknown', 'levels'])
+  const direct = revision(raw.direct, 'native running direct count')
+  const deeper = revision(raw.deeper, 'native running deeper count')
+  const unknown = revision(raw.unknown, 'native running depth-unknown count')
+  if (direct + deeper + unknown !== running) invalid('native running depth must sum to the running count')
+  const source = record(raw.levels, 'native running depth levels')
+  const levels: Record<string, number> = {}
+  let classified = 0
+  for (const key of Object.keys(source)) {
+    if (!/^[1-9][0-9]*$/u.test(key)) invalid('native running depth level must be a decimal edge distance: ' + key)
+    const count = revision(source[key], 'native running depth level ' + key)
+    if (count === 0) invalid('native running depth level ' + key + ' must not publish an empty level')
+    levels[key] = count
+    classified += count
+  }
+  if (classified !== direct + deeper) invalid('native running depth levels must classify every measured run')
+  if ((levels['1'] ?? 0) !== direct) invalid('native running depth direct count must equal level 1')
+  return freeze({ direct, deeper, unknown, levels: freeze(levels) })
 }
 function parseToken(raw: Record<string, unknown>): ExecutionToken {
   return { instrumentInstanceId: id(raw.instrumentInstanceId, 'instrumentInstanceId'), executionId: id(raw.executionId, 'executionId'),
@@ -902,9 +948,9 @@ export class SessionWindows {
   }
   /** S is the native host's live run status (live Agent.status), never catalog residency; the ledger below is audit only. */
   async #nativeCount(ownerSessionId: string): Promise<NativeSubagentActivity> {
-    if (this.#nativeActivity === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unavailable' }
+    if (this.#nativeActivity === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unavailable', depth: null }
     try { return parseNativeActivity(await this.#nativeActivity(ownerSessionId)) }
-    catch { return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unreadable' } }
+    catch { return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unreadable', depth: null } }
   }
   #snapshot(document: WindowDocument, context: Context, native: NativeSubagentActivity): WindowSnapshot {
     const policy = context.controls.policy; const feature = policy.features.windows
@@ -930,7 +976,7 @@ export class SessionWindows {
     // The running count is the host's live-run fact (idle resident children excluded); reservations and re-admission never feed it.
     const S = { ...usage(policy.windows.runningSubagentLimit, native.running,
       policy.extensionEnabled && feature.requested && policy.workspaceVerified && policy.windows.runningSubagentLimit !== null),
-      countKnown: native.known, countReason: native.known ? null : native.reason, byState }
+      countKnown: native.known, countReason: native.known ? null : native.reason, byState, depth: native.depth }
     const status = unknown ? 'reconciling' : feature.status === 'disabled' ? 'disabled' : feature.status === 'unsupported' || this.#capability === 'unsupported' ? 'unsupported' : T.overcommitted || S.overcommitted ? 'overcommitted' : 'ready'
     return freeze({ instance: { instrumentInstanceId: document.instrumentInstanceId, ownerSessionId: document.ownerSessionId, controlWorkspaceId: document.controlWorkspaceId },
       revision: document.revision, configurationRevision: policy.configurationRevision, capability: this.#capability, status,

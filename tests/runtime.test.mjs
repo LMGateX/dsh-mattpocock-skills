@@ -194,7 +194,7 @@ test('the native running count reads live Agent status, never catalog residency'
   } })
   assert.equal(f.mounted.ports.capabilities.allNativeWakeAdmission, 'supported')
   // The idle row has catalog activity 'running' (resident) but Agent.status 'idle': not counted.
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 1, total: 2, reason: null })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 1, total: 2, reason: null, depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.used, 1); assert.equal(snap.windows.S.countKnown, true); assert.equal(snap.windows.S.countReason, null)
@@ -218,7 +218,7 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     if ((await f.mounted.ports.nativeSubagentActivity('root')).known === false) break
     await new Promise(resolve => setTimeout(resolve, 5))
   }
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt' })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.used, 1, 'the readable running row is a stated lower bound')
@@ -235,7 +235,7 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     if ((await f.mounted.ports.nativeSubagentActivity('root')).reason === 'native-subagent-listing-rejected') break
     await new Promise(resolve => setTimeout(resolve, 5))
   }
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected' })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
 })
 
 test('a host exposing only direct children resolves the resident subtree without recursing', async t => {
@@ -261,13 +261,13 @@ test('a host exposing only direct children resolves the resident subtree without
   // One catalog read for the owner; the deeper resident members come from the live index, whose
   // parent chains already describe them. Reading every descendant's own session log is what made
   // a baseline walk unbounded on a large workspace, so no deeper catalog is consulted.
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } } })
   assert.deepEqual(calls, ['root'], 'only the owner catalog is read, never a deeper branch')
   // A branch whose own catalog is unreadable can no longer hide a running member: the live index
   // still reports it, and the stated total stays the known resident subtree.
   children['branch-a'] = undefined
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'branch-a' } })
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null })
+  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } } })
   assert.deepEqual(calls, ['root', 'root'], 'the retry reads the owner catalog again, never the unreadable branch')
 })
 

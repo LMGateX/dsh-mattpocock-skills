@@ -29,7 +29,7 @@
 
 - 建议稳定 instrumentInstanceId 与 ownerSessionId 持久关联；controlWorkspaceId 决定策略来源，instanceId 决定账本与权限作用域。branch/ref 与 SHA 是任务及资源属性，不是实例主键。
 - **本设计采用 session 实例内 T/S，而不是工作区所有 session 的合计 T/S。** 工作区设置 T=3/S=2 时，独立主 session A、B 分别管理自己的 T=3/S=2。旧草案的工作区共享业务账本/配额规则已替换。未来若需要工作区/host 总资源预算，另设独立上层限制并显式展示，不能偷偷合并这些仪器。
-- 同一实例内所有 workflows、coordinators 与受管 descendants 共用 T/S。新建 child、重建 Agent、换 cwd 或换 workflowId 不开新实例、不刷新容量；独立主 session 与受管 child 的角色必须来自可信关联。
+- 同一实例内所有 workflows、coordinators 与受管 descendants 共用 T/S。新建 child、重建 Agent、换 cwd 或换 workflowId 不开新实例、不刷新容量；独立主 session 与受管 child 的角色必须来自可信关联。 S 另按到 root 的边距给出 direct/deeper/unknown 结构（恒等于 used，levels 为各层计数），与宿主按 continuable 血缘共池的活动名额同口径。
 - 同一主 session 的断线、刷新、Agent dispose、重启和冷续聊恢复同一实例。切换浏览器选中 session 只切换投影，不迁移或清空状态。
 - session fork/new session 建立独立实例；需要继承任务计划时显式复制/关联，不能复制活跃 leases、资源所有权或用户授权。跨实例移交票/资源需要明确交接与旧归属收敛，不靠改一个 sessionId。
 - 同一 session 开展新任务时使用 workflow 分组并明确当前筛选/归档范围；不自动丢掉旧任务的待裁决、未交付或未退休义务。

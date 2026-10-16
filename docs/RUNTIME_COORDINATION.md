@@ -28,7 +28,7 @@ assignment：
 ~~~
 
 - 不得给普通 fork 或别的 owner 授权，子代理不得超出当前父 assignment。
-- null workflow/null ticket 是真正的无票研究，不创造虚构工作流、票或 T 占位。root 与 managed descendants 共用 root S。
+- null workflow/null ticket 是真正的无票研究，不创造虚构工作流、票或 T 占位。root 与 managed descendants 共用 root S。宿主名额按 continuable 血缘共池，S 的深度结构（direct/deeper/unknown 恒等于 used）只是把这份计数拆开显示，不另立账本。
 - author 由认证调用者产生；agent 和 operator 的业务更新保留其真实 principal/session 归属。业务“已交付/已释放”等字样不是程序释放证据。
 - policy save/admission 与权限撤销通过当前 runtime effect ordering 收敛；这里只验证单 Host 的排序，不宣称跨进程事务。
 

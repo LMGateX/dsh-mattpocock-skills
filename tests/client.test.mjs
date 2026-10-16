@@ -358,6 +358,19 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   release(); observer.dispose()
 })
 
+test('window summary carries the depth structure and hides it when it is unmeasurable', () => {
+  const usage = { used: 3, capacity: 4, available: 1, overcommitted: false, overage: 0, gap: 1 }
+  const windows = { instance, capability: 'cooperative', status: 'ready', reason: null, runtimeKnowledge: { runtimeId: 'runtime-one', known: true, reason: null },
+    T: { used: 0, capacity: 2, available: 2, overcommitted: false, overage: 0, gap: 2 },
+    S: { ...usage, countKnown: true, byState: { unknown: 0 }, depth: { direct: 2, deeper: 1, unknown: 0, levels: { '1': 2, '2': 1 } } } }
+  assert.deepEqual([...client.windowSummary(windows)], ['T 0/2 · 超出 0 · 差额 2', 'S 3（直接 2 · 更深 1）/4 · 超出 0 · 差额 1'])
+  const withUnknown = { ...windows, S: { ...windows.S, depth: { direct: 2, deeper: 0, unknown: 1, levels: { '1': 2 } } } }
+  assert.match(client.windowSummary(withUnknown)[1], /S 3（直接 2 · 更深 0 · 深度未知 1）/)
+  const unmeasurable = { ...windows, S: { ...windows.S, depth: null } }
+  assert.deepEqual([...client.windowSummary(unmeasurable)], ['T 0/2 · 超出 0 · 差额 2', 'S 3/4 · 超出 0 · 差额 1'])
+})
+
+
 test('settings Session navigation is workspace-first, global-unioned and missing metadata stays unknown', () => {
   const rows = client.decodeWorkspaces([
     { id: 'w1', title: 'One', status: 'ok', sessionIds: ['A', 'B'] },

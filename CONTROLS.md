@@ -9,7 +9,7 @@
 | 能力 | 仓库实现 | 使用时要看什么 |
 |---|---|---|
 | 设置与会话仪器 | 全局默认、工作区覆盖、owner 归属、受授票范围、原生客户端入口 | 管理默认关闭；保存设置不等于安装启用 |
-| T/S | 占用、参考值、超额、统计覆盖程度；T 与 S 独立，S 的在跑数是宿主的实时运行状态（live Agent.status，idle 常驻不计），读取为内存投影 | S 枚举不完整或成员资格不可读时是明示下界（总数未知）；超限或未知不拒绝派发，不另要求批准；被计为 running 的 run 无 end 消失时按子代理自身日志的公开词表产生 item（不可读时明示 unobservable）并唤醒主代理 |
+| T/S | 占用、参考值、超额、统计覆盖程度；T 与 S 独立，S 的在跑数是宿主的实时运行状态（live Agent.status，idle 常驻不计），读取为内存投影，并按 `S.depth` 给出 direct/deeper/unknown 深度结构 | S 枚举不完整或成员资格不可读时是明示下界（总数未知）；超限或未知不拒绝派发，不另要求批准；被计为 running 的 run 无 end 消失时按子代理自身日志的公开词表产生 item（不可读时明示 unobservable）并唤醒主代理 |
 | 首次指定工作树派发 | 创建前技术授权、持久意图、原生 continuable 创建、实际 header 核对；同包兼容实现、只读身份检查与独立启动设置 | 默认关闭；启用／禁用须重启 DSH，当前进程保持原启动请求；未准备／版本不兼容／失败不伪报重启即可 |
 | 续聊 | 原生 send_message 继续同一个 child、历史和目录 | 后续消息不是重新创建，不用它改绑旧 child 的 cwd |
 | 工作树状态 | active / discarded / cleaned 的实际作者报告，与程序绑定事实分别保存 | discarded 未清理仍提醒；cleaned 退出当前视图，保留历史 |
@@ -101,7 +101,7 @@ workflow 自定义进度轴、状态键、含义和互斥/重叠计数。仪器�
 ## 4. T/S 是参考上限
 
 - **T** 记录显式票占位、释放与按代次重新占位，独立于 S。无票研究无需虚构票。
-- **S** 是宿主的实时运行状态：属于该 owner 子树、在成员资格内、且当前 `Agent.status` 为 running 的子代理数；目录行的 `activity` 是会话驻留而非执行，常驻 idle 子代理不计入。本插件自己的执行租约只作为派发审计，不再参与计数。作者的完成报告不是程序结束回执。
+- **S** 是宿主的实时运行状态：属于该 owner 子树、在成员资格内、且当前 `Agent.status` 为 running 的子代理数；目录行的 `activity` 是会话驻留而非执行，常驻 idle 子代理不计入。本插件自己的执行租约只作为派发审计，不再参与计数。作者的完成报告不是程序结束回执。 S 同时给出结构：`S.depth` 按到 owner 的边距分为 `direct`（直接子代理）、`deeper`（2 级及更深）与 `unknown`（live 父链不可测量），三者恒等于 `used`，`levels` 列出各层精确计数，来源无法测量深度时 `depth` 为 null；宿主的活动名额按 continuable 血缘共池，孙代与直接子代占同一名额，因此各深度同等计入。
 - 成员资格只在成员变更节点从原生目录刷新，状态翻转零遍历更新计数；普通读取是 O(live agents) 内存投影，不重复产生目录 IO。基线读取、插件热重载与 DSH 重启由 durable runtimeId 归因为 re-establishment，只重建计数，不产生 item、不唤醒。
 - 展示 used、capacity、overage、gap 与统计覆盖程度。宿主枚举完整且无 diagnostic 行时 countKnown=true，数字精确；服务缺失、查询被拒或存在 diagnostic 行时 countKnown=false、countReason 给出机械原因，used 是明示下界、总数未知；unknown 既不是零占用，也不是派发禁令。
 - 被计为 running 的 run 既无 `subagent/end` 也无 idle 转换却消失时，只读该 child 自身日志的最后一个 `turn/end`（或 `subagent/end` 的 stopReason），按公开词表在快照的 `nativeStops` 报告真实结局或明示 `unobservable`（附证据指针），并沿用 notification 通道唤醒主代理；同一失败 turn 以 `itemId=sessionId[:runId]:turn` 与既有 durable notification 行去重，后续 turn 再次失败是新 item，重新观测到 running、start 边或迟到 end 后清除。目录不可读时不宣称任何结局。
