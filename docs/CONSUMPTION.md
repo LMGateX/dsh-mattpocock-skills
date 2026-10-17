@@ -80,7 +80,7 @@ program.trackCommit(trustedInstanceId, commit) // 同步登记，不 await
 
 Port 对象冻结，只由 construction callback 捕获，**只有 trackCommit**，不得挂载为 model tools / remote wire。它不解析聊天、不判执行结束、不读 Jobs/childresult、不生成/释放 T 或 S，只登记实际 ledger/resource/config durability Promise。不能把 child lifetime、sender end、模型回答、job_output 消费或 parent fence Promise 冒充持久提交。
 
-每次消费在第一个 await 前捕获**所属实例已有提交的固定 frontier**，等待这些提交后才调用 readSnapshot。别的实例、之后追加的提交、无关 child 生命周期及不断增长的全局队列不加入此次等待。实例 ledger 是共享真值，属于同一实例的已登记持久提交都可能影响 T/S/义务，Host 只登记这种相关提交。
+每次消费在第一个 await 前捕获**所属实例已有提交的固定 frontier**，等待这些提交后才调用 readSnapshot。别的实例、之后追加的提交、无关 child 生命周期及不断增长的全局队列不加入此次等待。实例 ledger 是共享真值，属于同一实例的已登记持久提交都可能影响 T/S/义务，Host 只登记这种相关提交。重复的同一 knowledge unknown 观察在登记前就被去重，不产生新的 frontier 提交；状态风暴因此不会让下一次注入等待 N 个同事实提交。
 
 成功提交自动移除；写入结果未知的失败提交保留至一次消费报告 durability-commit-failed，后续消费重新读最新事实，不把原失败当成业务否决。在真正写入之前就被拒绝的受管命令（invalid-input、invalid-state、access-denied、feature-disabled、revision-conflict、operation-conflict、concurrent-update、association-conflict、unknown-session/unknown-workspace）以及受管路径里的 ResourceError（未知/外部资源、已清理绑定、不支持的旧动作）没有写入任何字节，不登记为失败提交：它们只把该调用自身的错误交回调用者，不能让下一次消费退化成 unknown durability。饱和时新增 Promise rejection 仍被观察，但不伪装完整 frontier；返回 commit-frontier-overflow，直到溢出 durability 都实际结算后再报告一次并允许重新读。overflow 不取消任何 producer。
 

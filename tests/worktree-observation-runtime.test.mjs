@@ -111,7 +111,10 @@ test('durable session events backfill a missing row once and mark it as lower-ev
     { type: 'tool/ptc-dispatch', data: { rootCallId: 'run-1', parentCallId: 'run-1', subCallId: 'run-1:ptc:2', name: 'create_worktree', isError: false, content: [{ type: 'text', text: payload('/trees/Q', 'worktree-Q') }] } },
   ]
   await f.created(child)
-  const view = await f.read()
+  // Replay is background enrichment now: the first snapshot returns without scanning every live
+  // descendant's session facts; wait for the replay to land and invalidate the projection.
+  let view
+  await until(async () => { view = await f.read(); return view.worktreeObservations.length === 2 })
   const rows = view.worktreeObservations
   assert.deepEqual(rows.map(row => row.value.path).sort(), ['/trees/Q', '/trees/R'])
   assert(rows.every(row => row.source === 'replay'), 'replay evidence is stated as such')
@@ -120,6 +123,28 @@ test('durable session events backfill a missing row once and mark it as lower-ev
   assert.equal(logged.value.turn, 7)
   assert.equal(rows.find(row => row.value.path === '/trees/Q').value.callId, 'run-1:ptc:2')
   assert.equal((await f.read()).worktreeObservations.length, 2, 'replay is idempotent')
+})
+
+test('the first snapshot returns without waiting for the background replay scan', async t => {
+  const f = await fixture(t, { initialPolicy: policy() })
+  const child = actualAgent('slow-replay-child', { parent: 'root', managed: true })
+  const descriptor = { type: 'subagent/descriptor', data: { version: 3, mode: 'continuable', provider: 'spawn', label: 'fixture' } }
+  const payload = JSON.stringify({ path: '/trees/S', branch: 'worktree-S', baseCommit: oid, repositoryRoot: '/repo' })
+  child.session.ownEvents = () => [descriptor,
+    { type: 'tool/call', data: { turn: 3, step: 1, callId: 'slow-1', name: 'create_worktree', arguments: '{}' } },
+    { type: 'tool/result', data: { turn: 3, step: 1, message: { toolCallId: 'slow-1', content: [{ type: 'text', text: payload }] } } },
+  ]
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  const original = f.ports.sessionFacts
+  f.ports.sessionFacts = async id => { await gate; return original(id) }
+  await f.created(child)
+  const started = Date.now()
+  const first = await f.read()
+  assert.ok(Date.now() - started < 500, 'the read must not wait for the replay scan')
+  assert.deepEqual(first.worktreeObservations, [])
+  release()
+  await until(async () => (await f.read()).worktreeObservations.length === 1)
 })
 
 test('a terminal item names the trees its child created, and creation itself never wakes the owner', async t => {

@@ -77,6 +77,8 @@ export type Observation<T> =
   | { readonly status: 'unknown'; readonly value: null; readonly error: string | null }
   | { readonly status: 'ready'; readonly value: T; readonly error: null }
 
+/** A hidden tab polls at most this often: every sidebar row keeps one observer while visible. */
+function documentHidden(): boolean { return typeof document !== 'undefined' && document.visibilityState === 'hidden' }
 /** Per-Session, mounted-only observation. It never creates an instance or wakes a model. */
 export class SessionObserver {
   private state: Observation<ClientSessionSnapshot> = { status: 'unknown', value: null, error: null }
@@ -112,7 +114,12 @@ export class SessionObserver {
       if (generation !== this.generation || this.closed || this.holds === 0) return
       this.publish({ status: 'unknown', value: null, error: errorText(error) })
     } finally {
-      if (generation === this.generation && !this.closed && this.holds > 0 && this.intervalMs > 0) this.timer = setTimeout(() => { void this.refresh() }, this.intervalMs)
+      if (generation === this.generation && !this.closed && this.holds > 0 && this.intervalMs > 0) {
+        // A hidden tab has no visible badge to keep current; backing off avoids N full snapshot
+        // reads per interval for every row while the user is elsewhere.
+        const delay = documentHidden() ? Math.max(this.intervalMs * 4, 30_000) : this.intervalMs
+        this.timer = setTimeout(() => { void this.refresh() }, delay)
+      }
     }
   }
   dispose(): void { this.closed = true; this.generation++; this.controller?.abort(); this.holds = 0; this.clearTimer(); this.state = { status: 'unknown', value: null, error: 'Observer disposed' }; this.listeners.clear() }

@@ -140,6 +140,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
       }
     }
+    if(observations.length===0)return
     await (await historyFor(view)).capture(observations)
   }
   // History capture is a side effect of reading the projection, not a change of it: the
@@ -147,10 +148,15 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // read and never converge. Only real document mutations touch the gate.
   const captureSafely=async(view:SessionControlsView,effect:()=>Promise<void>)=>{try{await effect();historyFailures.delete(view.instance.instrumentInstanceId)}catch(error){historyFailures.set(view.instance.instrumentInstanceId,String(error).slice(0,1024))}}
   const captureCurrent=async(view:SessionControlsView,items:readonly {kind:string;recordId:string;version:number;snapshot:unknown;domain:string;author?:HostCaller}[])=>{
+    if(items.length===0)return
     const history=await historyFor(view),store=await historyStores.get(view.instance.instrumentInstanceId)!,raw=await store.read(),prior=raw===undefined?[]:parseHistoryDocument(raw).rows
+    // One latest-row index per call: the previous linear filter per item made a capture with
+    // many rows and many items quadratic.
+    const latest=new Map<string,typeof prior[number]>()
+    for(const row of prior)latest.set(row.kind+'\u0000'+row.recordId+'\u0000'+row.sourceDomain,row)
     const observations:HistoryObservation[]=[]
     for(const item of items){
-      const snapshot=parseHostJson(item.snapshot),last=prior.filter(row=>row.kind===item.kind&&row.recordId===item.recordId&&row.sourceDomain===item.domain).at(-1)
+      const snapshot=parseHostJson(item.snapshot),last=latest.get(item.kind+'\u0000'+item.recordId+'\u0000'+item.domain)
       if(last&&(last.purged&&item.version<=last.version||!last.purged&&canonical(last.snapshot)===canonical(snapshot)))continue
       observations.push({kind:item.kind,recordId:item.recordId,recordKey:item.recordId,version:item.version,snapshot,source:{kind:last?'program':'snapshot',domain:item.domain,author:item.author?parseHostJson(item.author):null,recordedAt:null,coverage:last?'recorded-history':'snapshot-only'}})
     }
@@ -162,18 +168,25 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       ...doc.bindings.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'execution-binding',recordId:JSON.stringify([row.executionId,row.generation]),version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.notifications.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'notification',recordId:row.notificationId,version:doc.revision,snapshot:row,domain:'runtime'}))])
   }
+  const windowCaptureRevisions=new Map<string,number>()
   const captureOthers=async(view:SessionControlsView,caller:HostCaller)=>{
     // Raw operation journals are read only after the actual owner scope has been proved.
     if((await scope(caller.principalId,view.association.sessionId,view)).kind!=='coordinator')return
     const observations:HistoryObservation[]=[],raw=await ports.windowStorage.read(view.instance.instrumentInstanceId)
+    let capturedThrough=windowCaptureRevisions.get(view.instance.instrumentInstanceId)??0
     if(raw!==undefined){const doc=parseWindowDocument(raw)
       if(doc.instrumentInstanceId!==view.instance.instrumentInstanceId||doc.ownerSessionId!==view.instance.ownerSessionId)denied('window history owner mismatch')
-      for(const op of (doc.schemaVersion===2?[...doc.retainedOperations,...doc.operations].sort((a,b)=>a.revision-b.revision):doc.operations)){const payload=record(JSON.parse(op.fingerprint),'window source payload'),kind=op.kind==='ticket'?'ticket-window':op.kind==='knowledge'?'runtime-knowledge':'execution',recordId=op.kind==='ticket'?JSON.stringify([payload.workflowId,payload.localTicketId]):op.kind==='knowledge'?view.instance.instrumentInstanceId:JSON.stringify([payload.executionId,op.generation])
+      // Only operations newer than the last captured revision are rebuilt every projection pass;
+      // the journal grows with every program observation and is otherwise walked in full.
+      const ops=(doc.schemaVersion===2?[...doc.retainedOperations,...doc.operations].sort((a,b)=>a.revision-b.revision):doc.operations).filter(op=>op.revision>capturedThrough)
+      if(ops.length>0)capturedThrough=Math.max(capturedThrough,ops[ops.length-1]!.revision)
+      for(const op of ops){const payload=record(JSON.parse(op.fingerprint),'window source payload'),kind=op.kind==='ticket'?'ticket-window':op.kind==='knowledge'?'runtime-knowledge':'execution',recordId=op.kind==='ticket'?JSON.stringify([payload.workflowId,payload.localTicketId]):op.kind==='knowledge'?view.instance.instrumentInstanceId:JSON.stringify([payload.executionId,op.generation])
         observations.push({kind,recordId,recordKey:op.operationId,version:op.revision,snapshot:parseHostJson({operation:op,payload}),source:{kind:'program',domain:'windows',author:op.caller===null?null:parseHostJson({principalId:op.caller}),recordedAt:null,coverage:'recorded-history'}})
       }
     }
     for(const row of (await (await openWorktrees(view)).query(view.instance)).rows){for(const h of row.history)observations.push({kind:'worktree',recordId:row.bindingId,recordKey:h.operationId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:h.source==='program'?'program':'authored',domain:'worktree-bindings',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},flags:{cleanedWorktree:h.value.business.state==='cleaned'}})}
-    await (await historyFor(view)).capture(observations)
+    if(observations.length>0)await (await historyFor(view)).capture(observations)
+    windowCaptureRevisions.set(view.instance.instrumentInstanceId,capturedThrough)
     await captureRuntime(view,await load())
     await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:savedPolicy.revision,snapshot:savedPolicy,domain:'controls'}])
     const resourceRaw=await ports.resourceStorage.read()
@@ -192,8 +205,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const next=parseRuntimeDocument({...candidate,revision:increment(old.revision)})
       if(await storage.compareAndSwap(old.revision,next)){
         touchState()
+        // One view per instance: the previous nested scan rebuilt the cached values array for
+        // every assignment/notification owner on every runtime document mutation.
+        const viewsByInstance=new Map<string,SessionControlsView>()
+        for(const view of cachedSessions.values())if(!viewsByInstance.has(view.instance.instrumentInstanceId))viewsByInstance.set(view.instance.instrumentInstanceId,view)
         for(const owner of new Set([...next.assignments.map(row=>row.instrumentInstanceId),...next.notifications.map(row=>row.instrumentInstanceId)])){
-          const view=[...cachedSessions.values()].find(view=>view.instance.instrumentInstanceId===owner)
+          const view=viewsByInstance.get(owner)
           if(view)await captureSafely(view,()=>captureRuntime(view,next))
         }
         return next
@@ -279,7 +296,28 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     nativeActivity:ownerSessionId=>ports.nativeSubagentActivity(ownerSessionId),
     bindProgram:port=>{windowsProgram=port}})
   const ownerCaller:HostCaller={kind:'user',principalId:ports.operatorPrincipal,sessionId:null}
-  const markKnowledge=(view:SessionControlsView,known:boolean,reason:string|null):Promise<unknown>=>windowsProgram.reconcileKnowledge(ports.operatorPrincipal,view.instance.ownerSessionId,{operationId:randomUUID(),state:known?'known':'unknown',reason:known?null:reason??'native-execution-facts-unavailable'})
+  // Repeating an observation is not new evidence: every start/status/end edge of a native child
+  // would otherwise append another durable window operation, and the next injected snapshot waits
+  // for those commits. One stored unknown per runtime instance and reason is enough; a known
+  // observation (or a new runtime id) re-arms the write.
+  const knowledgeMemo=new Map<string,{readonly runtimeId:string;readonly reason:string|null}>()
+  const knowledgeIsCurrent=(view:SessionControlsView,known:boolean,reason:string|null):boolean=>{
+    const prior=knowledgeMemo.get(view.instance.instrumentInstanceId)
+    return prior!==undefined&&prior.runtimeId===runtimeId&&prior.reason===(known?null:reason??'native-execution-facts-unavailable')
+  }
+  const markKnowledge=(view:SessionControlsView,known:boolean,reason:string|null):Promise<unknown>=>{
+    const key=view.instance.instrumentInstanceId,effective=known?null:reason??'native-execution-facts-unavailable'
+    if(knowledgeIsCurrent(view,known,reason))return Promise.resolve({appliedRevision:0,replayed:true,ignored:false})
+    return windowsProgram.reconcileKnowledge(ports.operatorPrincipal,view.instance.ownerSessionId,{operationId:randomUUID(),state:known?'known':'unknown',reason:effective}).then(result=>{knowledgeMemo.set(key,{runtimeId,reason:effective});return result})
+  }
+  // A lease reports each execution state at most once while it stays in that state: repeated
+  // running edges are the same audit fact and must not queue another window commit.
+  const receiptStates=new Map<string,string>()
+  const sendReceipt=(token:ExecutionToken,state:'accepted'|'scheduled'|'running'|'stopping'|'unknown'|'released'):Promise<unknown>=>{
+    if(state==='running'&&receiptStates.get(token.leaseId)==='running')return Promise.resolve()
+    receiptStates.set(token.leaseId,state)
+    return windowsProgram.receipt({...token,operationId:randomUUID(),state}).catch(error=>{if(receiptStates.get(token.leaseId)===state)receiptStates.delete(token.leaseId);throw error})
+  }
   const initialize=async(view:SessionControlsView):Promise<void>=>{
     const key=view.instance.instrumentInstanceId
     if(initialized.has(key))return
@@ -314,7 +352,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const token={instrumentInstanceId:row.instrumentInstanceId,executionId:row.executionId,generation:row.generation,leaseId:row.leaseId}
           const dispatch:Dispatch={caller,exec:undefined as unknown as ToolRunContext,instance:view,workflowId:null,ticketIds:[],children:new Set(),live:new Set([agent]),token,released:false,accepting:false}
           await track(view.instance.instrumentInstanceId,async()=>{
-            await windowsProgram.receipt({...token,operationId:randomUUID(),state:'running'})
+            await sendReceipt(token,'running')
             managedExecutions.set(agent.id,dispatch);reattached.set(agent,dispatch);exactExecutions.set(agent,dispatch)
             await update(old=>({...old,bindings:[...old.bindings.filter(binding=>binding.sessionId!==agent.id),{...token,sessionId:agent.id,parentSessionId:row.parentSessionId,runtimeId,released:false}]}))
           })
@@ -362,7 +400,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     let observationRows:readonly WorktreeObservationRow[]=[]
     try{
       if(permission.kind==='coordinator'){
-        await replayWorktreeObservations(view)
+        // Replay scans every live descendant's own session facts; it is enrichment, not part of
+        // this read. Run it once per instance off the read path, and invalidate the projection
+        // when it lands so the next rebuild carries the recovered rows.
+        void replayWorktreeObservations(view).then(()=>touchState()).catch(()=>undefined)
         const registry=await (await openObservations(view)).query(view.instance),assignments=(await load()).assignments
         observationRows=registry.rows
         worktreeObservations=registry.current.map(row=>{
@@ -372,8 +413,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const lane=assignment===undefined&&binding===undefined?null:{workflowId:assignment?.workflowId??null,ticketIds:assignment?.ticketIds??binding?.value.ticketIds??[],task:binding?.value.task??null}
           return {...row,creatorActivity:agent===undefined?'gone':(agent as unknown as {status?:string}).status==='running'?'running':'idle',lane}
         })
+        // Only sessions that actually recorded a failure are visited: the previous scan built an
+        // array over every cached Session on each rebuild even when there was nothing to report.
         const failure=observationFailures.get(view.instance.instrumentInstanceId)
-          ??[...cachedSessions.entries()].filter(([,cached])=>cached.instance.instrumentInstanceId===view.instance.instrumentInstanceId).map(([sessionId])=>observationFailures.get('session:'+sessionId)).find(reason=>reason!==undefined)
+          ??[...failedObservationSessions].map(sessionId=>[sessionId,observationFailures.get('session:'+sessionId)] as const).find(([sessionId])=>cachedSessions.get(sessionId)?.instance.instrumentInstanceId===view.instance.instrumentInstanceId)?.[1]
           ??observationFailures.get('session:'+view.association.sessionId)
         if(failure!==undefined)health.push({scope:'worktree-observations',status:'unknown',reason:failure})
       }else health.push({scope:'worktree-observations',status:'restricted',reason:'coordinator registry is not assigned-child task data'})
@@ -454,7 +497,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // pipeline (including PTC sub-dispatches). Failed calls write nothing; the tool result itself
   // is never replaced or delayed, and an unparsable value is reported as observation failure.
   const observationLifetime=new AbortController()
-  const observationFailures=new Map<string,string>()
+  const observationFailures=new Map<string,string>(),failedObservationSessions=new Set<string>()
   const observationReplays=new Set<string>()
   const programAuthor:InstrumentAuthor={kind:'user',principalId:ports.operatorPrincipal,sessionId:null}
   const creationFromValue=(value:unknown):{readonly path:string;readonly branch:string;readonly baseCommit:string;readonly repositoryRoot:string}|null=>{
@@ -510,6 +553,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // one is already known, otherwise to the creator session so an owner read can report it.
       if(!observationLifetime.signal.aborted){
         const known=cachedSessions.get(creator)?.instance.instrumentInstanceId
+        failedObservationSessions.add(creator)
         observationFailures.set(known===undefined?'session:'+creator:known,String(error).slice(0,1024))
       }
     }
@@ -736,7 +780,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
             const granted=allowed?task:{...task,workflowId:null,ticketIds:[]}
             return {...old,assignments:[...old.assignments.filter(a=>a.sessionId!==task.sessionId),granted],bindings:[...old.bindings,{...dispatch.token,sessionId:actualAgent.id,parentSessionId:task.parentSessionId,runtimeId,released:false}]}
           })
-          await windowsProgram.receipt({...dispatch.token,operationId:randomUUID(),state:'accepted'})
+          await sendReceipt(dispatch.token,'accepted')
           if(dispatch.children.size>1)await markKnowledge(dispatch.instance,false,'unexpected-multiple-native-executions')
         })
       }
@@ -753,7 +797,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
               exactExecutions.set(actualAgent,managed);reattached.set(actualAgent,managed)
               await track(managed.token.instrumentInstanceId,async()=>{
                 await update(old=>({...old,bindings:[...old.bindings.filter(b=>b.sessionId!==actualAgent.id),{...managed.token,sessionId:actualAgent.id,parentSessionId:actualAgent.session.header.parentSession??managed.caller.sessionId!,runtimeId,released:false}]}))
-                await windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'running'})
+                await sendReceipt(managed.token,'running')
               })
             }
           }catch(error){signal.throwIfAborted()/* A woken lane that cannot be re-admitted is reported below rather than failing the wake. */}
@@ -761,10 +805,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(managed&&!managed.released){
           // The same admitted lease is still current (a duplicate creation or a raced wake): re-attach.
           managed.live.add(actualAgent);exactExecutions.set(actualAgent,managed);reattached.set(actualAgent,managed)
-          await track(managed.token.instrumentInstanceId,()=>windowsProgram.receipt({...managed.token,operationId:randomUUID(),state:'running'}))
+          await track(managed.token.instrumentInstanceId,()=>sendReceipt(managed.token,'running'))
         }else if(!managed){
           const parent=actualAgent.session.header.parentSession,view=parent&&cachedSessions.get(parent)
-          if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))
+          if(view&&!knowledgeIsCurrent(view,false,'unmanaged-or-late-native-creation'))await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))
         }
       }
       try{const view=await identity(caller,caller.sessionId!,signal);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
@@ -782,7 +826,15 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(event.kind==='native-stop'){await reportNativeStop(event);return}
       // A disposed session never prepares again: drop its baseline so the retained Agent, its
       // Session log and the injected message are not kept alive for the process lifetime.
-      if(event.kind==='agent-disposed'&&event.actualAgent){const id=event.actualAgent.id;for(const key of baselines.keys())if(key.includes(id))baselines.delete(key);for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)}
+      if(event.kind==='agent-disposed'&&event.actualAgent){
+        // A disposed Session never prepares again: drop its cached view and per-session failure
+        // index so a long-lived runtime does not retain every child it ever observed.
+        const id=event.actualAgent.id
+        for(const key of baselines.keys())if(key.includes(id))baselines.delete(key)
+        for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)
+        cachedSessions.delete(id);nativeWindows.delete(id)
+        if(failedObservationSessions.delete(id))observationFailures.delete('session:'+id)
+      }
       const actual=event.actualAgent,attached=actual&&(exactExecutions.get(actual)??reattached.get(actual))
       if(attached){
         const commit=track(attached.token.instrumentInstanceId,async()=>{
@@ -794,15 +846,15 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
             attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!);attached.released=true
             if(managed)managed.released=true
             await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===attached.token.leaseId?{...b,released:true}:b)}))
-            if(attached.live.size===0)await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'released'})
-          }else if(event.kind==='agent-status'&&event.status==='running'&&!attached.released)await windowsProgram.receipt({...attached.token,operationId:randomUUID(),state:'running'})
+            if(attached.live.size===0)await sendReceipt(attached.token,'released')
+          }else if(event.kind==='agent-status'&&event.status==='running'&&!attached.released)await sendReceipt(attached.token,'running')
           // Idle and subagent/end are deliberately NOT implementation-release proofs.
         })
         await commit;return
       }
       if(actual?.session.header.origin==='subagent'){
         const parent=actual.session.header.parentSession,view=parent&&cachedSessions.get(parent)
-        if(view)await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-native-execution-observed'))
+        if(view&&!knowledgeIsCurrent(view,false,'unmanaged-native-execution-observed'))await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-native-execution-observed'))
       }
     },
     async preStep(caller,signal,acceptedMessages,stepKey){currentStepKey=stepKey??('serial:'+(++stepSerial));return prepare(caller,signal,acceptedMessages)},
@@ -856,11 +908,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const dispatch:Dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds:localTicketId===null?[]:[localTicketId],children:new Set(),live:new Set(),released:false,accepting:true}
       let result:ToolExecutionResult
       try{result=await nativeDispatch.run(dispatch,()=>ports.executeNative(exec,r.nativeTool as 'subagent'|'subagent_fork'|'send_message',args))}
-      catch(error){try{await track(view.instance.instrumentInstanceId,()=>windowsProgram.receipt({...reservation.token,operationId:randomUUID(),state:'unknown'}))}catch{}throw error}
+      catch(error){try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(reservation.token,'unknown'))}catch{}throw error}
       finally{dispatch.accepting=false}
       for(const context of result.additionalContexts??[])exec.deferContext(context)
       if(!result.isError&&result.concludesTurn)exec.concludeTurn()
-      if(dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,()=>windowsProgram.receipt({...reservation.token,operationId:randomUUID(),state:'unknown'}))}catch{/* A failed observation never turns accepted native input into a failed native call. */}
+      if(dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(reservation.token,'unknown'))}catch{/* A failed observation never turns accepted native input into a failed native call. */}
       return parseHostJson({nativeTool:r.nativeTool,outcome:result.isError?'error':'success',...(result.isError?{error:result.error}:{value:result.value}),execution:reservation.token,source:'native-tool-program-result'})
     },
     async historyAction(caller,sessionId,input,signal){
@@ -1042,9 +1094,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
       let receipt:Awaited<ReturnType<NonNullable<HostPorts['createContinuable']>>>
       try{const create=()=>ports.createContinuable!(exec,{provider,label:r.description as string,prompt:r.prompt as string,childId:intent.row.childId,...(cwd===undefined?{}:{cwd})});receipt=await (dispatch?nativeDispatch.run(dispatch,create):create())}
-      catch(error){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:exec.signal.aborted?'cancelled':'failed',diagnostic:String(error)},caller))}catch{/* Preserve native failure and no replay dispatch. */}if(dispatch)try{await track(view.instance.instrumentInstanceId,()=>windowsProgram.receipt({...dispatch!.token,operationId:randomUUID(),state:'unknown'}))}catch{}throw error}
+      catch(error){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:exec.signal.aborted?'cancelled':'failed',diagnostic:String(error)},caller))}catch{/* Preserve native failure and no replay dispatch. */}if(dispatch)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(dispatch!.token,'unknown'))}catch{}throw error}
       finally{if(dispatch)dispatch.accepting=false}
-      if(dispatch&&dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,()=>windowsProgram.receipt({...dispatch!.token,operationId:randomUUID(),state:'unknown'}))}catch{}
+      if(dispatch&&dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(dispatch!.token,'unknown'))}catch{}
       try{
         if(receipt.childId!==intent.row.childId)throw new ControlsError('association-conflict','native child differs from planned identity')
         if(registry&&(!ports.flushSession||!await ports.flushSession(receipt.childId,exec.signal)))throw new ControlsError('storage-uncertain','accepted child native header checkpoint unavailable')

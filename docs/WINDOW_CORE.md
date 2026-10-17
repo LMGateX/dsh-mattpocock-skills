@@ -84,7 +84,7 @@ receipt 只确认 token 对应的程序事实。迟到旧代次及已经 release
 
 ### 1.3 未追踪 native activity / 初始知识核对
 
-RuntimeKnowledge 独立于已登记 execution leases；不虚造一个 execution，也不把 native 缺口当作已确认的零占用。schema 1 文档持久保存 knowledge 和程序观察 journal；快照 runtimeKnowledge 显式给出 runtimeId/known/reason。RuntimeKnowledge 只描述执行账本是否与当前 runtime 对齐；S 的 used/countKnown 来自宿主的实时运行状态（读取时的内存投影），两者不互相推导。
+RuntimeKnowledge 独立于已登记 execution leases；不虚造一个 execution，也不把 native 缺口当作已确认的零占用。schema 1 文档持久保存 knowledge 和程序观察 journal；快照 runtimeKnowledge 显式给出 runtimeId/known/reason。RuntimeKnowledge 只描述执行账本是否与当前 runtime 对齐；S 的 used/countKnown 来自宿主的实时运行状态（读取时的内存投影），两者不互相推导。重复的同一 unknown 观察（同 runtimeId、同 reason）不再追加 operation 或 CAS：它不是新证据，重复持久化只会让下一次注入等待无关提交。
 
 - requireKnownRuntime=true 时，即使新 blank instance 的执行审计为空，snapshot 也为 reconciling（runtimeKnowledge.known=false）；S 的 used/countKnown 仍来自宿主实时运行状态，不因账本知识而被改写成 0。T 模型占位不需要此程序证据。宿主在成员变更节点核对实际后代成员资格，确认无缺口后才通过 program port 提交 known。
 - requireKnownRuntime 默认 false，只适用于显式约定「只管理已登记路径」的 embedders/本地 mechanical fixture，不宣称观察全部 native activity。真实 host 集成必须传 true。

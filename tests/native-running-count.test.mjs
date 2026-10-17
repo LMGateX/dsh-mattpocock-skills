@@ -228,3 +228,22 @@ test('S.depth structures the running count by edge distance from live parent cha
   assert.equal(after.windows.S.used, 2)
   assert.deepEqual(after.windows.S.depth, { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } })
 })
+
+test('a burst of membership-change events shares catalog walks instead of queueing one per event', async t => {
+  let walks = 0
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+    for (let i = 0; i < 5; i += 1) { const a = actualAgent('c' + i, { parent: 'root', managed: true }); a.status = 'idle'; agents.set(a.id, a) }
+    ctx.provide('subagents', { async listChildren() { walks += 1; await new Promise(resolve => setTimeout(resolve, 10)); return [] } })
+  } })
+  await f.runtime.readSession(caller('root'), 'root', signal())
+  await waitFor(() => walks >= 1)
+  const base = walks
+  for (let i = 0; i < 20; i += 1) f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: {} })
+  let last = walks, quiet = 0
+  for (let i = 0; i < 300; i += 1) {
+    await new Promise(resolve => setTimeout(resolve, 10))
+    if (walks !== last) { last = walks; quiet = 0 } else if (++quiet > 10) break
+  }
+  assert.ok(walks - base <= 2, '20 catalog events must share at most two walks, saw ' + (walks - base))
+  assert.equal((await f.mounted.ports.nativeSubagentActivity('root')).known, true)
+})

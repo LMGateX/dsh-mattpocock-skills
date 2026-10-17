@@ -106,3 +106,15 @@ DSH_CONTROLS_HOST_ROOT=/absolute/sdk \
 通知接线阶段另发现 runtime 漏传 notifyOwner 的 signal，使 Host/FakeHost 抛错且通知一直 pending；已及时反馈，由主代理补 runtime lifetime signal。early committed receipt 先于 accepted 持久化可能丢 ACK 的反例由主代理加入私有 early receipt reconciliation 后跑绿；另有已 return accepted、但 accepted CAS 被共享 effect blocker 挡住的窗口回归，确认此时到达的精确 ACK 最终仍成为 consumed，而非丢失或被 later accepted 覆回。实际 Host steering fixture 捕获并复用 runtime 构造时已打开的真实 domain handle，不为读通知重复打开同域；native session/event 触发真实 Host listener，由受控 sessions.flush checkpoint gate 证明 flush 完成前不 consume。
 
 尚未通过的真实接缝仍是 native wake admission 的强制 gate（目录观测不等于 veto）、真实 initial child cwd、多根写授权与 cold closure/retirement，以及真实模型与 GUI/profile 行为。
+
+## 事件写放大与注入时延优化（2026-10-17）
+
+事件驱动的成员资格与结局上报带来一个新的协调成本：未受管子代理的每个 start/status/end 边都会让 runtime 提交一条 runtime knowledge 观察，而每次提交都登记为消费 frontier；下一次注入先等待这些提交，于是「N 个子代理状态」变成「N 次 window CAS + N 个 frontier 等待」。本轮按事实去重而不是按事件去重：
+
+- 同一 runtime instance、同一 reason 的 unknown knowledge 只写一次；runtime 侧在登记提交前就跳过重复观察，windows 侧对直接调用同样早返回。known 观察或新 runtimeId 重新武装写入。
+- 受管 lease 的 running receipt 在保持 running 期间只写一次；unknown/released 等状态转换仍照常写。
+- 每个 owner 的丢失归因对账合并到当前微任务，skip 集合保留，避免开始中的 child 被误判为丢失；状态风暴只重建一次 live 索引。
+- catalog 走查按 owner 合并（在飞 + 至多一次补走），超时只限制本次等待而不中止宿主投影构建；迟到的成功结果会恢复成员资格，超时后 30 s 内不再重复付构建成本。
+- 首读的 worktree cold replay 移到读路径之外，完成后使投影失效；只对上次捕获后的 window operation 建 history，history 行查询改为一次索引，cached Session 在 disposed 时回收。
+
+2000 个 live 后代的内存 fixture 下：200 个状态事件后的下一次注入 917.7 ms → 24 ms；首读 1.69 s → 13.4 ms；20 个 catalog 事件 20 次走查 → 2 次；400 个状态事件同步处理 111.8 ms → 8.6 ms。热读取保持约 0.6 ms。所有优化不改变 S/T 计数、准入或业务记录；测试与测量数字见[验证摘要](<VERIFICATION.md>)。

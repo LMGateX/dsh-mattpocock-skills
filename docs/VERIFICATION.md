@@ -2,6 +2,14 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 未发布源码改动：事件写放大与注入时延优化（2026-10-17）
+
+本轮只改事件/读取成本，不改 S/T 语义、执行准入或业务记录。src/runtime.ts 对同一 runtime instance、同一 reason 的未知 knowledge 观察在登记持久提交前去重（known 观察或新 runtimeId 重新武装）；受管 lease 在保持 running 期间只写一次 running receipt；丢失归因对账按微任务合并并保留 skip 集合；worktree cold replay 从首读移到后台，完成后使投影失效；history 行查找改为一次索引，只对上次捕获后的 window operation 建 history，空 capture 不再读文档，cached Session 在 disposed 时回收，客户端隐藏标签页的轮询退避到至少 30 s。src/host.ts 的 catalog 走查按 owner 合并（在飞 + 至多一次补走），超时只限制本次等待而不中止宿主投影构建，迟到成功结果在未被更新走查覆盖时发布成员资格，超时后 30 s 内不再重复付构建成本；超时/拒绝仍按既定设计把计数标为明示下界（known=false + 机械 reason），不把目录富化失败改写成已知零。
+
+开发工作树验收（Node 24.17.0，DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs）：**859** 项、**659** 通过、**0** 失败、**200** 个桥/兼容环境门禁用例带诊断 skip（上一基线 856／656／0／200，本轮新增 3 条回归）。pnpm exec tsc -p tsconfig.json、pnpm exec tsc -p tsconfig.client.json --noEmit、node scripts/build-client.mjs --out lib/client.js --declaration 均通过；lib/ 已重建，套件内的 src/lib 一致性门禁通过。新增 [runtime-write-coalescing](<../tests/runtime-write-coalescing.test.mjs>)（150 个同一 unknown 事实的状态边最多 3 次持久写，下一次注入 <300 ms）、[native-running-count](<../tests/native-running-count.test.mjs>) 的 20 个 catalog 事件至多 2 次走查、[worktree-observation-runtime](<../tests/worktree-observation-runtime.test.mjs>) 的首读不等待后台 replay 且 replay 最终可见。
+
+同一 2000 个 live 后代内存 fixture 的前后测量（下界）：热读取仍约 **0.6 ms**；首读 **1690 ms → 13.4 ms**；200 个状态事件后的下一次注入 **917.7 ms → 24 ms**；20 个 catalog 事件 **20 → 2** 次走查；400 个状态事件同步处理 **111.8 → 8.6 ms**。该源码与生成物**未发布、未安装到本机 Profile、未重启任何服务**；目录投影超时的真实归因仍由 live 宿主的会话查询成本决定，本轮只保证不再重复中止/排队同一构建，并让迟到的成功结果恢复计数。
+
 ## 未发布源码改动：宿主原生初始 cwd seam（2026-10-09）
 
 `src/host.ts` 按实际加载的公开服务选择首次 cwd seam：宿主原生 `startActivation` 加会话工作目录 owner，或随包兼容提供者的 `initialCwdSupported`；能力判定不看版本字符串。原生 seam 的 `result` 承诺有人挂接失败处理，不把捕获失败变成宿主进程的未处理拒绝。

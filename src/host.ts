@@ -182,6 +182,8 @@ async function withinDeadline<T>(task: Promise<T>, deadline: AbortSignal): Promi
 }
 /** A read path waits at most this long for the native catalog before stating a lower bound. */
 const NATIVE_CATALOG_BUDGET_MS = 1_500
+/** After a timeout, wait this long before paying for another catalog projection build. */
+const NATIVE_CATALOG_RETRY_MS = 30_000
 interface NativeRunningMembership {
   readonly ids: Set<string>
   known: boolean
@@ -292,6 +294,10 @@ class NativeRunningCounter {
   readonly #idOwners = new Map<string, Set<string>>()
   readonly #tails = new Map<string, Promise<unknown>>()
   readonly #revisions = new Map<string, number>()
+  readonly #walkStates = new Map<string, { running: boolean; dirty: boolean; notBefore: number }>()
+  readonly #reconcileDue = new Map<string, Set<string>>()
+  readonly #walkTokens = new Map<string, number>()
+  readonly #appliedWalks = new Map<string, number>()
   readonly #opened: NativeSubagentStopEvent[] = []
   #settles = 0
   constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly lister: () => NativeSubagentLister | undefined; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
@@ -302,17 +308,56 @@ class NativeRunningCounter {
   #serial<T>(owner: string, task: () => Promise<T>): Promise<T> {
     const prior = this.#tails.get(owner) ?? Promise.resolve()
     const next = prior.then(task, task)
-    this.#tails.set(owner, next.then(() => undefined, () => undefined))
+    const tail = next.then(() => undefined, () => undefined)
+    this.#tails.set(owner, tail)
+    // Drop the per-owner chain entry once it settles: otherwise every owner that ever walked
+    // keeps a promise for the process lifetime.
+    void tail.then(() => { if (this.#tails.get(owner) === tail) this.#tails.delete(owner) }, () => undefined)
     return next
   }
   #refresh(owner: string, signal?: AbortSignal): Promise<void> {
     return this.#serial(owner, () => this.#refreshNow(owner, signal))
   }
-  /** Walk first, then reconcile: a stop is never claimed from a catalog this node just lost. */
+  /** Walk first, then reconcile: a stop is never claimed from a catalog this node just lost.
+   * A burst of membership-change events shares one walk: a walk already in flight absorbs later
+   * events into one further walk instead of queueing one catalog read per event. */
   #afterWalk(owner: string, task: () => void): void {
-    void this.#serial(owner, async () => { await this.#refreshNow(owner); task() }).catch(() => undefined)
+    const state = this.#walkState(owner)
+    if (state.running) { state.dirty = true; return }
+    state.dirty = false
+    state.running = true
+    void this.#serial(owner, async () => {
+      try {
+        if (Date.now() >= state.notBefore) await this.#refreshNow(owner)
+        task()
+      } finally { state.running = false }
+      if (state.dirty) { state.dirty = false; this.#afterWalk(owner, () => this.#reconcile(owner)) }
+    }).catch(() => undefined)
+  }
+  #walkState(owner: string): { running: boolean; dirty: boolean; notBefore: number } {
+    let state = this.#walkStates.get(owner)
+    if (state === undefined) {
+      state = { running: false, dirty: false, notBefore: 0 }
+      this.#walkStates.set(owner, state)
+    }
+    return state
   }
   #bump(owner: string): void { this.#revisions.set(owner, (this.#revisions.get(owner) ?? 0) + 1) }
+  /** Coalesce reconciliation for one owner into the current microtask turn. A status burst must
+   * not rebuild the live index once per event; the skip set keeps a starting child from being
+   * classified as a lost run before its running edge lands. */
+  #reconcileSoon(owner: string, skip?: string): void {
+    const due = this.#reconcileDue.get(owner)
+    if (due !== undefined) { if (skip !== undefined) due.add(skip); return }
+    const skips = new Set<string>()
+    if (skip !== undefined) skips.add(skip)
+    this.#reconcileDue.set(owner, skips)
+    queueMicrotask(() => {
+      const pending = this.#reconcileDue.get(owner)
+      this.#reconcileDue.delete(owner)
+      this.#reconcile(owner, pending === undefined || pending.size === 0 ? undefined : pending)
+    })
+  }
   async #refreshNow(owner: string, signal?: AbortSignal): Promise<void> {
     this.#bump(owner)
     const list = this.#lister(), current = this.#members.get(owner)
@@ -322,26 +367,45 @@ class NativeRunningCounter {
     }
     const control = signal ?? this.#signal
     const deadline = AbortSignal.timeout(NATIVE_CATALOG_BUDGET_MS)
-    const bounded = control === undefined ? deadline : AbortSignal.any([control, deadline])
+    // The deadline bounds what this walk waits for, not the host's projection build. Aborting a
+    // slow build makes every retry start over (a large owner log then times out forever); letting
+    // it finish once lets the host cache the projection and a late result restore membership.
+    const token = (this.#walkTokens.get(owner) ?? 0) + 1
+    this.#walkTokens.set(owner, token)
+    // Exactly one direct-children read. The full-subtree walk this replaces reads every
+    // descendant's own session log, which is unbounded work on a read path (measured on a live
+    // profile: 2048 descendant logs, 2.1 GB, a baseline walk that never finished); the resident
+    // subtree comes from the live Agent index instead, whose parent chains already describe it.
+    const listing = typeof list.listChildren === 'function'
+      ? list.listChildren(SessionId(owner), control)
+      : list.listDescendants!(SessionId(owner), control)
+    listing.catch(() => undefined)
     let rows: readonly NativeSubagentRow[]
     try {
-      // Exactly one direct-children read. The full-subtree walk this replaces reads every
-      // descendant's own session log, which is unbounded work on a read path (measured on a
-      // live profile: 2048 descendant logs, 2.1 GB, a baseline walk that never finished); the
-      // resident subtree comes from the live Agent index instead, whose parent chains already
-      // describe it, and the deadline keeps an unavailable catalog from blocking the caller.
-      const listing = typeof list.listChildren === 'function'
-        ? list.listChildren(SessionId(owner), bounded)
-        : list.listDescendants!(SessionId(owner), bounded)
-      listing.catch(() => undefined)
       rows = await withinDeadline(listing, deadline)
     } catch (error) {
       if (control?.aborted === true) throw error
       const reason = deadline.aborted ? 'native-subagent-listing-timeout' : 'native-subagent-listing-rejected'
       if (current !== undefined) { current.known = false; current.reason = reason }
       else this.#members.set(owner, { ids: new Set(), known: false, reason, total: 0 })
+      if (deadline.aborted) {
+        // Keep the stated lower bound, but let the in-flight build complete. A late result is
+        // applied only when no newer walk has already published membership.
+        this.#walkState(owner).notBefore = Date.now() + NATIVE_CATALOG_RETRY_MS
+        void listing.then(
+          lateRows => { if (this.#applyWalk(owner, token, lateRows)) this.#reconcile(owner) },
+          () => undefined)
+      }
       return
     }
+    this.#applyWalk(owner, token, rows)
+  }
+  /** Publish one walk's rows. Returns false when a newer walk already published membership. */
+  #applyWalk(owner: string, token: number, rows: readonly NativeSubagentRow[]): boolean {
+    if (token <= (this.#appliedWalks.get(owner) ?? 0)) return false
+    this.#appliedWalks.set(owner, token)
+    this.#walkState(owner).notBefore = 0
+    const current = this.#members.get(owner)
     const children = rows.filter(row => row.kind === 'child')
     const diagnostic = rows.find(row => row.kind !== 'child')
     const ids = new Set<string>(current?.ids ?? [])
@@ -353,6 +417,8 @@ class NativeRunningCounter {
       const owners = this.#idOwners.get(childId) ?? new Set<string>()
       owners.add(owner); this.#idOwners.set(childId, owners)
     }
+    this.#bump(owner)
+    return true
   }
   /** Membership from the live Agent index alone: no catalog, no session log, no IO. Every
    * running subagent is a live agent whose parent chain reaches this owner, so the running
@@ -589,7 +655,7 @@ class NativeRunningCounter {
    * Attribute each expected-delta mismatch by construction; only a counted run with no end and no
    * idle transition is a suspect, and only that child's own log is read.
    */
-  #reconcile(owner: string, skip?: string): void {
+  #reconcile(owner: string, skip?: string | ReadonlySet<string>): void {
     const ledger = this.#ledgers.get(owner), membership = this.#members.get(owner)
     if (ledger === undefined || membership === undefined) return
     this.#bump(owner)
@@ -597,8 +663,9 @@ class NativeRunningCounter {
     // stated lower bound instead of inventing an outcome.
     if (!membership.known) return
     const live = this.#liveIndex(), running = this.#running(live, membership)
+    const skipped = (runId: string): boolean => typeof skip === 'string' ? runId === skip : skip?.has(runId) === true
     for (const [runId, run] of ledger.runs) {
-      if (runId === skip || running.has(runId)) continue
+      if (skipped(runId) || running.has(runId)) continue
       const agent = live.get(runId)
       if (agent !== undefined) {
         // A live Agent that is not running is a parked inbox or a driver that has not woken yet,
@@ -691,7 +758,7 @@ class NativeRunningCounter {
         if (run !== undefined) { run.counted = true; run.sawIdle = false; run.settle = null }
         this.#activate(ledger, sessionId)
         this.#closeSessionStops(owner, ledger, sessionId)
-        this.#reconcile(owner, sessionId)
+        this.#reconcileSoon(owner, sessionId)
       } else if (run !== undefined) run.sawIdle = true
     }
   }
@@ -701,8 +768,8 @@ class NativeRunningCounter {
     const sessionId = String(agent.id)
     for (const owner of this.#ownersFor(sessionId, agent)) {
       if (this.#ledgers.get(owner) === undefined) continue
-      if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcile(owner, sessionId)
-      else this.#afterWalk(owner, () => this.#reconcile(owner, sessionId))
+      if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner, sessionId)
+      else this.#afterWalk(owner, () => this.#reconcileSoon(owner, sessionId))
     }
   }
   disposed(agent: Agent): void {
@@ -713,6 +780,8 @@ class NativeRunningCounter {
       // agent/disposed is a membership-change node: re-walk before deciding whether a run is lost.
       this.#afterWalk(owner, () => this.#reconcile(owner))
     }
+    // The reverse id index is kept: a late subagent/end may arrive after disposal with no live
+    // Agent to supply the parent chain, and routing must not depend on the Agent still existing.
   }
   start(sessionId: string, local: boolean, agent?: Agent, runId?: string): void {
     for (const owner of this.#ownersFor(sessionId, agent)) {
@@ -727,8 +796,8 @@ class NativeRunningCounter {
         this.#closeSessionStops(owner, ledger, sessionId)
         ledger.runs.set(sessionId, run)
       }
-      if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcile(owner, sessionId)
-      else this.#afterWalk(owner, () => this.#reconcile(owner, sessionId))
+      if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner, sessionId)
+      else this.#afterWalk(owner, () => this.#reconcileSoon(owner, sessionId))
     }
   }
   /**
@@ -744,7 +813,7 @@ class NativeRunningCounter {
       const hostRunId = runId ?? run?.runId ?? null
       if (run !== undefined) { run.settle = null; ledger.runs.delete(sessionId) }
       this.#closeSessionStops(owner, ledger, sessionId)
-      if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcile(owner)
+      if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner)
       else this.#afterWalk(owner, () => this.#reconcile(owner))
       if (!local || stopReason === undefined || stopReason === 'completed') continue
       const generation = this.#generation(ledger, sessionId)
