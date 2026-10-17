@@ -6,7 +6,7 @@
 
 `0.2.1-alpha.2` 是第一个需要运行时代码适配的宿主：子代理公开 API 由 `startContinuable` 改为 `startActivation`（并新增 `delivery`／`SubagentStartRequest.cwd`），本插件改用宿主原生 seam 传递显式首次 cwd；技能 provider 契约不变。详见下节。
 
-`0.2.1-alpha.3` **要求一次运行时代码适配**：`connection` 服务不再暴露 `operator`，改为 owner 的 `browserPeer`，可选控制面因此从 alpha.3 起装载中断（Skills 分发不受影响）。`0.2.1-alpha.4` 改变的是**插件兼容性的判定依据**：声明了 `engines.dsh` 的插件只按该范围判定，未声明时才回退到原有 peer 规则。本插件据此显式声明范围、以版本中立方式读取 operator Peer，并补齐宿主侧 fixture 的 Peer 契约。详见后文专门小节（此前记的「alpha.3／alpha.4 无需改动」只覆盖了门禁与包级对拆，漏掉了 alpha.2→alpha.3 的 `connection` 服务变化）。
+`0.2.1-alpha.3` **要求一次运行时代码适配**：`connection` 服务不再暴露 `operator`，改为 owner 的 `browserPeer`，可选控制面因此从 alpha.3 起装载中断（Skills 分发不受影响）。`0.2.1-alpha.4` 改变的是**插件兼容性的判定依据**：声明了 `engines.dsh` 的插件只按该范围判定，未声明时才回退到原有 peer 规则。本插件据此显式声明范围、以版本中立方式读取 operator Peer，并补齐宿主侧 fixture 的 Peer 契约。详见后文专门小节（此前记的「alpha.3／alpha.4 无需改动」只覆盖了门禁与包级对拆，漏掉了 alpha.2→alpha.3 的 `connection` 服务变化）。`0.2.1-rc.1` 相对 alpha.4 没有任何面向本插件的接口变化，同样不需要修改运行时代码或包元数据（核对见后文）。
 
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与最初宿主编译结果**逐字节相同**。
 
@@ -96,6 +96,26 @@ for (const [name, range] of Object.entries(dependencies)) {
 - **版本中立地读取 operator Peer（0.4.31）。** [host.ts](<../src/host.ts>) 新增 `connectionOperatorPeer(ctx)`：`connection.operator ?? connection.browserPeer`，两者都不存在（或 `id` 不是非空字符串）时抛 `ControlsError('feature-disabled', …)`，不再先解引用再崩溃。`operatorCaller` 与 `createHostAuthority` 共用它，授权仍以 `invocation.peer.id` 匹配该 Peer。新增两条用例：unit 覆盖 `operator`／`browserPeer`／两者皆无三种连接形态，mount 覆盖 alpha.3+ 拼写下 `mountHost` 的完整装载与 `mattpocock_controls` 执行。该修复随 0.4.31 发布，制品验收（四宿主隔离门禁与真机 `dsh web` 装载）见[制品验收](<VERIFICATION.md>)。
 
 客户端原生激活 fixture 需要从安装包组装 Renderer，而 alpha.4 的安装布局不再提供该模块，[client-native-activation.test.mjs](<../tests/client-native-activation.test.mjs>) 因此在缺少该包时按环境门禁 skip 并给出诊断，而不是把它记成产品失败。本插件的客户端产物不 require 任何 `@deepseek-ai/*` 模块 id（导入全为 type-only 或服务注入），该虚拟模块变化不影响运行时。
+
+## 0.2.1-rc.1 核对
+
+rc.1 的发布说明是相对 `0.2.0-rc.2` 汇总的，其中插件面的变更（`./invariant` 导出移除、子路径插件元信息、`engines.dsh` 优先判定、输入区统计拆分、子代理通知统一）大多在 alpha 线已经落地。把 rc.1 与 alpha.4 直接对拆后，相对本插件的实际差异很小。核对在隔离的全局布局安装中进行（`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-rc.1`），未改动本机 DSH 与任何 Profile，未调用模型。
+
+| 核对项 | 结果 |
+|---|---|
+| 303 个 `@deepseek-ai/*` 包（比较时排除各自 `package.json`） | **285 个逐字节相同**，18 个有差异；包集合无增删 |
+| 18 个差异包 | `dsh-tools`、`dsh-tool-subagent`、`dsh-tool-fs`、`dsh-tool-cordis`、`dsh-api-account-controller`、`dsh-api-remotes`、`dsh-api-terminal-controller`、`dsh-client-modules`、`dsh-client-ui-model-selection`、`dsh-client-ui-settings-account`、`dsh-client-ui-settings-general`、`dsh-client-ui-sidebar`、`dsh-client-ui-sidebar-right`、`dsh-client-ui-skill`、`dsh-cordis-client-runner`、`dsh-deepseek-account`、`dsh-deepseek-account-platform`、`dsh-sdk-app` |
+| 导出面 | 18 个包的运行时导出清单**零删除、零改名**；`dsh-tools/lib/types/index.d.ts` 未变 |
+| `dsh-subagent`、`dsh-session`、`dsh-agent`、`dsh-workspace`、`dsh-storage-domain`、`dsh-skill`、`dsh-app-boot`、`dsh-api-gateway`、`dsh-typert-protocol`／`dsh-typert-registry` | 与 alpha.4 **逐字节相同**；子代理服务、事件词表与安装期门禁实现均未变 |
+| `dsh-tools` 实际差异 | 仅 `run_code` 内部：`code` 参数排到 `description` 前、新增 function-body 语法说明、SDK 提示词重排；不涉及工具注册或 `ToolDefinition` 类型 |
+| `dsh-tool-subagent` 实际差异 | 仅系统提示删除一句“等待子任务时结束当前轮次”的指引；工具结果形状与子代理服务不变 |
+| 客户端 | `dsh-client-ui-conversation` 未变；`sidebar.right.pane.tab` 只伴随 CSS（`overflow: clip`）变化；`dsh-cordis-client-runner` 仅新增槽键 `conversation.input.model.label`（加法）。本插件使用的槽键（`plugins.bundle.config`、`plugins.row.config`、`conversation.session.header.utilities`、`conversation.input.dock`、`sidebar.right.pane.tab`、`sidebar.session.row.leading`、`tool.call.toolview`）全部存在 |
+| 安装期门禁 | rc.1 真身 `evaluatePluginCompatibility` 对插件 manifest 返回无问题：`engines.dsh: "~0.2.1-alpha.1"` 在 `includePrerelease: true` 下接受 `0.2.1-rc.1`；声明后只按该范围判定 |
+| 规范宿主全量用例（alpha.4） | 856 用例、656 通过、0 失败、200 skip |
+| rc.1 同源全量用例 | **856 用例、656 通过、0 失败、200 skip**（含 S.depth 三条新用例；6 条客户端原生激活用例因安装不提供 `@deepseek-ai/dsh-client-ui-slots` 仍按前置条件 skip，与 alpha.4 相同） |
+| 隔离 headless 装载（本工作树打包 412309 bytes，sha256 `6e66244b…`） | `stable`／`beta` 两 channel 均安装成功、dump-config 选中、boot 停在 `MISSING_CREDENTIAL`；27 Skills、11 模型可见；`stable` 注册表报告 sha256 `a7d694ead5…`，与 alpha.4 的 0.4.31 制品**逐字节相同**；无 build 脚本请求 |
+
+结论：**rc.1 不需要任何运行时代码或元数据改动。**
 
 ## 核对范围与方法
 
