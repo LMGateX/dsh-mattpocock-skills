@@ -132,16 +132,26 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return new SessionHistory(view.instance,await store)
   }
   const historyFailures=new Map<string,string>()
-  const captureBusiness=async(view:SessionControlsView,records:RuntimeSnapshot['records'])=>{
+  // Capture is a projection side effect; without these marks every rebuild re-derived every
+  // observation and re-ran the dedupe index even when no source document had moved. The marks
+  // are advanced only after a successful capture (or when there was nothing to capture), so a
+  // failed capture is retried on the next rebuild rather than hidden behind a newer revision.
+  interface CaptureMarks{ business:number|null; windows:number|null; worktrees:number|null; runtime:number|null; configuration:number|null; resources:number|null }
+  const captureMarks=new Map<string,CaptureMarks>()
+  const marksFor=(key:string):CaptureMarks=>{let marks=captureMarks.get(key);if(marks===undefined){marks={business:null,windows:null,worktrees:null,runtime:null,configuration:null,resources:null};captureMarks.set(key,marks)}return marks}
+  const storedRevision=(raw:unknown):number|null=>{if(raw===null||typeof raw!=='object')return null;const value=(raw as {readonly revision?:unknown}).revision;return typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:null}
+  const captureBusiness=async(view:SessionControlsView,records:RuntimeSnapshot['records']) => {
     if(!records)return
+    const marks=marksFor(view.instance.instrumentInstanceId)
+    if(marks.business===records.businessRevision)return
     const observations:HistoryObservation[]=[]
     for(const [kind,rows]of [['workflow',records.workflows],['ticket',records.tickets],['decision',records.decisions]] as const){
       for(const row of rows){const recordId=kind==='workflow'?row.workflowId:JSON.stringify([row.workflowId,'localTicketId' in row?row.localTicketId:'decisionId' in row?row.decisionId:null])
         for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
       }
     }
-    if(observations.length===0)return
-    await (await historyFor(view)).capture(observations)
+    if(observations.length>0)await (await historyFor(view)).capture(observations)
+    marks.business=records.businessRevision
   }
   // History capture is a side effect of reading the projection, not a change of it: the
   // fingerprint is computed after the capture, so invalidating here would rebuild on every
@@ -149,7 +159,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const captureSafely=async(view:SessionControlsView,effect:()=>Promise<void>)=>{try{await effect();historyFailures.delete(view.instance.instrumentInstanceId)}catch(error){historyFailures.set(view.instance.instrumentInstanceId,String(error).slice(0,1024))}}
   const captureCurrent=async(view:SessionControlsView,items:readonly {kind:string;recordId:string;version:number;snapshot:unknown;domain:string;author?:HostCaller}[])=>{
     if(items.length===0)return
-    const history=await historyFor(view),store=await historyStores.get(view.instance.instrumentInstanceId)!,raw=await store.read(),prior=raw===undefined?[]:parseHistoryDocument(raw).rows
+    const history=await historyFor(view),store=await historyStores.get(view.instance.instrumentInstanceId)!,raw=await store.read(),prior=raw===undefined?[]:memoized(raw,parseHistoryDocument).rows
     // One latest-row index per call: the previous linear filter per item made a capture with
     // many rows and many items quadratic.
     const latest=new Map<string,typeof prior[number]>()
@@ -163,34 +173,57 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     await history.capture(observations)
   }
   const captureRuntime=async(view:SessionControlsView,doc:RuntimeDocument)=>{
-    const owner=view.instance.instrumentInstanceId
+    const owner=view.instance.instrumentInstanceId,marks=marksFor(owner)
+    if(marks.runtime===doc.revision)return
     await captureCurrent(view,[...doc.assignments.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'assignment',recordId:row.sessionId,version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.bindings.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'execution-binding',recordId:JSON.stringify([row.executionId,row.generation]),version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.notifications.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'notification',recordId:row.notificationId,version:doc.revision,snapshot:row,domain:'runtime'}))])
+    marks.runtime=doc.revision
   }
   const windowCaptureRevisions=new Map<string,number>()
   const captureOthers=async(view:SessionControlsView,caller:HostCaller)=>{
     // Raw operation journals are read only after the actual owner scope has been proved.
     if((await scope(caller.principalId,view.association.sessionId,view)).kind!=='coordinator')return
-    const observations:HistoryObservation[]=[],raw=await ports.windowStorage.read(view.instance.instrumentInstanceId)
-    let capturedThrough=windowCaptureRevisions.get(view.instance.instrumentInstanceId)??0
-    if(raw!==undefined){const doc=parseWindowDocument(raw)
-      if(doc.instrumentInstanceId!==view.instance.instrumentInstanceId||doc.ownerSessionId!==view.instance.ownerSessionId)denied('window history owner mismatch')
-      // Only operations newer than the last captured revision are rebuilt every projection pass;
-      // the journal grows with every program observation and is otherwise walked in full.
-      const ops=(doc.schemaVersion===2?[...doc.retainedOperations,...doc.operations].sort((a,b)=>a.revision-b.revision):doc.operations).filter(op=>op.revision>capturedThrough)
-      if(ops.length>0)capturedThrough=Math.max(capturedThrough,ops[ops.length-1]!.revision)
-      for(const op of ops){const payload=record(JSON.parse(op.fingerprint),'window source payload'),kind=op.kind==='ticket'?'ticket-window':op.kind==='knowledge'?'runtime-knowledge':'execution',recordId=op.kind==='ticket'?JSON.stringify([payload.workflowId,payload.localTicketId]):op.kind==='knowledge'?view.instance.instrumentInstanceId:JSON.stringify([payload.executionId,op.generation])
-        observations.push({kind,recordId,recordKey:op.operationId,version:op.revision,snapshot:parseHostJson({operation:op,payload}),source:{kind:'program',domain:'windows',author:op.caller===null?null:parseHostJson({principalId:op.caller}),recordedAt:null,coverage:'recorded-history'}})
+    const key=view.instance.instrumentInstanceId,marks=marksFor(key),observations:HistoryObservation[]=[]
+    let capturedThrough=windowCaptureRevisions.get(key)??0,windowRevision:number|null=null
+    const raw=await ports.windowStorage.read(key)
+    if(raw===undefined)marks.windows=0
+    else{
+      const stored=storedRevision(raw)
+      if(stored===null||marks.windows!==stored){
+        const doc=parseWindowDocument(raw)
+        if(doc.instrumentInstanceId!==key||doc.ownerSessionId!==view.instance.ownerSessionId)denied('window history owner mismatch')
+        // Only operations newer than the last captured revision are rebuilt every projection pass;
+        // the journal grows with every program observation and is otherwise walked in full.
+        const ops=(doc.schemaVersion===2?[...doc.retainedOperations,...doc.operations].sort((a,b)=>a.revision-b.revision):doc.operations).filter(op=>op.revision>capturedThrough)
+        if(ops.length>0)capturedThrough=Math.max(capturedThrough,ops[ops.length-1]!.revision)
+        for(const op of ops){const payload=record(JSON.parse(op.fingerprint),'window source payload'),kind=op.kind==='ticket'?'ticket-window':op.kind==='knowledge'?'runtime-knowledge':'execution',recordId=op.kind==='ticket'?JSON.stringify([payload.workflowId,payload.localTicketId]):op.kind==='knowledge'?key:JSON.stringify([payload.executionId,op.generation])
+          observations.push({kind,recordId,recordKey:op.operationId,version:op.revision,snapshot:parseHostJson({operation:op,payload}),source:{kind:'program',domain:'windows',author:op.caller===null?null:parseHostJson({principalId:op.caller}),recordedAt:null,coverage:'recorded-history'}})
+        }
+        windowRevision=stored
       }
     }
-    for(const row of (await (await openWorktrees(view)).query(view.instance)).rows){for(const h of row.history)observations.push({kind:'worktree',recordId:row.bindingId,recordKey:h.operationId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:h.source==='program'?'program':'authored',domain:'worktree-bindings',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},flags:{cleanedWorktree:h.value.business.state==='cleaned'}})}
+    const registry=await (await openWorktrees(view)).query(view.instance)
+    const worktreeRevision=registry.revision,worktreePending=marks.worktrees!==worktreeRevision
+    if(worktreePending)for(const row of registry.rows){for(const h of row.history)observations.push({kind:'worktree',recordId:row.bindingId,recordKey:h.operationId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:h.source==='program'?'program':'authored',domain:'worktree-bindings',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},flags:{cleanedWorktree:h.value.business.state==='cleaned'}})}
     if(observations.length>0)await (await historyFor(view)).capture(observations)
-    windowCaptureRevisions.set(view.instance.instrumentInstanceId,capturedThrough)
+    if(windowRevision!==null)marks.windows=windowRevision
+    if(worktreePending)marks.worktrees=worktreeRevision
+    windowCaptureRevisions.set(key,capturedThrough)
     await captureRuntime(view,await load())
-    await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:savedPolicy.revision,snapshot:savedPolicy,domain:'controls'}])
+    if(marks.configuration!==savedPolicy.revision){
+      await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:savedPolicy.revision,snapshot:savedPolicy,domain:'controls'}])
+      marks.configuration=savedPolicy.revision
+    }
     const resourceRaw=await ports.resourceStorage.read()
-    if(resourceRaw!==undefined){const doc=record(resourceRaw,'resource history document');await captureCurrent(view,array(doc.resources,'resources').map(value=>record(value,'resource')).filter(row=>row.ownerInstanceId===view.instance.instrumentInstanceId).map(row=>({kind:'resource',recordId:id(row.resourceId,'resourceId'),version:revision(doc.revision,'resource revision'),snapshot:row,domain:'resources'})))}
+    if(resourceRaw===undefined)marks.resources=0
+    else{
+      const doc=record(resourceRaw,'resource history document'),resourceRevision=revision(doc.revision,'resource revision')
+      if(marks.resources!==resourceRevision){
+        await captureCurrent(view,array(doc.resources,'resources').map(value=>record(value,'resource')).filter(row=>row.ownerInstanceId===key).map(row=>({kind:'resource',recordId:id(row.resourceId,'resourceId'),version:resourceRevision,snapshot:row,domain:'resources'})))
+        marks.resources=resourceRevision
+      }
+    }
   }
   const notificationLifetime=new AbortController()
   let closing=false
@@ -725,7 +758,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         try{const saved=await controls.savePolicy(caller.principalId,intent,expectedRevision);savedPolicy=saved
           for(const [sid,view]of cachedSessions){let verified=false;try{verified=await ports.authority.verifyWorkspace(view.instance.controlWorkspaceId)}catch{/* Preserve committed policy while reporting unverified workspace. */}
             const next={...view,policy:resolvePolicy(saved,view.instance.controlWorkspaceId,verified)};cachedSessions.set(sid,next);nativeWindows.set(sid,next.policy.extensionEnabled&&next.policy.features.windows.requested)}
-          for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values())await captureSafely(view,()=>captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]))
+          for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values())await captureSafely(view,async()=>{await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]);marksFor(view.instance.instrumentInstanceId).configuration=saved.revision})
           return saved
         }finally{transitioning=null}})
     },
@@ -972,7 +1005,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
               const raw=await ports.windowStorage.read(view.instance.instrumentInstanceId)
               signal.throwIfAborted()
               if(raw===undefined)throw new ControlsError('invalid-input','window source has no history')
-              const data=parseWindowDocument(raw);sourceRevision=data.revision
+              const data=memoized(raw,parseWindowDocument);sourceRevision=data.revision
               const ops=data.schemaVersion===2?[...data.retainedOperations,...data.operations]:data.operations
               for(const target of targets){
                 const matching=ops.filter(op=>{const payload=record(JSON.parse(op.fingerprint),'window operation');return target.kind==='knowledge'?op.kind==='knowledge':target.kind==='execution'?op.kind!=='knowledge'&&payload.executionId===target.executionId:target.kind==='ticket'?op.kind==='ticket'&&payload.workflowId===target.workflowId&&payload.localTicketId===target.localTicketId:false})
@@ -1017,7 +1050,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           try{await save({result:receipt})}catch(error){return {...record(receipt,'cleanup receipt'),receiptRecording:'failed-or-uncertain',error:String(error)}}
           return receipt
         }
-        if(r.action==='query'){record(input,'history query action',['action','query']);if(record(r.query,'history query').kind==='viewer')throw new ResourceError('unsupported','personal viewer history is not exposed by shared owner history; use the original instrument personal view read');const page=await history.query(r.query as unknown as HistoryQuery);let windowRevision:number|null=null,worktreeRevision:number|null=null;try{const raw=await ports.windowStorage.read(view.instance.instrumentInstanceId);windowRevision=raw===undefined?0:parseWindowDocument(raw).revision}catch(error){signal.throwIfAborted();sourceRefreshFailures.push('windows revision: '+String(error))}try{worktreeRevision=(await (await openWorktrees(view)).query(view.instance)).revision}catch(error){signal.throwIfAborted();sourceRefreshFailures.push('worktrees revision: '+String(error))}signal.throwIfAborted();return {...page,sourceRevisions:{records:records?.revision??null,windows:windowRevision,worktrees:worktreeRevision},sourceRefresh:{status:sourceRefreshFailures.length?'unknown':'current',failures:sourceRefreshFailures}}}
+        if(r.action==='query'){record(input,'history query action',['action','query']);if(record(r.query,'history query').kind==='viewer')throw new ResourceError('unsupported','personal viewer history is not exposed by shared owner history; use the original instrument personal view read');const page=await history.query(r.query as unknown as HistoryQuery);let windowRevision:number|null=null,worktreeRevision:number|null=null;try{const raw=await ports.windowStorage.read(view.instance.instrumentInstanceId);windowRevision=raw===undefined?0:memoized(raw,parseWindowDocument).revision}catch(error){signal.throwIfAborted();sourceRefreshFailures.push('windows revision: '+String(error))}try{worktreeRevision=(await (await openWorktrees(view)).query(view.instance)).revision}catch(error){signal.throwIfAborted();sourceRefreshFailures.push('worktrees revision: '+String(error))}signal.throwIfAborted();return {...page,sourceRevisions:{records:records?.revision??null,windows:windowRevision,worktrees:worktreeRevision},sourceRefresh:{status:sourceRefreshFailures.length?'unknown':'current',failures:sourceRefreshFailures}}}
         if(r.action==='detail'){record(input,'history detail action',['action','historyIds']);const detail=await history.detail(array(r.historyIds,'historyIds').map(value=>id(value,'historyId')));signal.throwIfAborted();return {...detail,sourceRefresh:{status:sourceRefreshFailures.length?'unknown':'current',failures:sourceRefreshFailures}}}
         if(r.action==='compact'){record(input,'history compact action',['action']);return history.compact()}
         if(r.action==='set-context'||r.action==='purge'){

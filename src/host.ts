@@ -1364,7 +1364,10 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
   })()
   try {
     const open = async <T>(name: string, parse: (value: unknown) => T) => {
+      if (closing) throw new ControlsError('access-denied', 'host is disposing')
       const domain = await ctx.storageDomain.open(defineDomain({ name: 'mattpocock_' + name, version: 1, tables: { records: domainTable<string, T>(z.unknown().transform(parse)) } }))
+      // A lazy open may finish while the host is already disposing; never leak the handle.
+      if (closing) { await domain.close(); throw new ControlsError('access-denied', 'host is disposing') }
       domains.push(domain); return domain.table('records')
     }
     const startupNode = new HostStartupNode({
@@ -1389,9 +1392,24 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (!bootRequested) throw new ControlsError('feature-disabled', 'initial child cwd is disabled for this process; save startup settings and restart the instance to enable it')
     }
     const controlsStorage = createDomainControlsStorage(await open('controls', parseControlsDocument))
-    const instrumentStorage = createDomainInstrumentStorage(await open('instruments', parseInstrumentDocument))
-    const windowStorage = createDomainWindowStorage(await open('windows', parseWindowDocument))
-    const resourceStorage = createDomainResourceStorage(await open('resources', parseResourceDocument))
+    // The multi-row instruments/windows domains validate every stored record on open. They are
+    // not needed to mount: the first session read opens them, so startup pays only the two
+    // documents every mount actually needs (startup settings and controls).
+    let instrumentOpening: Promise<InstrumentStorage> | undefined
+    const instrumentStorage: InstrumentStorage = {
+      read: async id => (await (instrumentOpening ??= open('instruments', parseInstrumentDocument).then(createDomainInstrumentStorage))).read(id),
+      compareAndSwap: async (id, expectedRevision, next) => (await (instrumentOpening ??= open('instruments', parseInstrumentDocument).then(createDomainInstrumentStorage))).compareAndSwap(id, expectedRevision, next),
+    }
+    let windowOpening: Promise<WindowStorage> | undefined
+    const windowStorage: WindowStorage = {
+      read: async id => (await (windowOpening ??= open('windows', parseWindowDocument).then(createDomainWindowStorage))).read(id),
+      compareAndSwap: async (id, expectedRevision, next) => (await (windowOpening ??= open('windows', parseWindowDocument).then(createDomainWindowStorage))).compareAndSwap(id, expectedRevision, next),
+    }
+    let resourceOpening: Promise<ResourceStorage> | undefined
+    const resourceStorage: ResourceStorage = {
+      read: async () => (await (resourceOpening ??= open('resources', parseResourceDocument).then(createDomainResourceStorage))).read(),
+      compareAndSwap: async (expectedRevision, next) => (await (resourceOpening ??= open('resources', parseResourceDocument).then(createDomainResourceStorage))).compareAndSwap(expectedRevision, next),
+    }
     const grants = createDomainVersionedStorage(await open('policy_grants', parsePolicyGrants), 'state', parsePolicyGrants)
     const identity = createHostAuthority(ctx, controlsStorage, grants)
     // One event-driven count per mount: membership walks happen only at membership-change

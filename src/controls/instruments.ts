@@ -4,7 +4,7 @@ import type { InstrumentInstance } from './state.js'
 import type { InstrumentStorage } from './instrument-storage.js'
 import { initialInstrumentDocument, parseAuthor, parseInstrumentCommand, parseInstrumentDocument, projectInstrumentDocument, upgradeInstrumentDocument, parseInstrumentHistoryTarget, instrumentCommandMetadata } from './instrument-state.js'
 import type { InstrumentAuthor, InstrumentCommand, InstrumentDocument, InstrumentEvent, InstrumentState, WorkflowRecord, TicketRecord, TicketValue, DecisionRecord, DecisionViewValue, DecisionValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, InstrumentDocumentV2, InstrumentDedup, InstrumentHistoryTarget, Change } from './instrument-state.js'
-import { array, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
+import { array, ControlsError, freeze, id, increment, invalid, memoized, record, revision } from './validation.js'
 
 export type InstrumentScope = { readonly kind: 'coordinator' }
   | { readonly kind: 'assigned'; readonly workflowId: string | null; readonly ticketIds: readonly string[] }
@@ -225,7 +225,7 @@ export class SessionInstruments {
     signal?.throwIfAborted()
     const raw = await this.storage.read(instance.instrumentInstanceId)
     signal?.throwIfAborted()
-    const document = raw === undefined ? initialInstrumentDocument(instance) : parseInstrumentDocument(raw)
+    const document = raw === undefined ? initialInstrumentDocument(instance) : memoized(raw, parseInstrumentDocument)
     if (document.instrumentInstanceId !== instance.instrumentInstanceId || document.ownerSessionId !== instance.ownerSessionId || document.controlWorkspaceId !== instance.controlWorkspaceId) throw new ControlsError('association-conflict', 'instrument record conflicts with trusted owner instance')
     return document
   }

@@ -33,7 +33,10 @@ so resuming from the in-memory revision image could double-apply or lose data.
 The host plane is mounted once and requires its injected services (`src/index.ts:51`). If opening a
 storage unit fails at that moment, `mountHost` throws, the plugin logs one warning and keeps serving
 Skills only (`src/index.ts:53-58`). The instrument tools and every snapshot are then absent for the whole
-process, with no session-visible notice and no retry.
+process, with no session-visible notice and no retry. The multi-row instruments, windows and resources
+domains now open on first use rather than during mount: their failure degrades the affected reads to
+`unknown` health but no longer removes the tool plane. Startup/controls/grants failures still abort
+mount.
 
 - Reproduced in an isolated host: with a read-only storage root, every `mattpocock_*` tool resolves to
   `unknown tool` and the only trace is the mount warning.
@@ -43,10 +46,11 @@ process, with no session-visible notice and no retry.
 
 ## 3. Instrument document parse cost grows with retained receipts
 
-The instrument document is re-parsed and re-projected on every accepted command and every cache-miss read.
-The v2 checkpoint keeps one dedup receipt per revision for the life of the instance (compaction is
-lossless and `purge-history` keeps receipts), so per-call cost grows with the total number of revisions
-and the aggregate cost of a session grows roughly quadratically.
+The instrument document is re-parsed and re-projected on every accepted command; cache-miss reads of an
+unchanged frozen document now reuse the parsed projection. The v2 checkpoint keeps one dedup receipt per
+revision for the life of the instance (compaction is lossless and `purge-history` keeps receipts), so the
+accepted-command cost grows with the total number of revisions and the aggregate cost of a session grows
+roughly quadratically.
 
 Additionally, two validation scans are quadratic in the number of cleanup receipts C and the number of
 receipts D: `cleanupCoverage` does a linear `find` per coverage row (`src/controls/instrument-state.ts:253`)
