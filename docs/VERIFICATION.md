@@ -237,3 +237,11 @@ node scripts/verify-package.mjs --prepack
 
 完整记录见 `dist/verification-0.4.31.json`。
 
+## 0.4.32 制品验收（2026-10-17）
+
+本版发布 S 运行计数的深度结构：`S.depth` 把 `S.used` 拆成 `direct`／`deeper`／`unknown` 与逐层 `levels`，解析器强制 `direct+deeper+unknown===used`、`levels` 分类每个已测量 run，来源不可测时给 `null` 而不是伪造零；同时记录 `0.2.1-rc.1`、`0.2.1-rc.2` 的宿主兼容核对（两者都不需要运行时代码改动）。
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.32.tgz`（**412329** bytes，sha256 `d28a1fb9e9f89f05abfe1b68364108e09c4f3db83ef2e60e8a4698cf8a7832c8`，172 成员，源提交 `1e7a38f`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.4` 下 856 用例 **656 通过／0 失败**（200 skip）、`0.2.1-rc.2` 下 856 用例 **656 通过／0 失败**（200 skip）、双宿主 **882 中 876 通过／0 失败／6 skip**、无宿主根 856 中 562 通过／294 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。
+
+完整记录见 `dist/verification-0.4.32.json`。
+

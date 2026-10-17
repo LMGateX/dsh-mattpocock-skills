@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.32",
+    "private": true
+  },
+  "source": {
+    "commit": "1e7a38f13c880456d019ca2707ef9d30727500be",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.32.tgz",
+    "bytes": 412329,
+    "sha256": "d28a1fb9e9f89f05abfe1b68364108e09c4f3db83ef2e60e8a4698cf8a7832c8",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-rc.2"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.4 (live global install)",
+    "rc2": "0.2.1-rc.2 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.1-alpha.4",
+    "rootTests": {
+      "total": 856,
+      "passed": 656,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsRc2": {
+      "total": 856,
+      "passed": 656,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 882,
+      "passed": 876,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 856,
+      "passed": 562,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 294
+    },
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 14,
+      "actualPluginManager": 13
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 200 canonical skips are 194 0.2.1-alpha.1 bridge fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT plus the 6 client native-activation cases whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package older installs no longer ship; the dual-root run executes those 194 fixtures and keeps only the 6 client skips (876/882); without any host root 294 cases skip",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 183636
+  },
+  "compatibility": {
+    "hostRange": "0.2.1-alpha.1 … 0.2.1-rc.2 verified on six real hosts; the declared engine range also admits 0.2.1-alpha.5, 0.2.1 final and 0.2.2-alpha.* through prerelease semantics, which are not verified",
+    "runtimeCodeChangesForRc": 0,
+    "rc1Check": "0.2.1-rc.1 differs from 0.2.1-alpha.4 in 18 of 303 installed packages; no export was removed or renamed and the differences are run_code argument order/function-body syntax, one subagent prompt sentence, web search internals and UI/account/CSS. Every package this plugin uses is byte-identical apart from its package.json version, and the plugin's 30-package usage set is source-identical",
+    "rc2Check": "0.2.1-rc.2 adds DeepSeek Search/Fetch providers and the 1017 model label plugin; across the 305-package install 292 packages are byte-identical apart from package.json version, 11 carry content changes (none used by this plugin), and the slot catalog only records the new conversation.input.model.label occupant. All 30 packages this plugin uses are byte-identical apart from package.json version",
+    "sDepth": "S.depth publishes direct/deeper/unknown plus per-level counts; direct+deeper+unknown===S.used, levels classify every measured run, and null means the source cannot measure depth. The server parser rejects any inconsistent structure and degrades to countKnown:false with native-subagent-activity-unreadable",
+    "engineGateMatrix": {
+      "declaredRange": "~0.2.1-alpha.1",
+      "implementations": [
+        "0.2.1-alpha.2 (dsh peers only)",
+        "0.2.1-alpha.4 (engines.dsh first)",
+        "0.2.1-rc.2 (engines.dsh first)"
+      ],
+      "verdictPreservedByDeclaration": true,
+      "accepted": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.5",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2",
+        "0.2.2-alpha.1"
+      ],
+      "refused": [
+        "0.1.2-rc.1",
+        "0.2.0-rc.2",
+        "0.3.0-alpha.1"
+      ]
+    }
+  },
+  "review": {
+    "baseline": "v0.4.31",
+    "upstreamRelease": "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2",
+    "independentReview": "This release adds the S.depth structure and records compatibility with 0.2.1-rc.1 and 0.2.1-rc.2. Neither host required a runtime code change: source-level and installed-package diffs show every package this plugin uses is unchanged apart from version strings, while rc.2 only adds web search/fetch providers, the 1017 model label plugin and an additive slot-catalog entry. The six-host isolated gate, canonical/rc.2/double-root/no-root suites and the exact 27-test same-archive matrix all pass."
+  }
+}
