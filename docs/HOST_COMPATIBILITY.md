@@ -6,7 +6,7 @@
 
 `0.2.1-alpha.2` 是第一个需要运行时代码适配的宿主：子代理公开 API 由 `startContinuable` 改为 `startActivation`（并新增 `delivery`／`SubagentStartRequest.cwd`），本插件改用宿主原生 seam 传递显式首次 cwd；技能 provider 契约不变。详见下节。
 
-`0.2.1-alpha.3` **要求一次运行时代码适配**：`connection` 服务不再暴露 `operator`，改为 owner 的 `browserPeer`，可选控制面因此从 alpha.3 起装载中断（Skills 分发不受影响）。`0.2.1-alpha.4` 改变的是**插件兼容性的判定依据**：声明了 `engines.dsh` 的插件只按该范围判定，未声明时才回退到原有 peer 规则。本插件据此显式声明范围、以版本中立方式读取 operator Peer，并补齐宿主侧 fixture 的 Peer 契约。详见后文专门小节（此前记的「alpha.3／alpha.4 无需改动」只覆盖了门禁与包级对拆，漏掉了 alpha.2→alpha.3 的 `connection` 服务变化）。`0.2.1-rc.1` 相对 alpha.4 没有任何面向本插件的接口变化，同样不需要修改运行时代码或包元数据（核对见后文）。`0.2.1-rc.2` 只改模型目录、Web 搜索／抓取与对应设置界面，本插件使用的宿主包源码零改动；其安装包级核对待 npm 发布后补做。
+`0.2.1-alpha.3` **要求一次运行时代码适配**：`connection` 服务不再暴露 `operator`，改为 owner 的 `browserPeer`，可选控制面因此从 alpha.3 起装载中断（Skills 分发不受影响）。`0.2.1-alpha.4` 改变的是**插件兼容性的判定依据**：声明了 `engines.dsh` 的插件只按该范围判定，未声明时才回退到原有 peer 规则。本插件据此显式声明范围、以版本中立方式读取 operator Peer，并补齐宿主侧 fixture 的 Peer 契约。详见后文专门小节（此前记的「alpha.3／alpha.4 无需改动」只覆盖了门禁与包级对拆，漏掉了 alpha.2→alpha.3 的 `connection` 服务变化）。`0.2.1-rc.1` 相对 alpha.4 没有任何面向本插件的接口变化，同样不需要修改运行时代码或包元数据（核对见后文）。`0.2.1-rc.2` 只改模型目录、Web 搜索／抓取与对应设置界面，本插件使用的宿主包源码与安装产物零改动（核对见后文）。
 
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与最初宿主编译结果**逐字节相同**。
 
@@ -119,20 +119,22 @@ rc.1 的发布说明是相对 `0.2.0-rc.2` 汇总的，其中插件面的变更�
 
 ## 0.2.1-rc.2 核对
 
-rc.2 是模型目录与 Web 搜索能力的小版本。核对时 npm 尚未发布该版本（`npm view @deepseek-ai/dsh@0.2.1-rc.2` 返回 404，`next` dist-tag 仍指向 rc.1），因此先做**源码级对拆**：直接比较 `dsh-v0.2.1-rc.1` 与 `dsh-v0.2.1-rc.2` 两个 tag 的完整 Git tree（18 698／18 758 个 blob，均未截断），再按各包的 `repository.directory` 映射回源码目录。
+rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Release 晚约半小时，且核对时仍缺一个包（见末行）。核对先做源码级对拆，再在隔离安装上跑全量套件与 headless 装载。
 
 | 核对项 | 结果 |
 |---|---|
 | tag 间 `packages/` 源码差异（排除 README、i18n、测试与 `package.json`） | 新增 16 个文件、修改 10 个、删除 0 个 |
 | 发生运行时源码变化的包 | 新增 `dsh-web-deepseek-api`、`dsh-client-ui-deepseek-model-label-1017`；修改 `dsh-web`、`dsh-web-search-deepseek`、`dsh-client-ui-settings-web-search`、`dsh-cordis-client-runner`（仅槽目录）、`dsh-base`／`dsh-web-app`（各一行 bundle 组合） |
 | 其余触及包 | `dsh-agent-preset` 只有一份参考文档、`dsh-tool-web` 只有测试、`dsh-web-frontend` 只有测试与 tsconfig |
-| 本插件使用的 30 个宿主包 | **源码目录零改动**；含 `dsh-tools`、`dsh-subagent`、`dsh-session`、`dsh-agent`、`dsh-skill`、`dsh-app-boot`、`dsh-api-gateway`、`dsh-typert-protocol`／`dsh-typert-registry`、`dsh-workspace`、`dsh-storage-domain` 与 7 个客户端包 |
+| 安装树对拆（rc.1 → rc.2） | 303 → 305 个包（新增上述两个）；293 个除 `package.json` 版本号外逐字节相同；10 个有内容差异，均落在上面列出的包、构建提交串与共享 bundle 重建上 |
+| 本插件使用的 30 个宿主包 | **源码与安装产物均零改动**；含 `dsh-tools`、`dsh-subagent`、`dsh-session`、`dsh-agent`、`dsh-skill`、`dsh-app-boot`、`dsh-api-gateway`、`dsh-typert-protocol`／`dsh-typert-registry`、`dsh-workspace`、`dsh-storage-domain` 与 7 个客户端包 |
 | 槽目录 | 唯一变化是为 `conversation.input.model.label` 记录新占用者并把 `replaceRisk` 标为 `shadows-shipped-ui`；本插件使用的 7 个槽键全部保留 |
-| bundle 组合 | `base` 新增 `web-deepseek-api` 行；`web-app` 新增 `ui-deepseek-model-label-1017` 行。均为追加，不含本插件 |
-| 安装期门禁 | `dsh-app-boot` 源码未变；`engines.dsh: "~0.2.1-alpha.1"` 对 `0.2.1-rc.2` 的 semver 判定为 `true` |
-| 运行时套件 | 未跑（npm 无制品）。rc.1 安装包上的同源全量套件为 856 用例、656 通过、0 失败、200 skip |
+| 安装期门禁 | rc.2 真身 `evaluatePluginCompatibility` 对插件 manifest 返回无问题；`engines.dsh: "~0.2.1-alpha.1"` 对 `0.2.1-rc.2` 的 semver 判定为 `true` |
+| 全量套件 | **856 用例、656 通过、0 失败、200 skip**，与 alpha.4／rc.1 完全一致 |
+| 隔离 headless 装载 | 本工作树打包 412309 bytes（sha256 `6e66244b…`）；`stable`／`beta` 均安装、dump-config 选中、boot 停在 `MISSING_CREDENTIAL`；27 Skills、11 模型可见；`stable` 报告 sha256 `a7d694ead5…`、`beta` 为 `c32b0b89…`，均与 alpha.4／rc.1 逐字节相同 |
+| npm 发布缺口 | 核对时 `dsh-client-ui-settings-account@0.2.1-rc.2` 尚未发布（`next` 仍指 rc.1），`npm install --global` 无法完成；该包 rc.2 源码与 rc.1 逐字节相同，故以同源 rc.1 构建补齐并标注为 `0.2.1-rc.2`，其余包均为 npm 实际发布的 rc.2 tarball，安装树按全局布局重建 |
 
-结论：源码层面 **rc.2 不需要任何改动**。npm 发布后仍需补做安装包级对拆、全量套件与隔离 headless 装载，本页届时更新。
+结论：**rc.2 不需要任何运行时代码或元数据改动**；上游补齐缺失包后，本插件不受影响。
 
 ## 核对范围与方法
 
