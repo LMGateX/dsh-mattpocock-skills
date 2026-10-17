@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.34",
+    "private": true
+  },
+  "source": {
+    "commit": "91c4fe4f37a89ff018327507e38a498262a5e5b3",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.34.tgz",
+    "bytes": 414867,
+    "sha256": "e27bc1057ead04142412e77d8db682cd7874be8455a8f5014d04efaa9d2dfe69",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.4"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.4 (isolated global npm prefix)",
+    "rc2": "0.2.1-rc.2 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.1-alpha.4",
+    "rootTests": {
+      "total": 860,
+      "passed": 660,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsRc2": {
+      "total": 860,
+      "passed": 660,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 886,
+      "passed": 880,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 860,
+      "passed": 566,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 294
+    },
+    "exactArchiveVerifier": "passed",
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 200 canonical skips are 194 0.2.1-alpha.1 bridge fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT plus the 6 client native-activation cases whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package older installs no longer ship; the dual-root run executes those 194 fixtures and keeps only the 6 client skips (880/886); without any host root 294 cases skip",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 184143,
+    "sameArchiveNote": "the separate 14 native + 13 plugin-manager same-archive matrix was not re-run for this patch; the exact tarball verifier, the disposable e2e pack and the six-host isolated gate all read the same archive"
+  },
+  "compatibility": {
+    "hostRange": "0.2.1-alpha.1 … 0.2.1-rc.2 verified on six real hosts; the declared engine range also admits 0.2.1-alpha.5, 0.2.1 final and 0.2.2-alpha.* through prerelease semantics, which are not verified",
+    "runtimeCodeChangesForRc": 0,
+    "rc1Check": "carried from the 0.4.33 host comparison (unchanged packages): 0.2.1-rc.1 differs from 0.2.1-alpha.4 in 18 of 303 installed packages; every package this plugin uses is byte-identical apart from its package.json version",
+    "rc2Check": "carried from the 0.4.33 host comparison (unchanged packages): across the 305-package 0.2.1-rc.2 install 292 packages are byte-identical apart from package.json version, 11 carry content changes (none used by this plugin), and all 30 packages this plugin uses are byte-identical apart from package.json version",
+    "sDepth": "S.depth publishes direct/deeper/unknown plus per-level counts; direct+deeper+unknown===S.used, levels classify every measured run, and null means the source cannot measure depth. The server parser rejects any inconsistent structure and degrades to countKnown:false with native-subagent-activity-unreadable",
+    "engineGateMatrix": {
+      "declaredRange": "~0.2.1-alpha.1",
+      "implementations": [
+        "0.2.1-alpha.2 (dsh peers only)",
+        "0.2.1-alpha.4 (engines.dsh first)",
+        "0.2.1-rc.2 (engines.dsh first)"
+      ],
+      "verdictPreservedByDeclaration": true,
+      "accepted": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.5",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2",
+        "0.2.2-alpha.1"
+      ],
+      "refused": [
+        "0.1.2-rc.1",
+        "0.2.0-rc.2",
+        "0.3.0-alpha.1"
+      ]
+    }
+  },
+  "review": {
+    "baseline": "v0.4.33",
+    "independentReview": "This patch only admits the already-implemented update-observation action at the mounted mattpocock_worktree tool gate: the tool description and runtime supported it since 0.4.30, but the host wrapper's action check rejected it with an error that still listed it as accepted. The new mounted-registry regression test drives read/update/update-observation/reconcile through the gate (red before the branch, green after). Root suites on alpha.4, rc.2, the dual root and no host root, the exact tarball verifier, the disposable e2e pack and the six-host isolated gate all pass. No S/T, execution admission, storage or business-record semantics changed."
+  }
+}

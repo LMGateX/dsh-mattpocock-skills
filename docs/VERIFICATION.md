@@ -2,6 +2,10 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 源码改动：工作树工具门禁接受 update-observation（2026-10-18，0.4.34）
+
+`mattpocock_worktree` 的工具说明与 runtime 自 0.4.30 起支持 `update-observation`，但宿主注册工具时的动作门禁只放行 `read`／`update`／`reconcile`，拒绝时仍把 `update-observation` 列在可接受动作里；模型因此重复尝试不同请求形状，观测清理无法落地。0.4.34 在 `src/host.ts` 补上该分支，并新增挂载级回归：把四个已公布动作逐一从真实工具注册表送进门禁，修复前红、修复后绿。全根套件 860 项 **660 通过／0 失败／200 跳过**（规范 `0.2.1-alpha.4` 与 `0.2.1-rc.2` 读数相同）、双根 886 中 **880 通过／0 失败／6 跳过**、无宿主根 860 中 **566 通过／294 跳过**。该改动不改变 S/T、执行准入、存储或业务记录语义。
+
 ## 源码改动：事件写放大与注入时延优化（2026-10-17，0.4.33）
 
 本轮只改事件/读取成本，不改 S/T 语义、执行准入或业务记录。src/runtime.ts 对同一 runtime instance、同一 reason 的未知 knowledge 观察在登记持久提交前去重（known 观察或新 runtimeId 重新武装）；受管 lease 在保持 running 期间只写一次 running receipt；丢失归因对账按微任务合并并保留 skip 集合；worktree cold replay 从首读移到后台，完成后使投影失效；history 行查找改为一次索引，只对上次捕获后的 window operation 建 history，空 capture 不再读文档，cached Session 在 disposed 时回收，客户端隐藏标签页的轮询退避到至少 30 s。src/host.ts 的 catalog 走查按 owner 合并（在飞 + 至多一次补走），超时只限制本次等待而不中止宿主投影构建，迟到成功结果在未被更新走查覆盖时发布成员资格，超时后 30 s 内不再重复付构建成本；超时/拒绝仍按既定设计把计数标为明示下界（known=false + 机械 reason），不把目录富化失败改写成已知零。
@@ -260,4 +264,10 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.33.tgz`（**414851** bytes，sha256 `fa92dc6a6d831ad48954a89fbb54e00a26aef3bd12ef3844e8b859289f10ef9c`，172 成员，源提交 `ea32073`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.4` 下 859 用例 **659 通过／0 失败**（200 skip）、`0.2.1-rc.2` 下 859 用例 **659 通过／0 失败**（200 skip）、双宿主 **885 中 879 通过／0 失败／6 skip**、无宿主根 859 中 565 通过／294 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。2000 个 live 后代的内存 fixture 前后测量（下界）：下一次注入 917.7 ms → 24 ms、首读 1690 ms → 13.4 ms、20 个 catalog 事件 20 → 2 次走查、400 个状态事件同步处理 111.8 ms → 8.6 ms，热读取保持约 0.6 ms。
 
 完整记录见 `dist/verification-0.4.33.json`。
+
+## 0.4.34 制品验收（2026-10-18）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.34.tgz`（**414867** bytes，sha256 `e27bc1057ead04142412e77d8db682cd7874be8455a8f5014d04efaa9d2dfe69`，172 成员，源提交 `91c4fe4`）经精确 tarball 验证与同一构建的 disposable e2e pack 通过：规范宿主 `0.2.1-alpha.4` 下 860 用例 **660 通过／0 失败**（200 skip）、`0.2.1-rc.2` 同读数、双宿主 886 中 **880 通过／0 失败／6 skip**、无宿主根 860 中 **566 通过／294 跳过／0 失败**。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。本轮未单独重跑 14 原生＋13 管理器的同归档矩阵；精确 verifier、e2e 与六宿主隔离门禁读的是同一归档。安装使用同一 tarball：Profile 解析为 `file:` 制品，安装后树与解包逐文件 `diff -r` 为 0。
+
+完整记录见 `dist/verification-0.4.34.json`。
 
