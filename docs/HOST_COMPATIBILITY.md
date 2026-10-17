@@ -119,20 +119,20 @@ rc.1 的发布说明是相对 `0.2.0-rc.2` 汇总的，其中插件面的变更�
 
 ## 0.2.1-rc.2 核对
 
-rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Release 晚约半小时，且核对时仍缺一个包（见末行）。核对先做源码级对拆，再在隔离安装上跑全量套件与 headless 装载。
+rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Release 晚约半小时，中途还曾缺一个包的 tarball（见末行）。核对先做源码级对拆，再在完整的 `npm install --global` 安装上跑全量套件与 headless 装载。
 
 | 核对项 | 结果 |
 |---|---|
 | tag 间 `packages/` 源码差异（排除 README、i18n、测试与 `package.json`） | 新增 16 个文件、修改 10 个、删除 0 个 |
 | 发生运行时源码变化的包 | 新增 `dsh-web-deepseek-api`、`dsh-client-ui-deepseek-model-label-1017`；修改 `dsh-web`、`dsh-web-search-deepseek`、`dsh-client-ui-settings-web-search`、`dsh-cordis-client-runner`（仅槽目录）、`dsh-base`／`dsh-web-app`（各一行 bundle 组合） |
 | 其余触及包 | `dsh-agent-preset` 只有一份参考文档、`dsh-tool-web` 只有测试、`dsh-web-frontend` 只有测试与 tsconfig |
-| 安装树对拆（rc.1 → rc.2） | 303 → 305 个包（新增上述两个）；293 个除 `package.json` 版本号外逐字节相同；10 个有内容差异，均落在上面列出的包、构建提交串与共享 bundle 重建上 |
+| 安装树对拆（rc.1 → rc.2） | 303 → 305 个包（新增上述两个）；292 个除 `package.json` 版本号外逐字节相同；11 个有内容差异：`dsh-web`、`dsh-web-search-deepseek`、`dsh-client-ui-settings-web-search`、`dsh-client-ui-settings-account`、`dsh-client-ui-settings-general`、`dsh-client-ui-sidebar`、`dsh-client-modules`（构建提交串）、`dsh-cordis-client-runner`（槽目录）、`dsh-base`／`dsh-web-app`（组合行）、`dsh-agent-preset`（参考文档） |
 | 本插件使用的 30 个宿主包 | **源码与安装产物均零改动**；含 `dsh-tools`、`dsh-subagent`、`dsh-session`、`dsh-agent`、`dsh-skill`、`dsh-app-boot`、`dsh-api-gateway`、`dsh-typert-protocol`／`dsh-typert-registry`、`dsh-workspace`、`dsh-storage-domain` 与 7 个客户端包 |
 | 槽目录 | 唯一变化是为 `conversation.input.model.label` 记录新占用者并把 `replaceRisk` 标为 `shadows-shipped-ui`；本插件使用的 7 个槽键全部保留 |
 | 安装期门禁 | rc.2 真身 `evaluatePluginCompatibility` 对插件 manifest 返回无问题；`engines.dsh: "~0.2.1-alpha.1"` 对 `0.2.1-rc.2` 的 semver 判定为 `true` |
 | 全量套件 | **856 用例、656 通过、0 失败、200 skip**，与 alpha.4／rc.1 完全一致 |
 | 隔离 headless 装载 | 本工作树打包 412309 bytes（sha256 `6e66244b…`）；`stable`／`beta` 均安装、dump-config 选中、boot 停在 `MISSING_CREDENTIAL`；27 Skills、11 模型可见；`stable` 报告 sha256 `a7d694ead5…`、`beta` 为 `c32b0b89…`，均与 alpha.4／rc.1 逐字节相同 |
-| npm 发布缺口 | 核对时 `dsh-client-ui-settings-account@0.2.1-rc.2` 尚未发布（`next` 仍指 rc.1），`npm install --global` 无法完成；该包 rc.2 源码与 rc.1 逐字节相同，故以同源 rc.1 构建补齐并标注为 `0.2.1-rc.2`，其余包均为 npm 实际发布的 rc.2 tarball，安装树按全局布局重建 |
+| npm 发布时序 | 核对期间发布一度未完成：`dsh-client-ui-settings-account@0.2.1-rc.2` 的元数据先出现、tarball 仍 404，`npm install --global` 失败；约数分钟后 tarball 补齐。最终结果使用完整的 `npm install --global` rc.2 安装树复跑，早期替代构建的结果不计入 |
 
 结论：**rc.2 不需要任何运行时代码或元数据改动**；上游补齐缺失包后，本插件不受影响。
 
