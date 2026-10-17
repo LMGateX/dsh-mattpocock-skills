@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.33",
+    "private": true
+  },
+  "source": {
+    "commit": "ea320738aea2af185d5891e557e8cbb038d4d6ed",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.33.tgz",
+    "bytes": 414851,
+    "sha256": "fa92dc6a6d831ad48954a89fbb54e00a26aef3bd12ef3844e8b859289f10ef9c",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.4"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.4 (isolated global npm prefix)",
+    "rc2": "0.2.1-rc.2 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.1-alpha.4",
+    "rootTests": {
+      "total": 859,
+      "passed": 659,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsRc2": {
+      "total": 859,
+      "passed": 659,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 885,
+      "passed": 879,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 859,
+      "passed": 565,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 294
+    },
+    "exactArchiveVerifier": "passed",
+    "sameArchive": {
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "ordinaryNodeNative": 14,
+      "actualPluginManager": 13
+    },
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 200 canonical skips are 194 0.2.1-alpha.1 bridge fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT plus the 6 client native-activation cases whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package older installs no longer ship; the dual-root run executes those 194 fixtures and keeps only the 6 client skips (879/885); without any host root 294 cases skip",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 184143
+  },
+  "compatibility": {
+    "hostRange": "0.2.1-alpha.1 … 0.2.1-rc.2 verified on six real hosts; the declared engine range also admits 0.2.1-alpha.5, 0.2.1 final and 0.2.2-alpha.* through prerelease semantics, which are not verified",
+    "runtimeCodeChangesForRc": 0,
+    "rc1Check": "0.2.1-rc.1 differs from 0.2.1-alpha.4 in 18 of 303 installed packages; no export was removed or renamed and the differences are run_code argument order/function-body syntax, one subagent prompt sentence, web search internals and UI/account/CSS. Every package this plugin uses is byte-identical apart from its package.json version, and the plugin's 30-package usage set is source-identical",
+    "rc2Check": "0.2.1-rc.2 adds DeepSeek Search/Fetch providers and the 1017 model label plugin; across the 305-package install 292 packages are byte-identical apart from package.json version, 11 carry content changes (none used by this plugin), and the slot catalog only records the new conversation.input.model.label occupant. All 30 packages this plugin uses are byte-identical apart from package.json version",
+    "sDepth": "S.depth publishes direct/deeper/unknown plus per-level counts; direct+deeper+unknown===S.used, levels classify every measured run, and null means the source cannot measure depth. The server parser rejects any inconsistent structure and degrades to countKnown:false with native-subagent-activity-unreadable",
+    "performance": {
+      "measuredOn": "2000 live descendants, in-memory fixture (lower bound)",
+      "nextInjectionAfter200StatusEdgesMs": {
+        "before": 917.7,
+        "after": 24
+      },
+      "firstReadMs": {
+        "before": 1690,
+        "after": 13.4
+      },
+      "catalogWalksFor20Events": {
+        "before": 20,
+        "after": 2
+      },
+      "syncStatusStorm400EventsMs": {
+        "before": 111.8,
+        "after": 8.6
+      },
+      "warmReadMs": 0.6,
+      "mechanisms": [
+        "same runtime+reason unknown knowledge observation written once; duplicate running receipt skipped",
+        "per-owner reconcile coalesced into one microtask with a preserved skip set",
+        "catalog walks coalesced per owner; timeout bounds the wait, not the host projection build; late success publishes membership; 30 s retry cooldown",
+        "worktree cold replay moved off the first snapshot read",
+        "history capture watermarked by window operation revision; history row lookup indexed; empty captures skipped",
+        "disposed cached Session views and failure indexes pruned; per-owner walk chains dropped after settle",
+        "hidden-tab client polling backed off to at least 30 s"
+      ],
+      "semanticsChanged": false
+    },
+    "engineGateMatrix": {
+      "declaredRange": "~0.2.1-alpha.1",
+      "implementations": [
+        "0.2.1-alpha.2 (dsh peers only)",
+        "0.2.1-alpha.4 (engines.dsh first)",
+        "0.2.1-rc.2 (engines.dsh first)"
+      ],
+      "verdictPreservedByDeclaration": true,
+      "accepted": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.5",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2",
+        "0.2.2-alpha.1"
+      ],
+      "refused": [
+        "0.1.2-rc.1",
+        "0.2.0-rc.2",
+        "0.3.0-alpha.1"
+      ]
+    }
+  },
+  "review": {
+    "baseline": "v0.4.32",
+    "independentReview": "This release removes event-driven write amplification and read-path cold work without changing S/T semantics, execution admission or business records. Knowledge observations are deduplicated by fact, managed running receipts by lease state, per-owner reconciles and catalog walks are coalesced, timed-out catalog builds are allowed to finish and publish late, worktree session-fact replay is backgrounded, history capture is watermarked, cached Session views are pruned and hidden-tab polling backs off. Measured on 2000 live descendants: the next injected snapshot after 200 status edges fell from 917.7 ms to 24 ms, the first read from 1690 ms to 13.4 ms, 20 catalog events from 20 walks to 2, and a 400-edge status storm from 111.8 ms to 8.6 ms while warm reads stayed at about 0.6 ms. The six-host isolated gate, canonical/rc.2/dual-root/no-root suites and the exact 27-test same-archive matrix all pass."
+  }
+}

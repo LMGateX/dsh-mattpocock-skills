@@ -2,13 +2,13 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 未发布源码改动：事件写放大与注入时延优化（2026-10-17）
+## 源码改动：事件写放大与注入时延优化（2026-10-17，0.4.33）
 
 本轮只改事件/读取成本，不改 S/T 语义、执行准入或业务记录。src/runtime.ts 对同一 runtime instance、同一 reason 的未知 knowledge 观察在登记持久提交前去重（known 观察或新 runtimeId 重新武装）；受管 lease 在保持 running 期间只写一次 running receipt；丢失归因对账按微任务合并并保留 skip 集合；worktree cold replay 从首读移到后台，完成后使投影失效；history 行查找改为一次索引，只对上次捕获后的 window operation 建 history，空 capture 不再读文档，cached Session 在 disposed 时回收，客户端隐藏标签页的轮询退避到至少 30 s。src/host.ts 的 catalog 走查按 owner 合并（在飞 + 至多一次补走），超时只限制本次等待而不中止宿主投影构建，迟到成功结果在未被更新走查覆盖时发布成员资格，超时后 30 s 内不再重复付构建成本；超时/拒绝仍按既定设计把计数标为明示下界（known=false + 机械 reason），不把目录富化失败改写成已知零。
 
 开发工作树验收（Node 24.17.0，DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs）：**859** 项、**659** 通过、**0** 失败、**200** 个桥/兼容环境门禁用例带诊断 skip（上一基线 856／656／0／200，本轮新增 3 条回归）。pnpm exec tsc -p tsconfig.json、pnpm exec tsc -p tsconfig.client.json --noEmit、node scripts/build-client.mjs --out lib/client.js --declaration 均通过；lib/ 已重建，套件内的 src/lib 一致性门禁通过。新增 [runtime-write-coalescing](<../tests/runtime-write-coalescing.test.mjs>)（150 个同一 unknown 事实的状态边最多 3 次持久写，下一次注入 <300 ms）、[native-running-count](<../tests/native-running-count.test.mjs>) 的 20 个 catalog 事件至多 2 次走查、[worktree-observation-runtime](<../tests/worktree-observation-runtime.test.mjs>) 的首读不等待后台 replay 且 replay 最终可见。
 
-同一 2000 个 live 后代内存 fixture 的前后测量（下界）：热读取仍约 **0.6 ms**；首读 **1690 ms → 13.4 ms**；200 个状态事件后的下一次注入 **917.7 ms → 24 ms**；20 个 catalog 事件 **20 → 2** 次走查；400 个状态事件同步处理 **111.8 → 8.6 ms**。该源码与生成物**未发布、未安装到本机 Profile、未重启任何服务**；目录投影超时的真实归因仍由 live 宿主的会话查询成本决定，本轮只保证不再重复中止/排队同一构建，并让迟到的成功结果恢复计数。
+同一 2000 个 live 后代内存 fixture 的前后测量（下界）：热读取仍约 **0.6 ms**；首读 **1690 ms → 13.4 ms**；200 个状态事件后的下一次注入 **917.7 ms → 24 ms**；20 个 catalog 事件 **20 → 2** 次走查；400 个状态事件同步处理 **111.8 → 8.6 ms**。该源码随后作为 0.4.33 发布，六宿主隔离、同归档矩阵与规范/rc.2/双根/无根套件见下方制品验收；目录投影超时的真实归因仍由 live 宿主的会话查询成本决定，本轮只保证不再重复中止/排队同一构建，并让迟到的成功结果恢复计数。
 
 ## 未发布源码改动：宿主原生初始 cwd seam（2026-10-09）
 
@@ -252,4 +252,12 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.32.tgz`（**412329** bytes，sha256 `d28a1fb9e9f89f05abfe1b68364108e09c4f3db83ef2e60e8a4698cf8a7832c8`，172 成员，源提交 `1e7a38f`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.4` 下 856 用例 **656 通过／0 失败**（200 skip）、`0.2.1-rc.2` 下 856 用例 **656 通过／0 失败**（200 skip）、双宿主 **882 中 876 通过／0 失败／6 skip**、无宿主根 856 中 562 通过／294 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。
 
 完整记录见 `dist/verification-0.4.32.json`。
+
+## 0.4.33 制品验收（2026-10-17）
+
+本版只优化事件路径与读取成本：同一 unknown knowledge 事实与重复 running receipt 不再各写一次、归因对账与 catalog 走查按 owner 合并、超时不再中止宿主投影构建并允许迟到成功恢复成员资格、worktree cold replay 移出首读、history 捕获按水位增量、disposed Session 视图回收、隐藏标签页轮询退避。S/T 计数、执行准入与业务记录语义不变；目录超时/拒绝/diagnostic 仍按既定设计给出明示下界，不改成“已知零”。
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.33.tgz`（**414851** bytes，sha256 `fa92dc6a6d831ad48954a89fbb54e00a26aef3bd12ef3844e8b859289f10ef9c`，172 成员，源提交 `ea32073`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.4` 下 859 用例 **659 通过／0 失败**（200 skip）、`0.2.1-rc.2` 下 859 用例 **659 通过／0 失败**（200 skip）、双宿主 **885 中 879 通过／0 失败／6 skip**、无宿主根 859 中 565 通过／294 跳过／0 失败；同归档矩阵 **27／27**（普通 Node 原生 14＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。2000 个 live 后代的内存 fixture 前后测量（下界）：下一次注入 917.7 ms → 24 ms、首读 1690 ms → 13.4 ms、20 个 catalog 事件 20 → 2 次走查、400 个状态事件同步处理 111.8 ms → 8.6 ms，热读取保持约 0.6 ms。
+
+完整记录见 `dist/verification-0.4.33.json`。
 
