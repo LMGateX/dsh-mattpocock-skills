@@ -51,8 +51,21 @@ test('model-facing rejections name the accepted values', async t => {
   assert.match(text(provider), /accepted provider values: spawn, fork/)
   const worktree = await f.execute('mattpocock_worktree', { request: { action: 'bogus' } })
   assert.equal(worktree.isError, true)
-  assert.match(text(worktree), /read\/update\/update-observation\/reconcile action required|accepted actions: read, update, update-observation, reconcile/)
+  const worktreeMessage = worktree.error?.message ?? ''
+  assert.match(worktreeMessage, /worktree action required: received action="bogus" with request keys \["action"\]/)
+  assert.match(worktreeMessage, /expected one of .*"action":"update-observation","command"/)
   const history = await f.execute('mattpocock_history', { request: { action: 'bogus' } })
   assert.equal(history.isError, true)
   assert.match(text(history), /accepted actions: query, detail, set-context, purge/)
+})
+
+test('a nested worktree action names the received key and the expected shape', async t => {
+  const f = await readyMounted(t)
+  const result = await f.execute('mattpocock_worktree', {
+    request: { 'update-observation': { action: 'update-observation', command: {} } },
+  })
+  assert.equal(result.isError, true)
+  const message = result.error?.message ?? ''
+  assert.match(message, /worktree action required: received no action with request keys \["update-observation"\]/)
+  assert.match(message, /expected one of .*"action":"update-observation","command"/)
 })

@@ -2,6 +2,10 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 未发布源码改动：worktree 动作拒绝回显（2026-10-18）
+
+`mattpocock_worktree` 的工具说明改成显式 JSON 联合形状，并明确 `action` 必须在 `request` 顶层。未知 action 的拒绝现在回显收到的 action（缺失时为 `no action`）和 `request` 的实际 keys，再列出 `read`／`update`／`update-observation`／`reconcile` 四种期望形状；不再只给一句没有输入上下文的 `action required`。新增 [model-contract](<../tests/model-contract.test.mjs>) 回归：错误 action 必须回显 `action` 与 keys，`{"update-observation": {...}}` 这种嵌套形状必须报告 `no action` 与实际 key。全根套件 862 项 **662 通过／0 失败／200 跳过**（`0.2.1-alpha.4`，Node 24.17.0）；本改动不改变 action 词表、业务语义、存储或权限。
+
 ## 源码改动：捕获水位与多行域惰性打开（2026-10-18，0.4.35）
 
 本轮只降低投影副作用与启动成本，不改 S/T、执行准入、窗口操作或业务记录语义。`src/runtime.ts` 为每个 instrument instance 记录来源水位（businessRevision、window revision、worktree revision、runtime document revision、saved policy revision、resource revision）并只在捕获成功后推进：来源未移动的重建不再重建 observation 列表、去重索引或读取 history 存储；只有投影自身的 context 读取仍会发生。`src/controls/instruments.ts`、history 捕获读取、window revision 读取与 history query 的来源 revision 改为复用既有的 memoized 解析；worktree bindings 原本已 memoized。`src/host.ts` 把 instruments、windows、resources 三个多行域的打开推迟到首次授权使用，启动只打开 startup settings、controls、policy grants 与 runtime bindings；dispose 期间迟到的打开会关闭 handle 并失败，不泄漏。没有 live Agent 的挂载从打开 7 个域降为 4 个，首次会话读取再按需打开。

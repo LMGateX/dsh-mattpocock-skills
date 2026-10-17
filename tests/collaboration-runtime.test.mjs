@@ -62,7 +62,7 @@ test('the mounted worktree tool lets every advertised action through its host ga
   const result=await f.execute('mattpocock_worktree',{request})
   // The host wrapper must hand each advertised action to the runtime; a rejection here is the
   // wrapper's own action check, not a business answer from the instrument.
-  assert.doesNotMatch(JSON.stringify(result),/read\/update\/update-observation\/reconcile action required/,action+' must reach the runtime')
+  assert.doesNotMatch(JSON.stringify(result),/worktree action required:/,action+' must reach the runtime')
   assert.equal(result.isError,action!=='read')
  }
 })
