@@ -2,9 +2,9 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 未发布源码改动：worktree 动作拒绝回显（2026-10-18）
+## 源码改动：worktree 动作拒绝回显（2026-10-18，0.4.36）
 
-`mattpocock_worktree` 的工具说明改成显式 JSON 联合形状，并明确 `action` 必须在 `request` 顶层。未知 action 的拒绝现在回显收到的 action（缺失时为 `no action`）和 `request` 的实际 keys，再列出 `read`／`update`／`update-observation`／`reconcile` 四种期望形状；不再只给一句没有输入上下文的 `action required`。新增 [model-contract](<../tests/model-contract.test.mjs>) 回归：错误 action 必须回显 `action` 与 keys，`{"update-observation": {...}}` 这种嵌套形状必须报告 `no action` 与实际 key。全根套件 862 项 **662 通过／0 失败／200 跳过**（`0.2.1-alpha.4`，Node 24.17.0）；本改动不改变 action 词表、业务语义、存储或权限。
+`mattpocock_worktree` 的工具说明改成显式 JSON 联合形状，并明确 `action` 必须在 `request` 顶层。未知 action 的拒绝现在回显收到的 action（缺失时为 `no action`）和 `request` 的实际 keys，再列出 `read`／`update`／`update-observation`／`reconcile` 四种期望形状；不再只给一句没有输入上下文的 `action required`。新增 [model-contract](<../tests/model-contract.test.mjs>) 回归：错误 action 必须回显 `action` 与 keys，`{"update-observation": {...}}` 这种嵌套形状必须报告 `no action` 与实际 key。全根套件 862 项 **662 通过／0 失败／200 跳过**（`0.2.1-rc.2`，Node 24.17.0）、双宿主 888 中 **882 通过／0 失败／6 跳过**、无宿主根 862 中 **568 通过／294 跳过／0 失败**；本改动不改变 action 词表、业务语义、存储或权限。
 
 ## 源码改动：捕获水位与多行域惰性打开（2026-10-18，0.4.35）
 
@@ -286,4 +286,10 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.35.tgz`（**415674** bytes，sha256 `c86155943097ba2cb1eaa995a163746dd66769c2648f46275352e86ea2ef7c1b`，172 成员，源提交 `2b99bba`）经精确 tarball 验证与同一构建的 disposable e2e pack 通过：规范宿主 `0.2.1-alpha.4` 下 861 用例 **661 通过／0 失败**（200 skip）、`0.2.1-rc.2` 同读数、双宿主 887 中 **881 通过／0 失败／6 skip**、无宿主根 861 中 **567 通过／294 跳过／0 失败**。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。本轮未单独重跑 14 原生＋13 管理器的同归档矩阵；精确 verifier、e2e 与六宿主隔离门禁读的是同一归档。安装使用同一 tarball：Profile 解析为 `file:` 制品，安装后树与解包逐文件 `diff -r` 为 0。
 
 完整记录见 `dist/verification-0.4.35.json`。
+
+## 0.4.36 制品验收（2026-10-18）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.36.tgz`（**415876** bytes，sha256 `274b4a9a4794238569e0ff8dbe500a261a72c7cf1f1dd4a46ea6c39a004eede1`，172 成员，源提交 `a7a98ca`）经精确 tarball 验证与同一源提交的 disposable e2e pack 通过：`0.2.1-rc.2` 下 862 用例 **662 通过／0 失败**（200 skip）、双宿主 888 中 **882 通过／0 失败／6 skip**、无宿主根 862 中 **568 通过／294 跳过／0 失败**。rc.2 隔离门禁在 headless profile 上从私有快照安装同一归档，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。本轮未重跑六宿主隔离与 14 原生＋13 管理器的同归档矩阵；该补丁只改模型可见文案与宿主门禁拒绝消息，action 词表、业务语义、存储和权限不变。安装使用同一 tarball：Profile 解析为 `file:` 制品，安装后树与解包逐文件 `diff -r` 为 0。
+
+完整记录见 `dist/verification-0.4.36.json`。
 
