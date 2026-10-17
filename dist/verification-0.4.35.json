@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.35",
+    "private": true
+  },
+  "source": {
+    "commit": "2b99bbabf026516eaee755149afaddb87c706469",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.35.tgz",
+    "bytes": 415674,
+    "sha256": "c86155943097ba2cb1eaa995a163746dd66769c2648f46275352e86ea2ef7c1b",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-alpha.4"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-alpha.4 (isolated global npm prefix)",
+    "rc2": "0.2.1-rc.2 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.1-alpha.4",
+    "rootTests": {
+      "total": 861,
+      "passed": 661,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsRc2": {
+      "total": 861,
+      "passed": 661,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 887,
+      "passed": 881,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 861,
+      "passed": 567,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 294
+    },
+    "exactArchiveVerifier": "passed",
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 200 canonical skips are 194 0.2.1-alpha.1 bridge fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT plus the 6 client native-activation cases whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package older installs no longer ship; the dual-root run executes those 194 fixtures and keeps only the 6 client skips (881/887); without any host root 294 cases skip",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 184143,
+    "sameArchiveNote": "the separate 14 native + 13 plugin-manager same-archive matrix was not re-run for this optimization patch; the exact tarball verifier, the disposable e2e pack and the six-host isolated gate all read the same archive",
+    "performance": {
+      "mount": "startup/controls/grants/runtime open while mounting; multi-row instruments, windows and resources open on first authorized use; a corrupt lazy row degrades that aggregate to unknown instead of aborting mount",
+      "capture": "per-instance source watermarks (businessRevision, window revision, worktree revision, runtime revision, saved policy revision, resource revision) skip no-op capture; a 2.1s unchanged rebuild test performs only the projection context read",
+      "parsing": "memoized parses at SessionInstruments.load, history capture read, window revision reads and history query source revisions; worktree bindings already memoized"
+    }
+  },
+  "compatibility": {
+    "hostRange": "0.2.1-alpha.1 … 0.2.1-rc.2 verified on six real hosts; the declared engine range also admits 0.2.1-alpha.5, 0.2.1 final and 0.2.2-alpha.* through prerelease semantics, which are not verified",
+    "runtimeCodeChangesForRc": 0,
+    "rc1Check": "carried from the 0.4.33 host comparison (unchanged packages): 0.2.1-rc.1 differs from 0.2.1-alpha.4 in 18 of 303 installed packages; every package this plugin uses is byte-identical apart from its package.json version",
+    "rc2Check": "carried from the 0.4.33 host comparison (unchanged packages): across the 305-package 0.2.1-rc.2 install 292 packages are byte-identical apart from package.json version, 11 carry content changes (none used by this plugin), and all 30 packages this plugin uses are byte-identical apart from package.json version",
+    "sDepth": "S.depth publishes direct/deeper/unknown plus per-level counts; direct+deeper+unknown===S.used, levels classify every measured run, and null means the source cannot measure depth. The server parser rejects any inconsistent structure and degrades to countKnown:false with native-subagent-activity-unreadable",
+    "engineGateMatrix": {
+      "declaredRange": "~0.2.1-alpha.1",
+      "implementations": [
+        "0.2.1-alpha.2 (dsh peers only)",
+        "0.2.1-alpha.4 (engines.dsh first)",
+        "0.2.1-rc.2 (engines.dsh first)"
+      ],
+      "verdictPreservedByDeclaration": true,
+      "accepted": [
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2",
+        "0.2.1-alpha.3",
+        "0.2.1-alpha.4",
+        "0.2.1-alpha.5",
+        "0.2.1-rc.1",
+        "0.2.1-rc.2",
+        "0.2.2-alpha.1"
+      ],
+      "refused": [
+        "0.1.2-rc.1",
+        "0.2.0-rc.2",
+        "0.3.0-alpha.1"
+      ]
+    }
+  },
+  "review": {
+    "baseline": "v0.4.34",
+    "independentReview": "This patch removes no-op work from the projection side effects and defers three multi-row domain opens. Capture now advances per-instance source watermarks only after a successful capture; memoized parsers reuse frozen documents; instruments/windows/resources open on first authorized use, and a dispose race closes any late handle. A mounted test proves an unchanged rebuild does not re-enter history capture (red before the gate, green after); host mount now opens 4 documents with no live agents, not 7. Root suites on alpha.4, rc.2, the dual root and no host root, the exact tarball verifier, the disposable e2e pack and the six-host isolated gate all pass. No S/T, execution admission, storage layout or business-record semantics changed."
+  }
+}

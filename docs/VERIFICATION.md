@@ -2,6 +2,12 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 源码改动：捕获水位与多行域惰性打开（2026-10-18，0.4.35）
+
+本轮只降低投影副作用与启动成本，不改 S/T、执行准入、窗口操作或业务记录语义。`src/runtime.ts` 为每个 instrument instance 记录来源水位（businessRevision、window revision、worktree revision、runtime document revision、saved policy revision、resource revision）并只在捕获成功后推进：来源未移动的重建不再重建 observation 列表、去重索引或读取 history 存储；只有投影自身的 context 读取仍会发生。`src/controls/instruments.ts`、history 捕获读取、window revision 读取与 history query 的来源 revision 改为复用既有的 memoized 解析；worktree bindings 原本已 memoized。`src/host.ts` 把 instruments、windows、resources 三个多行域的打开推迟到首次授权使用，启动只打开 startup settings、controls、policy grants 与 runtime bindings；dispose 期间迟到的打开会关闭 handle 并失败，不泄漏。没有 live Agent 的挂载从打开 7 个域降为 4 个，首次会话读取再按需打开。
+
+新增挂载级回归 `tests/capture-watermarks.test.mjs`：首次捕获后等待 2.1 s 强制重建，验证没有来源变化的投影只产生一次 context 读取、不再进入 history 捕获；随后写 ticket 仍能正常捕获。移除水位判断时该用例红（读到 2 次），恢复后绿。`tests/host.test.mjs` 相应断言挂载只创建 3 个单元（startup/controls/grants），在读取 ports 后补齐 instruments/windows/resources。全根套件 861 项 **661 通过／0 失败／200 跳过**（`0.2.1-alpha.4` 与 `0.2.1-rc.2` 读数相同）、双根 887 中 **881 通过／0 失败／6 跳过**、无宿主根 861 中 **567 通过／294 跳过**；精确 tarball verifier、可弃 e2e pack 与六宿主隔离门禁通过。
+
 ## 源码改动：工作树工具门禁接受 update-observation（2026-10-18，0.4.34）
 
 `mattpocock_worktree` 的工具说明与 runtime 自 0.4.30 起支持 `update-observation`，但宿主注册工具时的动作门禁只放行 `read`／`update`／`reconcile`，拒绝时仍把 `update-observation` 列在可接受动作里；模型因此重复尝试不同请求形状，观测清理无法落地。0.4.34 在 `src/host.ts` 补上该分支，并新增挂载级回归：把四个已公布动作逐一从真实工具注册表送进门禁，修复前红、修复后绿。全根套件 860 项 **660 通过／0 失败／200 跳过**（规范 `0.2.1-alpha.4` 与 `0.2.1-rc.2` 读数相同）、双根 886 中 **880 通过／0 失败／6 跳过**、无宿主根 860 中 **566 通过／294 跳过**。该改动不改变 S/T、执行准入、存储或业务记录语义。
@@ -270,4 +276,10 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.34.tgz`（**414867** bytes，sha256 `e27bc1057ead04142412e77d8db682cd7874be8455a8f5014d04efaa9d2dfe69`，172 成员，源提交 `91c4fe4`）经精确 tarball 验证与同一构建的 disposable e2e pack 通过：规范宿主 `0.2.1-alpha.4` 下 860 用例 **660 通过／0 失败**（200 skip）、`0.2.1-rc.2` 同读数、双宿主 886 中 **880 通过／0 失败／6 skip**、无宿主根 860 中 **566 通过／294 跳过／0 失败**。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。本轮未单独重跑 14 原生＋13 管理器的同归档矩阵；精确 verifier、e2e 与六宿主隔离门禁读的是同一归档。安装使用同一 tarball：Profile 解析为 `file:` 制品，安装后树与解包逐文件 `diff -r` 为 0。
 
 完整记录见 `dist/verification-0.4.34.json`。
+
+## 0.4.35 制品验收（2026-10-18）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.35.tgz`（**415674** bytes，sha256 `c86155943097ba2cb1eaa995a163746dd66769c2648f46275352e86ea2ef7c1b`，172 成员，源提交 `2b99bba`）经精确 tarball 验证与同一构建的 disposable e2e pack 通过：规范宿主 `0.2.1-alpha.4` 下 861 用例 **661 通过／0 失败**（200 skip）、`0.2.1-rc.2` 同读数、双宿主 887 中 **881 通过／0 失败／6 skip**、无宿主根 861 中 **567 通过／294 跳过／0 失败**。隔离门禁在 **0.2.1-alpha.1、alpha.2、alpha.3、alpha.4、rc.1、rc.2 六个真实宿主**上各自从私有源码快照安装、headless 挂载，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 均为 true，未调用模型、未起 Web、未用自定义客户端。本轮未单独重跑 14 原生＋13 管理器的同归档矩阵；精确 verifier、e2e 与六宿主隔离门禁读的是同一归档。安装使用同一 tarball：Profile 解析为 `file:` 制品，安装后树与解包逐文件 `diff -r` 为 0。
+
+完整记录见 `dist/verification-0.4.35.json`。
 
