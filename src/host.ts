@@ -1610,6 +1610,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const action = raw.action
       if (action === 'read') record(raw, 'worktree read', ['action'])
       else if (action === 'update') record(raw, 'worktree update', ['action', 'command'])
+      else if (action === 'update-observation') record(raw, 'worktree observation update', ['action', 'command'])
       else if (action === 'reconcile') record(raw, 'worktree reconcile', ['action', 'operationId'])
       else throw new ControlsError('invalid-input', 'read/update/update-observation/reconcile action required')
       await ports.authorizeCaller(caller, caller.sessionId!); return active.worktreeAction!(caller, caller.sessionId!, parseHostJson(raw), exec.signal)

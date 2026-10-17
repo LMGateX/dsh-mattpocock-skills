@@ -50,6 +50,23 @@ test('mounted native public history and worktree tools use the RuntimeFacade wit
  assert.equal(child.isError,true)
 })
 
+test('the mounted worktree tool lets every advertised action through its host gate',async t=>{
+ const f=await mountedFixture(t)
+ const cases=[
+  ['read',{action:'read'}],
+  ['update',{action:'update',command:{operationId:'gate-update',bindingId:'missing-binding',expectedRevision:0,state:'cleaned'}}],
+  ['update-observation',{action:'update-observation',command:{operationId:'gate-observation',observationId:'missing-observation',expectedRevision:0,state:'cleaned'}}],
+  ['reconcile',{action:'reconcile',operationId:'gate-reconcile'}],
+ ]
+ for(const [action,request] of cases){
+  const result=await f.execute('mattpocock_worktree',{request})
+  // The host wrapper must hand each advertised action to the runtime; a rejection here is the
+  // wrapper's own action check, not a business answer from the instrument.
+  assert.doesNotMatch(JSON.stringify(result),/read\/update\/update-observation\/reconcile action required/,action+' must reach the runtime')
+  assert.equal(result.isError,action!=='read')
+ }
+})
+
 test('RuntimeFacade delegation observes native-created child execution without making advisory limits a creation veto',async t=>{
  const f=await fixture(t,{initialPolicy:policy({enabled:true,ticketWindowSize:1,runningSubagentLimit:1})}),calls=installCreation(f),native=f.ports.createContinuable
  f.ports.createContinuable=async(exec,request)=>{const receipt=await native(exec,request);await f.runtime.created(caller(receipt.childId),signal(),f.agents.get(receipt.childId));return receipt}
