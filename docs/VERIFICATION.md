@@ -2,9 +2,9 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 未发布后续优化：直接摘要、集中调度与 owner 级失效（2026-10-21，基于 0.4.36）
+## 0.4.37 后续优化：直接摘要、集中调度与 owner 级失效（2026-10-21）
 
-本节是后续阶段，不替代下节已经完成的第一阶段记录。契约见[摘要读取设计](<SUMMARY_READS.md>)；源码／开发包与当前安装包分开，不自动授权发布、安装、SDK／Profile 修改或服务重启。
+本节是后续阶段，不替代下节已经完成的第一阶段记录。契约见[摘要读取设计](<SUMMARY_READS.md>)；源码、发行制品、Profile 安装、SDK 修改和服务重启分别核验。
 
 - [instrument summary](<../src/controls/instruments.ts>) 从同一已验证不可变文档派生专用 current-only decision index，只保存计数与授权所需字段；不会先构造 history 再裁剪。保留 all-ticket assignment、ticketless creator、viewer 私有修订、OFF／hidden／read 不消除义务及 source uncertain latch。无新持久格式或异步摘要副表。
 - [Remote](<../src/controls/remote-contract.ts>) 新增共享严格 request/result codec 与真实 AbortSignal 通道：每批 1–32 个唯一 session、版本只作传输 hint、结果逐项 current／unchanged／unavailable，总响应 256 KiB 上限。records:null 必须明确 records-unknown；有 records 不允许同时声称 records-unknown。DTO 不包含业务正文、历史、完整授权表、窗口／原生 S 或资源健康。
@@ -66,11 +66,17 @@
 
 Node 24.17.0／pnpm 11.8.0，主检出严格 Host 构建、独立 Client noEmit、最终闭合浏览器 bundle 与 entry declaration 均通过（编译堆显式 8GB）。最终 Client **209,378 B、6 个私有 browser-safe 模块，React 为唯一 external**；生成文件不是安装位置，未依赖 HMR 自动更新承诺。
 
-后续新增 **64 项**正式回归（core summary 9、Client scheduler 32、DOM 2、Runtime summary 7、共享 codec 4、scoped freshness 3、跨 owner cache 2、实际 Remote 1、性能 4）。修正新增开发包 smoke 中的同名局部变量后，最终完整根套件重新运行：**942 项，742 通过、0 失败、200 个环境门禁用例明确跳过**，**81.88 秒**。中途未完成／失败的运行不计成功，跳过项不冒称实际宿主／GUI／模型认证。
+后续新增 **64 项**正式回归（core summary 9、Client scheduler 32、DOM 2、Runtime summary 7、共享 codec 4、scoped freshness 3、跨 owner cache 2、实际 Remote 1、性能 4）。修正新增开发包 smoke 中的同名局部变量后，最终完整根套件重新运行：**942 项，742 通过、0 失败、200 个环境门禁用例明确跳过**，**81.80 秒**；双宿主（rc.2＋alpha.1）**968 项，962 通过、0 失败、6 跳过**，无宿主根 **942 项，647 通过、0 失败、295 跳过**。中途未完成／失败的运行不计成功，跳过项不冒称实际宿主／GUI／模型认证。
 
-[开发制品验证](<../tests/controls-package.test.mjs>) 另行 **2／2** 通过（11.63 秒），最终根套件也再次通过这两项：独立 scratch build 的 **68 个 JS／声明文件**逐字节匹配当前产物；真实 pnpm pack 的 **87 固定＋85 vendor＝172 文件**精确清单、模式、字节、导出目标及解包后无依赖 controls 行为通过，包含新 readSummary 与 request/result parser 的 smoke。vendor **85 文件／279,662 B**、beta／stable 各 27 skills 与原有摘要未改变，包版本仍为 0.4.36；包／兼容配置与 lockfile 未改。
+[开发制品验证](<../tests/controls-package.test.mjs>) 另行 **2／2** 通过（11.63 秒），最终根套件也再次通过这两项：独立 scratch build 的 **68 个 JS／声明文件**逐字节匹配当前产物；真实 pnpm pack 的 **87 固定＋85 vendor＝172 文件**精确清单、模式、字节、导出目标及解包后无依赖 controls 行为通过，包含新 readSummary 与 request/result parser 的 smoke。vendor **85 文件／279,662 B**、beta／stable 各 27 skills 与原有摘要未改变，发版包版本为 0.4.37；包／兼容配置与 lockfile 未改。
 
-两个本轮实现工作树在补丁整合、源／测试逐字节比较和子代理退出后已实际删除，并登记 observation cleaned；原有其它工作树不动。安装目录的 client／runtime／host 三个 SHA-256 与本轮前一致。改动保留在未提交工作区，未安装、发布、重启或修改当前 SDK／Profile 配置；开发包验证不替代清洁提交身份的正式发行 prepack／tarball 门禁，也不宣称完成六宿主安装矩阵、实 GUI／真实模型／OOM 因果认证。
+两个本轮实现工作树在补丁整合、源／测试逐字节比较和子代理退出后已实际删除，并登记 observation cleaned；原有其它工作树不动。安装目录的 client／runtime／host 三个 SHA-256 与本轮前一致。改动纳入清洁提交 `3b542b5`，并完成一次构建的正式 tarball、精确成员／字节和 `0.2.1-rc.2` 隔离门禁；源码审查后的 production diff 哈希未变；开发包验证不替代清洁提交身份的正式发行 prepack／tarball 门禁，也不宣称完成六宿主安装矩阵、实 GUI／真实模型／OOM 因果认证。
+
+## 0.4.37 制品验收（2026-10-21）
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.37.tgz`（**426853** bytes，sha256 `a55f036000e08402edcfae71a00c0333ea3a2af3776da8f6561aba13bfc46f6c`，172 成员，源提交 `3b542b5`）经精确 tarball 验证与同一源提交的 disposable e2e pack 通过：`0.2.1-rc.2` 下 942 用例 **742 通过／0 失败**（200 skip）、双宿主 968 中 **962 通过／0 失败／6 skip**、无宿主根 942 中 **647 通过／295 跳过／0 失败**。rc.2 隔离门禁在 headless profile 上从私有快照安装同一归档，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。构建模块 68、固定文件 87、vendor 85、Client **209,378 B**。本轮未重跑六宿主隔离与 14 原生＋13 管理器的同归档矩阵；精确归档、隔离门禁及版本测试已覆盖本次发行差异。
+
+完整记录见 `dist/verification-0.4.37.json`。
 
 ## 未发布源码修复：空回放缓存失效与原生目录契约（2026-10-21，基于 0.4.36）
 
