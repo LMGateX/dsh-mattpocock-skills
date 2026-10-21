@@ -11,6 +11,10 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 仪器读取减负与客户端观测（2026-10-21）
+
+已认可后续源码优化：有界直接授权 summary／版本批读、集中调度、隐藏展示订阅优化与闲置 observer 回收，按多会话大历史／错误恢复矩阵验证。完整接口、权限／当前索引／冷加载边界、FIFO 撤权屏障与验收要求见[摘要读取设计](<SUMMARY_READS.md>)。摘要与完整详情、模型消费分开；不为了性能关闭业务义务、删除历史或更改真实程序事实。源码实施不自动授权安装、发布、SDK／Profile 修改或服务重启。
+
 ## 最新认可的协作扩展范围（2026-10-06）
 
 本节是已接受的源码实施设计。参考窗口、创建绑定、当前投影、分页历史、源旧历史清理与 Host/Client 接口已有仓库实现；当前复审修复已通过机械源码／构建／测试验收，clean-source 制品门禁与交付身份另行随制品记录，见[公开验证状态](<VERIFICATION.md>)。历史阶段的本地验证记录不代表当前最终验收。本节优先于旧协作扩展中的硬容量与重资源处置规格；旧验收记录不充当本轮完成结果。

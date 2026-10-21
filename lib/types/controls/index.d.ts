@@ -10,7 +10,7 @@ export type { ControlsStorage, ControlsStateTable } from './storage.js';
 export { ControlsError } from './validation.js';
 export type { ControlsErrorCode } from './validation.js';
 export { SessionInstruments } from './instruments.js';
-export type { InstrumentAuthority, InstrumentAccess, InstrumentScope, InstrumentFilter, InstrumentSnapshot, InstrumentApplyResult } from './instruments.js';
+export type { InstrumentAuthority, InstrumentAccess, InstrumentScope, InstrumentFilter, InstrumentSnapshot, InstrumentSummary, InstrumentApplyResult } from './instruments.js';
 export { parseInstrumentCommand, parseInstrumentDocument, initialInstrumentDocument } from './instrument-state.js';
 export type { InstrumentDocument, InstrumentEvent, InstrumentAuthor, InstrumentCommand, WorkflowValue, StatusAxis, StatusDefinition, TicketValue, DecisionValue, DecisionViewValue, WorkflowRecord, TicketRecord, DecisionRecord, Change } from './instrument-state.js';
 export { MemoryInstrumentStorage, createDomainInstrumentStorage } from './instrument-storage.js';

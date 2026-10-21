@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fixture, actualAgent, caller, policy, signal } from './fixtures/runtime-host.mjs'
+import { fixture, actualAgent, caller, policy, signal, deferred } from './fixtures/runtime-host.mjs'
 
 const oid = 'a'.repeat(40)
 const success = (over = {}) => ({ isError: false, value: { path: '/trees/A', branch: 'worktree-A', baseCommit: oid, repositoryRoot: '/repo', ...over } })
@@ -145,6 +145,114 @@ test('the first snapshot returns without waiting for the background replay scan'
   assert.deepEqual(first.worktreeObservations, [])
   release()
   await until(async () => (await f.read()).worktreeObservations.length === 1)
+})
+
+test('background replay verification invalidates a cached unverified observation when it commits', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const f = await fixture(t, { initialPolicy: policy() })
+  const child = actualAgent('verify-replay-child', { parent: 'root', managed: true })
+  const descriptor = child.session.ownEvents()[0]
+  const payload = JSON.stringify(success().value)
+  child.session.ownEvents = () => [descriptor,
+    { type: 'tool/call', data: { turn: 3, step: 1, callId: 'verify-replay', name: 'create_worktree', arguments: '{}' } },
+    { type: 'tool/result', data: { message: { toolCallId: 'verify-replay', content: [{ type: 'text', text: payload }] } } },
+  ]
+  const verify = deferred(), committed = deferred()
+  t.after(() => verify.resolve())
+  const runner = gitRunner()
+  runner.authorize = async () => { await verify.promise }
+  f.setRunner(() => runner)
+  await f.created(child)
+  await f.read()
+  await new Promise(resolve => setImmediate(resolve))
+  const unverified = await f.read()
+  assert.equal(checkState(unverified), 'unverified')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.strictEqual(await f.read(), unverified, 'the pending verification alone is not a mutation')
+  // Synchronize at the supplied storage port, but observe the result through readSession.
+  const store = [...f.units].find(([name]) => name.startsWith('worktree_observations_'))[1]
+  const cas = store.compareAndSwap.bind(store)
+  store.compareAndSwap = async (...args) => {
+    const result = await cas(...args)
+    if (result) committed.resolve()
+    return result
+  }
+  verify.resolve()
+  await committed.promise
+  await new Promise(resolve => setImmediate(resolve))
+  const verified = await f.read()
+  assert.equal(checkState(verified), 'verified', 'the committed check must appear without waiting for the freshness window')
+  assert.equal(verified.worktreeObservations[0].source, 'replay')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.strictEqual(await f.read(), verified, 'settled replay must stop invalidating the projection')
+})
+
+test('a rejected replay verification write invalidates the owner health without claiming a checked fact', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const f = await fixture(t, { initialPolicy: policy() })
+  const child = actualAgent('write-failed-replay-child', { parent: 'root', managed: true })
+  const descriptor = child.session.ownEvents()[0]
+  child.session.ownEvents = () => [descriptor,
+    { type: 'tool/call', data: { turn: 3, step: 1, callId: 'write-failed-replay', name: 'create_worktree', arguments: '{}' } },
+    { type: 'tool/result', data: { message: { toolCallId: 'write-failed-replay', content: [{ type: 'text', text: JSON.stringify(success().value) }] } } },
+  ]
+  const verify = deferred(), attempted = deferred()
+  t.after(() => verify.resolve())
+  const runner = gitRunner()
+  runner.authorize = async () => { await verify.promise }
+  f.setRunner(() => runner)
+  await f.created(child)
+  await f.read()
+  await new Promise(resolve => setImmediate(resolve))
+  const before = await f.read()
+  assert.equal(checkState(before), 'unverified')
+  assert.equal(before.health.some(row => row.scope === 'worktree-observations'), false)
+  const store = [...f.units].find(([name]) => name.startsWith('worktree_observations_'))[1]
+  store.compareAndSwap = async () => { attempted.resolve(); throw new Error('fixture verification write rejected') }
+  verify.resolve()
+  await attempted.promise
+  await new Promise(resolve => setImmediate(resolve))
+  const after = await f.read()
+  assert.equal(checkState(after), 'unverified', 'no checked fact was committed')
+  assert.deepEqual(after.health.filter(row => row.scope === 'worktree-observations'), [
+    { scope: 'worktree-observations', status: 'unknown', reason: 'Error: fixture verification write rejected' },
+  ])
+  await new Promise(resolve => setImmediate(resolve))
+  assert.strictEqual(await f.read(), after, 'an unchanged write failure must not keep invalidating')
+  await f.read('other')
+  await new Promise(resolve => setImmediate(resolve))
+  const other = await f.read('other')
+  assert.equal(other.health.some(row => row.scope === 'worktree-observations'), false)
+})
+
+test('a failed background replay invalidates the owner projection with an honest health diagnostic', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const f = await fixture(t, { initialPolicy: policy() })
+  const child = actualAgent('failed-replay-child', { parent: 'root', managed: true })
+  await f.created(child)
+  const facts = f.ports.sessionFacts, replay = deferred()
+  t.after(() => replay.resolve())
+  f.ports.sessionFacts = async id => {
+    if (id === child.id) { await replay.promise; throw new Error('fixture replay read rejected') }
+    return facts(id)
+  }
+  await f.read()
+  await new Promise(resolve => setImmediate(resolve))
+  const before = await f.read()
+  assert.equal(before.health.some(row => row.scope === 'worktree-observations'), false)
+  replay.resolve()
+  await new Promise(resolve => setImmediate(resolve))
+  const after = await f.read()
+  assert.deepEqual(after.health.filter(row => row.scope === 'worktree-observations'), [
+    { scope: 'worktree-observations', status: 'unknown', reason: 'Error: fixture replay read rejected' },
+  ])
+  assert.deepEqual(after.worktreeObservations, [])
+  await new Promise(resolve => setImmediate(resolve))
+  assert.strictEqual(await f.read(), after, 'the unchanged failure must not repeatedly dirty reads')
+  await f.read('other')
+  await new Promise(resolve => setImmediate(resolve))
+  const other = await f.read('other')
+  assert.equal(other.health.some(row => row.scope === 'worktree-observations'), false, 'replay health belongs to its owner instance')
 })
 
 test('a terminal item names the trees its child created, and creation itself never wakes the owner', async t => {

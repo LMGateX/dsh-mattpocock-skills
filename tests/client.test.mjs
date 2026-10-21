@@ -28,6 +28,12 @@ function snapshot(sessionId = 'session-one', overrides = {}) {
     records: null, windows: null, resources: [], capabilities: [], health: [], ...overrides }
 }
 
+function summarySnapshot(sessionId) {
+  return { sessionId, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, instance,
+    policy: { configurationRevision: 4, controlWorkspaceId: 'workspace-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true,
+      display: { header: true, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } },
+    records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] }
+}
 function contextFixture() {
   const entries = []
   const effects = []
@@ -40,7 +46,8 @@ function contextFixture() {
   ])
   const remote = { $mount: async contribution => { mounts.push(contribution); return async () => {} },
     mattpocockControls: { readPolicy: async () => ok(policy), savePolicy: async intent => ok({ ...intent, revision: 5 }),
-      listWorkspaces: async () => ok([]), readSession: async id => ok(snapshot(id)), applyInstrument: async () => ok({}),
+      listWorkspaces: async () => ok([]), readSession: async id => ok(snapshot(id)),
+      readSummaries: async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'a'.repeat(64), summary: summarySnapshot(sessionId) })) }), applyInstrument: async () => ok({}),
       historyAction: async () => ok({}), worktreeAction: async () => ok({}) } }
   const ctx = { remote, inject: (dependencies, callback) => { assert.deepEqual(dependencies, ['remote.mattpocockControls']); return callback(ctx) },
     effect: callback => { const cleanup = callback(); effects.push(cleanup); return cleanup },
@@ -141,18 +148,18 @@ test('refresh supersession retains the newest committed result only', async () =
 
 test('header unknown does not counterfeit a pending count and details opens only on click', async () => {
   const unknown = new client.SessionObserver('A', async () => ok(snapshot('A')), 0)
-  const rendered = client.HeaderEntry({ observer: unknown, openDetails: () => { throw new Error('automatic open') } })
+  const rendered = client.ObservedHeaderEntry({ observer: unknown, openDetails: () => { throw new Error('automatic open') } })
   assert.match(JSON.stringify(rendered), /状态未知/)
   assert(!JSON.stringify(rendered).includes('裁决 0'))
   const fixture = contextFixture(); await client.apply(fixture.ctx)
   const entry = fixture.entries.find(row => row.options?.name === 'conversation.session.header.utilities')
-  const face = entry.options.inject('session-one'); const stop = face.observer.retain(); await settle()
+  const face = entry.options.inject('session-one'); const stop = face.summary.retain(); await new Promise(resolve => setTimeout(resolve, 10)); await settle()
   assert.equal(fixture.opens.length, 0)
   face.openDetails(); assert.equal(fixture.opens.length, 1)
   assert.equal(fixture.opens[0][0], client.TAB_KIND)
   assert.equal(fixture.opens[0][1].preferNewPane, true)
   assert.equal(fixture.opens[0][1].replaceTab, undefined)
-  const old = entry.options.inject('other-session'); const end = old.observer.retain(); await settle(); old.openDetails(); assert.equal(fixture.opens.length, 1)
+  const old = entry.options.inject('other-session'); const end = old.summary.retain(); await new Promise(resolve => setTimeout(resolve, 10)); await settle(); old.openDetails(); assert.equal(fixture.opens.length, 1)
   stop(); end(); for (const effect of fixture.effects.reverse()) effect?.(); unknown.dispose()
 })
 
@@ -246,16 +253,16 @@ test('timeline registration claims exactly this package tools and retains histor
   const keys = fixture.entries.filter(row => row.options?.name === 'tool.call.toolview').map(row => row.options.key)
   assert.deepEqual(keys, ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate'])
   assert(!keys.includes('bash')); assert(!keys.includes('ask_user_question'))
-  const observer = new client.SessionObserver('A', async () => ok(snapshot('A')), 0)
+  const summaries = new client.SummaryScheduler(async () => ok({ rows: [] }))
   const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'original historical result' }], isError: false }
-  const rendered = client.SourceCard({ observer, openDetails: () => {}, phase: 'result', callId: 'c', toolName: 'mattpocock_record', block })
+  const rendered = client.SourceCard({ summary: summaries.observe('A'), openDetails: () => {}, phase: 'result', callId: 'c', toolName: 'mattpocock_record', block })
   assert.match(JSON.stringify(rendered), /original historical result/)
-  observer.dispose(); for (const effect of fixture.effects.reverse()) effect?.()
+  summaries.dispose(); for (const effect of fixture.effects.reverse()) effect?.()
 })
 
-test('readSession and historyAction descriptors support genuine caller cancellation without identity wire claims', async () => {
+test('snapshot summary and history descriptors support genuine caller cancellation without identity wire claims', async () => {
   const fixture = contextFixture(); await client.apply(fixture.ctx)
-  for (const [method, wires] of [['readSession', ['sessionId']], ['historyAction', ['sessionId', 'request']]]) {
+  for (const [method, wires] of [['readSession', ['sessionId']], ['readSummaries', ['request']], ['historyAction', ['sessionId', 'request']]]) {
     const descriptor = fixture.mounts[0].descriptors.find(row => row.method === method)
     assert.equal(descriptor.cancellation?.parameter, 'signal')
     assert.deepEqual(descriptor.parameters.map(row => row.wire), wires)
@@ -345,7 +352,7 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   const view = snapshot('A', { records, windows, resources: [{ resourceId: 'r1', status: 'retained' }] })
   const observer = new client.SessionObserver('A', async () => ok(view), 0)
   const release = observer.retain(); await settle()
-  const rendered = client.HeaderEntry({ observer, openDetails: () => { throw new Error('automatic open') } })
+  const rendered = client.ObservedHeaderEntry({ observer, openDetails: () => { throw new Error('automatic open') } })
   const text = JSON.stringify(rendered)
   assert.match(text, /票 7/); assert.match(text, /部分接口可评审 3/)
   assert.match(text, /待用户裁决 2/); assert.match(text, /待落实 1/)
@@ -578,8 +585,8 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   fixture.ctx.remote.mattpocockControls.readSession = async id => ok(snapshot(id, { windows }))
   await client.apply(fixture.ctx); t.after(() => { for (const effect of fixture.effects.reverse()) effect?.() })
   const header = fixture.entries.find(row => row.options?.name === 'conversation.session.header.utilities')
-  const face = header.options.inject('session-one'); const release = face.observer.retain(); t.after(release); await settle()
-  const rendered = client.HeaderEntry({ sessionId: 'session-one', ...face })
+  const face = header.options.inject('session-one'); const release = face.observe().retain(); t.after(release); await settle()
+  const rendered = client.ObservedHeaderEntry({ sessionId: 'session-one', ...face, observer: face.observe() })
   assert.match(JSON.stringify(rendered), /T 5\/4/); assert.match(JSON.stringify(rendered), /超出 1/); assert.match(JSON.stringify(rendered), /差额 -1/)
   assert.doesNotMatch(JSON.stringify(rendered), /参考/, 'the input-area progress never hedges its own numbers')
   assert.match(JSON.stringify(rendered), /S 在跑 0/); assert.match(JSON.stringify(rendered), /总数未知/)
@@ -605,11 +612,11 @@ test('binding aggregate failure stays unknown in mounted header and late A write
   fixture.ctx.remote.mattpocockControls.worktreeAction = async () => new Promise(resolve => { resolveWrite = resolve })
   await client.apply(fixture.ctx); t.after(() => { for (const effect of fixture.effects.reverse()) effect?.() })
   const face = fixture.entries.find(row => row.options?.name === 'conversation.session.header.utilities').options.inject('session-one')
-  const release = face.observer.retain(); t.after(release); await settle()
-  const header = client.HeaderEntry({ ...face, sessionId: 'session-one' })
+  const release = face.observe().retain(); t.after(release); await settle()
+  const header = client.ObservedHeaderEntry({ ...face, sessionId: 'session-one', observer: face.observe() })
   assert.match(JSON.stringify(header), /工作树绑定未知/)
   assert(!JSON.stringify(header).includes('工作树绑定 0'))
-  const view = face.observer.getSnapshot().value
+  const view = face.observe().getSnapshot().value
   const panel = client.WorktreeBindingsPanel({ view, remote: fixture.ctx.remote.mattpocockControls, refresh: async () => {} })
   assert.match(JSON.stringify(panel), /registry unavailable/)
   const mounted = hookFixture(); t.after(() => mounted.unmount())
@@ -834,7 +841,7 @@ test('resource domain failure is unknown rather than zero, while cold physical f
   assert(!client.compactInstrumentSummary(failed).parts.some(part => part.includes('资源 0')))
   const observer = new client.SessionObserver('A', async () => ok(failed), 0)
   const release = observer.retain(); await settle()
-  const header = client.HeaderEntry({ observer, openDetails: () => {} })
+  const header = client.ObservedHeaderEntry({ observer, openDetails: () => {} })
   assert.match(JSON.stringify(header), /资源未知/)
   assert(!JSON.stringify(header).includes('资源 0'))
   const details = client.Details({ observer, sessionId: 'A', remote: {}, openDetails: () => {}, useTabInfo: () => ({ tab: { visible: true } }) })

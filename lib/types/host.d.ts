@@ -13,7 +13,7 @@ import type { PolicyIntent, PolicySnapshot } from './controls/policy.js';
 import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js';
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js';
 import type { VersionedStorage } from './controls/versioned-storage.js';
-import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow } from './controls/remote-contract.js';
+import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js';
 import { StartupSupport } from './controls/startup-support.js';
 import type { StartupStatus } from './controls/startup-state.js';
 declare module '@deepseek-ai/dsh-llm' {
@@ -157,6 +157,7 @@ export interface RuntimeFacade {
     readPolicy(caller: HostCaller, signal: AbortSignal): Promise<PolicySnapshot>;
     savePolicy(caller: HostCaller, intent: PolicyIntent, expectedRevision: number, signal: AbortSignal): Promise<PolicySnapshot>;
     readSession(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<unknown>;
+    readSummaries(caller: HostCaller, request: SessionSummaryRequest, signal: AbortSignal): Promise<SessionSummaryBatch>;
     applyInstrument(caller: HostCaller, sessionId: string, command: InstrumentCommand, signal: AbortSignal): Promise<unknown>;
     applyTicketWindow(caller: HostCaller, sessionId: string, command: TicketWindowCommand, signal: AbortSignal): Promise<unknown>;
     resourceAction(caller: HostCaller, sessionId: string, request: ResourceAction, signal: AbortSignal): Promise<unknown>;
@@ -301,6 +302,7 @@ export declare class MattPocockControlsService extends TypertRemoteService {
     savePolicy(intent: unknown, expectedRevision: unknown): Promise<PolicySnapshot>;
     listWorkspaces(): Promise<readonly WorkspaceRow[]>;
     readSession(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<HostJson>;
+    readSummaries(request: unknown, suppliedSignal?: AbortSignal): Promise<SessionSummaryBatch>;
     applyInstrument(sessionId: unknown, command: unknown): Promise<HostJson>;
     applyTicketWindow(sessionId: unknown, command: unknown): Promise<HostJson>;
     historyAction(sessionId: unknown, request: unknown, suppliedSignal?: AbortSignal): Promise<HostJson>;

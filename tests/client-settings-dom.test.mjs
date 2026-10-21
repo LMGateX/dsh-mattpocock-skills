@@ -334,7 +334,7 @@ test('input summary DOM centers its bounded box and column text without turning 
     records: null, windows: null, resources: [], capabilities: [], health: [] }
   const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
   t.after(() => observer.dispose())
-  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
   const summary = named(container, '协作进度摘要')
   assert.equal(summary.style.display, 'flex')
   assert.equal(summary.style.flexDirection, 'column')
@@ -490,7 +490,7 @@ for (const [countingScope, label, otherLabel] of [
       windows: null, resources: [], capabilities: [], health: [] }
     const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
     t.after(() => observer.dispose())
-    const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+    const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
     const summary = named(container, '协作进度摘要')
     assert(summary.textContent.includes(label))
     assert(!summary.textContent.includes(otherLabel), 'scope is translated from actual facts, not hardcoded')
@@ -567,7 +567,7 @@ test('input summary reports the closed global gate instead of live-looking numbe
     windows: null, resources: [], capabilities: [], health: [] }
   const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
   t.after(() => observer.dispose())
-  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
   const summary = named(container, '协作进度摘要')
   assert.match(summary.textContent, /协作管理未生效：全局总闸已关闭/)
   assert.doesNotMatch(summary.textContent, /本工作区总闸已关闭/)
@@ -584,7 +584,7 @@ test('input summary reports the closed workspace gate distinctly from the global
     windows: null, resources: [], capabilities: [], health: [] }
   const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
   t.after(() => observer.dispose())
-  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
   const summary = named(container, '协作进度摘要')
   assert.match(summary.textContent, /协作管理未生效：本工作区总闸已关闭/)
   assert.doesNotMatch(summary.textContent, /全局总闸已关闭/)
@@ -601,8 +601,62 @@ test('input summary stays silent while both gates are open', async t => {
     windows: null, resources: [], capabilities: [], health: [] }
   const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
   t.after(() => observer.dispose())
-  const { container } = await mount(t, client.InputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
+  const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
   const summary = named(container, '协作进度摘要')
   assert.match(summary.textContent, /票 7/)
   assert.doesNotMatch(summary.textContent, /协作管理未生效/)
+})
+
+test('hidden header input and source cards use summary policy without retaining a full snapshot', async t => {
+  const display = { header: false, inputSummary: false, rightPanel: true, sessionList: false, timeline: false }
+  const instance = { instrumentInstanceId: 'gate-instance', ownerSessionId: 'gate', controlWorkspaceId: 'work-one' }
+  let fullReads = 0
+  const scheduler = new client.SummaryScheduler(async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'a'.repeat(64),
+    summary: { sessionId, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, instance,
+      policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: false, workspaceEnabled: false, display: { ...display } },
+      records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] } })) }))
+  const cache = new client.SessionObserverCache(async sessionId => { fullReads++; return ok({ sessionId, instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', configurationRevision: 1, display: { ...display }, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null } }, records: null, windows: null, resources: [], capabilities: [], health: [] }) }, 0)
+  t.after(() => { scheduler.dispose(); cache.dispose() })
+  const face = { summary: scheduler.observe('gate'), observe: () => cache.observe('gate'), openDetails: () => assert.fail('must never auto-open') }
+  const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'historical source survives display hiding' }], isError: false }
+  function Gates() { return React.createElement(React.Fragment, null,
+    React.createElement(client.HeaderEntry, { sessionId: 'gate', ...face }), React.createElement(client.InputSummary, { sessionId: 'gate', ...face }),
+    React.createElement(client.SourceCard, { phase: 'result', callId: 'c', toolName: 'mattpocock_record', block, ...face })) }
+  const { container } = await mount(t, Gates, {})
+  const flush = async () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  await flush()
+  assert.equal(fullReads, 0); assert.equal(cache.size, 0)
+  assert.match(container.textContent, /historical source survives/)
+  display.header = true; display.inputSummary = true; scheduler.refresh(); await flush()
+  assert.equal(fullReads, 1, 'visible header and input share one full observer')
+  assert.equal(cache.size, 1)
+  display.header = false; display.inputSummary = false; scheduler.refresh(); await flush()
+  assert.equal(cache.observe('gate').getSnapshot().status, 'unknown', 'hiding both surfaces releases the last full holder')
+  assert.equal(fullReads, 1); assert.match(container.textContent, /historical source survives/)
+})
+
+test('badge policy gate stays idle at the same committed revision and resumes on root policy revision', async t => {
+  let revision = 1, reads = 0, fullReads = 0, enabled = false, unknown = false
+  const visibility = new client.PolicyObserver(async () => ok({ revision, extensionEnabled: false, defaults: { display: { sessionList: true } }, workspaceOverrides: {} }))
+  const scheduler = new client.SummaryScheduler(async request => { reads++; return ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'b'.repeat(64),
+    summary: { sessionId, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, instance: { instrumentInstanceId: 'i', ownerSessionId: sessionId, controlWorkspaceId: 'W' },
+      policy: { configurationRevision: revision, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: false, workspaceEnabled: false,
+        display: { header: false, inputSummary: false, rightPanel: false, sessionList: enabled, timeline: false } },
+      records: unknown ? null : { businessRevision: 1, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 1 } },
+      health: unknown ? [{ scope: 'records', status: 'unknown', reason: 'read failed' }] : [] } })) }) })
+  t.after(() => { scheduler.dispose(); visibility.dispose() })
+  await visibility.refresh()
+  const props = { sessionId: 'badge', visibility, observeSummary: id => scheduler.observe(id), observe: () => { fullReads++; throw new Error('badge must not use full read') } }
+  const { container } = await mount(t, client.WorkspaceBadge, props)
+  const flush = async () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  await flush(); assert.equal(reads, 1); assert.equal(container.textContent, '')
+  await React.act(async () => visibility.refresh()); await flush()
+  assert.equal(reads, 1, 'false per-session display does not resume merely because root policy rerendered')
+  revision = 2; enabled = true
+  await React.act(async () => visibility.refresh()); await flush()
+  assert.equal(reads, 2); assert.equal(container.textContent, '1')
+  unknown = true; scheduler.refresh(); await flush()
+  assert.equal(container.textContent, '?', 'missing records are unknown, never a fabricated zero')
+  assert.equal(fullReads, 0)
 })

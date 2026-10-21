@@ -11,7 +11,7 @@ test('activity resolves through direct children and never walks the whole subtre
   let children = 0, walks = 0
   const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => {
     ctx.provide('subagents', {
-      async listChildren() { children += 1; return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] },
+      async listChildren() { children += 1; return [{ id: 'child', createdAt: 0, mode: 'continuable', label: 'child' }] },
       async listDescendants() { walks += 1; return [] },
     })
   } })

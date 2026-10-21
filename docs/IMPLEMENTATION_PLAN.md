@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.0`, mirroring upstream release `v1.3.1`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 仪器读取后续优化（2026-10-21）
+
+按[摘要读取契约](<SUMMARY_READS.md>)继续实施，不把已完成的两个缺陷修复视作整个优化目标完成：先新增直接 current-only 摘要及有界认证 Remote；再接集中批读、显示 gate 与闲置 observer 回收；最后测量跨会话失效／排队、验证多会话大历史与可见性／错误恢复，再统一严格构建、完整回归、开发包字节验证及独立双轴复核。冷源加载和 OOM 归因分别限定证据，不冒称消除；FIFO 权限撤销／CAS／模型消费屏障保持。
+
 ## 最新协作功能实施（2026-10-06）
 
 已接受范围包含工作树绑定与全仪器持久化/当前注入/历史查询的源码实施。本阶段以 [DESIGN 最新要求](<DESIGN.md>)为准，取代下方旧硬容量/重资源处置控制的行为规格。

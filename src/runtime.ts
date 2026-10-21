@@ -18,8 +18,8 @@ import { createResourceModule, ResourceError } from './controls/resources.js'
 import { concreteGitAdapter, probeWorktree } from './controls/git-worktrees.js'
 import { INITIAL_RUNTIME_DOCUMENT, parseRuntimeDocument } from './controls/runtime-state.js'
 import type { RuntimeDocument, RuntimeStorage, TaskAssignment } from './controls/runtime-state.js'
-import { parseHostJson, parseResourceAction } from './controls/remote-contract.js'
-import type { HostCaller, HostJson, ResourceAction, RuntimeSnapshot } from './controls/remote-contract.js'
+import { parseHostJson, parseResourceAction, parseSessionSummaryRequest, SUMMARY_RESPONSE_LIMIT } from './controls/remote-contract.js'
+import type { HostCaller, HostJson, ResourceAction, RuntimeSnapshot, SessionSummary, SessionSummaryRequest, SessionSummaryResult, SessionSummaryBatch } from './controls/remote-contract.js'
 import type { InstrumentAuthor, InstrumentCommand, InstrumentCompactInput, InstrumentPurgeHistoryInput } from './controls/instrument-state.js'
 import type { TicketWindowCommand } from './controls/windows.js'
 import type { PolicyIntent } from './controls/policy.js'
@@ -108,7 +108,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // same watermark serves it: unchanged revisions and no mutation means the frozen value is
   // still the current projection.
   const projectionCache=new Map<string,{readonly key:string;readonly value:RuntimeSnapshot}>()
-  const touchState=():void=>{refresh.touch();project.touch()}
+  const touchState=(instanceId?:string):void=>{refresh.touch(instanceId);project.touch(instanceId)}
   const controls=new WorkspaceControls(ports.controlsStorage,ports.authority)
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
@@ -237,12 +237,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(candidate===old)return old
       const next=parseRuntimeDocument({...candidate,revision:increment(old.revision)})
       if(await storage.compareAndSwap(old.revision,next)){
-        touchState()
-        // One view per instance: the previous nested scan rebuilt the cached values array for
-        // every assignment/notification owner on every runtime document mutation.
+        // change() retains immutable rows it did not alter. Diff row identity before parsing
+        // (which detaches all rows) so owner-local notifications/assignments do not dirty
+        // every other instance. Removed rows invalidate their former owner too.
+        const before=new Set([...old.assignments,...old.bindings,...old.notifications])
+        const after=new Set([...candidate.assignments,...candidate.bindings,...candidate.notifications])
+        const owners=new Set([...before,...after].filter(row=>!before.has(row)||!after.has(row)).map(row=>row.instrumentInstanceId))
+        for(const owner of owners)touchState(owner)
+        // Capture only affected owner facts, never rebuild other owners merely because this
+        // shared storage document acquired a new revision.
         const viewsByInstance=new Map<string,SessionControlsView>()
         for(const view of cachedSessions.values())if(!viewsByInstance.has(view.instance.instrumentInstanceId))viewsByInstance.set(view.instance.instrumentInstanceId,view)
-        for(const owner of new Set([...next.assignments.map(row=>row.instrumentInstanceId),...next.notifications.map(row=>row.instrumentInstanceId)])){
+        for(const owner of owners){
           const view=viewsByInstance.get(owner)
           if(view)await captureSafely(view,()=>captureRuntime(view,next))
         }
@@ -255,10 +261,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(closing)denied('instrument runtime is disposing')
     signal?.throwIfAborted();await ports.authorizeCaller(caller,sessionId);signal?.throwIfAborted()
   }
+  const policyView=(read:SessionControlsView):SessionControlsView=>read.policy.configurationRevision<savedPolicy.revision?{...read,policy:resolvePolicy(savedPolicy,read.instance.controlWorkspaceId,read.policy.workspaceVerified)}:read
   const identity=async(caller:HostCaller,sessionId:string,signal?:AbortSignal,register=true):Promise<SessionControlsView>=>{
     await check(caller,sessionId,signal)
     const read=register?await controls.ensureSession(caller.principalId,sessionId):await controls.readSession(caller.principalId,sessionId)
-    const view=read.policy.configurationRevision<savedPolicy.revision?{...read,policy:resolvePolicy(savedPolicy,read.instance.controlWorkspaceId,read.policy.workspaceVerified)}:read
+    const view=policyView(read)
     cachedSessions.set(sessionId,view);nativeWindows.set(sessionId,view.policy.extensionEnabled&&view.policy.features.windows.requested)
     signal?.throwIfAborted();return view
   }
@@ -407,6 +414,52 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         return {controlWorkspaceId:current.instance.controlWorkspaceId,instrumentInstanceId:current.instance.instrumentInstanceId,authorId:principal}
       }},git:{planCreate:(spec,s)=>getGit().planCreate(spec,s),create:(planned,s)=>getGit().create(planned,s),borrow:(path,s)=>getGit().borrow(path,s),inspect:(r,s)=>getGit().inspect(r,s),retire:(r,d,s)=>getGit().retire(r,d,s)}})
   }
+  /** Small, current-only UI reads share the permission FIFO, not the full snapshot machinery.
+   * Yield between members so a 32-session batch cannot monopolize the effect queue. */
+  const summaries=async(caller:HostCaller,input:SessionSummaryRequest,signal:AbortSignal):Promise<SessionSummaryBatch>=>{
+    const request=parseSessionSummaryRequest(input)
+    await check(caller,undefined,signal)
+    const rows:SessionSummaryResult[]=[]
+    for(const selected of request.sessions){
+      let result:SessionSummaryResult
+      try{
+        result=await queue.run(async():Promise<SessionSummaryResult>=>{
+          await check(caller,selected.sessionId,signal)
+          // List navigation neither registers sessions nor retains them as native-runtime handles.
+          const view=policyView(await controls.readSession(caller.principalId,selected.sessionId))
+          let records:SessionSummary['records']=null,sourceRevision:number|null=null,permission:InstrumentScope|null=null
+          const health:SessionSummary['health'][number][]=[]
+          try{
+            const current=await instruments.readSummary(caller.principalId,selected.sessionId,signal)
+            sourceRevision=current.revision;permission=current.scope
+            records={businessRevision:current.businessRevision,viewerRevision:current.viewerRevision,summary:current.summary}
+          }catch(error){
+            signal.throwIfAborted()
+            if(error instanceof ControlsError&&['access-denied','unknown-session','unknown-workspace','association-conflict'].includes(error.code))throw error
+            health.push({scope:'records',status:'unknown',reason:'records-unavailable'})
+          }
+          await check(caller,selected.sessionId,signal)
+          const p=view.policy
+          const summary:SessionSummary=freeze({sessionId:selected.sessionId,caller:{kind:caller.kind,principalId:caller.principalId,sessionId:caller.sessionId},instance:view.instance,
+            policy:{configurationRevision:p.configurationRevision,controlWorkspaceId:p.controlWorkspaceId,workspaceVerified:p.workspaceVerified,extensionEnabled:p.extensionEnabled,workspaceEnabled:p.workspaceEnabled,display:p.display},records,health})
+          // A hint is never an authorization shortcut. This cut includes the actual scope and
+          // mount/source/viewer identity even when its visible numeric count happens not to change.
+          const version=createHash('sha256').update(canonical([runtimeId,view.documentRevision,sourceRevision,permission,summary])).digest('hex')
+          return selected.version===version?{sessionId:selected.sessionId,status:'unchanged',version}:{sessionId:selected.sessionId,status:'current',version,summary}
+        })
+      }catch(error){
+        signal.throwIfAborted()
+        result={sessionId:selected.sessionId,status:'unavailable',reason:error instanceof ControlsError?error.code:'summary-unavailable'}
+      }
+      const fallback=(sessionId:string):SessionSummaryResult=>({sessionId,status:'unavailable',reason:'summary-response-budget-exceeded'})
+      const remaining=request.sessions.slice(rows.length+1).map(row=>fallback(row.sessionId))
+      // Reserve room for an explicit result for every selected ID, including worst-case IDs.
+      if(Buffer.byteLength(JSON.stringify({rows:[...rows,result,...remaining]}))>SUMMARY_RESPONSE_LIMIT)result=fallback(selected.sessionId)
+      rows.push(result)
+    }
+    signal.throwIfAborted()
+    return freeze({rows})
+  }
   const snapshot=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<RuntimeSnapshot>=>queue.run(async()=>{
     const view=await identity(caller,sessionId,signal,false)
     const permission=await scope(caller.principalId,sessionId,view)
@@ -415,9 +468,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // part of the freshness key: a newly live child rebuilds the projection even with no document
     // write, and a counter stop/degradation is never masked by a cached snapshot.
     const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length
-    const epoch=project.epoch()
+    const epoch=project.epoch(view.instance.instrumentInstanceId)
     const projection=projectionCache.get(projectionBase)
-    if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase))return projection.value
+    if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId))return projection.value
     const health: {scope:string;status:string;reason:string|null}[]=[]
     let records:RuntimeSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
     try{records=await instruments.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
@@ -435,8 +488,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(permission.kind==='coordinator'){
         // Replay scans every live descendant's own session facts; it is enrichment, not part of
         // this read. Run it once per instance off the read path, and invalidate the projection
-        // when it lands so the next rebuild carries the recovered rows.
-        void replayWorktreeObservations(view).then(()=>touchState()).catch(()=>undefined)
+        // only when it recovers facts so completed or empty replay cannot dirty a hot read.
+        void replayWorktreeObservations(view).catch(()=>undefined)
         const registry=await (await openObservations(view)).query(view.instance),assignments=(await load()).assignments
         observationRows=registry.rows
         worktreeObservations=registry.current.map(row=>{
@@ -492,7 +545,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...(await load()).assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
     const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
-    project.record(projectionBase,epoch)
+    project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
     while(projectionCache.size>64)projectionCache.delete(projectionCache.keys().next().value as string)
     return value
@@ -517,8 +570,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // resource, unsupported legacy action), so they settle like other pre-commit rejections.
   const preCommit=(error:unknown):boolean=>isPreCommitRejection(error)||error instanceof ResourceError
   const track=<T>(instanceId:string,effect:()=>Promise<T>):Promise<T>=>{
-    touchState()
-    const commit=queue.run(effect)
+    touchState(instanceId)
+    // Also invalidate after settlement: an earlier read may still be resolving identity
+    // when this effect is queued and must not stamp the pre-commit state as fresh.
+    const commit=queue.run(async()=>{try{return await effect()}finally{touchState(instanceId)}})
     // The frontier guards reads against acknowledged-but-unpersisted writes. A command that
     // was rejected before its durable write claims nothing, so it must not degrade the next
     // snapshot to unknown durability. Real write outcomes stay unknown.
@@ -532,6 +587,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const observationLifetime=new AbortController()
   const observationFailures=new Map<string,string>(),failedObservationSessions=new Set<string>()
   const observationReplays=new Set<string>()
+  const markObservationFailure=(view:SessionControlsView,error:unknown):void=>{
+    const key=view.instance.instrumentInstanceId,reason=String(error).slice(0,1024)
+    if(observationFailures.get(key)!==reason){observationFailures.set(key,reason);touchState(view.instance.instrumentInstanceId)}
+  }
   const programAuthor:InstrumentAuthor={kind:'user',principalId:ports.operatorPrincipal,sessionId:null}
   const creationFromValue=(value:unknown):{readonly path:string;readonly branch:string;readonly baseCommit:string;readonly repositoryRoot:string}|null=>{
     if(value===null||typeof value!=='object'||Array.isArray(value))return null
@@ -547,7 +606,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   /** tracked=false is required on the snapshot read path: the queue must not re-enter itself. */
   const applyObservationCheck=async(view:SessionControlsView,input:WorktreeObservationCheckInput,tracked=true):Promise<void>=>{
     const registry=await openObservations(view)
-    if(!tracked){await registry.check(view.instance,programAuthor,input);return}
+    // Replay verification finishes outside the read queue, possibly after a hot snapshot was
+    // cached. Its committed check is a mutation too; merely starting replay is not.
+    if(!tracked){await registry.check(view.instance,programAuthor,input);touchState(view.instance.instrumentInstanceId);return}
     await track(view.instance.instrumentInstanceId,()=>registry.check(view.instance,programAuthor,input))
   }
   /** E2: prove the checkout with the authorized Git runner anchored at the owner session. A
@@ -563,7 +624,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }catch(error){
       if(observationLifetime.signal.aborted)return
       try{await applyObservationCheck(view,{observationId,kind:'failed',diagnostic:String(error).slice(0,1024)},tracked)}
-      catch(writeError){observationFailures.set('verify',String(writeError).slice(0,1024))}
+      catch(writeError){if(!observationLifetime.signal.aborted)markObservationFailure(view,writeError)}
     }
   }
   /** E1: append the creation fact with the tool result, then verify asynchronously. The append is
@@ -601,19 +662,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       for(const agent of ports.liveAgents()){
         const creatorSessionId=String(agent.id)
         if(creatorSessionId===view.instance.ownerSessionId||agent.session.header.origin!=='subagent')continue
-        const facts=await ports.sessionFacts(creatorSessionId)
         const child=await controls.readSession(ports.operatorPrincipal,creatorSessionId).catch(()=>undefined)
         if(child===undefined||child.instance.instrumentInstanceId!==key)continue
+        const facts=await ports.sessionFacts(creatorSessionId)
         for(const input of scanObservedCreations(facts.events,creatorSessionId)){
           const registry=await openObservations(view)
-          // The snapshot read already holds the effect queue, so replay writes directly and hands
-          // verification to the asynchronous path instead of re-entering the queue.
+          // Replay starts from a snapshot that holds the effect queue. Write directly without
+          // re-entering it, then invalidate only for a committed creation fact.
           const {recorded,row}=await registry.observe(view.instance,programAuthor,input,'replay')
-          if(recorded)void verifyWorktreeObservation(view,row.observationId,row.value.path,false)
+          if(recorded){touchState(view.instance.instrumentInstanceId);void verifyWorktreeObservation(view,row.observationId,row.value.path,false)}
         }
       }
     }catch(error){
-      if(!observationLifetime.signal.aborted)observationFailures.set('replay',String(error).slice(0,1024))
+      if(!observationLifetime.signal.aborted)markObservationFailure(view,error)
     }
   }
   const directParentMessage=(exec:ToolExecution):boolean=>{
@@ -721,8 +782,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // projection is reused. Delivery is still decided below, so an undelivered snapshot is
     // re-offered exactly as before, and a degraded cache still takes the full read.
     const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision
-    const refreshEpoch=refresh.epoch()
-    const mayReuse=!refresh.shouldRefresh(refreshKey)
+    const refreshEpoch=refresh.epoch(view.instance.instrumentInstanceId)
+    const mayReuse=!refresh.shouldRefresh(refreshKey,view.instance.instrumentInstanceId)
     // Within the gate window the last prepared projection is reused, including the explicitly
     // stale text of a failed refresh: a slow read must neither blank the instrument nor be
     // re-attempted on every step. Degraded text is never returned as current.
@@ -732,30 +793,30 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // A superseded read is an ordering outcome, not a failed instrument: the newer read owns
     // the state and the gate, so this caller must not install a false unknown snapshot.
     if(result!==null&&result.reason==='superseded-read')return []
-    if(result!==null)refresh.record(refreshKey,refreshEpoch)
+    if(result!==null)refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId)
     // Preparation is not delivery. Replay only after this consumption verified freshness.
     const freshness=result===null?(held!.fresh?'current':'stale'):result.freshness
     const text=result===null?held!.text:result.text??(result.freshness==='current'?consumption.cachedText(key):null)
-    if(text===null){refresh.record(refreshKey,refreshEpoch);return []}
+    if(text===null){refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId);return []}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId])
     try{
-      refresh.record(refreshKey,refreshEpoch)
+      refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId)
       // An identical snapshot that is still visible in the real session, or was already queued
       // during this step, is not installed again: fresh or stale, a failing refresh must not
       // append the same facts at every step or after every nested tool result.
       return installSnapshot(caller,acceptedMessages,text,baselineKey)
     }catch(error){signal.throwIfAborted()
-      refresh.record(refreshKey,refreshEpoch)
+      refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId)
       return installSnapshot(caller,acceptedMessages,'Instrument snapshot exceeds its representation boundary. Current detail is unknown here, not zero or release proof. Accepted business input is retained; use instrument tools for detail.',baselineKey)
     }
   }
   const facade:RuntimeFacade={
-    async serializePolicyPermission(effect){return queue.run(effect)},
+    async serializePolicyPermission(effect){touchState();return queue.run(async()=>{try{return await effect()}finally{touchState()}})},
     async readPolicy(caller,signal){await check(caller,undefined,signal);return controls.readPolicy(caller.principalId)},
     async savePolicy(caller,intent:PolicyIntent,expectedRevision,signal){
       await check(caller,undefined,signal)
       return queue.run(async()=>{signal.throwIfAborted();transitioning=intent
-        try{const saved=await controls.savePolicy(caller.principalId,intent,expectedRevision);savedPolicy=saved
+        try{const saved=await controls.savePolicy(caller.principalId,intent,expectedRevision);if(savedPolicy.revision!==saved.revision)touchState();savedPolicy=saved
           for(const [sid,view]of cachedSessions){let verified=false;try{verified=await ports.authority.verifyWorkspace(view.instance.controlWorkspaceId)}catch{/* Preserve committed policy while reporting unverified workspace. */}
             const next={...view,policy:resolvePolicy(saved,view.instance.controlWorkspaceId,verified)};cachedSessions.set(sid,next);nativeWindows.set(sid,next.policy.extensionEnabled&&next.policy.features.windows.requested)}
           for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values())await captureSafely(view,async()=>{await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]);marksFor(view.instance.instrumentInstanceId).configuration=saved.revision})
@@ -763,6 +824,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         }finally{transitioning=null}})
     },
     async readSession(caller,sessionId,signal){return snapshot(caller,id(sessionId,'sessionId'),signal)},
+    async readSummaries(caller,request,signal){return summaries(caller,request,signal)},
     async applyInstrument(caller,sessionId,command:InstrumentCommand,signal){
       const view=await identity(caller,sessionId,signal)
       const result=await track(view.instance.instrumentInstanceId,async()=>{

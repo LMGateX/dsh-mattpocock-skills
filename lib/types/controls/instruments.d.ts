@@ -62,6 +62,18 @@ export interface InstrumentSnapshot {
         readonly awaitingImplementationCount: number;
     };
 }
+/** Current authorized badge facts; no retained versions, changes or decision bodies. */
+export interface InstrumentSummary {
+    readonly instance: InstrumentInstance;
+    readonly revision: number;
+    readonly businessRevision: number;
+    readonly viewerRevision: number;
+    readonly scope: InstrumentScope;
+    readonly summary: {
+        readonly countingScope: 'instance' | 'assignment';
+        readonly pendingUserDecisionCount: number;
+    };
+}
 export interface InstrumentApplyResult {
     readonly appliedRevision: number;
     readonly replayed: boolean;
@@ -73,7 +85,7 @@ export interface InstrumentCleanupResult extends InstrumentApplyResult {
     readonly coverage: readonly InstrumentCleanupCoverage[];
 }
 export type { InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentHistoryTarget, InstrumentCleanupCoverage } from './instrument-state.js';
-/** Two-operation unmounted instrument seam; records model/user judgment, never judges it. */
+/** Unmounted instrument seam; records model/user judgment, never judges it. */
 export declare class SessionInstruments {
     private readonly controls;
     private readonly storage;
@@ -81,6 +93,7 @@ export declare class SessionInstruments {
     private readonly now;
     constructor(controls: WorkspaceControls, storage: InstrumentStorage, authority: InstrumentAuthority, now?: () => number);
     read(principal: string, sessionId: string, filter?: InstrumentFilter): Promise<InstrumentSnapshot>;
+    readSummary(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentSummary>;
     apply(principal: string, sessionId: string, input: InstrumentCommand): Promise<InstrumentApplyResult>;
     compact(principal: string, sessionId: string, input: InstrumentCompactInput, signal?: AbortSignal): Promise<InstrumentCleanupResult>;
     purgeHistory(principal: string, sessionId: string, input: InstrumentPurgeHistoryInput, signal?: AbortSignal): Promise<InstrumentCleanupResult>;

@@ -1,6 +1,6 @@
 import { parseStartupDesired, parseStartupStatus } from './startup-state.js'
 import type { StartupDesired, StartupStatus } from './startup-state.js'
-import { parsePolicyIntent, parsePolicySnapshot } from './policy.js'
+import { parsePolicyIntent, parsePolicySnapshot, DISPLAY_NAMES } from './policy.js'
 import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js'
 import { parseInstrumentCommand } from './instrument-state.js'
 import type { InstrumentSnapshot } from './instruments.js'
@@ -11,11 +11,11 @@ import type { InvocationDescriptor, TypertCodec, TypertRemoteContribution } from
 import type { InstrumentCommand } from './instrument-state.js'
 import type { TicketWindowCommand } from './windows.js'
 import type { CreateWorktree, ResourceBusiness, RetireDisposition } from './resources.js'
-import { array, boolean, freeze, id, invalid, record, revision } from './validation.js'
+import { array, boundedArray, boolean, freeze, id, invalid, record, revision } from './validation.js'
 
 /** Shared by Host and Client; no Host SDK or Node imports enter the browser. */
 export const REMOTE_NAMESPACE = 'mattpocockControls' as const
-export const REMOTE_METHODS = ['readPolicy', 'savePolicy', 'listWorkspaces', 'readSession', 'applyInstrument', 'applyTicketWindow', 'resourceAction', 'grantPolicy', 'historyAction', 'worktreeAction', 'startupStatus', 'saveStartupSettings'] as const
+export const REMOTE_METHODS = ['readPolicy', 'savePolicy', 'listWorkspaces', 'readSession', 'readSummaries', 'applyInstrument', 'applyTicketWindow', 'resourceAction', 'grantPolicy', 'historyAction', 'worktreeAction', 'startupStatus', 'saveStartupSettings'] as const
 export type RemoteMethod = typeof REMOTE_METHODS[number]
 export type HostJson = null | boolean | number | string | HostJson[] | { [key: string]: HostJson }
 export interface HostCaller { readonly kind: 'user' | 'agent'; readonly principalId: string; readonly sessionId: string | null }
@@ -60,6 +60,97 @@ export interface RuntimeSnapshot {
   readonly capabilities: readonly { readonly key: string; readonly status: string; readonly reason: string | null }[]
   readonly health: readonly { readonly scope: string; readonly status: string; readonly reason: string | null }[]
 }
+/** Bounded UI read model, not a full instrument snapshot or a business ledger. */
+export const SUMMARY_BATCH_LIMIT = 32
+export const SUMMARY_RESPONSE_LIMIT = 256 * 1024
+export interface SessionSummaryRequest {
+  readonly sessions: readonly { readonly sessionId: string; readonly version?: string }[]
+}
+export interface SessionSummary {
+  readonly sessionId: string
+  readonly caller: HostCaller
+  readonly instance: InstrumentInstance
+  readonly policy: Pick<EffectivePolicy, 'configurationRevision' | 'controlWorkspaceId' | 'workspaceVerified' | 'extensionEnabled' | 'workspaceEnabled' | 'display'>
+  readonly records: null | {
+    readonly businessRevision: number
+    readonly viewerRevision: number
+    readonly summary: { readonly countingScope: 'instance' | 'assignment'; readonly pendingUserDecisionCount: number }
+  }
+  /** Coverage only for fields this read model actually provides, not full runtime health. */
+  readonly health: readonly { readonly scope: 'records'; readonly status: 'unknown'; readonly reason: string }[]
+}
+export type SessionSummaryResult =
+  | { readonly sessionId: string; readonly status: 'current'; readonly version: string; readonly summary: SessionSummary }
+  | { readonly sessionId: string; readonly status: 'unchanged'; readonly version: string }
+  | { readonly sessionId: string; readonly status: 'unavailable'; readonly reason: string }
+export interface SessionSummaryBatch { readonly rows: readonly SessionSummaryResult[] }
+function summaryArray(value: unknown, where: string, maximum: number): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > maximum) invalid(where + ' accepts at most ' + maximum + ' entries')
+  return boundedArray(value, where, maximum)
+}
+function summaryVersion(value: unknown): string {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/u.test(value)) invalid('summary version must be a SHA-256 token')
+  return value
+}
+export function parseSessionSummaryRequest(value: unknown): SessionSummaryRequest {
+  const request = record(value, 'session summary request', ['sessions'])
+  const sessions = summaryArray(request.sessions, 'summary sessions', SUMMARY_BATCH_LIMIT).map(value => {
+    const row = record(value, 'summary session', ['sessionId', 'version'])
+    return { sessionId: id(row.sessionId, 'summary sessionId'), ...(row.version === undefined ? {} : { version: summaryVersion(row.version) }) }
+  })
+  if (sessions.length === 0 || new Set(sessions.map(row => row.sessionId)).size !== sessions.length) invalid('summary batch needs unique sessions')
+  return freeze({ sessions })
+}
+function parseSessionSummary(value: unknown): SessionSummary {
+  const raw = record(value, 'session summary', ['sessionId', 'caller', 'instance', 'policy', 'records', 'health'])
+  const sessionId = id(raw.sessionId, 'summary sessionId'), c = record(raw.caller, 'summary caller', ['kind', 'principalId', 'sessionId'])
+  if (c.kind !== 'user' && c.kind !== 'agent' || (c.kind === 'user' ? c.sessionId !== null : c.sessionId !== sessionId)) invalid('summary caller identity is inconsistent')
+  const caller: HostCaller = { kind: c.kind, principalId: id(c.principalId, 'summary principal'), sessionId: c.kind === 'user' ? null : sessionId }
+  const i = record(raw.instance, 'summary instance', ['instrumentInstanceId', 'ownerSessionId', 'controlWorkspaceId'])
+  const instance = { instrumentInstanceId: id(i.instrumentInstanceId, 'summary instanceId'), ownerSessionId: id(i.ownerSessionId, 'summary owner'), controlWorkspaceId: id(i.controlWorkspaceId, 'summary workspace') }
+  const p = record(raw.policy, 'summary policy', ['configurationRevision', 'controlWorkspaceId', 'workspaceVerified', 'extensionEnabled', 'workspaceEnabled', 'display'])
+  if (p.controlWorkspaceId !== instance.controlWorkspaceId) invalid('summary policy and instance workspace disagree')
+  const d = record(p.display, 'summary display', DISPLAY_NAMES)
+  const display = Object.fromEntries(DISPLAY_NAMES.map(key => [key, boolean(d[key], 'summary display ' + key)])) as unknown as EffectivePolicy['display']
+  const policy = { configurationRevision: revision(p.configurationRevision, 'summary policy revision'), controlWorkspaceId: instance.controlWorkspaceId,
+    workspaceVerified: boolean(p.workspaceVerified, 'summary workspace verified'), extensionEnabled: boolean(p.extensionEnabled, 'summary extension enabled'), workspaceEnabled: boolean(p.workspaceEnabled, 'summary workspace enabled'), display }
+  let records: SessionSummary['records'] = null
+  if (raw.records !== null) {
+    const r = record(raw.records, 'summary records', ['businessRevision', 'viewerRevision', 'summary'])
+    const s = record(r.summary, 'summary counts', ['countingScope', 'pendingUserDecisionCount'])
+    if (s.countingScope !== 'instance' && s.countingScope !== 'assignment') invalid('summary counting scope is unavailable')
+    records = { businessRevision: revision(r.businessRevision, 'summary business revision'), viewerRevision: revision(r.viewerRevision, 'summary viewer revision'),
+      summary: { countingScope: s.countingScope, pendingUserDecisionCount: revision(s.pendingUserDecisionCount, 'summary pending count') } }
+  }
+  const health = summaryArray(raw.health, 'summary health', 1).map(value => {
+    const h = record(value, 'summary health row', ['scope', 'status', 'reason'])
+    if (h.scope !== 'records' || h.status !== 'unknown') invalid('unsupported summary health scope')
+    return { scope: 'records' as const, status: 'unknown' as const, reason: id(h.reason, 'summary health reason') }
+  })
+  if (records === null ? health.length !== 1 : health.length !== 0) invalid('summary record coverage and health disagree')
+  return freeze({ sessionId, caller, instance, policy, records, health })
+}
+export function parseSessionSummaryBatch(value: unknown): SessionSummaryBatch {
+  const raw = record(value, 'session summary batch', ['rows'])
+  const rows = summaryArray(raw.rows, 'summary rows', SUMMARY_BATCH_LIMIT).map((value): SessionSummaryResult => {
+    const row = record(value, 'summary result'), sessionId = id(row.sessionId, 'summary result sessionId')
+    if (row.status === 'current') {
+      record(row, 'current summary', ['sessionId', 'status', 'version', 'summary'])
+      const summary = parseSessionSummary(row.summary)
+      if (summary.sessionId !== sessionId) invalid('summary result belongs to another session')
+      return { sessionId, status: 'current', version: summaryVersion(row.version), summary }
+    }
+    if (row.status === 'unchanged') {
+      record(row, 'unchanged summary', ['sessionId', 'status', 'version'])
+      return { sessionId, status: 'unchanged', version: summaryVersion(row.version) }
+    }
+    record(row, 'unavailable summary', ['sessionId', 'status', 'reason'])
+    if (row.status !== 'unavailable') invalid('unsupported summary result status')
+    return { sessionId, status: 'unavailable', reason: id(row.reason, 'summary unavailable reason') }
+  })
+  if (new Set(rows.map(row => row.sessionId)).size !== rows.length) invalid('duplicate summary result session')
+  return freeze({ rows })
+}
 export interface PolicyGrant { readonly sessionId: string; readonly enabled: boolean }
 export interface PolicyGrants { readonly schemaVersion: 1; readonly revision: number; readonly grants: readonly PolicyGrant[] }
 export type ResourceAction =
@@ -76,6 +167,7 @@ export interface ControlsRemote {
   savePolicy(intent: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>
   listWorkspaces(): Promise<readonly WorkspaceRow[]>
   readSession(sessionId: string, signal?: AbortSignal): Promise<HostJson>
+  readSummaries(request: SessionSummaryRequest, signal?: AbortSignal): Promise<SessionSummaryBatch>
   applyInstrument(sessionId: string, command: InstrumentCommand): Promise<HostJson>
   applyTicketWindow(sessionId: string, command: TicketWindowCommand): Promise<HostJson>
   resourceAction(sessionId: string, request: ResourceAction): Promise<HostJson>
@@ -163,7 +255,7 @@ const revisionCodec = strict('Revision', value => revision(value, 'expectedRevis
 function descriptor(method: RemoteMethod, parameters: readonly [string, TypertCodec][], result: TypertCodec): InvocationDescriptor {
   return { id: '@lmgatex/dsh-mattpocock-skills#' + REMOTE_NAMESPACE + '/' + method, service: REMOTE_NAMESPACE, namespace: REMOTE_NAMESPACE, method,
     invocation: { kind: 'direct' }, parameters: parameters.map(([name, codec]) => ({ name, wire: name, source: 'json', codec })), result,
-    ...((method === 'readSession' || method === 'historyAction' || method === 'startupStatus' || method === 'saveStartupSettings') ? { cancellation: { parameter: 'signal' as const } } : {}) }
+    ...((method === 'readSession' || method === 'readSummaries' || method === 'historyAction' || method === 'startupStatus' || method === 'saveStartupSettings') ? { cancellation: { parameter: 'signal' as const } } : {}) }
 }
 /** The same strict contract is registered on Host and selected by Client $mount. */
 export const REMOTE_CONTRIBUTION: TypertRemoteContribution = Object.freeze({
@@ -174,6 +266,7 @@ export const REMOTE_CONTRIBUTION: TypertRemoteContribution = Object.freeze({
     descriptor('readPolicy', [], strict('PolicySnapshot', parsePolicySnapshot)),
     descriptor('savePolicy', [['intent', strict('PolicyIntent', parsePolicyIntent)], ['expectedRevision', revisionCodec]], strict('PolicySnapshot', parsePolicySnapshot)),
     descriptor('listWorkspaces', [], jsonCodec), descriptor('readSession', [['sessionId', sessionCodec]], jsonCodec),
+    descriptor('readSummaries', [['request', strict('SessionSummaryRequest', parseSessionSummaryRequest)]], strict('SessionSummaryBatch', parseSessionSummaryBatch)),
     descriptor('applyInstrument', [['sessionId', sessionCodec], ['command', strict('InstrumentCommand', parseInstrumentCommand)]], jsonCodec),
     descriptor('applyTicketWindow', [['sessionId', sessionCodec], ['command', strict('TicketWindowCommand', parseRemoteTicketWindow)]], jsonCodec),
     descriptor('resourceAction', [['sessionId', sessionCodec], ['request', strict('ResourceAction', parseResourceAction)]], jsonCodec),

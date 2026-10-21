@@ -20,8 +20,8 @@ import type { DecisionRecord, InstrumentCommand } from './controls/instrument-st
 import type { WindowSnapshot } from './controls/windows.js'
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js'
 import type { WorktreeObservationView } from './controls/worktree-observations.js'
-import { REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants } from './controls/remote-contract.js'
-import type { ControlsRemote as HostControlsRemote, HostJson, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js'
+import { REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants, SUMMARY_BATCH_LIMIT, SUMMARY_RESPONSE_LIMIT, parseSessionSummaryBatch, parseSessionSummaryRequest } from './controls/remote-contract.js'
+import type { ControlsRemote as HostControlsRemote, HostJson, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot, SessionSummary, SessionSummaryBatch } from './controls/remote-contract.js'
 
 export const PACKAGE_NAME = '@lmgatex/dsh-mattpocock-skills'
 export const TAB_KIND = 'mattpocock-collaboration'
@@ -77,7 +77,7 @@ export type Observation<T> =
   | { readonly status: 'unknown'; readonly value: null; readonly error: string | null }
   | { readonly status: 'ready'; readonly value: T; readonly error: null }
 
-/** A hidden tab polls at most this often: every sidebar row keeps one observer while visible. */
+/** Document visibility is a polling hint, not a claim about row viewport visibility. */
 function documentHidden(): boolean { return typeof document !== 'undefined' && document.visibilityState === 'hidden' }
 /** Per-Session, mounted-only observation. It never creates an instance or wakes a model. */
 export class SessionObserver {
@@ -127,6 +127,228 @@ export class SessionObserver {
   private publish(state: Observation<ClientSessionSnapshot>): void { this.state = state; for (const listener of this.listeners) listener() }
 }
 
+export type SessionObservation = Pick<SessionObserver, 'sessionId' | 'getSnapshot' | 'getDisplay' | 'subscribe' | 'retain' | 'refresh'>
+const SESSION_UNKNOWN: Observation<ClientSessionSnapshot> = Object.freeze({ status: 'unknown', value: null, error: null })
+interface FullCacheEntry { readonly observer: SessionObserver; active: number; idleSince: number }
+/** Faces carry lazy handles, never bare evictable observers. A render-to-effect gap and
+ * even a previously evicted native face can reacquire the single current Session entry.
+ * TTL is checked on registry activity; the last full holder already clears its snapshot.
+ * Only transient UI metadata is evicted, never durable records or model consumption. */
+export class SessionObserverCache {
+  private readonly entries = new Map<string, FullCacheEntry>()
+  private closed = false
+  constructor(private readonly read: (sessionId: string, signal?: AbortSignal) => Promise<RemoteResult<unknown>>, private readonly intervalMs = 5000,
+    private readonly idleTtlMs = 60_000, private readonly maxIdle = 64) {}
+  get size(): number { return this.entries.size }
+  observe(sessionId: string): SessionObservation {
+    nonempty(sessionId)
+    const acquire = (action: (observer: SessionObserver) => () => void): (() => void) => {
+      if (this.closed) throw new Error('Session observer cache has been disposed')
+      this.prune()
+      let entry = this.entries.get(sessionId)
+      if (entry === undefined) { entry = { observer: new SessionObserver(sessionId, this.read, this.intervalMs), active: 0, idleSince: Date.now() }; this.entries.set(sessionId, entry) }
+      entry.active++
+      const cleanup = action(entry.observer), held = entry
+      let released = false
+      return () => { if (released) return; released = true; cleanup(); if (--held.active === 0) held.idleSince = Date.now(); this.prune() }
+    }
+    return { sessionId,
+      getSnapshot: () => this.entries.get(sessionId)?.observer.getSnapshot() ?? SESSION_UNKNOWN,
+      getDisplay: () => this.entries.get(sessionId)?.observer.getDisplay(),
+      subscribe: listener => acquire(observer => observer.subscribe(listener)), retain: () => acquire(observer => observer.retain()),
+      refresh: async () => { await this.entries.get(sessionId)?.observer.refresh() },
+    }
+  }
+  refreshAll(): void { for (const entry of this.entries.values()) if (entry.active > 0) void entry.observer.refresh() }
+  dispose(): void { this.closed = true; for (const entry of this.entries.values()) entry.observer.dispose(); this.entries.clear() }
+  private prune(): void {
+    const idle = [...this.entries].filter(([, entry]) => entry.active === 0).sort((a, b) => a[1].idleSince - b[1].idleSince)
+    for (let i = 0; i < idle.length; i++) { const [id, entry] = idle[i]!; if (Date.now() - entry.idleSince >= this.idleTtlMs || idle.length - i > this.maxIdle) { entry.observer.dispose(); this.entries.delete(id) } }
+  }
+}
+
+interface SummaryEntry {
+  readonly sessionId: string
+  readonly handle: SummaryObserver
+  readonly listeners: Set<() => void>
+  state: Observation<SessionSummary>
+  display: EffectivePolicy['display'] | undefined
+  policyRevision: number | undefined
+  version: string | undefined
+  holds: number
+  /** A continuously held cohort; refresh changes generation, reacquisition changes lifetime. */
+  lifetime: number
+  generation: number
+  failures: number
+  served: number
+  due: number
+  idleSince: number
+  flight: SummaryFlight | undefined
+}
+interface SummaryFlight {
+  readonly controller: AbortController
+  readonly members: readonly { readonly entry: SummaryEntry; readonly lifetime: number; readonly generation: number; readonly version: string | undefined }[]
+  readonly deadline: number
+  expired: boolean
+}
+type SummaryRead = (request: { readonly sessions: readonly { readonly sessionId: string; readonly version?: string }[] }, signal?: AbortSignal) => Promise<RemoteResult<SessionSummaryBatch>>
+const SUMMARY_UNKNOWN: Observation<SessionSummary> = Object.freeze({ status: 'unknown', value: null, error: null })
+function boundedSummaryBytes(value: unknown): void {
+  const text = JSON.stringify(value)
+  if (typeof text !== 'string' || new TextEncoder().encode(text).byteLength > SUMMARY_RESPONSE_LIMIT) throw new Error('Summary batch exceeds its byte budget')
+}
+/** A lightweight handle, not a second per-Session timer. Old handles route back through the
+ * shared registry after idle eviction, so a native injected face cannot retain a dead observer. */
+export class SummaryObserver {
+  constructor(readonly sessionId: string, private readonly scheduler: SummaryScheduler) {}
+  getSnapshot = (): Observation<SessionSummary> => this.scheduler.snapshot(this.sessionId)
+  getDisplay = (): EffectivePolicy['display'] | undefined => this.scheduler.display(this.sessionId)
+  getConfigurationRevision = (): number | undefined => this.scheduler.configurationRevision(this.sessionId)
+  subscribe = (listener: () => void): (() => void) => this.scheduler.subscribe(this.sessionId, listener)
+  retain = (): (() => void) => this.scheduler.retain(this.sessionId)
+  refresh = (): void => this.scheduler.refresh(this.sessionId)
+}
+/** One scheduler per mounted plugin namespace: 32 identities per batch, two requests in flight,
+ * one timer, and no host Session activation. Only mounted holders become query work. */
+export class SummaryScheduler {
+  private readonly entries = new Map<string, SummaryEntry>()
+  private readonly flights = new Set<SummaryFlight>()
+  private sequence = 0
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private closed = false
+  private hidden = documentHidden()
+  private readonly onVisibility = (): void => {
+    const hidden = documentHidden(), restored = this.hidden && !hidden
+    this.hidden = hidden
+    if (restored) this.refresh()
+    else if (hidden) { for (const entry of this.entries.values()) if (entry.holds > 0 && entry.flight === undefined) entry.due = Math.max(entry.due, Date.now() + 30_000); this.arm() }
+  }
+  constructor(private readonly read: SummaryRead, private readonly intervalMs = 5000, private readonly idleTtlMs = 60_000, private readonly maxIdle = 64) {
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility)
+  }
+  get size(): number { return this.entries.size }
+  observe(sessionId: string): SummaryObserver { nonempty(sessionId); return this.entries.get(sessionId)?.handle ?? new SummaryObserver(sessionId, this) }
+  snapshot(sessionId: string): Observation<SessionSummary> { return this.entries.get(sessionId)?.state ?? SUMMARY_UNKNOWN }
+  display(sessionId: string): EffectivePolicy['display'] | undefined { return this.entries.get(sessionId)?.display }
+  configurationRevision(sessionId: string): number | undefined { return this.entries.get(sessionId)?.policyRevision }
+  subscribe(sessionId: string, listener: () => void): () => void {
+    const entry = this.entry(sessionId); entry.listeners.add(listener)
+    return () => { entry.listeners.delete(listener); this.prune() }
+  }
+  retain(sessionId: string): () => void {
+    if (this.closed) throw new Error('Summary scheduler has been disposed')
+    const entry = this.entry(sessionId)
+    if (entry.holds++ === 0) { entry.lifetime++; entry.generation++; entry.due = Date.now(); this.publish(entry, SUMMARY_UNKNOWN); this.arm() }
+    let released = false
+    return () => {
+      if (released || this.closed) return
+      released = true
+      if (--entry.holds === 0) {
+        entry.generation++; entry.state = SUMMARY_UNKNOWN; entry.version = undefined; entry.failures = 0; entry.idleSince = Date.now()
+        const flight = entry.flight
+        if (flight !== undefined && !flight.members.some(member => this.current(member, flight))) flight.controller.abort()
+        this.prune(); this.arm()
+      }
+    }
+  }
+  refresh(sessionId?: string): void {
+    if (this.closed) return
+    for (const entry of this.entries.values()) if (entry.holds > 0 && (sessionId === undefined || entry.sessionId === sessionId)) { entry.generation++; entry.due = Date.now() }
+    for (const flight of this.flights) if (!flight.members.some(member => this.current(member, flight))) flight.controller.abort()
+    this.arm()
+  }
+  dispose(): void {
+    this.closed = true; this.clearTimer()
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility)
+    for (const flight of this.flights) flight.controller.abort()
+    for (const entry of this.entries.values()) { entry.generation++; entry.state = SUMMARY_UNKNOWN; entry.listeners.clear(); entry.holds = 0 }
+    this.entries.clear()
+  }
+  private entry(sessionId: string): SummaryEntry {
+    let entry = this.entries.get(sessionId)
+    if (entry === undefined) {
+      this.prune()
+      entry = { sessionId, handle: new SummaryObserver(sessionId, this), listeners: new Set(), state: SUMMARY_UNKNOWN, display: undefined, policyRevision: undefined, version: undefined,
+        holds: 0, lifetime: 0, generation: 0, failures: 0, served: 0, due: Infinity, idleSince: Date.now(), flight: undefined }
+      this.entries.set(sessionId, entry)
+    }
+    return entry
+  }
+  private prune(): void {
+    const idle = [...this.entries.values()].filter(entry => entry.holds === 0 && entry.listeners.size === 0 && entry.flight === undefined).sort((a, b) => a.idleSince - b.idleSince)
+    for (let i = 0; i < idle.length; i++) {
+      const entry = idle[i]!
+      if (Date.now() - entry.idleSince >= this.idleTtlMs || idle.length - i > this.maxIdle) this.entries.delete(entry.sessionId)
+    }
+  }
+  private clearTimer(): void { if (this.timer !== undefined) clearTimeout(this.timer); this.timer = undefined }
+  private arm(): void {
+    this.clearTimer()
+    if (this.closed) return
+    const dates = [...this.flights].filter(flight => !flight.expired).map(flight => flight.deadline)
+    if (this.flights.size < 2) for (const entry of this.entries.values()) if (entry.holds > 0 && entry.flight === undefined) dates.push(entry.due)
+    const next = Math.min(...dates)
+    if (Number.isFinite(next)) this.timer = setTimeout(() => this.pump(), Math.max(0, next - Date.now()))
+  }
+  private pump(): void {
+    this.clearTimer()
+    if (this.closed) return
+    for (const flight of this.flights) if (!flight.expired && flight.deadline <= Date.now()) {
+      flight.expired = true; flight.controller.abort()
+      for (const member of flight.members) if (this.attached(member, flight)) this.fail(member.entry, new Error('Summary read timed out'))
+    }
+    while (this.flights.size < 2) {
+      const entries = [...this.entries.values()].filter(entry => entry.holds > 0 && entry.flight === undefined && entry.due <= Date.now()).sort((a, b) => a.due - b.due || a.served - b.served).slice(0, SUMMARY_BATCH_LIMIT)
+      if (entries.length === 0) break
+      const flight: SummaryFlight = { controller: new AbortController(), members: entries.map(entry => ({ entry, lifetime: entry.lifetime, generation: entry.generation, version: entry.version })), deadline: Date.now() + 10_000, expired: false }
+      for (const entry of entries) { entry.flight = flight; entry.due = Infinity; entry.served = ++this.sequence }
+      this.flights.add(flight); void this.run(flight)
+    }
+    this.prune(); this.arm()
+  }
+  private attached(member: SummaryFlight['members'][number], flight: SummaryFlight): boolean {
+    return !this.closed && this.entries.get(member.entry.sessionId) === member.entry && member.entry.holds > 0 && member.entry.lifetime === member.lifetime && member.entry.flight === flight
+  }
+  private current(member: SummaryFlight['members'][number], flight: SummaryFlight): boolean {
+    return this.attached(member, flight) && member.entry.generation === member.generation
+  }
+  private delay(entry: SummaryEntry): number { return Math.max(documentHidden() ? 30_000 : 0, entry.failures === 0 ? this.intervalMs : Math.min(60_000, this.intervalMs * 2 ** Math.min(entry.failures - 1, 10))) }
+  private fail(entry: SummaryEntry, error: unknown): void { entry.failures++; entry.version = undefined; entry.due = Date.now() + this.delay(entry); this.publish(entry, { status: 'unknown', value: null, error: errorText(error) }) }
+  private publish(entry: SummaryEntry, state: Observation<SessionSummary>): void { entry.state = state; for (const listener of entry.listeners) listener() }
+  private async run(flight: SummaryFlight): Promise<void> {
+    try {
+      const request = parseSessionSummaryRequest({ sessions: flight.members.map(member => ({ sessionId: member.entry.sessionId, ...(member.version === undefined ? {} : { version: member.version }) })) })
+      boundedSummaryBytes(request)
+      const value = remoteValue(await this.read(request, flight.controller.signal))
+      if (this.closed || flight.expired) return
+      boundedSummaryBytes(value)
+      const batch = parseSessionSummaryBatch(value), expected = new Set(flight.members.map(member => member.entry.sessionId))
+      if (batch.rows.length !== expected.size || batch.rows.some(row => !expected.has(row.sessionId))) throw new Error('Summary batch does not match requested Sessions')
+      for (const member of flight.members) {
+        if (!this.current(member, flight)) continue
+        const row = batch.rows.find(row => row.sessionId === member.entry.sessionId)!, entry = member.entry
+        if (row.status === 'unavailable') { this.fail(entry, row.reason); continue }
+        if (row.status === 'unchanged') {
+          if (member.version !== row.version || entry.version !== row.version || entry.state.status !== 'ready') { this.fail(entry, new Error('Unchanged summary has no matching current base')); continue }
+        } else {
+          entry.version = row.version; entry.display = row.summary.policy.display; entry.policyRevision = row.summary.policy.configurationRevision; this.publish(entry, { status: 'ready', value: row.summary, error: null })
+        }
+        entry.failures = 0; entry.due = Date.now() + this.delay(entry)
+      }
+    } catch (error) {
+      const cancelled = flight.controller.signal.aborted && typeof error === 'object' && error !== null
+        && (('code' in error && error.code === 'gateway/cancelled') || ('name' in error && error.name === 'AbortError'))
+      // Real failures invalidate attached holders even after supersession; intentional
+      // cancellation and an already-published timeout must not become another UI error.
+      if (!flight.expired && !cancelled) for (const member of flight.members) if (this.attached(member, flight)) this.fail(member.entry, error)
+    } finally {
+      this.flights.delete(flight)
+      for (const member of flight.members) if (member.entry.flight === flight) member.entry.flight = undefined
+      this.prune(); this.arm()
+    }
+  }
+}
+
 /** Changes a draft only. undefined deletes a leaf and restores inheritance. */
 export function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField, value: boolean | number | undefined): PolicyIntent {
   const [group, key] = field.split('.')
@@ -164,7 +386,7 @@ export function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIntent, wo
   return { readRevision: saved.revision, scope: workspaceId ?? 'global-defaults', changes, executionEffects: 'Intent only. Existing obligations/executions remain; inspect the authorized Session snapshot for actual usage/convergence.' }
 }
 function intentOf(snapshot: PolicySnapshot): PolicyIntent { return parsePolicyIntent({ extensionEnabled: snapshot.extensionEnabled, defaults: snapshot.defaults, workspaceOverrides: snapshot.workspaceOverrides }) }
-function useObservation(observer: SessionObserver): Observation<ClientSessionSnapshot> {
+function useObservation(observer: SessionObservation): Observation<ClientSessionSnapshot> {
   useEffect(() => observer.retain(), [observer])
   return useSyncExternalStore(observer.subscribe, observer.getSnapshot, observer.getSnapshot)
 }
@@ -172,8 +394,13 @@ const panelStyle = { boxSizing: 'border-box' as const, padding: '16px', height: 
 function diagnostic(message: string): ReactElement { return h('p', { role: 'status' }, message) }
 function pretty(value: unknown): ReactElement { return h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(value, null, 2)) }
 
-interface SessionFace { readonly observer: SessionObserver; readonly openDetails: () => void }
-type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SessionFace
+interface SessionFace { readonly observer: SessionObservation; readonly openDetails: () => void }
+interface SummaryFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
+type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SummaryFace
+function useSummaryObservation(observer: SummaryObserver, active = true): Observation<SessionSummary> {
+  useEffect(() => active ? observer.retain() : undefined, [observer, active])
+  return useSyncExternalStore(observer.subscribe, observer.getSnapshot, observer.getSnapshot)
+}
 function countText(value: unknown): string { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : '未知' }
 function capacityText(value: unknown): string { return value === null ? '未配置' : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? String(value) : '未知' }
 /** T is explicit bookkeeping; S tracking is not proof that all runtime work is known. */
@@ -250,6 +477,16 @@ export function compactInstrumentSummary(view: ClientSessionSnapshot): { readonl
   return { parts, detail }
 }
 export function HeaderEntry(props: HeaderProps): ReactElement | null {
+  const observation = useSummaryObservation(props.summary)
+  if (props.summary.getDisplay()?.header === false) return null
+  if (observation.status !== 'ready') return h('span', { title: observation.error ?? '尚无已确认的状态摘要', role: 'status', style: { display: 'inline-block', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, '协作 · 状态未知')
+  return h(HeaderSnapshot, props)
+}
+function HeaderSnapshot(props: HeaderProps): ReactElement | null {
+  const observer = useMemo(props.observe, [props.observe])
+  return h(ObservedHeaderEntry, { ...props, observer })
+}
+export function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.header.utilities'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
   if (props.observer.getDisplay()?.header === false) return null
   if (observation.status === 'unknown') return h('span', { title: observation.error ?? '尚无已确认的状态快照', role: 'status', style: { display: 'inline-block', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, '协作 · 状态未知')
@@ -264,7 +501,16 @@ export function HeaderEntry(props: HeaderProps): ReactElement | null {
 function countingScopeText(scope: InstrumentSnapshot['summary']['countingScope']): string {
   return ({ instance: '当前实例统计', assignment: '当前分配范围统计' } satisfies Record<InstrumentSnapshot['summary']['countingScope'], string>)[scope] ?? '统计范围未知'
 }
-export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null {
+export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
+  const observation = useSummaryObservation(props.summary)
+  if (observation.status !== 'ready' || !observation.value.policy.display.inputSummary) return null
+  return h(InputSnapshot, props)
+}
+function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
+  const observer = useMemo(props.observe, [props.observe])
+  return h(ObservedInputSummary, { ...props, observer })
+}
+export function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
   if (observation.status !== 'ready' || !observation.value.policy.display.inputSummary) return null
   const view = observation.value
@@ -646,28 +892,45 @@ export class PolicyObserver {
   private value: PolicySnapshot | null = null
   private generation = 0
   private closed = false
+  private pending: Promise<void> | undefined
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private hidden = documentHidden()
   private readonly listeners = new Set<() => void>()
-  constructor(private readonly read: () => Promise<RemoteResult<unknown>>) {}
+  private readonly onVisibility = (): void => {
+    const hidden = documentHidden(), restored = this.hidden && !hidden
+    this.hidden = hidden
+    if (restored) { this.clearTimer(); void this.refresh() }
+    else if (hidden) this.arm()
+  }
+  constructor(private readonly read: () => Promise<RemoteResult<unknown>>) { if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility) }
   getSnapshot = (): PolicySnapshot | null => this.value
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
-  async refresh(): Promise<void> {
+  refresh(): Promise<void> {
+    if (this.closed) return Promise.resolve()
+    if (this.pending !== undefined) return this.pending
     const generation = ++this.generation
-    try { const value = parsePolicySnapshot(remoteValue(await this.read())); if (this.closed || generation !== this.generation) return; this.value = value }
-    catch { if (this.closed || generation !== this.generation) return; this.value = null }
-    for (const listener of this.listeners) listener()
+    this.pending = (async () => {
+      try { const value = parsePolicySnapshot(remoteValue(await this.read())); if (this.closed || generation !== this.generation) return; this.value = value }
+      catch { if (this.closed || generation !== this.generation) return; this.value = null }
+      for (const listener of this.listeners) listener()
+    })().finally(() => { this.pending = undefined; this.arm() })
+    return this.pending
   }
-  dispose(): void { this.closed = true; this.generation++; this.listeners.clear() }
+  private clearTimer(): void { if (this.timer !== undefined) clearTimeout(this.timer); this.timer = undefined }
+  private arm(): void { this.clearTimer(); if (!this.closed) this.timer = setTimeout(() => { void this.refresh() }, documentHidden() ? 60_000 : 30_000) }
+  dispose(): void { this.closed = true; this.generation++; this.clearTimer(); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility); this.listeners.clear() }
 }
-export function WorkspaceBadge(props: PropsRuntime<'sidebar.session.row.leading'> & { readonly observe: (sessionId: string) => SessionObserver; readonly visibility: PolicyObserver }): ReactElement | null {
+export function WorkspaceBadge(props: PropsRuntime<'sidebar.session.row.leading'> & { readonly observeSummary: (sessionId: string) => SummaryObserver; readonly visibility: PolicyObserver }): ReactElement | null {
   const policy = useSyncExternalStore(props.visibility.subscribe, props.visibility.getSnapshot, props.visibility.getSnapshot)
   if (!sessionListRequested(policy)) return null
-  return h(BadgeContent, { observer: props.observe(props.sessionId), policyRevision: policy!.revision })
+  return h(BadgeContent, { observer: props.observeSummary(props.sessionId), policyRevision: policy!.revision })
 }
-function BadgeContent(props: { readonly observer: SessionObserver; readonly policyRevision: number }): ReactElement | null {
+function BadgeContent(props: { readonly observer: SummaryObserver; readonly policyRevision: number }): ReactElement | null {
   const observation = useSyncExternalStore(props.observer.subscribe, props.observer.getSnapshot, props.observer.getSnapshot)
-  const active = observation.status !== 'ready' || observation.value.policy.configurationRevision !== props.policyRevision || observation.value.policy.display.sessionList
+  const active = props.observer.getDisplay()?.sessionList !== false || props.observer.getConfigurationRevision() !== props.policyRevision
   useEffect(() => active ? props.observer.retain() : undefined, [props.observer, active])
-  if (observation.status !== 'ready' || !observation.value.policy.display.sessionList) return null
+  if (observation.status !== 'ready') return props.observer.getDisplay()?.sessionList ? h('span', { title: observation.error ?? '协作提醒未知' }, '?') : null
+  if (!observation.value.policy.display.sessionList) return null
   const count = observation.value.records?.summary.pendingUserDecisionCount
   return count === undefined ? h('span', { title: '协作提醒未知' }, '?') : count === 0 ? null : h('span', { title: '待用户裁决 ' + count, 'aria-label': '待用户裁决 ' + count, style: { display: 'inline-block', maxWidth: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, String(count))
 }
@@ -687,11 +950,11 @@ export function settingsSessionChoices(workspaces: readonly WorkspaceChoice[], w
   return { ids, unknown: rows.length === 0 || rows.some(row => row.sessionIds === null) }
 }
 /** Explicit selected-session read projection on the settings page, independent of sidebar placement. */
-export function SettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObserver; readonly remote?: ControlsRemote }): ReactElement {
+export function SettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly remote?: ControlsRemote }): ReactElement {
   if (props.observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
   return h(ObservedSettingsInspection, props)
 }
-export function ObservedSettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObserver; readonly remote?: ControlsRemote }): ReactElement {
+export function ObservedSettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly remote?: ControlsRemote }): ReactElement {
   const observation = useObservation(props.observer)
   if (observation.status !== 'ready') return h('section', { 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取所选会话'))
@@ -892,7 +1155,7 @@ function unsupportedSeatsDetails(): ReactElement {
       h('li', null, '后台打开协作面板：宿主打开标签页时会选中并展开，暂不支持不切换焦点的后台打开。')),
     h('details', null, h('summary', null, '原始接口诊断'), pretty(UNSUPPORTED_SEATS)))
 }
-export function SettingsPage(props: PluginConfigViewProps & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObserver }): ReactElement {
+export function SettingsPage(props: PluginConfigViewProps & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObservation }): ReactElement {
   const [saved, setSaved] = useState<PolicySnapshot | null>(null)
   const [draft, setDraft] = useState<PolicyIntent | null>(null)
   const [workspaces, setWorkspaces] = useState<readonly WorkspaceChoice[]>([])
@@ -1016,8 +1279,8 @@ export function sourceRecord(props: ToolCallViewProps): unknown {
   return { phase: props.phase, callId: props.callId, name: props.toolName, time: props.block.time, seq: props.block.seq, argsRaw: props.block.call?.argsRaw ?? null, content: props.block.content, isError: props.block.isError, error: props.block.error ?? null, meta: props.block.meta ?? null }
 }
 /** Only our own wire Tool names may claim a toolview; never another plugin's key. */
-export function SourceCard(props: ToolCallViewProps & SessionFace): ReactElement {
-  const observation = useObservation(props.observer)
+export function SourceCard(props: ToolCallViewProps & SummaryFace): ReactElement {
+  const observation = useSummaryObservation(props.summary)
   const annotate = observation.status === 'ready' && observation.value.policy.display.timeline
   return h('section', { 'aria-label': '协作工具记录', style: { boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px', overflowWrap: 'anywhere', textAlign: 'left' } }, h('strong', null, props.toolName),
     annotate ? diagnostic('来源记录 · call ' + props.callId + ' · 历史快照；当前事实以实例账本为准。') : null,
@@ -1032,19 +1295,17 @@ export async function apply(ctx: Context): Promise<void> {
   // prevent apply from running; all consumers instead belong to this child scope.
   await ctx.inject(['remote.mattpocockControls'], (ctx) => {
     const remote = (ctx.remote as typeof ctx.remote & { readonly mattpocockControls: ControlsRemote }).mattpocockControls
-    const observers = new Map<string, SessionObserver>()
-    const observe = (sessionId: string): SessionObserver => {
-      let observer = observers.get(sessionId)
-      if (observer === undefined) { observer = new SessionObserver(sessionId, (id, signal) => remote.readSession(id, signal)); observers.set(sessionId, observer) }
-      return observer
-    }
+    const observers = new SessionObserverCache((id, signal) => remote.readSession(id, signal))
+    const observe = (sessionId: string): SessionObservation => observers.observe(sessionId)
+    const summaries = new SummaryScheduler((request, signal) => remote.readSummaries(request, signal))
+    const observeSummary = (sessionId: string): SummaryObserver => summaries.observe(sessionId)
     const visibility = new PolicyObserver(() => remote.readPolicy())
     ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
-    const refreshAll = (): void => { void visibility.refresh(); for (const observer of observers.values()) void observer.refresh() }
-    ctx.effect(() => () => { for (const observer of observers.values()) observer.dispose(); observers.clear() }, 'collaboration: observations')
-    const face = (sessionId: string): SessionFace => ({ observer: observe(sessionId), openDetails: () => {
+    const refreshAll = (): void => { void visibility.refresh(); summaries.refresh(); observers.refreshAll() }
+    ctx.effect(() => () => { summaries.dispose(); observers.dispose() }, 'collaboration: observations')
+    const face = (sessionId: string): SummaryFace => ({ summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
       if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
-      const snapshot = observe(sessionId).getSnapshot()
+      const snapshot = observeSummary(sessionId).getSnapshot()
       if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return
       ctx.sidebarRight.openTab(TAB_KIND, { preferNewPane: true })
     } })
@@ -1059,9 +1320,9 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
       id: TAB_ID + ':input', order: 100, inject: face }, InputSummary))
     ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID,
-      inject: (sessionId) => ({ ...face(sessionId), remote }) }, Details))
+      inject: (sessionId) => ({ observer: observe(sessionId), openDetails: face(sessionId).openDetails, remote }) }, Details))
     ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({ name: 'sidebar.session.row.leading',
-      id: TAB_ID + ':row', order: 100, inject: () => ({ observe, visibility }) }, WorkspaceBadge))
+      id: TAB_ID + ':row', order: 100, inject: () => ({ observeSummary, visibility }) }, WorkspaceBadge))
     ctx.slots.inject('tool.call.toolview', () => OWN_TOOL_NAMES.map(key => ctx.slots.register({ name: 'tool.call.toolview', key, inject: face }, SourceCard)))
   })
 }

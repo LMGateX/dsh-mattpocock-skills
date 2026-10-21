@@ -358,6 +358,47 @@ test('actual Client Remote accepts final readSession AbortSignal and never sends
   assert.deepEqual(Object.keys(wire.at(-1).args), ['sessionId'])
 })
 
+test('actual summary Remote uses a bounded codec and a signal channel, not JSON authority or cancellation', options, async t => {
+  const f = await assembly(t)
+  const contract = await import('../src/controls/remote-contract.ts')
+  const clientGateway = await import(pathToFileURL(join(hostRoot, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/types/client/index.js')).href)
+  const client = new sdk.Context(); new sdk.TypertRegistry(client)
+  const wire = [], calls = []
+  client.provide('connection', { isLoopback: true, generation: { getSnapshot: () => undefined, subscribe: () => () => {} }, registerGenerationSource: () => () => {}, start: () => ({ stop() {} }),
+    rpc: { open() { throw new Error('no streams') }, async call(channel, endpoint, payload, control) {
+      wire.push(payload)
+      const [namespace, method] = endpoint.split('/')
+      return { ok: true, value: await f.gateway.invoke({ namespace, method, args: payload.args, peer: f.ctx.connection.operator, signal: control }) }
+    } } })
+  clientGateway.apply(client)
+  const remove = await client.remote.$mount(contract.REMOTE_CONTRIBUTION); t.after(remove)
+  f.runtime.readSummaries = async (caller, request, control) => {
+    control.throwIfAborted(); calls.push({ caller, request })
+    return { rows: request.sessions.map(row => ({ sessionId: row.sessionId, status: 'unavailable', reason: 'fixture-unavailable' })) }
+  }
+  const remote = client.remote.mattpocockControls
+  const result = await remote.readSummaries({ sessions: [{ sessionId: 'owner' }] }, signal())
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.value.rows, [{ sessionId: 'owner', status: 'unavailable', reason: 'fixture-unavailable' }])
+  assert.equal(calls[0].caller.kind, 'user')
+  assert.equal(calls[0].caller.principalId, f.mounted.ports.operatorPrincipal)
+  assert.deepEqual(Object.keys(wire[0].args), ['request'])
+  assert.equal((await remote.readSummaries({ sessions: [{ sessionId: 'owner' }], principalId: 'forged' }, signal())).ok, false)
+  assert.equal(calls.length, 1, 'strict input rejects authority fields before dispatch')
+  let enteredResolve; const entered = new Promise(resolve => { enteredResolve = resolve })
+  f.runtime.readSummaries = async (_caller, _request, control) => {
+    enteredResolve()
+    await new Promise((resolve, reject) => { if (control.aborted) reject(control.reason); else control.addEventListener('abort', () => reject(control.reason), { once: true }) })
+    throw new Error('unreachable')
+  }
+  const controller = new AbortController(), pending = remote.readSummaries({ sessions: [{ sessionId: 'owner' }] }, controller.signal)
+  await entered; controller.abort()
+  const cancelled = await pending
+  assert.equal(cancelled.ok, false)
+  assert.equal(cancelled.error.code, 'gateway/cancelled')
+  assert.deepEqual(Object.keys(wire.at(-1).args), ['request'])
+})
+
 test('native event program callback registers its receipt fence synchronously before another step can inspect', options, async t => {
   const f = await assembly(t)
   let registered = false, release; const fence = new Promise(resolve => { release = resolve })

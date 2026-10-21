@@ -63,9 +63,17 @@ test('development pack has exact closed inventory and a dependency-free controls
     } }
     const instruments = new controls.SessionInstruments(core, new controls.MemoryInstrumentStorage(), authority)
     await instruments.apply('user', 'S', { operationId: 'pack-1', expectedRevision: 0, workflowId: 'task', action: 'put-workflow', value: { title: 'Packed task', axes: [] } })
-    await instruments.apply('user', 'S', { operationId: 'pack-2', expectedRevision: 1, workflowId: 'task', action: 'put-decision', decisionId: 'D', value: { question: 'Persist this matter', status: 'Task-defined', pending: true } })
+    await instruments.apply('user', 'S', { operationId: 'pack-2', expectedRevision: 1, workflowId: 'task', action: 'put-decision', decisionId: 'D', value: { question: 'Persist this matter', status: 'Task-defined', pending: true, addressee: { kind: 'user', principalId: 'user' } } })
     const records = await instruments.read('user', 'S')
     assert.equal(records.summary.pendingDecisionCount, 1)
+    const instrumentSummary = await instruments.readSummary('user', 'S')
+    assert.equal(instrumentSummary.summary.pendingUserDecisionCount, 1)
+    assert.equal(instrumentSummary.businessRevision, records.businessRevision)
+    assert.equal(JSON.stringify(instrumentSummary).includes('Persist this matter'), false)
+    assert.equal(typeof controls.parseSessionSummaryRequest, 'function')
+    assert.equal(typeof controls.parseSessionSummaryBatch, 'function')
+    assert.ok(controls.REMOTE_METHODS.includes('readSummaries'))
+    assert.deepEqual(controls.parseSessionSummaryRequest({ sessions: [{ sessionId: 'S' }] }), { sessions: [{ sessionId: 'S' }] })
     const windows = new controls.SessionWindows(core, new controls.MemoryWindowStorage(), authority, {
       runtimeId: 'packed-runtime', capability: 'unsupported', bindProgram() {},
     })

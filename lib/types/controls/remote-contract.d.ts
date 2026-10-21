@@ -10,7 +10,7 @@ import type { TicketWindowCommand } from './windows.js';
 import type { CreateWorktree, ResourceBusiness, RetireDisposition } from './resources.js';
 /** Shared by Host and Client; no Host SDK or Node imports enter the browser. */
 export declare const REMOTE_NAMESPACE: "mattpocockControls";
-export declare const REMOTE_METHODS: readonly ["readPolicy", "savePolicy", "listWorkspaces", "readSession", "applyInstrument", "applyTicketWindow", "resourceAction", "grantPolicy", "historyAction", "worktreeAction", "startupStatus", "saveStartupSettings"];
+export declare const REMOTE_METHODS: readonly ["readPolicy", "savePolicy", "listWorkspaces", "readSession", "readSummaries", "applyInstrument", "applyTicketWindow", "resourceAction", "grantPolicy", "historyAction", "worktreeAction", "startupStatus", "saveStartupSettings"];
 export type RemoteMethod = typeof REMOTE_METHODS[number];
 export type HostJson = null | boolean | number | string | HostJson[] | {
     [key: string]: HostJson;
@@ -90,6 +90,54 @@ export interface RuntimeSnapshot {
         readonly reason: string | null;
     }[];
 }
+/** Bounded UI read model, not a full instrument snapshot or a business ledger. */
+export declare const SUMMARY_BATCH_LIMIT = 32;
+export declare const SUMMARY_RESPONSE_LIMIT: number;
+export interface SessionSummaryRequest {
+    readonly sessions: readonly {
+        readonly sessionId: string;
+        readonly version?: string;
+    }[];
+}
+export interface SessionSummary {
+    readonly sessionId: string;
+    readonly caller: HostCaller;
+    readonly instance: InstrumentInstance;
+    readonly policy: Pick<EffectivePolicy, 'configurationRevision' | 'controlWorkspaceId' | 'workspaceVerified' | 'extensionEnabled' | 'workspaceEnabled' | 'display'>;
+    readonly records: null | {
+        readonly businessRevision: number;
+        readonly viewerRevision: number;
+        readonly summary: {
+            readonly countingScope: 'instance' | 'assignment';
+            readonly pendingUserDecisionCount: number;
+        };
+    };
+    /** Coverage only for fields this read model actually provides, not full runtime health. */
+    readonly health: readonly {
+        readonly scope: 'records';
+        readonly status: 'unknown';
+        readonly reason: string;
+    }[];
+}
+export type SessionSummaryResult = {
+    readonly sessionId: string;
+    readonly status: 'current';
+    readonly version: string;
+    readonly summary: SessionSummary;
+} | {
+    readonly sessionId: string;
+    readonly status: 'unchanged';
+    readonly version: string;
+} | {
+    readonly sessionId: string;
+    readonly status: 'unavailable';
+    readonly reason: string;
+};
+export interface SessionSummaryBatch {
+    readonly rows: readonly SessionSummaryResult[];
+}
+export declare function parseSessionSummaryRequest(value: unknown): SessionSummaryRequest;
+export declare function parseSessionSummaryBatch(value: unknown): SessionSummaryBatch;
 export interface PolicyGrant {
     readonly sessionId: string;
     readonly enabled: boolean;
@@ -124,6 +172,7 @@ export interface ControlsRemote {
     savePolicy(intent: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>;
     listWorkspaces(): Promise<readonly WorkspaceRow[]>;
     readSession(sessionId: string, signal?: AbortSignal): Promise<HostJson>;
+    readSummaries(request: SessionSummaryRequest, signal?: AbortSignal): Promise<SessionSummaryBatch>;
     applyInstrument(sessionId: string, command: InstrumentCommand): Promise<HostJson>;
     applyTicketWindow(sessionId: string, command: TicketWindowCommand): Promise<HostJson>;
     resourceAction(sessionId: string, request: ResourceAction): Promise<HostJson>;

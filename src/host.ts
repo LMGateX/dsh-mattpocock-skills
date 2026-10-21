@@ -19,6 +19,7 @@ import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { DomainSpec, Domain } from '@deepseek-ai/dsh-storage-domain'
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import type { SubagentCatalogEntry, SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolExecution, ToolExecutionResult, ToolRunContext, ToolGuard } from '@deepseek-ai/dsh-tools'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -40,8 +41,8 @@ import { createDomainResourceStorage, parseResourceDocument } from './controls/r
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js'
 import { createDomainVersionedStorage } from './controls/versioned-storage.js'
 import type { VersionedStorage } from './controls/versioned-storage.js'
-import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants, parseResourceAction } from './controls/remote-contract.js'
-import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow } from './controls/remote-contract.js'
+import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants, parseResourceAction, parseSessionSummaryRequest, parseSessionSummaryBatch } from './controls/remote-contract.js'
+import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js'
 import { boolean, ControlsError, freeze, id, increment, memoized, record, revision } from './controls/validation.js'
 import { StartupSupport } from './controls/startup-support.js'
 import { parseStartupDesired, parseStartupDocument } from './controls/startup-state.js'
@@ -105,8 +106,28 @@ interface NativeSubagentRow {
   readonly reason?: string
 }
 interface NativeSubagentLister {
-  readonly listDescendants?: (rootSessionId: SessionId, signal?: AbortSignal) => Promise<readonly NativeSubagentRow[]>
-  readonly listChildren?: (parentSessionId: SessionId, signal?: AbortSignal) => Promise<readonly NativeSubagentRow[]>
+  readonly listDescendants?: (rootSessionId: SessionId, signal?: AbortSignal) => Promise<readonly SubagentDescendantListEntry[]>
+  readonly listChildren?: (parentSessionId: SessionId, signal?: AbortSignal) => Promise<readonly SubagentCatalogEntry[]>
+}
+/** Direct discovery rows have no kind/activity discriminator. Normalize at this adapter,
+ * not in the counter, and keep malformed program data as an explicit coverage gap. */
+function nativeDirectRows(value: unknown): readonly NativeSubagentRow[] {
+  const malformed = (): NativeSubagentRow => ({ kind: 'diagnostic', id: null, reason: 'invalid' })
+  if (!Array.isArray(value)) return [malformed()]
+  return Array.from(value, value => {
+    try {
+      const row = record(value, 'native direct-child catalog row', ['id', 'createdAt', 'mode', 'label'])
+      const childId = id(row.id, 'native catalog child id')
+      if (typeof row.createdAt !== 'number' || !Number.isFinite(row.createdAt)
+        || row.label !== undefined && typeof row.label !== 'string'
+        || row.mode === 'continuable' && typeof row.label !== 'string') {
+        throw new ControlsError('invalid-input', 'invalid native direct-child catalog fields')
+      }
+      if (row.mode === 'unknown') return { kind: 'diagnostic', id: childId, reason: 'unsupported' }
+      if (row.mode !== 'one-shot' && row.mode !== 'continuable' && row.mode !== 'external') return malformed()
+      return { kind: 'child', id: childId, mode: row.mode }
+    } catch { return malformed() }
+  })
 }
 function nativeSubagentLister(ctx: Context): NativeSubagentLister | undefined {
   const service = ctx.get('subagents') as NativeSubagentLister | undefined
@@ -376,8 +397,8 @@ class NativeRunningCounter {
     // descendant's own session log, which is unbounded work on a read path (measured on a live
     // profile: 2048 descendant logs, 2.1 GB, a baseline walk that never finished); the resident
     // subtree comes from the live Agent index instead, whose parent chains already describe it.
-    const listing = typeof list.listChildren === 'function'
-      ? list.listChildren(SessionId(owner), control)
+    const listing: Promise<readonly NativeSubagentRow[]> = typeof list.listChildren === 'function'
+      ? list.listChildren(SessionId(owner), control).then(nativeDirectRows)
       : list.listDescendants!(SessionId(owner), control)
     listing.catch(() => undefined)
     let rows: readonly NativeSubagentRow[]
@@ -898,6 +919,7 @@ export interface RuntimeFacade {
   readPolicy(caller: HostCaller, signal: AbortSignal): Promise<PolicySnapshot>
   savePolicy(caller: HostCaller, intent: PolicyIntent, expectedRevision: number, signal: AbortSignal): Promise<PolicySnapshot>
   readSession(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<unknown>
+  readSummaries(caller: HostCaller, request: SessionSummaryRequest, signal: AbortSignal): Promise<SessionSummaryBatch>
   applyInstrument(caller: HostCaller, sessionId: string, command: InstrumentCommand, signal: AbortSignal): Promise<unknown>
   applyTicketWindow(caller: HostCaller, sessionId: string, command: TicketWindowCommand, signal: AbortSignal): Promise<unknown>
   resourceAction(caller: HostCaller, sessionId: string, request: ResourceAction, signal: AbortSignal): Promise<unknown>
@@ -1202,6 +1224,13 @@ export class MattPocockControlsService extends TypertRemoteService {
     const sid = id(sessionId, 'sessionId'); await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted()
     return parseHostJson(await this.runtime.readSession(caller, sid, signal))
   }, suppliedSignal) }
+  readSummaries(request: unknown, suppliedSignal?: AbortSignal): Promise<SessionSummaryBatch> {
+    const parsed=parseSessionSummaryRequest(request)
+    return this.run(async (caller,signal)=>{
+      await this.ports.authorizeCaller(caller);signal.throwIfAborted()
+      return parseSessionSummaryBatch(await this.runtime.readSummaries(caller,parsed,signal))
+    },suppliedSignal)
+  }
   applyInstrument(sessionId: unknown, command: unknown): Promise<HostJson> { return this.run(async (caller, signal) => {
     const sid = id(sessionId, 'sessionId'), parsed = parseInstrumentCommand(command)
     await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted(); return parseHostJson(await this.runtime.applyInstrument(caller, sid, parsed, signal))

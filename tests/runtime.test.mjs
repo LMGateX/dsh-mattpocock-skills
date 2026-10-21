@@ -240,8 +240,8 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
 
 test('a host exposing only direct children resolves the resident subtree without recursing', async t => {
   const children = {
-    root: [{ kind: 'child', id: 'branch-a', mode: 'continuable', activity: 'running', hasChildren: true }],
-    'branch-a': [{ kind: 'child', id: 'leaf-b', mode: 'one-shot', activity: 'running', hasChildren: false }],
+    root: [{ id: 'branch-a', createdAt: 0, mode: 'continuable', label: 'branch-a' }],
+    'branch-a': [{ id: 'leaf-b', createdAt: 0, mode: 'one-shot' }],
     'leaf-b': [],
   }
   const calls = []

@@ -2,6 +2,90 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 未发布后续优化：直接摘要、集中调度与 owner 级失效（2026-10-21，基于 0.4.36）
+
+本节是后续阶段，不替代下节已经完成的第一阶段记录。契约见[摘要读取设计](<SUMMARY_READS.md>)；源码／开发包与当前安装包分开，不自动授权发布、安装、SDK／Profile 修改或服务重启。
+
+- [instrument summary](<../src/controls/instruments.ts>) 从同一已验证不可变文档派生专用 current-only decision index，只保存计数与授权所需字段；不会先构造 history 再裁剪。保留 all-ticket assignment、ticketless creator、viewer 私有修订、OFF／hidden／read 不消除义务及 source uncertain latch。无新持久格式或异步摘要副表。
+- [Remote](<../src/controls/remote-contract.ts>) 新增共享严格 request/result codec 与真实 AbortSignal 通道：每批 1–32 个唯一 session、版本只作传输 hint、结果逐项 current／unchanged／unavailable，总响应 256 KiB 上限。records:null 必须明确 records-unknown；有 records 不允许同时声称 records-unknown。DTO 不包含业务正文、历史、完整授权表、窗口／原生 S 或资源健康。
+- [Runtime](<../src/runtime.ts>) 对每项重新鉴权并进入既有 permission FIFO，已知 version 不能绕过撤权。只读 controls association，不 ensure 陌生 cold session，不把列表导航保留为 native runtime handle；摘要不读窗口／资源、运行 Git、扫描工作树日志、捕获 history 或确认通知。每项之间让出 FIFO 给已经入队的写入，不把 32 项批次当作一个长事务。完整详情与模型消费的持久化 frontier 保留。
+- [Client](<../src/client.ts>) 每 app 一个 summary 调度器，至多两批真实 pending RPC、一个 summary timer；共享同 session、逐项 generation fence、末个相关 holder 才取消整批、matching unchanged 复用、5／10／20／40／60 秒错误退避、hidden 至少 30 秒与一次 foreground 恢复。另有一个根级 policy 30 秒／hidden 60 秒恢复轮询，以发现另一客户端重新开显示；这些不冒称是跨 browser 的全局共享 timer。
+- Badge／SourceCard 只持轻量摘要；Header／Input 为外层轻量显示 gate，仅显示时挂载完整观察子组件，原丰富内容不缩水；显式详情／settings inspection 保留完整读。完整 observer 的 lazy session 路由 handle 避免 render→effect／LRU 后悬空引用；holder 或 subscription 活跃时不可驱逐，零活跃后只回收最多 64 个闲置元数据、60 秒惰性 TTL，不涉及业务历史保留。Mounted row 不等于 viewport-visible；没有宿主 DOM 猜测。
+- [owner freshness](<../src/controls/refresh-gate.ts>) 与 Runtime CAS 只失效／捕获实际变化的 instance，包括被移除行的旧 owner；开始排队和效果 settlement 都标记，防止早先仍在读身份的请求把 pre-commit 数据认证成新缓存。全局 policy／grant 仍全局失效；scoped epoch 元数据有界，淘汰时保守全局失效，不因忘记旧水位放过旧读。两个公开回归先 RED，分别锁普通业务写、operator 通知 bookkeeping 不重建另一 owner 热视图。
+
+### 实测：当前条目固定、历史增长
+
+[正式性能回归](<../tests/summary-performance.test.mjs>) 通过真实 Domain InstrumentStorage／VersionedStorage adapter 与稳定内存 table，固定 1 workflow＋1 当前 decision；每档 current／unchanged 各 50 次。以下是一次隔离机械测量，JSON 是 facade payload，不含 RPC envelope、压缩或 browser decode；不是现场网络或整机 retained heap 数据。
+
+| 旧 decision 版本 | 完整 Runtime JSON | current summary | unchanged | current 热 p50／p95 | unchanged 热 p50／p95 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 5,899 B | 722 B | 129 B | 0.9220／2.0271 ms | 1.1072／1.3044 ms |
+| 30 | 41,327 B | 723 B | 129 B | 0.8386／1.0739 ms | 1.1144／1.2937 ms |
+| 3,000 | 3,594,073 B | 725 B | 129 B | 0.9143／1.1815 ms | 0.9115／1.3803 ms |
+
+每档 100 次热读取仍发生 100 次 Domain source freshness 检查、0 instrument 写入；已知 version 时源失败也返回 records:null＋unknown，恢复后正确 current。冷成本单列：3,000 旧版本时 Domain hydrate／validate **103.82 ms**，随后首次 Runtime summary（首次 load parse／current index）**73.60 ms**；独立 full fixture 的首次完整 readSession（含 history capture）**845.89 ms**。这些证据不承诺冷读取 O(1)、磁盘 I/O 已优化或 index 每次只运行固定次数；没有默认运行 30k，也不以此宣称现场 OOM 已归因／解决。
+
+公开 storage gate 证明保留 FIFO 仍有 HOL：先入完整读被窗口 source gate 阻塞时，后续摘要 sourceChecks=0；释放后才变为 1。一次样本外层鉴权完成→FIFO 内首次公共鉴权标记等待 **2.1052 ms**，标记→facade 返回 **0.8359 ms**，总 **2.9812 ms**。这是公开可观测区间，含 continuation／微任务，不冒称私有 enqueue 精确计时或纯 CPU；本轮没有擅自改成跨 owner 并行写队列。
+
+### 实测：当前事项数与模型消费路径
+
+同一[性能回归](<../tests/summary-performance.test.mjs>) 另将旧历史固定为 0、当前 decision 行数设为 **1／100／1,000**：current payload 为 **722／726／728 B**，unchanged 均 **129 B**；每档 50＋50 次热读取仍有 100 次 source 检查、0 instrument 写入。一次样本 current 热 p50／p95 为 0.7815／1.0575、0.7992／1.0043、0.7981／1.0447 ms；冷 Domain hydrate 为 0.2184／2.4569／34.2616 ms。CPU 可以随 current rows 增长，不根据噪声级计时差异宣称 O(1)。
+
+消费路径以真实 RuntimeFacade.preStep＋Domain adapter、受控 native 端口衡量，每档 50 个预热样本，无真实模型调用：0 个并发摘要客户端时 step p50／p95 **0.4431／0.5971 ms**；同时两个独立 summary RPC 时 step **0.7735／0.8677 ms**，三请求整轮 **1.9722／2.2736 ms**。每份消费正文约 9 KB，正式断言完整 pending 用户义务与原始 agent 作者保留；热 prepared view 可直接复用，不一定进入 FIFO，基线 sourceChecks=0，双客户端样本实际 summary sourceChecks=100。合成 step key 仅用于交付去重测试，不是实际 turn／S 收据。
+
+另在 source 与完整 snapshot 均预热后，仅 Date 测试时钟前进 2,001 ms 跨既有 freshness 窗口，先让 summary 持有公共 InstrumentStorage.read gate，再提交需要刷新的 preStep。门控期 step 未到公共 source-entry、Domain get=0；放行后 get=2 且完整义务／作者保留。一次样本确定阻塞下界 **11.1710 ms**、step→首次 source-entry **12.3340 ms**、随后→返回 **3.1001 ms**、总 **15.4341 ms**。这些是公开区间与人工门控，不是 live 模型延迟预测，也再次确认 HOL 没有消失。
+
+### 实测：mounted 摘要 holder 与双客户端
+
+[闭合 Client bundle 回归](<../tests/client-summary-scheduler.test.mjs>) 使用最终合法 typed summary／RemoteResult 测试 wire；不是手写极小 DTO 草图。每 app、同一调度轮次的实测如下，双独立 VM／app 各自同值，总 RPC／bytes 翻倍。
+
+| 每 app holders | 启动 RPC | 启动 request／response JSON | 每 5 秒 unchanged RPC | 稳定 request／response JSON |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 | 0 | 0／0 B | 0 | 0／0 B |
+| 20 | 1 | 404／13,710 B | 1 | 1,944／2,380 B |
+| 150 | 5 | 3,110／103,210 B | 5 | 14,660／17,890 B |
+| 300 | 10 | 6,330／206,860 B | 10 | 29,430／35,890 B |
+
+非空时峰值 pending≤2、一个 summary timer，空时无 timer。此表只含 summary，不含根 policy、显式 full detail，也不代表真实 GUI 同时挂载了相同数量。回归另锁不合作的超时 transport 仍计入两并发上限、忽略 abort 的迟到结果、部分 release、重复 foreground、错误恢复与强刷尾部公平性。[真实 React DOM](<../tests/client-settings-dom.test.mjs>) 覆盖隐藏 header/input 零 full entry、同时显示共享一次完整读、再次隐藏释放，以及本 session display=false 停读后根 policy revision 恢复、unknown 不显示为 0。
+
+### 独立复核：Standards
+
+该轴确认的 2 项 P2（刷新期间超时仍保留 stale-ready、部分刷新后最后相关 holder release 未取消）均已在正式 RED→GREEN 后独立关闭，无遗留可行动标准问题或 Fowler 判断型建议。最终源码重新核对 hold-lifetime 字段／捕获／附着关系，独立 **32／32** closed-bundle 测试通过；混合 A/B 回归还证明重新取得 A 的新租约不受旧 error／deadline 影响，而持续持有的 B 仍正确收到自己的失败，物理请求直到 settlement 才离开预算。
+
+### 独立复核：Spec
+
+该轴确认的 2 项 P2（superseded／last-relevant 请求取消、旧租约结果跨 release→reacquire）均已独立复现、补正式 RED→GREEN 并关闭，无遗留 Spec 缺口或范围扩张。最终同样独立 **32／32** 通过；取消使用统一 current-member 判定，错误／deadline 按同一 hold-lifetime 附着关系，成功另受 generation fence 保护，不能以修正超时为由污染新 holder 或提前释放不合作 transport 的物理并发槽。
+
+两轴最终核对同一 production diff SHA-256：
+
+`181af9240b8c24210526678230d8e546aeeafed96672ed76b773d7b10f94127d`
+
+以上是彼此独立的评审轴，不合并成一个优先级排行，也不是 live GUI／模型／S 程序执行认证。Standards 2 项已关闭、Spec 2 项已关闭，两轴最严重历史项均为 P2，最终各 0 个 open。
+
+### 最终统一门禁
+
+Node 24.17.0／pnpm 11.8.0，主检出严格 Host 构建、独立 Client noEmit、最终闭合浏览器 bundle 与 entry declaration 均通过（编译堆显式 8GB）。最终 Client **209,378 B、6 个私有 browser-safe 模块，React 为唯一 external**；生成文件不是安装位置，未依赖 HMR 自动更新承诺。
+
+后续新增 **64 项**正式回归（core summary 9、Client scheduler 32、DOM 2、Runtime summary 7、共享 codec 4、scoped freshness 3、跨 owner cache 2、实际 Remote 1、性能 4）。修正新增开发包 smoke 中的同名局部变量后，最终完整根套件重新运行：**942 项，742 通过、0 失败、200 个环境门禁用例明确跳过**，**81.88 秒**。中途未完成／失败的运行不计成功，跳过项不冒称实际宿主／GUI／模型认证。
+
+[开发制品验证](<../tests/controls-package.test.mjs>) 另行 **2／2** 通过（11.63 秒），最终根套件也再次通过这两项：独立 scratch build 的 **68 个 JS／声明文件**逐字节匹配当前产物；真实 pnpm pack 的 **87 固定＋85 vendor＝172 文件**精确清单、模式、字节、导出目标及解包后无依赖 controls 行为通过，包含新 readSummary 与 request/result parser 的 smoke。vendor **85 文件／279,662 B**、beta／stable 各 27 skills 与原有摘要未改变，包版本仍为 0.4.36；包／兼容配置与 lockfile 未改。
+
+两个本轮实现工作树在补丁整合、源／测试逐字节比较和子代理退出后已实际删除，并登记 observation cleaned；原有其它工作树不动。安装目录的 client／runtime／host 三个 SHA-256 与本轮前一致。改动保留在未提交工作区，未安装、发布、重启或修改当前 SDK／Profile 配置；开发包验证不替代清洁提交身份的正式发行 prepack／tarball 门禁，也不宣称完成六宿主安装矩阵、实 GUI／真实模型／OOM 因果认证。
+
+## 未发布源码修复：空回放缓存失效与原生目录契约（2026-10-21，基于 0.4.36）
+
+Runtime 的 worktree observation replay 不再在每次 Promise resolve 时无条件使投影失效；只有新补登记事实、异步核验提交或 replay 健康变化才推进失效水位。已开始／已完成／空 replay 不把只读查询变成新变化。后台核验即使晚于首读完成，也必须使下一次读取看见检查结果；replay 失败按 owner instance 呈现 unknown，先核对 child 归属再读取它的日志，不能把另一 owner 的失败带入本实例。既有 2 秒刷新窗口、效果排序、消费持久化 frontier 与业务义务保留不变。
+
+[Host adapter](<../src/host.ts>) 分别使用公开的 SubagentCatalogEntry 与 SubagentDescendantListEntry 类型：listChildren 的普通行没有 kind/activity，在 adapter 直接归一化；unknown mode 表达 unsupported，畸形输入表达 invalid coverage gap，不把可读 running 下界改成已知零。双方法宿主仅调用直接目录，拒绝／超时不改走整树；本次保留既有仅 listDescendants 宿主的兼容分支及其原有成本，不扩大该支持面。
+
+新增 16 项正式回归：[投影缓存](<../tests/runtime-projection-cache.test.mjs>) 3 项、[回放管线](<../tests/worktree-observation-runtime.test.mjs>)新增 3 项、[原生目录形状](<../tests/native-catalog-shape.test.mjs>) 10 项。原缺陷与延迟核验写失败均经过 RED→GREEN；目录覆盖普通 direct、unknown／畸形、external／cold、live status／depth、空目录、诊断／拒绝、预算／冷却／迟到恢复与旧结果不可覆盖新发布。
+
+机械验证（Node 24.17.0、pnpm 11.8.0，规范宿主根，测试并发 2）：全根套件 **878 项，678 通过、0 失败、200 个环境门禁用例明确跳过**，75.85 秒；新增回归全部运行。原两项失败探针现均通过：相邻未变投影额外 business storage read 为 0、复用同一冻结快照；合法直接目录 known=true、running=1、reason=null。独立 Standards 定向复跑 24／24；Spec 复核发现的核验写失败缺口已补正式 RED→GREEN 并复核关闭，最终两轴无遗留阻塞项。
+
+Host 严格构建与 Client noEmit／闭合浏览器图检查通过；68 个 JS／声明产物与独立 scratch build 字节一致。另行复跑[开发制品回归](<../tests/controls-package.test.mjs>) **2／2**：真实 pnpm pack 精确 **87 固定 + 85 vendor = 172** 个文件、逐文件字节／模式／导出目标与解包后 controls 行为通过。不可变 vendor 85 文件／279662 bytes、原有摘要和兼容选择器均未改变。构建使用显式 8GB 编译堆；隔离 lane 的默认约 4GB noEmit 曾 OOM，不计为通过，最终 strict 构建以主检出的成功结果为准。
+
+本节只记录未提交源码与开发制品验证，不代替要求清洁提交身份的正式发行 prepack／tarball 门禁，也不声称完成六宿主安装矩阵或 GUI／真实模型验收；当前安装包、版本、共享 SDK 和 Profile 未更新，未安装、发布或重启服务。临时实现工作树已在 patch 完整集成后清理。轻量 summary、集中轮询、observer 回收、owner 级队列及 OOM 归因实验不在这次修复范围，不把本次结果扩张为已解决 4GB OOM。
+
 ## 源码改动：worktree 动作拒绝回显（2026-10-18，0.4.36）
 
 `mattpocock_worktree` 的工具说明改成显式 JSON 联合形状，并明确 `action` 必须在 `request` 顶层。未知 action 的拒绝现在回显收到的 action（缺失时为 `no action`）和 `request` 的实际 keys，再列出 `read`／`update`／`update-observation`／`reconcile` 四种期望形状；不再只给一句没有输入上下文的 `action required`。新增 [model-contract](<../tests/model-contract.test.mjs>) 回归：错误 action 必须回显 `action` 与 keys，`{"update-observation": {...}}` 这种嵌套形状必须报告 `no action` 与实际 key。全根套件 862 项 **662 通过／0 失败／200 跳过**（`0.2.1-rc.2`，Node 24.17.0）、双宿主 888 中 **882 通过／0 失败／6 跳过**、无宿主根 862 中 **568 通过／294 跳过／0 失败**；本改动不改变 action 词表、业务语义、存储或权限。

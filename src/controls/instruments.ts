@@ -37,6 +37,18 @@ export interface InstrumentSnapshot {
     readonly awaitingImplementationCount: number
   }
 }
+/** Current authorized badge facts; no retained versions, changes or decision bodies. */
+export interface InstrumentSummary {
+  readonly instance: InstrumentInstance
+  readonly revision: number
+  readonly businessRevision: number
+  readonly viewerRevision: number
+  readonly scope: InstrumentScope
+  readonly summary: {
+    readonly countingScope: 'instance' | 'assignment'
+    readonly pendingUserDecisionCount: number
+  }
+}
 export interface InstrumentApplyResult { readonly appliedRevision: number; readonly replayed: boolean; readonly snapshot: InstrumentSnapshot }
 export interface InstrumentCleanupResult extends InstrumentApplyResult {
   readonly removedVersions:number;readonly checkpointRevision:number;readonly coverage:readonly InstrumentCleanupCoverage[]
@@ -73,7 +85,7 @@ function parseAccess(value: unknown, principal: string, sessionId: string): Inst
   return freeze({ author, scope: { kind: 'assigned', workflowId: scope.workflowId === null ? null : id(scope.workflowId, 'assigned workflowId'), ticketIds } })
 }
 function creatorOf(row:DecisionRecord):string {return row.creator?.principalId ?? row.history[0]!.author.principalId}
-function decisionAllowed(access: InstrumentAccess, workflowId: string, value: DecisionValue, creator: string): boolean {
+function decisionAllowed(access: InstrumentAccess, workflowId: string, value: Pick<DecisionValue, 'ticketIds'>, creator: string): boolean {
   if (access.scope.kind === 'coordinator') return true
   if (access.scope.workflowId !== workflowId) return false
   const tickets = value.ticketIds ?? []
@@ -84,7 +96,56 @@ function selectionsFor(value: TicketValue, axisKey: string): readonly string[] {
   return Object.hasOwn(value.statuses, axisKey) ? value.statuses[axisKey]! : []
 }
 
-/** Two-operation unmounted instrument seam; records model/user judgment, never judges it. */
+interface CurrentDecision {
+  readonly workflowId: string
+  readonly creator: string
+  readonly ticketIds: readonly string[]
+  readonly pending: boolean
+  readonly userAddressee: boolean
+}
+interface CurrentDecisionIndex {
+  readonly businessRevision: number
+  readonly viewerRevisions: ReadonlyMap<string, number>
+  readonly decisions: readonly CurrentDecision[]
+}
+// Only load()'s validated immutable documents enter this cache. This is deliberately
+// separate from validation.memoized, whose entries identify parsed source documents.
+const currentDecisionIndexes = new WeakMap<InstrumentDocument, CurrentDecisionIndex>()
+function currentDecisionIndex(document: InstrumentDocument): CurrentDecisionIndex {
+  const known = currentDecisionIndexes.get(document)
+  if (known !== undefined) return known
+  const base = document.schemaVersion === 2 ? document.checkpoint.state : undefined
+  let businessRevision = base?.businessRevision ?? 0
+  const viewerRevisions = new Map(Object.entries(base?.viewerRevisions ?? {}))
+  const decisions = new Map<string, CurrentDecision>()
+  const key = (workflowId: string, decisionId: string): string => JSON.stringify([workflowId, decisionId])
+  for (const row of base?.decisions ?? []) decisions.set(key(row.workflowId, row.decisionId), {
+    workflowId: row.workflowId, creator: creatorOf(row), ticketIds: row.value.ticketIds ?? [],
+    pending: row.value.pending === true, userAddressee: row.value.addressee?.kind === 'user',
+  })
+  // Fold only count/authorization fields; never project or copy retained histories.
+  for (const event of document.events) {
+    const command = event.command
+    if (command.action === 'set-decision-view') {
+      viewerRevisions.set(event.author.principalId, command.expectedRevision + 1)
+      continue
+    }
+    businessRevision++
+    if (command.action !== 'put-decision') continue
+    const target = key(command.workflowId, command.decisionId), previous = decisions.get(target)
+    decisions.set(target, {
+      workflowId: command.workflowId, creator: previous?.creator ?? event.author.principalId,
+      ticketIds: command.value.ticketIds ?? previous?.ticketIds ?? [],
+      pending: command.value.pending ?? previous?.pending ?? false,
+      userAddressee: command.value.addressee === undefined ? previous?.userAddressee ?? false : command.value.addressee.kind === 'user',
+    })
+  }
+  const current = Object.freeze({ businessRevision, viewerRevisions, decisions: freeze([...decisions.values()]) })
+  currentDecisionIndexes.set(document, current)
+  return current
+}
+
+/** Unmounted instrument seam; records model/user judgment, never judges it. */
 export class SessionInstruments {
   constructor(private readonly controls: WorkspaceControls, private readonly storage: InstrumentStorage,
     private readonly authority: InstrumentAuthority, private readonly now: () => number = Date.now) {}
@@ -94,6 +155,19 @@ export class SessionInstruments {
     const context = await this.context(principal, sessionId, 'read')
     const document = await this.load(context.controls.instance)
     return this.snapshot(document, context.access, parsedFilter)
+  }
+
+  async readSummary(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentSummary> {
+    const context = await this.context(principal, sessionId, 'read', signal)
+    const document = await this.load(context.controls.instance, signal)
+    const current = currentDecisionIndex(document), access = context.access
+    let pendingUserDecisionCount = 0
+    for (const decision of current.decisions) {
+      if (decision.pending && decision.userAddressee && decisionAllowed(access, decision.workflowId, decision, decision.creator)) pendingUserDecisionCount++
+    }
+    return freeze({ instance: context.controls.instance, revision: document.revision,
+      businessRevision: current.businessRevision, viewerRevision: current.viewerRevisions.get(access.author.principalId) ?? 0,
+      scope: access.scope, summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', pendingUserDecisionCount } })
   }
 
   async apply(principal: string, sessionId: string, input: InstrumentCommand): Promise<InstrumentApplyResult> {

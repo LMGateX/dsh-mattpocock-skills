@@ -11,7 +11,7 @@ import type { DecisionRecord, InstrumentCommand } from './controls/instrument-st
 import type { WindowSnapshot } from './controls/windows.js';
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js';
 import type { WorktreeObservationView } from './controls/worktree-observations.js';
-import type { ControlsRemote as HostControlsRemote, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot } from './controls/remote-contract.js';
+import type { ControlsRemote as HostControlsRemote, HostCaller, NativeStopRow, PolicyGrants, RuntimeSnapshot, SessionSummary, SessionSummaryBatch } from './controls/remote-contract.js';
 export declare const PACKAGE_NAME = "@lmgatex/dsh-mattpocock-skills";
 export declare const TAB_KIND = "mattpocock-collaboration";
 export declare const TAB_ID: string;
@@ -71,6 +71,80 @@ export declare class SessionObserver {
     private clearTimer;
     private publish;
 }
+export type SessionObservation = Pick<SessionObserver, 'sessionId' | 'getSnapshot' | 'getDisplay' | 'subscribe' | 'retain' | 'refresh'>;
+/** Faces carry lazy handles, never bare evictable observers. A render-to-effect gap and
+ * even a previously evicted native face can reacquire the single current Session entry.
+ * TTL is checked on registry activity; the last full holder already clears its snapshot.
+ * Only transient UI metadata is evicted, never durable records or model consumption. */
+export declare class SessionObserverCache {
+    private readonly read;
+    private readonly intervalMs;
+    private readonly idleTtlMs;
+    private readonly maxIdle;
+    private readonly entries;
+    private closed;
+    constructor(read: (sessionId: string, signal?: AbortSignal) => Promise<RemoteResult<unknown>>, intervalMs?: number, idleTtlMs?: number, maxIdle?: number);
+    get size(): number;
+    observe(sessionId: string): SessionObservation;
+    refreshAll(): void;
+    dispose(): void;
+    private prune;
+}
+type SummaryRead = (request: {
+    readonly sessions: readonly {
+        readonly sessionId: string;
+        readonly version?: string;
+    }[];
+}, signal?: AbortSignal) => Promise<RemoteResult<SessionSummaryBatch>>;
+/** A lightweight handle, not a second per-Session timer. Old handles route back through the
+ * shared registry after idle eviction, so a native injected face cannot retain a dead observer. */
+export declare class SummaryObserver {
+    readonly sessionId: string;
+    private readonly scheduler;
+    constructor(sessionId: string, scheduler: SummaryScheduler);
+    getSnapshot: () => Observation<SessionSummary>;
+    getDisplay: () => EffectivePolicy["display"] | undefined;
+    getConfigurationRevision: () => number | undefined;
+    subscribe: (listener: () => void) => (() => void);
+    retain: () => (() => void);
+    refresh: () => void;
+}
+/** One scheduler per mounted plugin namespace: 32 identities per batch, two requests in flight,
+ * one timer, and no host Session activation. Only mounted holders become query work. */
+export declare class SummaryScheduler {
+    private readonly read;
+    private readonly intervalMs;
+    private readonly idleTtlMs;
+    private readonly maxIdle;
+    private readonly entries;
+    private readonly flights;
+    private sequence;
+    private timer;
+    private closed;
+    private hidden;
+    private readonly onVisibility;
+    constructor(read: SummaryRead, intervalMs?: number, idleTtlMs?: number, maxIdle?: number);
+    get size(): number;
+    observe(sessionId: string): SummaryObserver;
+    snapshot(sessionId: string): Observation<SessionSummary>;
+    display(sessionId: string): EffectivePolicy['display'] | undefined;
+    configurationRevision(sessionId: string): number | undefined;
+    subscribe(sessionId: string, listener: () => void): () => void;
+    retain(sessionId: string): () => void;
+    refresh(sessionId?: string): void;
+    dispose(): void;
+    private entry;
+    private prune;
+    private clearTimer;
+    private arm;
+    private pump;
+    private attached;
+    private current;
+    private delay;
+    private fail;
+    private publish;
+    private run;
+}
 /** Changes a draft only. undefined deletes a leaf and restores inheritance. */
 export declare function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField, value: boolean | number | undefined): PolicyIntent;
 export declare function savePolicyDraft(remote: Pick<ControlsRemote, 'savePolicy'>, draft: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>;
@@ -86,10 +160,15 @@ export declare function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIn
     readonly executionEffects: string;
 };
 interface SessionFace {
-    readonly observer: SessionObserver;
+    readonly observer: SessionObservation;
     readonly openDetails: () => void;
 }
-type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SessionFace;
+interface SummaryFace {
+    readonly summary: SummaryObserver;
+    readonly observe: () => SessionObservation;
+    readonly openDetails: () => void;
+}
+type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SummaryFace;
 /** T is explicit bookkeeping; S tracking is not proof that all runtime work is known. */
 /** State the published outcome; 'unobservable' reads as unobservable, never as a cause. */
 export declare function nativeStopText(row: NativeStopRow): string;
@@ -111,7 +190,9 @@ export declare function compactInstrumentSummary(view: ClientSessionSnapshot): {
     readonly detail: string;
 };
 export declare function HeaderEntry(props: HeaderProps): ReactElement | null;
-export declare function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null;
+export declare function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.header.utilities'> & SessionFace): ReactElement | null;
+export declare function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null;
+export declare function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null;
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
 export declare function decisionAnswerCommand(records: InstrumentSnapshot, decision: DecisionRecord, answer: string, status: string, pending: boolean, awaitingImplementation: boolean, operationId: string): InstrumentCommand;
 export declare function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & {
@@ -154,15 +235,21 @@ export declare class PolicyObserver {
     private value;
     private generation;
     private closed;
+    private pending;
+    private timer;
+    private hidden;
     private readonly listeners;
+    private readonly onVisibility;
     constructor(read: () => Promise<RemoteResult<unknown>>);
     getSnapshot: () => PolicySnapshot | null;
     subscribe: (listener: () => void) => (() => void);
     refresh(): Promise<void>;
+    private clearTimer;
+    private arm;
     dispose(): void;
 }
 export declare function WorkspaceBadge(props: PropsRuntime<'sidebar.session.row.leading'> & {
-    readonly observe: (sessionId: string) => SessionObserver;
+    readonly observeSummary: (sessionId: string) => SummaryObserver;
     readonly visibility: PolicyObserver;
 }): ReactElement | null;
 export declare function decodeWorkspaces(value: unknown): readonly WorkspaceChoice[];
@@ -174,12 +261,12 @@ export declare function settingsSessionChoices(workspaces: readonly WorkspaceCho
 /** Explicit selected-session read projection on the settings page, independent of sidebar placement. */
 export declare function SettingsInspection(props: {
     readonly sessionId: string;
-    readonly observer: SessionObserver;
+    readonly observer: SessionObservation;
     readonly remote?: ControlsRemote;
 }): ReactElement;
 export declare function ObservedSettingsInspection(props: {
     readonly sessionId: string;
-    readonly observer: SessionObserver;
+    readonly observer: SessionObservation;
     readonly remote?: ControlsRemote;
 }): ReactElement;
 export interface StartupSettingsView {
@@ -217,12 +304,12 @@ export declare function StartupSettingsPanel(props: {
 export declare function SettingsPage(props: PluginConfigViewProps & {
     readonly remote: ControlsRemote;
     readonly refreshAll: () => void;
-    readonly observe: (sessionId: string) => SessionObserver;
+    readonly observe: (sessionId: string) => SessionObservation;
 }): ReactElement;
 /** Read only public call material; never serialize the lazy argument reader's internals. */
 export declare function sourceRecord(props: ToolCallViewProps): unknown;
 /** Only our own wire Tool names may claim a toolview; never another plugin's key. */
-export declare function SourceCard(props: ToolCallViewProps & SessionFace): ReactElement;
+export declare function SourceCard(props: ToolCallViewProps & SummaryFace): ReactElement;
 export declare const inject: string[];
 /** Browser plugin activation, governed by Host Loader/package manifest, not DOM insertion. */
 export declare function apply(ctx: Context): Promise<void>;
