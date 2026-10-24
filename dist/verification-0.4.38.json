@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.38",
+    "private": true
+  },
+  "source": {
+    "commit": "5ef90697aecadf973911b413943dd24ebbf06373",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.38.tgz",
+    "bytes": 427749,
+    "sha256": "217749468a4764b17be220749cc52dca32d350d19c6d7d20bcad91f63d5ad3dc",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.1-rc.2"
+  },
+  "hostRoots": {
+    "canonical": "0.2.1-rc.2 (live global install)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.1-rc.2",
+    "rootTests": {
+      "total": 944,
+      "passed": 744,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 970,
+      "passed": 964,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 944,
+      "passed": 649,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 295
+    },
+    "exactArchiveVerifier": "passed",
+    "disposableE2ePack": "passed",
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.1-rc.2"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 200 canonical skips are bridge/manager fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT plus the 6 client native-activation cases whose Renderer needs @deepseek-ai/dsh-client-ui-slots, a package older installs no longer ship; the dual-root run executes the bridge fixtures and keeps only the 6 client skips (964/970); without any host root 295 cases skip",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 212412
+  },
+  "compatibility": {
+    "hostRange": "unchanged: 0.2.1-alpha.1 … 0.2.1-rc.2 verified; this release only changes how the compact input summary orders and folds existing records"
+  },
+  "review": {
+    "baseline": "v0.4.37",
+    "independentReview": "No separate Standards/Spec review was run for this display-only change. The exact archive, rc.2 isolated headless gate, dual-root and no-root suites pass; the six-host isolated matrix and the 14 native + 13 plugin-manager same-archive matrix were not re-run for this release."
+  }
+}
