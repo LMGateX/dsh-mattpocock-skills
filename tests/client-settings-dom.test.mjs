@@ -502,6 +502,87 @@ for (const [countingScope, label, otherLabel] of [
   })
 }
 
+test('input summary orders workflows by latest activity and collapses older work behind explicit details', async t => {
+  const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
+  const axis = (workflowId, label, statuses) => ({ workflowId, axisKey: 'state', label, counting: 'exclusive', unreported: 0, statuses })
+  const workflows = [
+    { workflowId: 'old-flow', revision: 1 },
+    { workflowId: 'empty-flow', revision: 20 },
+    { workflowId: 'mid-flow', revision: 5 },
+    { workflowId: 'new-flow', revision: 6 },
+  ]
+  const tickets = [
+    { workflowId: 'old-flow', localTicketId: 'T1', revision: 1 },
+    { workflowId: 'old-flow', localTicketId: 'T2', revision: 2 },
+    { workflowId: 'old-flow', localTicketId: 'T3', revision: 3 },
+    { workflowId: 'old-flow', localTicketId: 'T4', revision: 4 },
+    { workflowId: 'mid-flow', localTicketId: 'T5', revision: 30 },
+    { workflowId: 'new-flow', localTicketId: 'T6', revision: 40 },
+  ]
+  const statusCounts = [
+    axis('old-flow', '交付', [{ statusKey: 'done', label: '已交付', count: 4 }]),
+    axis('empty-flow', '设计阶段', [{ statusKey: 'research', label: '研究中', count: 0 }, { statusKey: 'discussion', label: '待讨论', count: 0 }]),
+    axis('mid-flow', '交付', [{ statusKey: 'todo', label: '未开始', count: 7 }, { statusKey: 'doing', label: '实施中', count: 1 }]),
+    axis('new-flow', '交付', [{ statusKey: 'todo', label: '未开始', count: 8 }, { statusKey: 'doing', label: '实施中', count: 1 }]),
+  ]
+  const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true,
+      features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
+      display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
+    records: { instance, workflows, tickets, summary: { countingScope: 'instance', totalTickets: 6, statusCounts } },
+    windows: null, resources: [], capabilities: [], health: [] }
+  const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
+  t.after(() => observer.dispose())
+  let details = 0
+  const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { details += 1 } })
+  const summary = named(container, '协作进度摘要')
+  const text = summary.textContent
+  assert(text.indexOf('T 未知') < text.indexOf('new-flow'), 'global T/S stays above the current workflow')
+  assert(text.indexOf('new-flow') < text.indexOf('mid-flow'), 'a newer ticket lifts its older workflow above mere definition order')
+  assert(!text.includes('old-flow') && !text.includes('empty-flow'), 'only the two most recently active workflows are expanded')
+  assert.match(text, /其余 2 个工作流 · 查看详情/)
+  assert.equal(details, 0, 'rendering never opens the details panel by itself')
+  await click(button(container, '其余 2 个工作流 · 查看详情'))
+  assert.equal(details, 1, 'the folded workflows have an explicit details entrance')
+})
+
+test('input summary shows a ticketless workflow compactly and never hides rows without a details entrance', async t => {
+  const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
+  const axis = (workflowId, label, statuses) => ({ workflowId, axisKey: 'state', label, counting: 'exclusive', unreported: 0, statuses })
+  const workflows = [
+    { workflowId: 'old-flow', revision: 1 },
+    { workflowId: 'active-flow', revision: 8 },
+    { workflowId: 'design-flow', revision: 7 },
+  ]
+  const tickets = [
+    { workflowId: 'old-flow', localTicketId: 'T1', revision: 2 },
+    { workflowId: 'active-flow', localTicketId: 'T2', revision: 10 },
+  ]
+  const statusCounts = [
+    axis('old-flow', '交付', [{ statusKey: 'done', label: '已交付', count: 1 }]),
+    axis('active-flow', '交付', [{ statusKey: 'doing', label: '实施中', count: 1 }]),
+    axis('design-flow', '设计阶段', [{ statusKey: 'research', label: '研究中', count: 0 }, { statusKey: 'discussion', label: '待讨论', count: 0 }]),
+  ]
+  const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true,
+      features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
+      display: { header: true, inputSummary: true, rightPanel: false, sessionList: false, timeline: true } },
+    records: { instance, workflows, tickets, summary: { countingScope: 'instance', totalTickets: 2, statusCounts } },
+    windows: null, resources: [], capabilities: [], health: [] }
+  const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
+  t.after(() => observer.dispose())
+  const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => assert.fail('disabled details entrance must not be advertised') })
+  const summary = named(container, '协作进度摘要')
+  const text = summary.textContent
+  assert.match(text, /design-flow \/ 设计阶段 · 暂无票/)
+  assert.doesNotMatch(text, /研究中 0|待讨论 0/)
+  assert.match(text, /old-flow/)
+  assert.match(text, /active-flow/)
+  assert.doesNotMatch(text, /其余 \d+ 个工作流|查看详情/)
+})
+
 test('native support with a newly saved request shows pending restart without unconditional patch instructions', async t => {
   const remote = { startupStatus: async () => ok(startup({ desired: { startupCwdEnabled: true },
     enabledNow: false, nativeInitialCwdSupported: true, restartNeeded: true, state: 'pending-restart',

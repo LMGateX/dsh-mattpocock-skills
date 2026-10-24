@@ -501,6 +501,46 @@ export function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.he
 function countingScopeText(scope: InstrumentSnapshot['summary']['countingScope']): string {
   return ({ instance: '当前实例统计', assignment: '当前分配范围统计' } satisfies Record<InstrumentSnapshot['summary']['countingScope'], string>)[scope] ?? '统计范围未知'
 }
+const INPUT_SUMMARY_WORKFLOW_LIMIT = 2
+type InputSummaryAxis = InstrumentSnapshot['summary']['statusCounts'][number]
+interface InputSummaryWorkflow {
+  readonly workflowId: string
+  readonly axes: readonly InputSummaryAxis[]
+  readonly lastActivity: number
+  readonly ticketCount: number | null
+  readonly order: number
+}
+/** Order the compact summary by real activity, not by the order workflows first appeared.
+ * The revision is a program fact; a newer ticket can lift an older long-lived workflow. */
+function inputSummaryWorkflows(records: InstrumentSnapshot): readonly InputSummaryWorkflow[] {
+  const axesByWorkflow = new Map<string, InputSummaryAxis[]>()
+  for (const axis of records.summary.statusCounts) {
+    const axes = axesByWorkflow.get(axis.workflowId)
+    if (axes === undefined) axesByWorkflow.set(axis.workflowId, [axis])
+    else axes.push(axis)
+  }
+  const workflowRows = Array.isArray(records.workflows) ? records.workflows : []
+  const ticketRows = Array.isArray(records.tickets) ? records.tickets : []
+  const ticketInventoryKnown = Array.isArray(records.tickets)
+  const workflowById = new Map(workflowRows.map(row => [row.workflowId, row] as const))
+  const ticketsByWorkflow = new Map<string, (typeof ticketRows)[number][]>()
+  for (const ticket of ticketRows) {
+    const rows = ticketsByWorkflow.get(ticket.workflowId)
+    if (rows === undefined) ticketsByWorkflow.set(ticket.workflowId, [ticket])
+    else rows.push(ticket)
+  }
+  return [...axesByWorkflow].map(([workflowId, axes], order) => {
+    const scopedTickets = ticketsByWorkflow.get(workflowId) ?? []
+    const revisions = scopedTickets.map(ticket => ticket.revision)
+    const workflow = workflowById.get(workflowId)
+    if (workflow !== undefined) revisions.push(workflow.revision)
+    const lastActivity = revisions.reduce((latest, revision) => revision > latest ? revision : latest, 0)
+    return { workflowId, axes, lastActivity, ticketCount: ticketInventoryKnown ? scopedTickets.length : null, order }
+  }).sort((left, right) => right.lastActivity - left.lastActivity || left.order - right.order)
+}
+function workflowSummaryLine(workflowId: string, axis: InputSummaryAxis): ReactElement {
+  return h('div', { key: workflowId + ':' + axis.axisKey }, workflowId + ' / ' + axis.label + '（' + (axis.counting === 'exclusive' ? '互斥统计' : '可重叠统计') + '） · ' + axis.statuses.map(status => status.label + ' ' + status.count).join(' · '))
+}
 export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
   const observation = useSummaryObservation(props.summary)
   if (observation.status !== 'ready' || !observation.value.policy.display.inputSummary) return null
@@ -516,11 +556,21 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const view = observation.value
   const gates = view.policy as { readonly extensionEnabled?: boolean; readonly workspaceEnabled?: boolean }
   const inactive = gates.extensionEnabled === false ? '全局总闸已关闭' : gates.workspaceEnabled === false ? '本工作区总闸已关闭' : null
+  const workflows = view.records === null ? [] : inputSummaryWorkflows(view.records)
+  // Collapsing without an enabled details entrance would make the omitted rows unreachable.
+  const visible = view.policy.display.rightPanel ? workflows.slice(0, INPUT_SUMMARY_WORKFLOW_LIMIT) : workflows
+  const hidden = view.policy.display.rightPanel ? workflows.slice(INPUT_SUMMARY_WORKFLOW_LIMIT) : []
   return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, maxHeight: '96px', overflowY: 'auto', overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
     inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新。'),
     view.records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + String(view.records.summary.totalTickets) + ' · ' + countingScopeText(view.records.summary.countingScope)),
     h('span', null, windowSummary(view.windows, view.health).join(' · ')),
-    view.records?.summary.statusCounts.map(axis => h('div', { key: axis.workflowId + ':' + axis.axisKey }, axis.workflowId + ' / ' + axis.label + '（' + (axis.counting === 'exclusive' ? '互斥统计' : '可重叠统计') + '） · ' + axis.statuses.map(status => status.label + ' ' + status.count).join(' · '))))
+    ...visible.flatMap(workflow => workflow.ticketCount === 0
+      ? [h('div', { key: workflow.workflowId + ':no-tickets' }, workflow.workflowId + ' / ' + workflow.axes.map(axis => axis.label).join(' / ') + ' · 暂无票')]
+      : workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))),
+    hidden.length === 0 ? null : h('button', { key: 'workflow-rest', type: 'button', onClick: props.openDetails,
+      'aria-label': '查看其余 ' + hidden.length + ' 个工作流的完整详情',
+      style: { background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px', cursor: 'pointer' } },
+    '其余 ' + hidden.length + ' 个工作流 · 查看详情'))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
