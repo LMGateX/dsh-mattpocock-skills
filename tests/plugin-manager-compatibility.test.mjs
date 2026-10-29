@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 import { constants as fsConstants } from 'node:fs'
 import { open, stat, chmod } from 'node:fs/promises'
 import { ALPHA1_NATIVE_SHA256, nativeEntrySha256, openCompatHostView } from './fixtures/compat-host.mjs'
+import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 // Accepted seam: actual public pinned PluginManager + pnpm-owned Profile +
 // actual app-boot Include/Hmr/PluginPackages, not hand-assembled package links.
@@ -165,6 +166,8 @@ async function worker(scenario, tarball) {
   const sdkRequire = createRequire(anchor), profileRequire = createRequire(join(dir, 'package.json'))
   const load = name => import(pathToFileURL(sdkRequire.resolve(name)).href)
   const app = await load('@deepseek-ai/dsh-app-boot')
+  // 0.2.2 moved the shipped profile template table into its own package; older hosts keep it on app-boot.
+  const profileTemplates = app.PROFILE_TEMPLATES ?? (await load('@deepseek-ai/dsh-official-bundles')).PROFILE_TEMPLATES
   const cordis = await load('@deepseek-ai/cordis')
   const { TypertRegistry } = await load('@deepseek-ai/dsh-typert-registry')
   const { SkillRegistry } = await load('@deepseek-ai/dsh-skill')
@@ -175,7 +178,7 @@ async function worker(scenario, tarball) {
   const { provideCmdline } = await load('@deepseek-ai/dsh-cmdline')
   const readyListeners = new Set()
   const oldShadow = scenario === 'old-profile' ? await prepareOldProtocolShadow(dir) : undefined
-  app.initProfile(dir, app.PROFILE_TEMPLATES.web.bundles)
+  app.initProfile(dir, profileTemplates.web.bundles)
   const profile = app.loadProfileDirectory('manager-proof', dir, anchor)
   assert.deepEqual(profile.skippedBundles, [])
   assert.deepEqual(profile.layers.slice(0, 2).map(layer => layer.packageName),
@@ -210,6 +213,13 @@ async function worker(scenario, tarball) {
       // mechanical working directory for the genuine stock Fiber to activate.
       if (native.default.inject?.includes('workingDirectory') && ctx.get('workingDirectory') === undefined)
         ctx.provide('workingDirectory', { async ensure() { return dir }, async set() {} })
+      // 0.2.2 stock subagents also register catalog/timing/identity projections during
+      // activation. The bounded overlay disables every unrelated provider row, so mount the
+      // real registry directly when the composed row is absent.
+      if (native.default.inject?.includes('sessionProjections') && ctx.get('sessionProjections') === undefined) {
+        const { SessionProjectionRegistry } = await load('@deepseek-ai/dsh-session-projection')
+        new SessionProjectionRegistry(ctx)
+      }
       if (scenario === 'native' || scenario === 'cold-native' || scenario === 'disable-compatible' || scenario === 'remove-compatible' || scenario === 'bridge-toggle' || scenario === 'old-profile') graph = await nativeGraph(ctx, load, dir, scenario === 'cold-native', scenario === 'disable-compatible' ? 'bundle-parent' : scenario === 'remove-compatible' ? 'remove-parent' : 'manager-parent')
       await ctx.plugin(Timer)
       await ctx.plugin(Hmr, { root: [], base: dir, ignored: [], debounce: 1 })
@@ -303,7 +313,7 @@ async function worker(scenario, tarball) {
           assert.equal(child.session.header.cwd, graph.pathB)
           assert.equal(Object.isFrozen(child.session.header), true)
           assert.equal((await ctx.sessionPersistence.stat(started.childId)).header.cwd, graph.pathB)
-          const read = await ctx.tools.execute({ callId: 'toggle-read', name: 'read', arguments: { file_path: 'marker.txt' }, agent: child, signal: graph.signal() })
+          const read = await executeRegistryTool(ctx, { callId: 'toggle-read', name: 'read', arguments: { file_path: 'marker.txt' }, agent: child, signal: graph.signal() }, load)
           assert.equal(read.value.lines[0].text, 'manager B')
         }
         const disabled = await ctx.pluginManager.setPluginEnabled(bridge.entryId, false)
@@ -342,7 +352,7 @@ async function worker(scenario, tarball) {
         const start = cwd => ctx.subagents.startContinuable({ provider: 'bounded-native', label: 'real manager installed native',
           ...(cwd === undefined ? {} : { cwd }), request: { parent: graph.parent, prompt: [{ type: 'text', text: 'no model' }], maxDepth: 4 }, signal: graph.signal() })
         const a = await start(graph.pathA), b = await start(graph.pathB), inherited = await start(undefined)
-        const read = id => ctx.tools.execute({ callId: 'read-' + id, name: 'read', arguments: { file_path: 'marker.txt' }, agent: ctx.agents.get(id), signal: graph.signal() })
+        const read = id => executeRegistryTool(ctx, { callId: 'read-' + id, name: 'read', arguments: { file_path: 'marker.txt' }, agent: ctx.agents.get(id), signal: graph.signal() }, load)
         assert.equal((await read(a.childId)).value.lines[0].text, 'manager A')
         assert.equal((await read(b.childId)).value.lines[0].text, 'manager B')
         const child = ctx.agents.get(b.childId), header = structuredClone(child.session.header)
@@ -589,7 +599,7 @@ async function child(scenario, tar = tarball, targetProfile = profiles.compat, r
     "import { createHash } from 'node:crypto'",
     'const hostRoot = ' + JSON.stringify(root), 'const pluginName = ' + JSON.stringify(pluginName),
     "const origin = Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')",
-    'const nativeHash = ' + JSON.stringify(expectedHash), nativeGraph.toString(), assertPackageMetadata.toString(), prepareOldProtocolShadow.toString(), worker.toString(),
+    'const nativeHash = ' + JSON.stringify(expectedHash), executeRegistryTool.toString(), nativeGraph.toString(), assertPackageMetadata.toString(), prepareOldProtocolShadow.toString(), worker.toString(),
     'console.log("MANAGER_RESULT:" + JSON.stringify(await worker(' + JSON.stringify(scenario) + ', ' + JSON.stringify(tar) + ')))',
   ].join('\n')
   const workerPath = join(scratch, 'worker-' + scenario + '.mjs')

@@ -59,6 +59,22 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 技术边界（核对中确认）：本插件的客户端产物不 require 任何 `@deepseek-ai/*` 模块 id（导入全为 type-only 或服务注入），因此 alpha.4 把 slots 从安装依赖改为 Web 前端 static module 不影响运行时；产品代码不构造 `PeerScope`，新契约只需要测试 fixture 满足。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 alpha.3／alpha.4 小节。
 
+## DSH 0.2.2-alpha.2 兼容适配（2026-10-29，隔离安装内完成；未安装、未发布）
+
+接受范围：核对 `0.2.2-alpha.2` 相对上一核对线的宿主变化并做最小适配。**唯一破坏本插件运行时代码的接缝是工具执行拆分**：旧单调用 `ctx.tools.execute(ToolExecutionInput)` 被移除，改为 executor 插件拥有的批处理入口；受管原生 `subagent`／`send_message` 派发必须保留原调用的 parent token 与 policy／guard 语义。
+
+隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.2-alpha.2`，另以独立 `DSH_HOME` 安装本工作树打包制品并做无凭据 headless 装载；未改动本机 DSH 与任何 Profile，未写 `~/.dsh/artifacts`，未 push／Release，未启动第二个服务，未调用模型。
+
+| 阶段 | 内容 | 门禁（机械） |
+|---|---|---|
+| A 接缝核对 | 对拆 0.2.1-rc.3 → 0.2.2-alpha.2 的 24 个相关宿主包；确认 `dsh-skill` 不变，`dsh-tools` 删除单调用 execute，`dsh-subagent` 新增 `sessionProjections` 初始化，`app-boot` 把 `PROFILE_TEMPLATES` 移到 `dsh-official-bundles` | 类型声明编译与真实导出清单核对 |
+| B 受管原生调用 | `src/host.ts` 的 `executeNative` 在具备 `setExecutor` 的 0.2.2 宿主上使用公开 `@deepseek-ai/dsh-tools/pipeline` 的 `prepare → dispatch → complete`；保留 `parent` token、`rootCallId`、policy／guard／post-execute。没有该接缝的旧宿主保留单调用回退 | `tests/host.test.mjs` 的 managed nesting、guard 与 parent token 用例 |
+| C 旧 seam 类型 | 旧宿主 `startContinuable` 回退改用结构化 `LegacyContinuationFacade`，不依赖 0.2.2 已删除的声明 | 旧宿主类型编译与真实用例 |
+| D 测试夹具 | 新增公开 pipeline 的单调用测试适配；0.2.2 stock 子代理／Agent 服务以 `ctx.plugin()` 或真实 `SessionProjectionRegistry` 进入 ACTIVE；管理器测试从 official-bundles 读取模板 | 目标用例全部 0 失败 |
+| E 回归与装载 | 新宿主与 `0.2.1-rc.3` 分别跑全量根测试；独立 `DSH_HOME` 安装开发包并做 headless 装载；`0.2.1-alpha.1` 隔离跑兼容矩阵 | 两宿主各 **944 项、741 通过、0 失败、203 skip**；alpha.1 兼容矩阵 **154 项、140 通过、0 失败、14 skip**；headless 装载 27 Skills、11 模型可见，无凭据停在 `MISSING_CREDENTIAL` |
+
+技术边界：Skills provider、vendor 字节、通道语义、provider 优先级与 `engines.dsh: "~0.2.1-alpha.1"` 未改变；新宿主门禁仍放行该预发布线，无需 `allow-version`。没有真实模型活动、浏览器 GUI 会话或 PTC program 运行；真实 Host 的工具策略／guard／parent token 用例覆盖了受管嵌套路径。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 `0.2.2-alpha.2` 小节。
+
 ## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
 
 本阶段授权为既有 Profile 旧依赖接入与组件强制开启覆盖的代码修复和真实 SDK／Loader／Plugin Manager 验证。新版本 push／Release／同字节本机安装另行确认；不沿用只针对 0.4.3 的发布安装授权，不自动重启 GUI，也不静默清除当前 Profile 的布尔覆盖。

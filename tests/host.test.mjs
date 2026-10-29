@@ -6,11 +6,12 @@ import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { operatorPeer } from './fixtures/peer.mjs'
+import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for installed-host mechanical probes' }
-let api, sdk
+let api, sdk, load
 if (hostRoot) {
   assert(isAbsolute(hostRoot))
   const hostRequire = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
@@ -26,7 +27,7 @@ if (hostRoot) {
     },
   })
   api = await import('../src/host.ts')
-  const load = name => import(pathToFileURL(hostRequire.resolve(name)).href)
+  load = name => import(pathToFileURL(hostRequire.resolve(name)).href)
   sdk = { ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-api-gateway'), ...await load('@deepseek-ai/dsh-storage-domain'), ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-session'), ...await load('@deepseek-ai/dsh-util-values'), ...await load('@deepseek-ai/dsh-system-prompt'), ...await load('@deepseek-ai/dsh-llm') }
 }
 const signal = () => new AbortController().signal
@@ -143,7 +144,7 @@ test('host mount derives the same operator principal from the alpha.3+ browserPe
   const f = await assembly(t, {}, undefined, new Map(), 'browserPeer')
   assert.equal((await f.invoke('readPolicy')).revision, 0)
   assert.equal(f.calls[0].principalId, 'user:operator')
-  assert.equal((await f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() })).isError, false)
+  assert.equal((await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() }, load)).isError, false)
 })
 test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects forged operator/unknown fields', options, async t => {
   const f = await assembly(t)
@@ -167,7 +168,7 @@ test('a failing post-execute observation never replaces the native tool result',
   let observed = 0
   const f = await assembly(t, { async postExecute() { observed += 1; throw new Error('observer exploded') } })
   await f.invoke('grantPolicy', { sessionId: 'owner', enabled: true, expectedRevision: 0 })
-  const result = await f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'observer-failure', agent: f.owner, signal: signal() })
+  const result = await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'observer-failure', agent: f.owner, signal: signal() }, load)
   // An observer's failure must not turn an accepted native result into an error.
   assert.equal(result.isError, false)
   assert.equal(observed, 1, 'the fixture runtime post-execute must actually be reached')
@@ -190,11 +191,11 @@ test('PTC-style nested post-execute keeps the plugin contract with and without a
 
 test('actual registry native/nested tool execution authenticates caller and cannot self-grant policy', options, async t => {
   const f = await assembly(t)
-  const execute = (name, args, agent = f.owner) => f.ctx.tools.execute({ name, arguments: args, callId: 'fixture-call', agent, signal: signal() })
+  const execute = (name, args, agent = f.owner) => executeRegistryTool(f.ctx, { name, arguments: args, callId: 'fixture-call', agent, signal: signal() }, load)
   assert.equal((await execute('mattpocock_controls', { request: { action: 'read' } })).isError, false)
   assert.equal((await execute('mattpocock_controls', { request: { action: 'save', intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }, expectedRevision: 0 } })).isError, true)
   assert.equal((await execute('mattpocock_record', { request: { action: 'read', principal: 'user:operator' } })).isError, true)
-  const noCaller = await f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'no-caller', signal: signal() })
+  const noCaller = await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'no-caller', signal: signal() }, load)
   assert.equal(noCaller.isError, true)
   await f.invoke('grantPolicy', { sessionId: 'owner', enabled: true, expectedRevision: 0 })
   assert.equal((await execute('mattpocock_controls', { request: { action: 'save', intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }, expectedRevision: 0 } })).isError, false)
@@ -311,7 +312,7 @@ test('managed native nesting traverses original registry guards, token parent an
     output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) { assert.equal(exec.agent, f.owner); assert.equal(exec.parent, authorizedParent); executed++; return null } }))
   f.ctx.tools.register(sdk.defineTool({ name: 'fixture_managed', description: 'mechanical wrapper', parameters: {}, output: { schema: { type: 'null' }, render: () => [] },
     async execute(_, exec) { authorizedParent = exec.token; try { const result = await f.mounted.ports.executeNative(exec, 'subagent', { prompt: 'fixture' }); assert.equal(result.isError, false); return null } finally { authorizedParent = undefined } } }))
-  const execute = name => f.ctx.tools.execute({ name, arguments: name === 'subagent' ? { prompt: 'fixture' } : {}, callId: 'nested-test:' + name, agent: f.owner, signal: signal() })
+  const execute = name => executeRegistryTool(f.ctx, { name, arguments: name === 'subagent' ? { prompt: 'fixture' } : {}, callId: 'nested-test:' + name, agent: f.owner, signal: signal() }, load)
   assert.equal((await execute('subagent')).isError, true)
   assert.equal((await execute('fixture_managed')).isError, false)
   assert.equal(executed, 1)
@@ -410,7 +411,7 @@ test('native event program callback registers its receipt fence synchronously be
 test('instrument tool rejects forged principal fields at both outer and business argument envelopes', options, async t => {
   const f = await assembly(t)
   for (const args of [{ request: { action: 'read' }, principal: 'user:operator' }, { request: { action: 'read', sessionId: 'another-root' } }]) {
-    const outcome = await f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: args, callId: 'forged-envelope', agent: f.owner, signal: signal() })
+    const outcome = await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: args, callId: 'forged-envelope', agent: f.owner, signal: signal() }, load)
     assert.equal(outcome.isError, true)
   }
 })
@@ -428,7 +429,7 @@ test('operator revocation and agent policy commits share one permission-effect q
   const revocation = f.invoke('grantPolicy', { sessionId: 'owner', enabled: false, expectedRevision: 1 })
   await revokeQueued
   f.runtime.savePolicy = (caller, intent, expected) => f.runtime.serializePolicyPermission(() => controls.savePolicy(caller.principalId, intent, expected))
-  const policy = f.ctx.tools.execute({ name: 'mattpocock_controls', arguments: { request: { action: 'save', intent: { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, expectedRevision: 0 } }, callId: 'revoked-save', agent: f.owner, signal: signal() })
+  const policy = executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'save', intent: { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, expectedRevision: 0 } }, callId: 'revoked-save', agent: f.owner, signal: signal() }, load)
   await policyQueued; release(); await blocker; await revocation
   assert.equal((await policy).isError, true)
   assert.equal((await controls.readPolicy(f.mounted.ports.operatorPrincipal)).revision, 0)
@@ -507,7 +508,7 @@ test('operator workspace navigation exposes actual sessionIds without loading co
 test('controlled wrapper binds this-based native SDK conclusion and deferred contexts to original exec', options, async t => {
   const borrowed = sdk.createUserMessage({ content: [{ type: 'text', text: 'native borrowed context' }], source: { kind: 'test-instrument', form: 'instructions' } })
   const f = await assembly(t, { async executeManaged(_caller, _request, exec) { exec.deferContext(borrowed); exec.concludeTurn(); return { accepted: true } } })
-  const result = await f.ctx.tools.execute({ name: 'mattpocock_execute', arguments: { request: {} }, callId: 'bound-conclude', agent: f.owner, signal: signal() })
+  const result = await executeRegistryTool(f.ctx, { name: 'mattpocock_execute', arguments: { request: {} }, callId: 'bound-conclude', agent: f.owner, signal: signal() }, load)
   assert.equal(result.isError, false); assert.equal(result.concludesTurn, true)
   assert.deepEqual(result.additionalContexts.find(context => context.id === borrowed.id), borrowed)
 })

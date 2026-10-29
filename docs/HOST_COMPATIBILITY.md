@@ -8,9 +8,11 @@
 
 `0.2.1-alpha.3` **要求一次运行时代码适配**：`connection` 服务不再暴露 `operator`，改为 owner 的 `browserPeer`，可选控制面因此从 alpha.3 起装载中断（Skills 分发不受影响）。`0.2.1-alpha.4` 改变的是**插件兼容性的判定依据**：声明了 `engines.dsh` 的插件只按该范围判定，未声明时才回退到原有 peer 规则。本插件据此显式声明范围、以版本中立方式读取 operator Peer，并补齐宿主侧 fixture 的 Peer 契约。详见后文专门小节（此前记的「alpha.3／alpha.4 无需改动」只覆盖了门禁与包级对拆，漏掉了 alpha.2→alpha.3 的 `connection` 服务变化）。`0.2.1-rc.1` 相对 alpha.4 没有任何面向本插件的接口变化，同样不需要修改运行时代码或包元数据（核对见后文）。`0.2.1-rc.2` 只改模型目录、Web 搜索／抓取与对应设置界面，本插件使用的宿主包源码与安装产物零改动（核对见后文）。
 
-Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，`lib/` 产物与最初宿主编译结果**逐字节相同**。
+`0.2.2-alpha.2` **要求第二次运行时代码适配**：工具执行拆成 executor 插件，旧的单调用 `ctx.tools.execute` 被删除；本插件改用公开 `ToolExecutionPipeline` 保留受管嵌套调用的 parent token 与既有 policy／guard 语义，并对没有该接缝的旧宿主保留单调用回退。Skills provider 仍不需要改动（核对见后文）。
 
-每次必须修改的都是 **`package.json` 中声明的 peer 依赖范围**。这是元数据问题，不是行为问题。两次具体表现不同：
+Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，从 `0.1.2-rc.1` 到 `0.2.1-rc.2` 的 `lib/` 产物与最初宿主编译结果**逐字节相同**；`0.2.2-alpha.2` 因上述工具接缝改变了 `lib/host.js`，Client 产物仍逐字节不变。
+
+早期版本必须修改的多是 **`package.json` 中声明的 peer 依赖范围**；`0.2.1-alpha.2` 与 `0.2.2-alpha.2` 则是真正的运行时接缝适配。peer 范围问题两次具体表现不同：
 
 - **`0.1.7-alpha.2`**：旧声明 `^0.1.2-rc.1` 不满足该预发布版本，安装会出现「peer 不满足」告警，但仍可安装。
 - **`0.2.0-rc.1`**：宿主新增了**安装期硬门禁**，直接**拒绝安装** peer 不满足的插件（详见下节）。
@@ -136,6 +138,32 @@ rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Rele
 
 结论：**rc.2 不需要任何运行时代码或元数据改动**；上游补齐缺失包后，本插件不受影响。
 
+## 0.2.2-alpha.2 核对（2026-10-29）
+
+在隔离的全局布局安装中进行（`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.2-alpha.2`，330 个 `@deepseek-ai` 包，Node 24.17.0）；另以独立 `DSH_HOME` 安装本工作树制品并做无凭据 headless 装载。未改动本机 DSH 与任何 Profile，未调用模型。
+
+这一版是 `0.2.1-rc.2` 之后第一个要求运行时代码适配的宿主：工具执行从注册表单调用拆成可选择的 executor 插件，**移除了旧的单调用 `ctx.tools.execute`**。其余变化主要是服务初始化时序、会话投影与 Web 客户端类型，Skills provider 契约不变。
+
+| 核对项 | 结果 |
+|---|---|
+| 安装期门禁 | 新宿主真身 `evaluatePluginCompatibility` 对插件 manifest 返回无未满足项；`engines.dsh: "~0.2.1-alpha.1"` 仍放行 `0.2.2-alpha.2`，无需 `allow-version` 豁免或 peer 范围改写 |
+| `@deepseek-ai/dsh-skill` | 运行时代码与类型未变；`registerProvider`／`list`／`get`／`BUNDLED_SKILL_RANK` 不变，Skills 分发无需改动 |
+| `@deepseek-ai/dsh-tools` | **破坏性变化**：`ToolRuntime.execute(ToolExecutionInput)` 变为 `ToolsService.execute(ToolBatchInput)`；新增 `setExecutor`／`resolve`／`executable` 与 `@deepseek-ai/dsh-tools/pipeline` 子路径 |
+| 受管原生调用 | 本插件的 `mattpocock_execute` 不再假设旧单调用入口；0.2.2 上改用公开 `ToolExecutionPipeline` 的 `prepare → dispatch → complete`，保留原调用的 `parent` token、`rootCallId`、policy、guard 与 post-execute。只有实际服务没有 `setExecutor` 的旧宿主仍走原单调用入口 |
+| `@deepseek-ai/dsh-subagent` | `startActivation` 签名与 `delivery`／`cwd` 语义未变；服务新增 `[Service.init]` 并注入 `workingDirectory` + `sessionProjections`。插件运行时代码无需改动；旧宿主 `startContinuable` 回退改用结构化类型，不再依赖新版本已删除的声明 |
+| `@deepseek-ai/dsh-agent` / `dsh-agent-loop` | `AgentRegistry`、`AgentLoop` 的初始化移到 Cordis `[Service.init]`；插件不自行构造这些服务，真实 Host 组合不受影响。测试夹具改为以公开 `ctx.plugin()` 挂载它们，才能得到真实的 agent factory |
+| `@deepseek-ai/dsh-system-prompt` | 装配瀑布拆出 `PromptPresentation`，工具声明改由 provider 拥有；插件只注册文本 context section，接口兼容，行为不变 |
+| `@deepseek-ai/dsh-app-boot` | `PROFILE_TEMPLATES` 移到新的 `@deepseek-ai/dsh-official-bundles`；产品代码不使用该表，管理器测试在新宿主上从 official-bundles 读取 |
+| 会话／存储／Typert／Gateway | 本插件使用的公开类型与运行时代码通过编译和真实 Host 用例；会话投影的异步句柄变化不影响本插件（不注册 projection unit） |
+| 客户端包 | 插件 Client 入口用新宿主类型声明通过独立 `tsconfig.client.json` 检查；客户端产物未变（212,412 bytes、6 个模块、仅 `react` 外部依赖）。未做真实浏览器交互 |
+| 全量根测试（新宿主，源码适配后） | **944 项、741 通过、0 失败、203 skip** |
+| 全量根测试（`0.2.1-rc.3` 回归） | **944 项、741 通过、0 失败、203 skip**，与适配前一致 |
+| `0.2.1-alpha.1` 兼容回归（独立隔离安装） | 兼容矩阵 **154 项、140 通过、0 失败、14 skip**；覆盖旧 `startContinuable` 回退、兼容提供者、打包 Profile、PluginManager 与只读准备 |
+| 无凭据 headless 装载 | 独立 `DSH_HOME` 安装本工作树开发包（426,635 bytes、sha256 `ebf155b2…`、172 成员）；默认 `stable` 装载 27 个 Skills、11 个模型可见，无插件 warn／error，模型请求前以 `MISSING_CREDENTIAL` 结束。headless 不组合 Web 的 `connection`／`workspaceRegistry`，可选控制面按设计不挂载，所以这次装载只证明 Skills 分发与宿主门禁 |
+| 模型调用 | 无 |
+
+适配后的运行时代码改动只有两个接缝：`src/host.ts` 的 `executeNative` 和旧子代理回退的结构化类型。Skill 正文、vendor 字节、通道语义、provider 优先级与 `engines.dsh` 声明均未改变。测试夹具侧新增了公开 pipeline 的单调用适配、真实 `SessionProjectionRegistry`、以 `ctx.plugin()` 挂载异步服务，以及 0.2.2 的 official-bundles 读取；这些不改变产品入口。
+
 ## 核对范围与方法
 
 核对过程只做只读与隔离验证：不改动本机正在使用的 Profile，不调用任何模型。
@@ -240,10 +268,11 @@ npm semver 对预发布版本有额外限制：预发布版本只有在比较符
 - 历史兼容性核对之外的 SDK 升级与 Profile 安装是独立步骤，不属于本核对范围。本公开文档不记录个人当前运行版本或 Profile 安装状态；兼容性结论不等于已部署。
 - `0.2.0-rc.2` 与 `0.2.1-alpha.1` 的 Web/GUI 行为未验证。
 - `0.2.1-alpha.1` 未做隔离 `DSH_HOME` 端到端装载：本次只做了门禁真身判定、`lib/` 递归对拆与运行时注册表冒烟，没有像 `0.2.0-rc.1` 那样跑完整插件树装载。
-- `0.3.0-alpha.1` 被现有 peer 上界排除，未验证，也不在兼容性声明范围内。`0.2.2-alpha.*` 同样被 `~0.2.1-alpha.1` 的预发布语义放进门禁，但没有实际验证，不构成兼容承诺。
+- `0.3.0-alpha.1` 被现有 peer 上界排除，未验证，也不在兼容性声明范围内。`0.2.2-alpha.2` 已核对并通过全量套件；同线其余 `0.2.2-alpha.*` 版本没有逐一验证。
 - `0.2.1-alpha.3`／`0.2.1-alpha.4` 的浏览器 GUI 交互仍未验证：本轮已在隔离 `DSH_HOME` 的实机 `dsh web` 启动中验证控制面装载与九个工具注册（修复前在同一方法下复现失败），但没有真实浏览器会话，插槽界面、面板交互与建树观测的界面呈现未验证。
 - 修复后的 `0.2.1-alpha.2` 未复测（本机 alpha.2 安装已被 alpha.4 覆盖）：`operator` 分支由 alpha.1 实机用例与 unit／mount fixture 覆盖。
 - alpha.4 的 Web 前端把 `@deepseek-ai/dsh-client-ui-slots` 作为 static module 提供这一事实，来自其构建产物中的 `staticModules` 种子；本插件不依赖该模块 id，但也没有在真实浏览器会话中验证插件界面。
+- `0.2.2-alpha.2` 的 headless 装载只组合 Skills 分发；可选控制面依赖的 `connection`／`workspaceRegistry` 不在 headless 组合中，因此没有在真实 headless 进程里验证九个模型工具。工具注册、guard、parent token 与 policy 路径由真实 SDK Host 用例覆盖；真实 Web 浏览器交互仍未验证。
 
 ## 复现方式
 

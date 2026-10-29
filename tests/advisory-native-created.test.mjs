@@ -20,7 +20,6 @@ test('unknown S storage cannot make serial observation reject an ordinary native
   t.after(async () => { await ctx.fiber.dispose(); assert.equal(modelCalls, 0, 'the probe must never call a model') })
   new sdk.TypertRegistry(ctx)
   new sdk.SessionStore(ctx)
-  new sdk.AgentRegistry(ctx)
   new sdk.SessionProjectionRegistry(ctx)
   new sdk.SystemPrompt(ctx, {})
   new sdk.ToolRuntime(ctx, {})
@@ -28,7 +27,12 @@ test('unknown S storage cannot make serial observation reject an ordinary native
     prepareCall() { modelCalls++; throw new Error('model prohibited') },
     stream() { modelCalls++; throw new Error('model prohibited') },
   })
-  new sdk.AgentLoop(ctx, { agents: [], maxParallelToolCalls: { get: () => 10 } })
+  // 0.2.2 moved both services' activation into Cordis [Service.init], which the host runs
+  // when the composition mounts a plugin. Constructing with `new` only publishes the
+  // instance; mount the same public classes as plugins to obtain the real factory.
+  await ctx.plugin(sdk.AgentRegistry)
+  await ctx.plugin(sdk.AgentLoop, { agents: [], maxParallelToolCalls: 10 })
+  await ctx.fiber.await()
   const parent = await ctx.agents.create({ sessionId: 'root', meta: { cwd: '/fixture' } })
   t.after(() => parent.dispose())
   const f = await fixture(t, { initialPolicy: policy() })

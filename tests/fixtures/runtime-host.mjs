@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { operatorPeer } from './peer.mjs'
+import { executeRegistryTool } from './nested-tool.mjs'
 
 // Node 24 source-only loader: no lib/package emission, profile, model or AgentLoop.
 const sourceRoot = new URL('../../src/', import.meta.url).href
@@ -50,6 +51,7 @@ export const sdk = {
   ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/dsh-storage-domain'),
   ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-system-prompt'),
   ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-llm'),
+  ...await load('@deepseek-ai/dsh-session-projection'),
 }
 export const signal = () => new AbortController().signal
 export const operator = Object.freeze({ kind: 'user', principalId: 'user:operator', sessionId: null })
@@ -248,6 +250,6 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
   }
   t.after(async () => { await mounted.dispose(); await domain.closeAll() })
   return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, sessionLogs, sessionReads, get runtimeStorage() { return runtimeStorage },
-    execute(name, args = {}, agent = root) { return ctx.tools.execute({ name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }) },
+    execute(name, args = {}, agent = root) { return executeRegistryTool(ctx, { name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }, load) },
   }
 }

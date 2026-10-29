@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 import { constants as fsConstants } from 'node:fs'
 import { open, stat, chmod } from 'node:fs/promises'
 import { ALPHA1_NATIVE_SHA256, nativeEntrySha256, openCompatHostView } from './fixtures/compat-host.mjs'
+import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 // Accepted seam: development tarball + shipped !!js + public Loader/Fiber/native.
 // Plain Node resolution only: no hooks, transplanted runtime namespace or SDK writes.
@@ -81,7 +82,8 @@ async function nativeGraph(ctx, load, profile, resumeParent = false) {
   await mkdir(pathA, { recursive: true }); await mkdir(pathB, { recursive: true })
   await writeFile(join(pathA, 'marker.txt'), 'packed A')
   await writeFile(join(pathB, 'marker.txt'), 'packed B')
-  new api.SessionStore(ctx); new api.AgentRegistry(ctx); new api.SessionProjectionRegistry(ctx)
+  new api.SessionStore(ctx); new api.AgentRegistry(ctx)
+  if (ctx.get('sessionProjections') === undefined) new api.SessionProjectionRegistry(ctx)
   new api.SystemPrompt(ctx, {}); new api.ToolRuntime(ctx, {})
   new Jsonl(ctx, { root: join(profile, 'sessions'), compression: 'none' })
   new Query(ctx, { path: join(profile, 'query.sqlite'), openAt: 'never' })
@@ -108,7 +110,8 @@ async function worker(scenario) {
   const load = name => import(pathToFileURL(sdkRequire.resolve(name)).href)
   const sdk = { ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/cordis-plugin-loader'),
     ...await load('@deepseek-ai/cordis-plugin-include'), ...await load('@deepseek-ai/dsh-typert-registry'),
-    ...await load('@deepseek-ai/dsh-skill'), native: await load('@deepseek-ai/dsh-subagent') }
+    ...await load('@deepseek-ai/dsh-skill'), ...await load('@deepseek-ai/dsh-session-projection'),
+    native: await load('@deepseek-ai/dsh-subagent') }
   const yaml = await load('js-yaml')
   const patch = yaml.load(await readFile(join(pluginRoot, 'cordis.patch.yml'), 'utf8'), { schema: sdk.entryListSchema })
   const compiled = await import(pathToFileURL(join(pluginRoot, 'lib/compatibility/composition.js')).href)
@@ -137,6 +140,9 @@ async function worker(scenario) {
   ctx.logger.exporter({ export(message) { logs.push({ ...message, args: message.args.map(value => value instanceof Error ? value.stack : value) }) } })
   new sdk.TypertRegistry(ctx)
   new sdk.SkillRegistry(ctx)
+  // 0.2.2 stock subagents register their catalog/timing/identity units during activation.
+  // Some native graphs already mount the real registry and must keep one owner.
+  if (typeof sdk.SessionProjectionRegistry === 'function' && ctx.get('sessionProjections') === undefined) new sdk.SessionProjectionRegistry(ctx)
   ctx.provide('profileContext', { dir: profile, installAnchor: anchor })
   const loader = new sdk.Loader(ctx, { baseUrl: pathToFileURL(profile + '/').href })
   // Loader installs its scope infrastructure as a public child Fiber. Wait for
@@ -338,7 +344,7 @@ async function worker(scenario) {
       const start = (cwd, extra = {}) => ctx.subagents.startContinuable({ provider: 'controlled', label: 'packed native public probe',
         ...(cwd === undefined ? {} : { cwd }), request: { parent, prompt: [{ type: 'text', text: 'No model' }], maxDepth: 5 }, signal: signal(), ...extra })
       const a = await start(pathA), b = await start(pathB, { childId: 'packed-cold-child' }), inherited = await start(undefined)
-      const read = id => ctx.tools.execute({ callId: 'read-' + id, name: 'read', arguments: { file_path: 'marker.txt' }, agent: ctx.agents.get(id), signal: signal() })
+      const read = id => executeRegistryTool(ctx, { callId: 'read-' + id, name: 'read', arguments: { file_path: 'marker.txt' }, agent: ctx.agents.get(id), signal: signal() }, load)
       assert.equal((await read(a.childId)).value.lines[0].text, 'packed A')
       assert.equal((await read(b.childId)).value.lines[0].text, 'packed B')
       const child = ctx.agents.get(b.childId), header = structuredClone(child.session.header)

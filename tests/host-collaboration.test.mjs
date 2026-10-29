@@ -8,11 +8,12 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { operatorPeer } from './fixtures/peer.mjs'
+import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for installed-host mechanical probes' }
-let api, sdk
+let api, sdk, load
 if (hostRoot) {
   assert(isAbsolute(hostRoot))
   const hostRequire = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
@@ -28,7 +29,7 @@ if (hostRoot) {
     },
   })
   api = await import('../src/host.ts')
-  const load = name => import(pathToFileURL(hostRequire.resolve(name)).href)
+  load = name => import(pathToFileURL(hostRequire.resolve(name)).href)
   sdk = { ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-api-gateway'), ...await load('@deepseek-ai/dsh-storage-domain'), ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-session'), ...await load('@deepseek-ai/dsh-util-values'), ...await load('@deepseek-ai/dsh-system-prompt'), ...await load('@deepseek-ai/dsh-llm'), LocalFs: (await load('@deepseek-ai/dsh-fs-local')).default }
 }
 const signal = () => new AbortController().signal
@@ -448,7 +449,7 @@ test('session durability port checkpoints only actual live sessions and preserve
   await assert.rejects(f.mounted.ports.flushSession('owner', signal()), /checkpoint rejected after native acceptance/)
 })
 
-const execute = (f, name, request, agent = f.owner) => f.ctx.tools.execute({ name, arguments: { request }, callId: 'collaboration-call', agent, signal: signal() })
+const execute = (f, name, request, agent = f.owner) => executeRegistryTool(f.ctx, { name, arguments: { request }, callId: 'collaboration-call', agent, signal: signal() }, load)
 
 test('history service authenticates the operator and crosses only strict JSON to the runtime', options, async t => {
   const calls = []

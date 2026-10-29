@@ -86,6 +86,68 @@ interface NativeActivationFacade {
   readonly initialCwdSupported?: boolean
   readonly startActivation?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown; readonly result?: unknown }>
 }
+/** Pre-activation continuation spelling still exposed by hosts before 0.2.1-alpha.2. */
+interface LegacyContinuationFacade {
+  readonly startContinuable?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown }>
+}
+/** Single-call tool dispatch on the host line before the 0.2.2 executor split. */
+interface LegacyToolExecutionFacade {
+  execute(input: {
+    readonly callId: ToolExecution['callId']
+    readonly rootCallId: ToolExecution['rootCallId']
+    readonly parent: ToolExecution['token']
+    readonly name: string
+    readonly arguments: unknown
+    readonly agent: Agent
+    readonly signal: AbortSignal
+  }): Promise<ToolExecutionResult>
+}
+/** One prepared nested call on the 0.2.2+ pipeline. Kept structural because the
+ * pipeline subpath does not exist on the older host line this package still supports. */
+type NestedToolExecution = Readonly<Record<string, unknown>>
+type NestedToolOutcome = { readonly kind: 'post-result' | 'final-result'; readonly result: ToolExecutionResult }
+type NestedToolPreparation = ({ readonly kind: 'dispatch'; readonly exec: NestedToolExecution }) | NestedToolOutcome
+interface NestedToolPipeline {
+  prepare(input: {
+    readonly callId: ToolExecution['callId']
+    readonly rootCallId: ToolExecution['rootCallId']
+    readonly parent: ToolExecution['token']
+    readonly name: string
+    readonly arguments: unknown
+    readonly agent: Agent
+    readonly signal: AbortSignal
+  }): Promise<NestedToolPreparation>
+  dispatch(exec: NestedToolExecution): Promise<NestedToolOutcome>
+  complete(exec: NestedToolExecution, outcome: NestedToolOutcome): Promise<ToolExecutionResult>
+}
+interface NestedToolPipelineModule {
+  readonly ToolExecutionPipeline: new (ctx: Context) => NestedToolPipeline
+}
+const NESTED_TOOL_PIPELINE_SPECIFIER = '@deepseek-ai/dsh-tools/pipeline'
+let nestedToolPipelineModule: Promise<NestedToolPipelineModule> | undefined
+/** Load the public nested-dispatch pipeline only after the host proves the 0.2.2+ registry shape. */
+function loadNestedToolPipeline(): Promise<NestedToolPipelineModule> {
+  return nestedToolPipelineModule ??= import(NESTED_TOOL_PIPELINE_SPECIFIER) as Promise<NestedToolPipelineModule>
+}
+/** 0.2.2 split batch execution into executor plugins; the old single-call `execute` is gone. */
+function hasToolExecutorSelection(tools: Context['tools']): boolean {
+  return typeof (tools as unknown as { readonly setExecutor?: unknown }).setExecutor === 'function'
+}
+/** Dispatch one plugin-owned nested call without selecting a model-facing executor. The
+ * public pipeline keeps the enclosing call token, policy, guards, and result settlement. */
+async function executeNestedTool(ctx: Context, exec: ToolExecution, name: string, args: unknown): Promise<ToolExecutionResult> {
+  const { ToolExecutionPipeline } = await loadNestedToolPipeline()
+  const pipeline = new ToolExecutionPipeline(ctx)
+  // The three managed native tools are unconditional on the tested host. Omitting the
+  // optional step tool-set preserves the pre-0.2.2 managed-dispatch contract instead of
+  // silently narrowing it to the model's current declaration.
+  const preparation = await pipeline.prepare({
+    callId: ToolCallId(exec.callId + ':managed'), rootCallId: exec.rootCallId, parent: exec.token,
+    name, arguments: args, agent: exec.agent!, signal: exec.signal,
+  })
+  if (preparation.kind !== 'dispatch') return preparation.result
+  return await pipeline.complete(preparation.exec, await pipeline.dispatch(preparation.exec))
+}
 function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
   const subagents = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
   if (!subagents) return 'unsupported'
@@ -1500,7 +1562,11 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       gitRunnerForSession(sessionId, signal) { return createAuthorizedGitRunner(ctx, sessionId, AbortSignal.any([signal, lifetime.signal])) },
       async executeNative(exec, name, args) {
         agentCaller(ctx, exec.agent); exec.signal.throwIfAborted()
-        return ctx.tools.execute({ callId: ToolCallId(exec.callId + ':managed'), rootCallId: exec.rootCallId, parent: exec.token, name, arguments: args, agent: exec.agent!, signal: exec.signal })
+        // 0.2.2 owns batch dispatch in executor plugins and removed the old single-call
+        // registry execute. A composite tool still needs the enclosing token and policy,
+        // so it uses the public nested pipeline instead of selecting a model executor.
+        if (hasToolExecutorSelection(ctx.tools)) return executeNestedTool(ctx, exec, name, args)
+        return (ctx.tools as unknown as LegacyToolExecutionFacade).execute({ callId: ToolCallId(exec.callId + ':managed'), rootCallId: exec.rootCallId, parent: exec.token, name, arguments: args, agent: exec.agent!, signal: exec.signal })
       },
       async authorizeInitialChildCwd(exec, cwd) {
         lifetime.signal.throwIfAborted(); exec.signal.throwIfAborted()
@@ -1564,7 +1630,10 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
           // The local-child overload with a reserved childId guarantees the message id.
           return { childId: String(activation.childId), messageId: String(activation.messageId ?? '') }
         }
-        return native.startContinuable(spec)
+        const legacy = native as unknown as LegacyContinuationFacade
+        if (typeof legacy.startContinuable !== 'function') throw new ResourceError('unsupported', 'native continuable creation is unavailable')
+        const handle = await legacy.startContinuable(spec)
+        return { childId: String(handle.childId), messageId: String(handle.messageId ?? '') }
       },
       installNativeGuard(guard) { const remove = ctx.tools.guard(guard); disposers.push(remove); return remove },
       installManagedGuard(guard) { const remove = ctx.tools.guard(guard); disposers.push(remove); return remove },
