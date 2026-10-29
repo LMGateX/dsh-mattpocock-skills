@@ -47,11 +47,17 @@ export const host = await import('../../src/host.ts')
 export const { createRuntime } = await import('../../src/runtime.ts')
 export const loadSDK = name => import(pathToFileURL(sdkRequire.resolve(name)).href)
 const load = loadSDK
+// Session projections are a 0.2.2 host package. Dev dependencies intentionally stay on
+// the older line, so the no-host-root suite must not require a package that the empty
+// environment never uses; canonical host roots still load their own copy.
+const sessionProjection = process.env.DSH_CONTROLS_HOST_ROOT
+  ? await load('@deepseek-ai/dsh-session-projection')
+  : {}
 export const sdk = {
   ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/dsh-storage-domain'),
   ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-system-prompt'),
   ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-llm'),
-  ...await load('@deepseek-ai/dsh-session-projection'),
+  ...sessionProjection,
 }
 export const signal = () => new AbortController().signal
 export const operator = Object.freeze({ kind: 'user', principalId: 'user:operator', sessionId: null })
