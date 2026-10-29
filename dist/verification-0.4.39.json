@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.4.39",
+    "private": true
+  },
+  "source": {
+    "commit": "bbc0bf331ae3c247027bee2719c6e62a065dc037",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.4.39.tgz",
+    "bytes": 428735,
+    "sha256": "0732000b065824fdd685943dffe0b5674b404fd24adc70ad626de9965cdca1e2",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "sdk": "0.2.2-alpha.2"
+  },
+  "hostRoots": {
+    "canonical": "0.2.2-alpha.2 (isolated global npm prefix)",
+    "compat": "0.2.1-alpha.1 (isolated global npm prefix)",
+    "backward": "0.2.1-rc.3 (live global install; read-only)"
+  },
+  "validation": {
+    "canonicalHost": "0.2.2-alpha.2",
+    "rootTests": {
+      "total": 944,
+      "passed": 744,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "rootTestsBothRoots": {
+      "total": 970,
+      "passed": 964,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "rootTestsWithoutHostRoot": {
+      "total": 944,
+      "passed": 649,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 295
+    },
+    "rootTestsBackwardHost": {
+      "host": "0.2.1-rc.3",
+      "total": 944,
+      "passed": 744,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "exactArchiveVerifier": "passed",
+    "disposableE2ePack": "passed",
+    "isolatedDshVerification": {
+      "result": "passed",
+      "hosts": [
+        "0.2.2-alpha.2",
+        "0.2.1-alpha.1"
+      ],
+      "profile": "headless",
+      "installedFromPrivateSnapshot": true,
+      "channels": {
+        "stable": 27,
+        "beta": 27
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    },
+    "skipComposition": "the 200 canonical skips are bridge/manager fixtures that need DSH_CONTROLS_COMPAT_HOST_ROOT plus the 6 client native-activation cases whose Renderer needs @deepseek-ai/dsh-client-ui-slots; the dual-root run executes the bridge fixtures and keeps only the 6 client skips (964/970); without any host root 295 cases skip. The isolated worktree without the dev slots package reports 741 passed / 203 skipped for the same 944 cases.",
+    "buildModules": 68,
+    "fixedFiles": 87,
+    "vendorFiles": 85,
+    "packedFiles": 172,
+    "clientBytes": 212412
+  },
+  "compatibility": {
+    "hostRange": "0.2.2-alpha.2 adapted through the public @deepseek-ai/dsh-tools/pipeline for managed nested dispatch, with the pre-0.2.2 single-call fallback retained; 0.2.1-rc.3 and 0.2.1-alpha.1 verified; engines.dsh unchanged"
+  },
+  "review": {
+    "baseline": "v0.4.38",
+    "independentReview": "No separate Standards/Spec review was run for this host-adaptation change. The exact archive, disposable e2e pack, canonical 0.2.2 suite, dual-root suite, no-root suite, rc.3 backward suite and both isolated headless gates pass. The six-host isolated matrix and the 14 native + 13 plugin-manager same-archive matrix were not re-run for this release."
+  }
+}

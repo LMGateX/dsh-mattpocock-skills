@@ -156,10 +156,10 @@ rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Rele
 | `@deepseek-ai/dsh-app-boot` | `PROFILE_TEMPLATES` 移到新的 `@deepseek-ai/dsh-official-bundles`；产品代码不使用该表，管理器测试在新宿主上从 official-bundles 读取 |
 | 会话／存储／Typert／Gateway | 本插件使用的公开类型与运行时代码通过编译和真实 Host 用例；会话投影的异步句柄变化不影响本插件（不注册 projection unit） |
 | 客户端包 | 插件 Client 入口用新宿主类型声明通过独立 `tsconfig.client.json` 检查；客户端产物未变（212,412 bytes、6 个模块、仅 `react` 外部依赖）。未做真实浏览器交互 |
-| 全量根测试（新宿主，源码适配后） | **944 项、741 通过、0 失败、203 skip** |
-| 全量根测试（`0.2.1-rc.3` 回归） | **944 项、741 通过、0 失败、203 skip**，与适配前一致 |
+| 全量根测试（新宿主，主检出） | **944 项、744 通过、0 失败、200 skip**；隔离工作树没有 dev `client-ui-slots` 时为 741／203 |
+| 全量根测试（`0.2.1-rc.3` 回归） | **944 项、744 通过、0 失败、200 skip**，与适配前一致 |
 | `0.2.1-alpha.1` 兼容回归（独立隔离安装） | 兼容矩阵 **154 项、140 通过、0 失败、14 skip**；覆盖旧 `startContinuable` 回退、兼容提供者、打包 Profile、PluginManager 与只读准备 |
-| 无凭据 headless 装载 | 独立 `DSH_HOME` 安装本工作树开发包（426,635 bytes、sha256 `ebf155b2…`、172 成员）；默认 `stable` 装载 27 个 Skills、11 个模型可见，无插件 warn／error，模型请求前以 `MISSING_CREDENTIAL` 结束。headless 不组合 Web 的 `connection`／`workspaceRegistry`，可选控制面按设计不挂载，所以这次装载只证明 Skills 分发与宿主门禁 |
+| 无凭据 headless 装载 | 独立 `DSH_HOME` 安装 `0.4.39` 制品（428,735 bytes、sha256 `0732000b…`、172 成员）；默认 `stable` 装载 27 个 Skills、11 个模型可见，无插件 warn／error，模型请求前以 `MISSING_CREDENTIAL` 结束。headless 不组合 Web 的 `connection`／`workspaceRegistry`，可选控制面按设计不挂载，所以这次装载只证明 Skills 分发与宿主门禁 |
 | 模型调用 | 无 |
 
 适配后的运行时代码改动只有两个接缝：`src/host.ts` 的 `executeNative` 和旧子代理回退的结构化类型。Skill 正文、vendor 字节、通道语义、provider 优先级与 `engines.dsh` 声明均未改变。测试夹具侧新增了公开 pipeline 的单调用适配、真实 `SessionProjectionRegistry`、以 `ctx.plugin()` 挂载异步服务，以及 0.2.2 的 official-bundles 读取；这些不改变产品入口。

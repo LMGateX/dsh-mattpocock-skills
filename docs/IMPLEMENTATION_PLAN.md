@@ -71,7 +71,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | B 受管原生调用 | `src/host.ts` 的 `executeNative` 在具备 `setExecutor` 的 0.2.2 宿主上使用公开 `@deepseek-ai/dsh-tools/pipeline` 的 `prepare → dispatch → complete`；保留 `parent` token、`rootCallId`、policy／guard／post-execute。没有该接缝的旧宿主保留单调用回退 | `tests/host.test.mjs` 的 managed nesting、guard 与 parent token 用例 |
 | C 旧 seam 类型 | 旧宿主 `startContinuable` 回退改用结构化 `LegacyContinuationFacade`，不依赖 0.2.2 已删除的声明 | 旧宿主类型编译与真实用例 |
 | D 测试夹具 | 新增公开 pipeline 的单调用测试适配；0.2.2 stock 子代理／Agent 服务以 `ctx.plugin()` 或真实 `SessionProjectionRegistry` 进入 ACTIVE；管理器测试从 official-bundles 读取模板 | 目标用例全部 0 失败 |
-| E 回归与装载 | 新宿主与 `0.2.1-rc.3` 分别跑全量根测试；独立 `DSH_HOME` 安装开发包并做 headless 装载；`0.2.1-alpha.1` 隔离跑兼容矩阵 | 两宿主各 **944 项、741 通过、0 失败、203 skip**；alpha.1 兼容矩阵 **154 项、140 通过、0 失败、14 skip**；headless 装载 27 Skills、11 模型可见，无凭据停在 `MISSING_CREDENTIAL` |
+| E 回归与装载 | 新宿主与 `0.2.1-rc.3` 分别跑全量根测试；独立 `DSH_HOME` 安装开发包并做 headless 装载；`0.2.1-alpha.1` 隔离跑兼容矩阵 | 两宿主各 **944 项、744 通过、0 失败、200 skip**（隔离工作树无 client slots 时 741／203）；alpha.1 兼容矩阵 **154 项、140 通过、0 失败、14 skip**；headless 装载 27 Skills、11 模型可见，无凭据停在 `MISSING_CREDENTIAL` |
 
 技术边界：Skills provider、vendor 字节、通道语义、provider 优先级与 `engines.dsh: "~0.2.1-alpha.1"` 未改变；新宿主门禁仍放行该预发布线，无需 `allow-version`。没有真实模型活动、浏览器 GUI 会话或 PTC program 运行；真实 Host 的工具策略／guard／parent token 用例覆盖了受管嵌套路径。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 `0.2.2-alpha.2` 小节。
 

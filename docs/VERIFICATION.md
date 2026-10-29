@@ -2,6 +2,14 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.4.39 制品验收（2026-10-29）
+
+本版适配 DSH `0.2.2-alpha.2` 的工具执行拆分：`mattpocock_execute` 的受管原生嵌套调用在具备 executor selection 的宿主上改走公开 `@deepseek-ai/dsh-tools/pipeline` 的 `prepare → dispatch → complete`，保留原调用的 parent token、policy、guard 与 post-execute；旧宿主仍保留单调用回退。Skill provider、vendor 字节、通道语义与 `engines.dsh` 未改。
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.39.tgz`（**428,735** bytes，sha256 `0732000b065824fdd685943dffe0b5674b404fd24adc70ad626de9965cdca1e2`，172 成员，源提交 `bbc0bf3`）经精确 tarball 验证与同一源提交的 disposable e2e pack 通过：规范宿主 `0.2.2-alpha.2` 下 944 用例 **744 通过／0 失败**（200 skip）、双宿主 970 中 **964 通过／0 失败／6 skip**、无宿主根 944 中 **649 通过／295 跳过／0 失败**；`0.2.1-rc.3` 回归同为 944／744／0／200。隔离门禁在 **0.2.2-alpha.2 与 0.2.1-alpha.1** 两个真实宿主上各自从私有源码快照安装、headless 挂载，两频道各 **27** 个 Skill，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。构建模块 68、固定文件 87、vendor 85、Client **212,412 B**。本轮未重跑六宿主隔离与 14 原生＋13 管理器的同归档矩阵，也未把制品安装到本机 Profile。
+
+完整记录见 `dist/verification-0.4.39.json`。
+
 ## 0.4.38 制品验收（2026-10-24）
 
 [输入摘要](<../src/client.ts>) 现在按最近活动排序：票总数与 T/S 固定在顶部；工作流行按工作流定义或任一票的最新修订倒序，右侧详情入口开启时最多展开两个工作流，其余显示为一行可点击的「其余 N 个工作流 · 查看详情」。右侧入口关闭时不折叠，避免摘要把行变成不可达。没有票的工作流只显示「暂无票」，不铺开全零状态计数。折叠不删除记录、不改变状态定义、计数、权限或 T/S 语义。
