@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.5.0",
+    "private": true
+  },
+  "source": {
+    "commit": "f3fe67f89ff05b31af57d65d4d24371c2faaea6d",
+    "clean": true
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.5.0.tgz",
+    "bytes": 450738,
+    "sha256": "202514c0d6ee395ded3050bfe2d87a82c4af540ae5e302eac2a3f5ee4a5ac315",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3"
+  },
+  "hostRoots": {
+    "canonical": "local canonical DSH install (path elided)"
+  },
+  "validation": {
+    "canonicalHost": "local canonical DSH install",
+    "rootTests": {
+      "total": 964,
+      "passed": 764,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 200
+    },
+    "exactArchiveVerifier": "passed",
+    "prepackVerifier": "passed",
+    "packagePolicyTests": {
+      "total": 21,
+      "passed": 21,
+      "failed": 0
+    },
+    "buildModules": 74,
+    "fixedFiles": 93,
+    "vendorFiles": 85,
+    "packedFiles": 178,
+    "clientBytes": 261016,
+    "notRun": [
+      "dual-root suite",
+      "no-host-root suite",
+      "isolated headless install/mount",
+      "real-model reviewer trial"
+    ],
+    "modelInvoked": false,
+    "installedOnHost": false
+  },
+  "compatibility": {
+    "hostRange": "DSH 0.2.1-alpha.1 through 0.2.2-alpha.* declared; this release was tested against the local canonical host only"
+  },
+  "review": {
+    "baseline": "v0.4.39",
+    "independentReview": "No separate Standards/Spec review was run for the optional supervision feature. Only the canonical clean-source suite, package policy tests, prepack verifier and exact tarball verifier were run; dual-root/no-root/isolated host gates and real-model behavior were not run.",
+    "privacy": "Current tracked docs were scrubbed of local host paths and private replay specifics; historical Git objects were not rewritten."
+  }
+}

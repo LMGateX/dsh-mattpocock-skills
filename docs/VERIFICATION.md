@@ -2,6 +2,14 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.5.0 制品验收（2026-10-31）
+
+本版新增可选交付监督：独立工作区配置、内存观察台账、可选只读审计工具、持久化 dry-run episode、事件驱动定期/嫌疑检查、可选 reviewer 路由与 fail-closed、每小时/每日/token 预算、票级 attribution、研究/评审标记和右栏/设置页只读历史。默认关闭；没有安装、激活或发布到本机。
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.5.0.tgz`（**450,738** bytes，sha256 `202514c0d6ee395ded3050bfe2d87a82c4af540ae5e302eac2a3f5ee4a5ac315`，**178** 成员，源提交 `f3fe67f`）通过 `--prepack` 与精确 tarball 验证；固定清单 **93 + 85 vendor = 178**，构建 **74** 个 JS/DTS 产物，Client **261,016 B**。规范宿主上的全量套件 **964 项：764 通过、0 失败、200 skip**；包策略测试 **21/21**。
+
+本轮未运行双宿主、无宿主根、隔离 headless 安装/挂载或真实模型试验，也未把制品安装到本机 Profile。完整记录见 `dist/verification-0.5.0.json`。
+
 ## 0.4.39 制品验收（2026-10-29）
 
 本版适配 DSH `0.2.2-alpha.2` 的工具执行拆分：`mattpocock_execute` 的受管原生嵌套调用在具备 executor selection 的宿主上改走公开 `@deepseek-ai/dsh-tools/pipeline` 的 `prepare → dispatch → complete`，保留原调用的 parent token、policy、guard 与 post-execute；旧宿主仍保留单调用回退。Skill provider、vendor 字节、通道语义与 `engines.dsh` 未改。
