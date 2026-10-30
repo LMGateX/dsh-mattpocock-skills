@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { createHash } from 'node:crypto'
 import { lstat, readlink } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 import type {} from '@deepseek-ai/dsh-fs'
@@ -35,6 +36,12 @@ import { parseInstrumentCommand, parseInstrumentDocument } from './controls/inst
 import type { InstrumentCommand } from './controls/instrument-state.js'
 import { parsePolicyIntent, parsePolicySnapshot } from './controls/policy.js'
 import type { PolicyIntent, PolicySnapshot } from './controls/policy.js'
+import { INITIAL_SUPERVISION_CONFIG, parseSupervisionConfigDocument, parseSupervisionConfigIntent, parseSupervisionConfigSnapshot, resolveSupervisionSettings } from './controls/supervision-config.js'
+import type { SupervisionConfigIntent, SupervisionConfigSnapshot } from './controls/supervision-config.js'
+import { SupervisionLedger } from './controls/supervision-ledger.js'
+import type { SupervisionTicketRef } from './controls/supervision-ledger.js'
+import { decideSupervisionTrigger, deterministicReview, initialSupervisionDocument, makeSupervisionEpisode, parseSupervisionDocument, supervisionAgentText, withSupervisionEpisode } from './controls/supervision-audit.js'
+import type { SupervisionDocument, SupervisionEpisode, SupervisionReview } from './controls/supervision-audit.js'
 import { createDomainWindowStorage, parseWindowDocument, parseTicketWindowCommand } from './controls/windows.js'
 import type { NativeRunningDepth, NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js'
 import { createDomainResourceStorage, parseResourceDocument } from './controls/resources.js'
@@ -42,7 +49,7 @@ import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js
 import { createDomainVersionedStorage } from './controls/versioned-storage.js'
 import type { VersionedStorage } from './controls/versioned-storage.js'
 import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants, parseResourceAction, parseSessionSummaryRequest, parseSessionSummaryBatch } from './controls/remote-contract.js'
-import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js'
+import type { HostCaller, HostJson, PolicyGrants, ResourceAction, RuntimeSnapshot, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js'
 import { boolean, ControlsError, freeze, id, increment, memoized, record, revision } from './controls/validation.js'
 import { StartupSupport } from './controls/startup-support.js'
 import { parseStartupDesired, parseStartupDocument } from './controls/startup-state.js'
@@ -54,6 +61,7 @@ declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'mattpocock-controls-notification': { readonly kind: 'mattpocock-controls-notification'; readonly form: 'notice'; readonly summary: string; readonly notificationId: string; readonly ownerSessionId: string; readonly instrumentInstanceId: string; readonly businessRevision: number; readonly authorPrincipalId: string }
     'mattpocock-controls': { readonly kind: 'mattpocock-controls'; readonly form: 'snapshot'; readonly sections: readonly { readonly name: string; readonly text: string }[] }
+    'mattpocock-controls-supervision': { readonly kind: 'mattpocock-controls-supervision'; readonly form: 'notice'; readonly summary: string; readonly episodeId: string; readonly ownerSessionId: string; readonly severity: 'alert' }
   }
 }
 function snapshotContent(value: unknown): string {
@@ -65,6 +73,10 @@ function snapshotContent(value: unknown): string {
 export function makeSnapshotMessage(text: string): UserMessage {
   if (typeof text !== 'string' || text.length > 262144 || text.includes('\0')) throw new ControlsError('invalid-input', 'snapshot must be bounded text')
   return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'mattpocock-controls', form: 'snapshot', sections: [{ name: 'collaboration-instrument', text }] } })
+}
+export function makeSupervisionNotice(episode: SupervisionEpisode): UserMessage {
+  const text = supervisionAgentText(episode)
+  return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'mattpocock-controls-supervision', form: 'notice', summary: text.slice(0, 240), episodeId: episode.episodeId, ownerSessionId: episode.ownerSessionId, severity: 'alert' } })
 }
 
 export const HOST_CAPABILITIES = freeze({
@@ -1253,9 +1265,9 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
 /** A source-mode binding plus a strict descriptor contribution; no monkeypatch. */
 export class MattPocockControlsService extends TypertRemoteService {
   constructor(ctx: Context, private readonly runtime: RuntimeFacade, private readonly ports: HostPorts,
-    private readonly grants: VersionedStorage<PolicyGrants>,
+    private readonly grants: VersionedStorage<PolicyGrants>, private readonly supervision: VersionedStorage<SupervisionConfigSnapshot>,
     private readonly startup: StartupSupport,
-    private readonly lifecycle: { readonly signal: AbortSignal; track<T>(work: () => Promise<T>): Promise<T>; readonly onPolicyChanged?: () => void }) { super(ctx, REMOTE_NAMESPACE) }
+    private readonly lifecycle: { readonly signal: AbortSignal; track<T>(work: () => Promise<T>): Promise<T>; readonly onPolicyChanged?: () => void; readonly onSupervisionChanged?: (snapshot: SupervisionConfigSnapshot) => void }) { super(ctx, REMOTE_NAMESPACE) }
   private run<T>(operation: (caller: HostCaller, signal: AbortSignal) => Promise<T>, suppliedSignal?: AbortSignal): Promise<T> {
     const caller = operatorCaller(this.ctx)
     this.lifecycle.signal.throwIfAborted()
@@ -1269,6 +1281,36 @@ export class MattPocockControlsService extends TypertRemoteService {
     return this.run((_, signal) => this.startup.save(parseStartupDesired(desired), revision(expectedRevision, 'expectedRevision'), signal), suppliedSignal)
   }
   readPolicy(): Promise<PolicySnapshot> { return this.run(async (caller, signal) => parsePolicySnapshot(await this.runtime.readPolicy(caller, signal))) }
+  readSupervisionConfig(): Promise<SupervisionConfigSnapshot> {
+    return this.run(async () => {
+      const raw = await this.supervision.read()
+      return raw === undefined ? INITIAL_SUPERVISION_CONFIG : parseSupervisionConfigSnapshot(raw)
+    })
+  }
+  saveSupervisionConfig(intent: unknown, expectedRevision: unknown): Promise<SupervisionConfigSnapshot> {
+    return this.run(async (_caller, signal) => {
+      const parsed = parseSupervisionConfigIntent(intent), expected = revision(expectedRevision, 'expectedRevision')
+      const store = this.supervision, raw = await store.read()
+      const current = raw === undefined ? INITIAL_SUPERVISION_CONFIG : parseSupervisionConfigSnapshot(raw)
+      if (current.revision !== expected) throw new ControlsError('revision-conflict', 'supervision configuration changed; reload the saved revision')
+      if (JSON.stringify({ defaults: current.defaults, workspaceOverrides: current.workspaceOverrides }) === JSON.stringify(parsed)) return current
+      signal.throwIfAborted()
+      const next = parseSupervisionConfigSnapshot({ schemaVersion: 1, revision: increment(expected), ...parsed })
+      if (!await store.compareAndSwap(expected, next)) throw new ControlsError('revision-conflict', 'supervision configuration changed; reload the saved revision')
+      try { this.lifecycle.onSupervisionChanged?.(next) } catch { /* configuration is saved; tool registration failure must not report a false write failure */ }
+      return next
+    })
+  }
+  readSupervision(sessionId: unknown): Promise<HostJson> {
+    return this.run(async (caller, signal) => {
+      const sid = id(sessionId, 'sessionId')
+      await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted()
+      const view = await this.runtime.readSession(caller, sid, signal) as RuntimeSnapshot
+      const store = await this.ports.openUnitStorage('supervision_state_' + createHash('sha256').update(view.instance.ownerSessionId).digest('hex').slice(0, 32), parseSupervisionDocument)
+      const raw = await store.read()
+      return raw === undefined ? null : parseHostJson(raw)
+    })
+  }
   savePolicy(intent: unknown, expectedRevision: unknown): Promise<PolicySnapshot> {
     return this.run(async (caller, signal) => {
       const saved = parsePolicySnapshot(await this.runtime.savePolicy(caller, parsePolicyIntent(intent), revision(expectedRevision, 'expectedRevision'), signal))
@@ -1483,6 +1525,14 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (!bootRequested) throw new ControlsError('feature-disabled', 'initial child cwd is disabled for this process; save startup settings and restart the instance to enable it')
     }
     const controlsStorage = createDomainControlsStorage(await open('controls', parseControlsDocument))
+    const supervisionStorage = createDomainVersionedStorage(await open('supervision_config', parseSupervisionConfigDocument), 'state', parseSupervisionConfigDocument)
+    let supervisionSnapshot: SupervisionConfigSnapshot = INITIAL_SUPERVISION_CONFIG
+    try {
+      const raw = await supervisionStorage.read()
+      if (raw !== undefined) supervisionSnapshot = parseSupervisionConfigSnapshot(raw)
+    } catch (error) {
+      ctx.logger('mattpocock-controls').warn('supervision configuration unavailable; audit remains off', error)
+    }
     // The multi-row instruments/windows domains validate every stored record on open. They are
     // not needed to mount: the first session read opens them, so startup pays only the two
     // documents every mount actually needs (startup settings and controls).
@@ -1681,7 +1731,30 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     }
     runtime = await options.createRuntime(ports)
     const active = runtime
-    const service = new MattPocockControlsService(ctx, active, ports, grants, startup, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }) })
+    const supervisionLedger = new SupervisionLedger()
+    let ledgerActive = false
+    const ownerBySession = new Map<string, string>()
+    const ownerOf = async (sessionId: string): Promise<string | undefined> => {
+      const cached = ownerBySession.get(sessionId)
+      if (cached !== undefined) return cached
+      let cursor = sessionId
+      const seen = new Set<string>()
+      for (let depth = 0; depth < 32; depth += 1) {
+        if (seen.has(cursor)) return undefined
+        seen.add(cursor)
+        let identity
+        try { identity = await ports.authority.resolveSession(cursor) } catch { return undefined }
+        if (identity === undefined) return undefined
+        if (identity.kind === 'owner') {
+          for (const id of seen) ownerBySession.set(id, cursor)
+          return cursor
+        }
+        cursor = identity.parentSessionId
+      }
+      return undefined
+    }
+    let syncAuditTool: (snapshot: SupervisionConfigSnapshot) => void = () => {}
+    const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, startup, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }), onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
     disposers.push(ctx.typert.register(hostRemoteContribution()))
     // Model tools always address the actual caller's session, never a supplied principal.
     const tool = (name: string, description: string, action: (raw: Record<string, unknown>, caller: HostCaller, exec: ToolRunContext) => Promise<unknown>) => {
@@ -1701,7 +1774,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const saved = await active.savePolicy(caller, parsePolicyIntent(raw.intent), revision(raw.expectedRevision, 'expectedRevision'), exec.signal)
       options.onPolicyChanged?.(); return saved
     })
-    tool('mattpocock_record', 'Read the actual session instrument or submit authored ticket/decision records. Request keys: read={action:"read"}; apply={action:"apply", command} with command={operationId, expectedRevision, action:"put-workflow"|"put-ticket"|"put-decision"|"set-decision-view", workflowId, references, value, plus localTicketId for put-ticket and decisionId for put-decision or set-decision-view}. Value shapes: put-workflow {title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?}]}]}; put-ticket {title, statuses:{axisKey:[statusKey, ...]}, externalRef?, summary?, disposition?}; put-decision {question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key,label}], recommendation?, impact?, addressee?, result?}; set-decision-view {read, hidden}. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
+    tool('mattpocock_record', 'Read the actual session instrument or submit authored ticket/decision records. Request keys: read={action:"read"}; apply={action:"apply", command} with command={operationId, expectedRevision, action:"put-workflow"|"put-ticket"|"put-decision"|"set-decision-view", workflowId, references, value, plus localTicketId for put-ticket and decisionId for put-decision or set-decision-view}. Value shapes: put-workflow {title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?}]}]}; put-ticket {title, statuses:{axisKey:[statusKey, ...]}, externalRef?, summary?, disposition?, suspicionMode?:\"auto\"|\"off\"}; put-decision {question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key,label}], recommendation?, impact?, addressee?, result?}; set-decision-view {read, hidden}. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
       if (raw.action === 'read') { record(raw, 'instrument read', ['action']); return active.readSession(caller, caller.sessionId!, exec.signal) }
       record(raw, 'instrument apply', ['action', 'command']); if (raw.action !== 'apply') throw new ControlsError('invalid-input', 'read/apply action required')
@@ -1751,6 +1824,160 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     if (active.assign) tool('mattpocock_assign', 'Record only authenticated delegation assignments as {sessionId, workflowId, ticketIds}; omit workflowId (or pass null) and omit ticketIds for a grant with no ticket. Never self-grant user policy access. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.assign!(caller, parseHostJson(raw), exec.signal)
     })
+    const supervisionStores = new Map<string, Promise<VersionedStorage<SupervisionDocument>>>()
+    const nextSupervisionCheck = new Map<string, number>()
+    const assignmentCache = new Map<string, readonly SupervisionTicketRef[]>()
+    const assignmentAttempts = new Set<string>()
+    const rememberAssignment = (owner: string, session: string, assignment: RuntimeSnapshot['assignment']): readonly SupervisionTicketRef[] => {
+      const refs = assignment === undefined ? [] : assignment.ticketIds.map(ticketId => Object.freeze({ workflowId: assignment.workflowId, ticketId }))
+      assignmentCache.set(session, refs)
+      supervisionLedger.tagSession(owner, session, refs)
+      return refs
+    }
+    const assignmentFromArguments = (argumentsValue: unknown): { readonly sessionId: string; readonly refs: readonly SupervisionTicketRef[] } | undefined => {
+      if (argumentsValue === null || typeof argumentsValue !== 'object' || Array.isArray(argumentsValue)) return undefined
+      const outer = argumentsValue as Record<string, unknown>, request = outer.request !== null && typeof outer.request === 'object' && !Array.isArray(outer.request) ? outer.request as Record<string, unknown> : outer
+      if (typeof request.sessionId !== 'string' || request.sessionId.length === 0) return undefined
+      const workflowId = request.workflowId === null || request.workflowId === undefined ? null : (typeof request.workflowId === 'string' ? request.workflowId : undefined)
+      const ticketIds = request.ticketIds === undefined ? [] : (Array.isArray(request.ticketIds) && request.ticketIds.every(ticket => typeof ticket === 'string') ? request.ticketIds as string[] : undefined)
+      if (workflowId === undefined || ticketIds === undefined) return undefined
+      return { sessionId: request.sessionId, refs: ticketIds.map(ticketId => Object.freeze({ workflowId, ticketId })) }
+    }
+    const resolveAssignment = (owner: string, agent: Agent, signal: AbortSignal): void => {
+      const session = agent.id
+      if (assignmentCache.has(session) || assignmentAttempts.has(session)) return
+      assignmentAttempts.add(session)
+      void track(async () => {
+        const view = await active.readSession(agentCaller(ctx, agent), session, signal) as RuntimeSnapshot
+        rememberAssignment(owner, session, view.assignment)
+      }).catch(error => { assignmentAttempts.delete(session); ctx.logger('mattpocock-controls').warn('supervision assignment read skipped', error) })
+    }
+    const openSupervisionState = (owner: string): Promise<VersionedStorage<SupervisionDocument>> => {
+      let store = supervisionStores.get(owner)
+      if (!store) { store = ports.openUnitStorage('supervision_state_' + createHash('sha256').update(owner).digest('hex').slice(0, 32), parseSupervisionDocument); supervisionStores.set(owner, store) }
+      return store
+    }
+    let auditToolDispose: (() => unknown) | undefined
+    const audit = async (caller: HostCaller, exec: ToolRunContext): Promise<unknown> => {
+      const view = await active.readSession(caller, caller.sessionId!, exec.signal) as RuntimeSnapshot
+      if (view.instance.ownerSessionId !== caller.sessionId) throw new ControlsError('access-denied', 'delivery supervision audit is owner-session only')
+      if (!view.policy.extensionEnabled || !view.policy.workspaceEnabled) throw new ControlsError('feature-disabled', 'collaboration controls are disabled for this workspace')
+      const settings = resolveSupervisionSettings(supervisionSnapshot, view.instance.controlWorkspaceId)
+      if (!settings.enabled) throw new ControlsError('feature-disabled', 'delivery supervision is disabled for this workspace')
+      const summary = supervisionLedger.summary(view.instance.ownerSessionId, {
+        deliverableRoots: settings.deliverableRoots, supportRoots: settings.supportRoots, excludeGlobs: settings.excludeGlobs,
+      }, Date.now())
+      let episodes: readonly SupervisionEpisode[] = []
+      try {
+        const raw = await (await openSupervisionState(view.instance.ownerSessionId)).read()
+        if (raw !== undefined) episodes = parseSupervisionDocument(raw).episodes.slice(-20)
+      } catch { /* a corrupt episode document must not hide the live ledger */ }
+      return {
+        action: 'read', status: 'ok', generatedAt: new Date().toISOString(),
+        coverage: { ownerSessionId: view.instance.ownerSessionId, workspaceId: view.instance.controlWorkspaceId,
+          persistence: 'memory-only', events: summary.events, sessions: summary.sessions, dropped: summary.dropped },
+        summary, episodes,
+        note: 'Memory-only observation from this host process; no model call, ticket mutation, T/S release or automatic delivery.',
+      }
+    }
+    syncAuditTool = snapshot => {
+      supervisionSnapshot = snapshot
+      const enabled = snapshot.defaults.enabled === true || Object.values(snapshot.workspaceOverrides).some(patch => patch.enabled === true)
+      ledgerActive = enabled
+      nextSupervisionCheck.clear()
+      if (!enabled) { supervisionLedger.clear(); auditToolDispose?.(); auditToolDispose = undefined; return }
+      if (auditToolDispose !== undefined) return
+      try {
+        auditToolDispose = ctx.tools.register(defineTool({ name: 'mattpocock_audit', description: 'Read the optional delivery-supervision ledger for the authenticated owner session. Request keys: read={action:"read"}. Returns memory-only observations from this host process; it never calls a model, mutates tickets, releases T/S or delivers a message. It is registered only while supervision is enabled in configured defaults or a workspace override; per-workspace policy still gates each call.', parameters: { request: { type: 'json', required: true } },
+          output: { schema: { type: 'json' }, render: (_, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+          async execute(args, exec) {
+            exec.signal.throwIfAborted(); const caller = agentCaller(ctx, exec.agent), envelope = record(args, 'tool arguments', ['request']), raw = record(envelope.request, 'request', ['action'])
+            if (raw.action !== 'read') throw new ControlsError('invalid-input', 'audit action required: {action:"read"}')
+            const controlled: ToolRunContext = { ...exec, signal: AbortSignal.any([exec.signal, lifetime.signal]), concludeTurn: exec.concludeTurn.bind(exec), deferContext: exec.deferContext.bind(exec) }
+            await ports.authorizeCaller(caller, caller.sessionId!)
+            return parseHostJson(await track(() => audit(caller, controlled)))
+          } }))
+      } catch (error) {
+        auditToolDispose = undefined
+        ctx.logger('mattpocock-controls').warn('audit tool registration failed; supervision observations remain off', error)
+      }
+    }
+    syncAuditTool(supervisionSnapshot)
+    const llmReview = async (ownerSessionId: string, settings: ReturnType<typeof resolveSupervisionSettings>, trigger: 'scheduled' | 'suspicion', summary: ReturnType<SupervisionLedger['summary']>, ticket: { readonly id: string | null; readonly research: boolean }, signal: AbortSignal): Promise<{ readonly review: SupervisionReview; readonly tokens: number } | null> => {
+      const llm = ctx.get('llm') as { stream(options: Record<string, unknown>): AsyncIterable<{ type: string; text?: string; usage?: { readonly inputTokens: number; readonly outputTokens: number; readonly totalTokens?: number } }> } | undefined
+      const ownerAgent = ctx.agents.get(SessionId(ownerSessionId)) as (Agent & { readonly model?: { current(): { readonly provider: string; readonly model: string; readonly reasoningEffort?: string } | undefined } }) | undefined
+      const selected = settings.reviewer.routeMode === 'explicit'
+        ? (settings.reviewer.provider.length > 0 && settings.reviewer.model.length > 0 ? { provider: settings.reviewer.provider, model: settings.reviewer.model, ...(settings.reviewer.reasoningEffort.length > 0 ? { reasoningEffort: settings.reviewer.reasoningEffort } : {}) } : null)
+        : ownerAgent?.model?.current()
+      if (!llm || !selected) return null
+      const prompt = JSON.stringify({ task: 'delivery-supervision-review', trigger,
+        instructions: 'Return one JSON object only with verdict on-track|suspicion|uncertain, severity info|concern|alert, observed (short factual sentence), possibleIssue (short tentative sentence), confidence 0..1. Do not claim certainty and do not issue commands.',
+        ticket,
+        tickets: summary.tickets.slice(0, 4),
+        evidence: { events: summary.events, productWrites: summary.productWrites, supportWrites: summary.supportWrites,
+          productFiles: summary.productFiles.slice(0, 30), supportFiles: summary.supportFiles.slice(0, 30),
+          lastProductAt: summary.lastProductAt, noProductHours: summary.noProductHours, supportOnly: summary.supportOnly, rootsConfigured: summary.rootsConfigured } })
+      const control = AbortSignal.any([signal, AbortSignal.timeout(settings.reviewer.timeoutMs)])
+      let text = '', tokens = 0
+      try {
+        for await (const chunk of llm.stream({ provider: selected.provider, model: selected.model, ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }),
+          messages: [createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } })], maxTokens: settings.reviewer.maxTokens, temperature: 0, signal: control })) {
+          if (chunk.type === 'text-delta') text += chunk.text ?? ''
+          if (chunk.type === 'usage' && chunk.usage !== undefined) tokens = Math.max(tokens, chunk.usage.totalTokens ?? chunk.usage.inputTokens + chunk.usage.outputTokens)
+          if (text.length > 16_384) return null
+        }
+      } catch { return null }
+      const start = text.indexOf('{'), end = text.lastIndexOf('}')
+      if (start < 0 || end <= start) return null
+      try {
+        const raw = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
+        const verdict = raw.verdict, severity = raw.severity, observed = raw.observed, possibleIssue = raw.possibleIssue, confidence = raw.confidence
+        if (!['on-track', 'suspicion', 'uncertain'].includes(String(verdict)) || !['info', 'concern', 'alert'].includes(String(severity))) return null
+        if (typeof observed !== 'string' || observed.length === 0 || observed.length > 4096 || typeof possibleIssue !== 'string' || possibleIssue.length === 0 || possibleIssue.length > 2048) return null
+        if (typeof confidence !== 'number' || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) return null
+        return Object.freeze({ review: Object.freeze({ verdict: verdict as SupervisionReview['verdict'], severity: severity as SupervisionReview['severity'], observed, possibleIssue, confidence }), tokens })
+      } catch { return null }
+    }
+    const maybeSupervise = async (ownerSessionId: string, agent: Agent, signal: AbortSignal): Promise<void> => {
+      if (!ledgerActive) return
+      const now = Date.now()
+      if ((nextSupervisionCheck.get(ownerSessionId) ?? 0) > now) return
+      const identity = await ports.authority.resolveSession(ownerSessionId)
+      if (identity === undefined || identity.kind !== 'owner') return
+      const settings = resolveSupervisionSettings(supervisionSnapshot, identity.controlWorkspaceId)
+      if (!settings.enabled) return
+      nextSupervisionCheck.set(ownerSessionId, now + Math.max(1, settings.checkIntervalMinutes) * 60_000)
+      const store = await openSupervisionState(ownerSessionId)
+      let raw = await store.read()
+      if (raw === undefined) {
+        try { await store.compareAndSwap(0, initialSupervisionDocument(ownerSessionId, identity.controlWorkspaceId, now)) } catch { /* another observer may have initialized it */ }
+        raw = await store.read()
+      }
+      if (raw === undefined) return
+      const document = parseSupervisionDocument(raw)
+      const summary = supervisionLedger.summary(ownerSessionId, { deliverableRoots: settings.deliverableRoots, supportRoots: settings.supportRoots, excludeGlobs: settings.excludeGlobs }, now)
+      const view = await active.readSession(agentCaller(ctx, agent), agent.id, signal) as RuntimeSnapshot
+      if (!view.policy.extensionEnabled || !view.policy.workspaceEnabled) return
+      rememberAssignment(ownerSessionId, agent.id, view.assignment)
+      const assignedTickets = view.assignment === undefined ? [] : (view.records?.tickets ?? []).filter(ticket => view.assignment!.ticketIds.includes(ticket.localTicketId) && (view.assignment!.workflowId === null || ticket.workflowId === view.assignment!.workflowId))
+      const markedTicket = assignedTickets.find(ticket => ticket.value.suspicionMode === 'off') ?? assignedTickets[0]
+      const ticketContext = { id: markedTicket?.localTicketId ?? null, research: assignedTickets.some(ticket => ticket.value.suspicionMode === 'off') }
+      const ticketSuspicionMode = ticketContext.research ? 'off' : assignedTickets.find(ticket => ticket.value.suspicionMode === 'auto')?.value.suspicionMode
+      const trigger = decideSupervisionTrigger(document, settings, summary, now, ticketSuspicionMode)
+      if (trigger === null) return
+      const reviewed = settings.dryRun ? { review: deterministicReview(trigger, summary), tokens: 0 } : await llmReview(ownerSessionId, settings, trigger, summary, ticketContext, signal)
+      if (reviewed === null) return
+      const review = reviewed.review
+      const gate = (summary.noProductHours ?? 0) >= settings.delivery.alertMinNoProductHours && summary.supportFiles.length >= settings.delivery.alertMinSupportFiles
+      const ownerAgent = ctx.agents.get(SessionId(ownerSessionId))
+      const delivery = settings.dryRun ? 'none' : review.severity === 'alert' && gate && ownerAgent ? 'card+agent' : review.severity === 'info' ? 'none' : 'card'
+      const episode = makeSupervisionEpisode({ document, trigger, review, summary, now, delivery, ticketId: ticketContext.id, research: ticketContext.research })
+      if (!await store.compareAndSwap(document.revision, withSupervisionEpisode(document, episode, settings, now, reviewed.tokens))) return
+      if (delivery === 'card+agent' && ownerAgent) {
+        try { ownerAgent.inject(makeSupervisionNotice(episode)) } catch (error) { ctx.logger('mattpocock-controls').warn('supervision notice injection failed', error) }
+      }
+    }
+    disposers.push(() => { auditToolDispose?.(); auditToolDispose = undefined })
     disposers.push(ctx.on('session/event', (session, event) => {
       // A parent-owned subagent/catalog fact is a membership-change node.
       if (event.type === 'subagent/catalog') nativeCounter.catalog(String(session.id), event.data.childId === undefined ? undefined : String(event.data.childId))
@@ -1801,6 +2028,25 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         ctx.logger.warn('mattpocock-controls post-execute observation skipped', error)
         return decision
       }
+    }))
+    disposers.push(ctx.on('tools/post-execute', async (exec, result, next) => {
+      const decision = await next()
+      if (!ledgerActive || !exec.agent) return decision
+      try {
+        const agent = exec.agent, owner = await ownerOf(agent.id)
+        if (owner !== undefined) {
+          const assigned = exec.name === 'mattpocock_assign' ? assignmentFromArguments(exec.arguments) : undefined
+          if (assigned !== undefined) { assignmentCache.set(assigned.sessionId, assigned.refs); supervisionLedger.tagSession(owner, assigned.sessionId, assigned.refs) }
+          const tickets = assignmentCache.get(agent.id) ?? []
+          supervisionLedger.record({ ownerSessionId: owner, sessionId: agent.id, callId: exec.callId, rootCallId: exec.rootCallId, tool: exec.name, arguments: exec.arguments, tickets })
+          if (!assignmentCache.has(agent.id)) resolveAssignment(owner, agent, AbortSignal.any([exec.signal, lifetime.signal]))
+          void track(() => maybeSupervise(owner, agent, AbortSignal.any([exec.signal, lifetime.signal]))).catch(error => ctx.logger('mattpocock-controls').warn('supervision audit skipped', error))
+        }
+      } catch (error) {
+        // Ledger observation is an optional side effect; never replace the native result.
+        ctx.logger('mattpocock-controls').warn('supervision ledger observation skipped', error)
+      }
+      return decision
     }))
     if (active.context) disposers.push(ctx.systemPrompt.context({ name: 'mattpocock-controls', order: 130,
       text: assembly => assembly.agent ? active.context!(agentCaller(ctx, assembly.agent)) : '' }))

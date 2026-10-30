@@ -126,7 +126,7 @@ Host 严格构建与 Client noEmit／闭合浏览器图检查通过；68 个 JS�
 
 本轮只改事件/读取成本，不改 S/T 语义、执行准入或业务记录。src/runtime.ts 对同一 runtime instance、同一 reason 的未知 knowledge 观察在登记持久提交前去重（known 观察或新 runtimeId 重新武装）；受管 lease 在保持 running 期间只写一次 running receipt；丢失归因对账按微任务合并并保留 skip 集合；worktree cold replay 从首读移到后台，完成后使投影失效；history 行查找改为一次索引，只对上次捕获后的 window operation 建 history，空 capture 不再读文档，cached Session 在 disposed 时回收，客户端隐藏标签页的轮询退避到至少 30 s。src/host.ts 的 catalog 走查按 owner 合并（在飞 + 至多一次补走），超时只限制本次等待而不中止宿主投影构建，迟到成功结果在未被更新走查覆盖时发布成员资格，超时后 30 s 内不再重复付构建成本；超时/拒绝仍按既定设计把计数标为明示下界（known=false + 机械 reason），不把目录富化失败改写成已知零。
 
-开发工作树验收（Node 24.17.0，DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs）：**859** 项、**659** 通过、**0** 失败、**200** 个桥/兼容环境门禁用例带诊断 skip（上一基线 856／656／0／200，本轮新增 3 条回归）。pnpm exec tsc -p tsconfig.json、pnpm exec tsc -p tsconfig.client.json --noEmit、node scripts/build-client.mjs --out lib/client.js --declaration 均通过；lib/ 已重建，套件内的 src/lib 一致性门禁通过。新增 [runtime-write-coalescing](<../tests/runtime-write-coalescing.test.mjs>)（150 个同一 unknown 事实的状态边最多 3 次持久写，下一次注入 <300 ms）、[native-running-count](<../tests/native-running-count.test.mjs>) 的 20 个 catalog 事件至多 2 次走查、[worktree-observation-runtime](<../tests/worktree-observation-runtime.test.mjs>) 的首读不等待后台 replay 且 replay 最终可见。
+开发工作树验收（Node 24.17.0，DSH_CONTROLS_HOST_ROOT=<DSH_INSTALL> node --test tests/*.test.mjs）：**859** 项、**659** 通过、**0** 失败、**200** 个桥/兼容环境门禁用例带诊断 skip（上一基线 856／656／0／200，本轮新增 3 条回归）。pnpm exec tsc -p tsconfig.json、pnpm exec tsc -p tsconfig.client.json --noEmit、node scripts/build-client.mjs --out lib/client.js --declaration 均通过；lib/ 已重建，套件内的 src/lib 一致性门禁通过。新增 [runtime-write-coalescing](<../tests/runtime-write-coalescing.test.mjs>)（150 个同一 unknown 事实的状态边最多 3 次持久写，下一次注入 <300 ms）、[native-running-count](<../tests/native-running-count.test.mjs>) 的 20 个 catalog 事件至多 2 次走查、[worktree-observation-runtime](<../tests/worktree-observation-runtime.test.mjs>) 的首读不等待后台 replay 且 replay 最终可见。
 
 同一 2000 个 live 后代内存 fixture 的前后测量（下界）：热读取仍约 **0.6 ms**；首读 **1690 ms → 13.4 ms**；200 个状态事件后的下一次注入 **917.7 ms → 24 ms**；20 个 catalog 事件 **20 → 2** 次走查；400 个状态事件同步处理 **111.8 → 8.6 ms**。该源码随后作为 0.4.33 发布，六宿主隔离、同归档矩阵与规范/rc.2/双根/无根套件见下方制品验收；目录投影超时的真实归因仍由 live 宿主的会话查询成本决定，本轮只保证不再重复中止/排队同一构建，并让迟到的成功结果恢复计数。
 
@@ -158,8 +158,8 @@ Host 严格构建与 Client noEmit／闭合浏览器图检查通过；68 个 JS�
 
 宿主升级到 `0.2.1-alpha.2` 后，插件走宿主原生 per-child cwd seam，不再在 alpha.2 上加载版本钉住的兼容桥（0.4.25 的既有行为）。测试套件因此显式区分两个宿主根，不再让一个根同时承担两类断言：
 
-- `DSH_CONTROLS_HOST_ROOT`：规范宿主（本机 `/home/dev/.local/lib/node_modules/@deepseek-ai/dsh`，`0.2.1-alpha.2`）。Host／Client 通用用例、宿主原生 seam 用例在这里运行。
-- `DSH_CONTROLS_COMPAT_HOST_ROOT`：兼容桥证据根（本机 scratch prefix `/home/dev/.dsh/hosts/dsh-0.2.1-alpha.1/node_modules/@deepseek-ai/dsh`，`0.2.1-alpha.1`）。初始 cwd recipe 应用、兼容 subagent 字节与 peer 绑定、公开 Loader 组合 guard、打包插件桥场景、真实 Plugin Manager 桥场景必须使用它；缺失时这些用例带 `set DSH_CONTROLS_COMPAT_HOST_ROOT ...` 诊断 skip，不改写断言、不计成通过。
+- `DSH_CONTROLS_HOST_ROOT`：规范宿主（本地 `<DSH_INSTALL>`，`0.2.1-alpha.2`；具体主机路径不进入公开文档）。Host／Client 通用用例、宿主原生 seam 用例在这里运行。
+- `DSH_CONTROLS_COMPAT_HOST_ROOT`：兼容桥证据根（本地 `<DSH_HOME>/hosts/dsh-0.2.1-alpha.1/node_modules/@deepseek-ai/dsh`，`0.2.1-alpha.1`）。初始 cwd recipe 应用、兼容 subagent 字节与 peer 绑定、公开 Loader 组合 guard、打包插件桥场景、真实 Plugin Manager 桥场景必须使用它；缺失时这些用例带 `set DSH_CONTROLS_COMPAT_HOST_ROOT ...` 诊断 skip，不改写断言、不计成通过。
 
 在 prefix 中重建 alpha.1 根：`npm install --install-strategy=nested @deepseek-ai/dsh@0.2.1-alpha.1 <prefix>`，根即 `<prefix>/node_modules/@deepseek-ai/dsh`。nested 策略把传递依赖保留在各 owner 包的 `node_modules` 下，所以桥夹具会在临时只读 view 中把这些 owner 内包按 Node 可见名链接成一个根（[compat-host.mjs](<../tests/fixtures/compat-host.mjs>)，只创建 scratch 符号链接，不写任何已安装文件），让整套 alpha.1 闭包从单一根可解析。桥的原生入口字节仍钉住 SHA-256 `75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541`。
 

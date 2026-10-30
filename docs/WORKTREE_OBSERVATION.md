@@ -177,7 +177,7 @@ DSH 没有“目录被谁占用”的机制：
 
 ## 11. 实施记录（2026-10-13，隔离工作树内完成，未安装）
 
-**环境与边界**：全部改动发生在独立 Git 工作树（分支 `worktree-observation`，目录名保持 `dsh-mattpocock-skills` 以满足既有测试的路径夹具），**未**执行 `pnpm install`、**未**打包进 `~/.dsh/profiles/*`、**未**写入 `~/.dsh/artifacts`；pnpm 只以 `pnpm exec tsc`／临时目录内的 `pnpm pack` 参与验证，主检出目录未被修改。
+**环境与边界**：全部改动发生在独立 Git 工作树（分支 `worktree-observation`，目录名保持 `dsh-mattpocock-skills` 以满足既有测试的路径夹具），**未**执行 `pnpm install`、**未**打包进 `<DSH_HOME>/profiles/*`、**未**写入 `<DSH_HOME>/artifacts`；pnpm 只以 `pnpm exec tsc`／临时目录内的 `pnpm pack` 参与验证，主检出目录未被修改。
 
 **改动清单**：
 
@@ -198,7 +198,7 @@ DSH 没有“目录被谁占用”的机制：
 1. `track()` 会在同一 `OrderedEffects` 队列内重入，因此快照读路径（本身已在队列中）内的回放与核验写入必须**不经 `track`** 直接落库；E1 才使用 `track`，从而让下一步消费前沿等待这次写入。
 2. E4 回放只能覆盖**仍存活的受管子会话**：owner 会话的 `sessionFacts` 按性能设计不返回事件，宿主也没有“枚举 owner 已存档子会话”的端口；冷会话全量补登记需要一个新宿主 seam，记为后续项。
 
-**门禁结果**（Node 24.17.0，规范根 DSH `0.2.1-alpha.2`）：`DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs` → **851 项中 654 通过、0 失败、197 个桥用例按环境门禁 skip**；`scripts/verify-package.mjs --prepack`（清洁提交后）→ scratch tsc 与提交 `lib/` 一致、固定包清单 87 + 85 vendor = 172 通过。
+**门禁结果**（Node 24.17.0，规范根 DSH `0.2.1-alpha.2`）：`DSH_CONTROLS_HOST_ROOT=<DSH_INSTALL> node --test tests/*.test.mjs` → **851 项中 654 通过、0 失败、197 个桥用例按环境门禁 skip**；`scripts/verify-package.mjs --prepack`（清洁提交后）→ scratch tsc 与提交 `lib/` 一致、固定包清单 87 + 85 vendor = 172 通过。
 
 **未做**：安装／热重载本机 Profile、发布／推送／打标签、`mattpocock_history` 观察 kind 与源清理域、cwd 事件兜底、冷会话回放枚举。
 

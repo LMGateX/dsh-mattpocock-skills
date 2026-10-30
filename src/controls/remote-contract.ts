@@ -1,6 +1,8 @@
 import { parseStartupDesired, parseStartupStatus } from './startup-state.js'
 import type { StartupDesired, StartupStatus } from './startup-state.js'
 import { parsePolicyIntent, parsePolicySnapshot, DISPLAY_NAMES } from './policy.js'
+import { parseSupervisionConfigIntent, parseSupervisionConfigSnapshot } from './supervision-config.js'
+import type { SupervisionConfigIntent, SupervisionConfigSnapshot } from './supervision-config.js'
 import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js'
 import { parseInstrumentCommand } from './instrument-state.js'
 import type { InstrumentSnapshot } from './instruments.js'
@@ -15,7 +17,7 @@ import { array, boundedArray, boolean, freeze, id, invalid, record, revision } f
 
 /** Shared by Host and Client; no Host SDK or Node imports enter the browser. */
 export const REMOTE_NAMESPACE = 'mattpocockControls' as const
-export const REMOTE_METHODS = ['readPolicy', 'savePolicy', 'listWorkspaces', 'readSession', 'readSummaries', 'applyInstrument', 'applyTicketWindow', 'resourceAction', 'grantPolicy', 'historyAction', 'worktreeAction', 'startupStatus', 'saveStartupSettings'] as const
+export const REMOTE_METHODS = ['readPolicy', 'savePolicy', 'readSupervisionConfig', 'saveSupervisionConfig', 'readSupervision', 'listWorkspaces', 'readSession', 'readSummaries', 'applyInstrument', 'applyTicketWindow', 'resourceAction', 'grantPolicy', 'historyAction', 'worktreeAction', 'startupStatus', 'saveStartupSettings'] as const
 export type RemoteMethod = typeof REMOTE_METHODS[number]
 export type HostJson = null | boolean | number | string | HostJson[] | { [key: string]: HostJson }
 export interface HostCaller { readonly kind: 'user' | 'agent'; readonly principalId: string; readonly sessionId: string | null }
@@ -46,6 +48,8 @@ export interface RuntimeSnapshot {
   readonly caller: HostCaller
   readonly policyGrants: PolicyGrants
   readonly instance: InstrumentInstance
+  /** The live task assignment for this Session, when one was recorded. */
+  readonly assignment?: { readonly workflowId: string | null; readonly ticketIds: readonly string[] }
   readonly policy: EffectivePolicy
   readonly records: InstrumentSnapshot | null
   readonly windows: WindowSnapshot | null
@@ -165,6 +169,9 @@ export interface ControlsRemote {
   saveStartupSettings(desired: StartupDesired, expectedRevision: number, signal?: AbortSignal): Promise<StartupStatus>
   readPolicy(): Promise<PolicySnapshot>
   savePolicy(intent: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>
+  readSupervisionConfig(): Promise<SupervisionConfigSnapshot>
+  saveSupervisionConfig(intent: SupervisionConfigIntent, expectedRevision: number): Promise<SupervisionConfigSnapshot>
+  readSupervision(sessionId: string): Promise<HostJson>
   listWorkspaces(): Promise<readonly WorkspaceRow[]>
   readSession(sessionId: string, signal?: AbortSignal): Promise<HostJson>
   readSummaries(request: SessionSummaryRequest, signal?: AbortSignal): Promise<SessionSummaryBatch>
@@ -265,6 +272,9 @@ export const REMOTE_CONTRIBUTION: TypertRemoteContribution = Object.freeze({
     descriptor('saveStartupSettings', [['desired', strict('StartupDesired', parseStartupDesired)], ['expectedRevision', revisionCodec]], strict('StartupStatus', parseStartupStatus)),
     descriptor('readPolicy', [], strict('PolicySnapshot', parsePolicySnapshot)),
     descriptor('savePolicy', [['intent', strict('PolicyIntent', parsePolicyIntent)], ['expectedRevision', revisionCodec]], strict('PolicySnapshot', parsePolicySnapshot)),
+    descriptor('readSupervisionConfig', [], strict('SupervisionConfigSnapshot', parseSupervisionConfigSnapshot)),
+    descriptor('saveSupervisionConfig', [['intent', strict('SupervisionConfigIntent', parseSupervisionConfigIntent)], ['expectedRevision', revisionCodec]], strict('SupervisionConfigSnapshot', parseSupervisionConfigSnapshot)),
+    descriptor('readSupervision', [['sessionId', sessionCodec]], jsonCodec),
     descriptor('listWorkspaces', [], jsonCodec), descriptor('readSession', [['sessionId', sessionCodec]], jsonCodec),
     descriptor('readSummaries', [['request', strict('SessionSummaryRequest', parseSessionSummaryRequest)]], strict('SessionSummaryBatch', parseSessionSummaryBatch)),
     descriptor('applyInstrument', [['sessionId', sessionCodec], ['command', strict('InstrumentCommand', parseInstrumentCommand)]], jsonCodec),

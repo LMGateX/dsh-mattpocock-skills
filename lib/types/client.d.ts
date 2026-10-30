@@ -16,7 +16,7 @@ export declare const PACKAGE_NAME = "@lmgatex/dsh-mattpocock-skills";
 export declare const TAB_KIND = "mattpocock-collaboration";
 export declare const TAB_ID: string;
 export declare const ROW_KEY: string;
-export declare const OWN_TOOL_NAMES: readonly ["mattpocock_record", "mattpocock_window", "mattpocock_resource", "mattpocock_controls", "mattpocock_execute", "mattpocock_assign", "mattpocock_history", "mattpocock_worktree", "mattpocock_delegate"];
+export declare const OWN_TOOL_NAMES: readonly ["mattpocock_record", "mattpocock_window", "mattpocock_resource", "mattpocock_controls", "mattpocock_execute", "mattpocock_assign", "mattpocock_history", "mattpocock_worktree", "mattpocock_delegate", "mattpocock_audit"];
 export declare const UNSUPPORTED_SEATS: readonly {
     key: string;
     reason: string;
@@ -300,6 +300,14 @@ export declare class StartupSettingsController {
 /** Permanently separate from the Workspace Policy form, including while that form is unavailable. */
 export declare function StartupSettingsPanel(props: {
     readonly remote: StartupRemote;
+}): ReactElement;
+export declare function SupervisionSettingsPanel(props: {
+    readonly remote: ControlsRemote;
+    readonly workspace: string | null;
+}): ReactElement;
+export declare function SupervisionHistory(props: {
+    readonly remote: ControlsRemote;
+    readonly sessionId: string | null;
 }): ReactElement;
 export declare function SettingsPage(props: PluginConfigViewProps & {
     readonly remote: ControlsRemote;

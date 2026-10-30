@@ -11,6 +11,8 @@ export interface TicketValue {
   readonly statuses: Readonly<Record<string, readonly string[]>>
   readonly summary?: string | null
   readonly disposition?: string | null
+  /** Ticket-level supervision override: off disables program suspicion, not periodic audit. */
+  readonly suspicionMode?: 'auto' | 'off'
 }
 export interface DecisionValue {
   readonly question: string
@@ -105,7 +107,7 @@ function shape<T>(label: string, expected: string, parse: () => T): T {
   }
 }
 const WORKFLOW_VALUE_SHAPE = '{title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?, terminal?}]}]}'
-const TICKET_VALUE_SHAPE = '{title, statuses:{<axisKey>:[<statusKey>, ...]}, externalRef?, summary?, disposition?}'
+const TICKET_VALUE_SHAPE = '{title, statuses:{<axisKey>:[<statusKey>, ...]}, externalRef?, summary?, disposition?, suspicionMode?}'
 const DECISION_VALUE_SHAPE = '{question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key, label}], recommendation?, impact?, addressee?:{kind:"user"|"agent"|"unspecified", principalId?, label?}, result?}'
 
 function workflowValue(value: unknown): WorkflowValue {
@@ -127,13 +129,14 @@ function workflowValue(value: unknown): WorkflowValue {
   return { title: text(raw.title, 'workflow title'), axes }
 }
 function ticketValue(value: unknown): TicketValue {
-  const raw = record(value, 'ticket', ['title', 'externalRef', 'statuses', 'summary', 'disposition'])
+  const raw = record(value, 'ticket', ['title', 'externalRef', 'statuses', 'summary', 'disposition', 'suspicionMode'])
   const selections = record(raw.statuses, 'ticket statuses')
   return { title: text(raw.title, 'ticket title'),
     statuses: Object.fromEntries(Object.entries(selections).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => [id(key, 'axisKey'), ids(value, 'status selections')])),
     ...(Object.hasOwn(raw, 'externalRef') ? { externalRef: nullableText(raw.externalRef, 'externalRef') } : {}),
     ...(Object.hasOwn(raw, 'summary') ? { summary: nullableText(raw.summary, 'ticket summary') } : {}),
-    ...(Object.hasOwn(raw, 'disposition') ? { disposition: nullableText(raw.disposition, 'ticket disposition') } : {}) }
+    ...(Object.hasOwn(raw, 'disposition') ? { disposition: nullableText(raw.disposition, 'ticket disposition') } : {}),
+    ...(Object.hasOwn(raw, 'suspicionMode') ? (raw.suspicionMode === 'auto' || raw.suspicionMode === 'off' ? { suspicionMode: raw.suspicionMode } : invalid('ticket suspicionMode must be auto or off')) : {}) }
 }
 function decisionValue(value: unknown): DecisionValue {
   const raw = record(value, 'decision', ['question', 'status', 'pending', 'awaitingImplementation', 'ticketIds', 'context', 'options', 'recommendation', 'impact', 'addressee', 'result'])

@@ -77,6 +77,15 @@ test('used status/axis deletion and incompatible cardinality reject structurally
   assert.equal((await f.read()).revision, 2)
 })
 
+
+test('ticket-level supervision mode is an authored optional field and rejects unknown values', async () => {
+  const f = await ready()
+  await f.apply('put-ticket', { localTicketId: 'T1', value: { ...ticket(), suspicionMode: 'off' } })
+  assert.equal((await f.read()).tickets[0].value.suspicionMode, 'off')
+  await assert.rejects(f.apply('put-ticket', { localTicketId: 'T2', value: { ...ticket(), suspicionMode: 'sometimes' } }), code('invalid-input'))
+  await assert.rejects(f.apply('put-ticket', { localTicketId: 'T2', value: { ...ticket(), suspicionMode: 1 } }), code('invalid-input'))
+})
+
 test('status and blocker-like labels do not create decisions, certify delivery or modify configuration', async () => {
   const f = await ready()
   const config = await f.controls.readPolicy('admin')

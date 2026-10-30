@@ -13,6 +13,10 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { parsePolicyIntent, parsePolicySnapshot, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js'
+import { ownSupervisionLeaf, parseSupervisionConfigSnapshot, resolveSupervisionSettings, setSupervisionLeaf, supervisionIntentOf } from './controls/supervision-config.js'
+import type { SupervisionConfigIntent, SupervisionConfigSnapshot, SupervisionField, SupervisionSettings } from './controls/supervision-config.js'
+import { parseSupervisionDocument } from './controls/supervision-audit.js'
+import type { SupervisionEpisode } from './controls/supervision-audit.js'
 import { parseStartupDesired, parseStartupStatus } from './controls/startup-state.js'
 import type { StartupDesired, StartupStatus } from './controls/startup-state.js'
 import type { InstrumentSnapshot } from './controls/instruments.js'
@@ -27,7 +31,7 @@ export const PACKAGE_NAME = '@lmgatex/dsh-mattpocock-skills'
 export const TAB_KIND = 'mattpocock-collaboration'
 export const TAB_ID = PACKAGE_NAME + ':collaboration'
 export const ROW_KEY = PACKAGE_NAME + '#dsh-mattpocock-skills'
-export const OWN_TOOL_NAMES = ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate'] as const
+export const OWN_TOOL_NAMES = ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit'] as const
 export const UNSUPPORTED_SEATS = Object.freeze([
   { key: 'secondary-header', reason: 'No additive full-width secondary session header slot.' },
   { key: 'persistent-session-list-badge', reason: 'Native leading decoration is idle-only; hover detail is hover-only.' },
@@ -642,6 +646,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
     h('details', null, h('summary', null, '旧资源记录（仅只读，不提供创建/实际退役入口）'), ResourceProjection({ view })),
     h('h4', null, '能力与健康（观测标签）'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health }),
     h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }),
+    h(SupervisionHistory, { remote: props.remote, sessionId: props.sessionId }),
     h(PolicyDelegation, { key: props.sessionId + ':policy-grants', view, remote: props.remote, refresh: props.observer.refresh }),
     h('details', null, h('summary', null, '有效策略及来源'), pretty(view.policy)))
 }
@@ -1205,6 +1210,185 @@ function unsupportedSeatsDetails(): ReactElement {
       h('li', null, '后台打开协作面板：宿主打开标签页时会选中并展开，暂不支持不切换焦点的后台打开。')),
     h('details', null, h('summary', null, '原始接口诊断'), pretty(UNSUPPORTED_SEATS)))
 }
+const SUPERVISION_ROUTE_LABELS = { inherit: '继承主路由', explicit: '显式 provider / model' } satisfies Record<SupervisionSettings['reviewer']['routeMode'], string>
+const SUPERVISION_START_LABELS = { 'ticket-held': '开始处理票后', 'first-support-surge': '首次支撑写入激增' } satisfies Record<SupervisionSettings['suspicionStartMode'], string>
+const SUPERVISION_DELIVERY_LABELS = { card: '仅卡片', 'card+agent-check': '卡片 + agent 检查句' } satisfies Record<SupervisionSettings['delivery']['concern'], string>
+const SUPERVISION_SUSPICION_LABELS = { auto: '自动', off: '关闭程序嫌疑（定期审计仍运行）' } satisfies Record<SupervisionSettings['suspicionMode'], string>
+function supervisionNumber(value: unknown): number | undefined { return typeof value === 'number' ? value : undefined }
+
+export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemote; readonly workspace: string | null }): ReactElement {
+  const [saved, setSaved] = useState<SupervisionConfigSnapshot | null>(null)
+  const [draft, setDraft] = useState<SupervisionConfigIntent | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [reload, setReload] = useState(0)
+  useEffect(() => {
+    let active = true
+    setMessage(null)
+    void Promise.resolve().then(() => props.remote.readSupervisionConfig()).then(result => {
+      const snapshot = parseSupervisionConfigSnapshot(remoteValue(result))
+      if (!active) return
+      setSaved(snapshot); setDraft(supervisionIntentOf(snapshot))
+    }).catch(error => { if (active) setMessage('交付监督配置不可用：' + errorText(error)) })
+    return () => { active = false }
+  }, [props.remote, reload])
+  if (saved === null || draft === null) return h('section', { 'aria-label': '交付监督配置', style: settingsCard },
+    h('h3', { style: { marginTop: 0 } }, '交付监督'), diagnostic('读取交付监督配置…'), message === null ? null : diagnostic(message),
+    h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督配置'))
+  const scope = props.workspace === null ? '全局默认' : '本工作区覆盖'
+  const inheritLabel = props.workspace === null ? '未设置（安全初始值）' : '继承全局'
+  const effective = resolveSupervisionSettings(draft, props.workspace ?? 'global-preview')
+  const own = (field: SupervisionField): unknown => ownSupervisionLeaf(draft, props.workspace, field)
+  const update = (field: SupervisionField, value: unknown): void => {
+    try { setDraft(setSupervisionLeaf(draft, props.workspace, field, value)); setMessage(null) }
+    catch (error) { setMessage('配置值无效：' + errorText(error)) }
+  }
+  const dirty = JSON.stringify(draft) !== JSON.stringify(supervisionIntentOf(saved))
+  const save = async (): Promise<void> => {
+    setBusy(true); setMessage(null)
+    try {
+      const snapshot = parseSupervisionConfigSnapshot(remoteValue(await props.remote.saveSupervisionConfig(draft, saved.revision)))
+      setSaved(snapshot); setDraft(supervisionIntentOf(snapshot))
+      setMessage('已保存监督配置（修订 ' + snapshot.revision + '）。本阶段只保存配置：不启动审计、不注册工具、不产生模型调用。')
+    } catch (error) { setMessage('保存结果未确认：' + errorText(error) + '。请重新读取并核对，草稿未作为成功回执。') }
+    finally { setBusy(false) }
+  }
+  const boolField = (field: SupervisionField, label: string, value: boolean): ReactElement => {
+    const raw = own(field)
+    return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } },
+      h('span', { style: { flex: '1 1 180px' } }, label),
+      h('select', { 'aria-label': label, value: raw === undefined ? 'inherit' : raw === true ? 'on' : 'off', disabled: busy,
+        onChange: (event: ChangeEvent<HTMLSelectElement>) => update(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
+        h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
+      h('small', { style: { flexBasis: '100%' } }, '有效值：' + (value ? '启用' : '禁用')))
+  }
+  const numberField = (field: SupervisionField, label: string, value: number, minimum: number, maximum: number, step = 1): ReactElement => {
+    const raw = supervisionNumber(own(field))
+    return h('label', { key: field, style: settingsField }, h('span', null, label),
+      h('input', { 'aria-label': label, type: 'number', min: minimum, max: maximum, step, value: raw === undefined ? '' : String(raw), disabled: busy,
+        placeholder: inheritLabel + '：' + value, style: { width: '130px', maxWidth: '100%' },
+        onChange: (event: ChangeEvent<HTMLInputElement>) => {
+          const text = event.target.value
+          if (text === '') { update(field, undefined); return }
+          const number = Number(text)
+          if (Number.isFinite(number) && number >= minimum && number <= maximum) update(field, number)
+        } }),
+      h('small', { style: { flexBasis: '100%' } }, '有效值：' + value))
+  }
+  const textField = (field: SupervisionField, label: string, value: string, placeholder = ''): ReactElement => {
+    const raw = own(field)
+    return h('label', { key: field, style: settingsField }, h('span', null, label),
+      h('input', { 'aria-label': label, type: 'text', value: typeof raw === 'string' ? raw : '', disabled: busy, placeholder: inheritLabel + '：' + (value || placeholder || '空'), style: { width: '100%', maxWidth: '360px' },
+        onChange: (event: ChangeEvent<HTMLInputElement>) => update(field, event.target.value === '' ? undefined : event.target.value) }),
+      h('small', { style: { flexBasis: '100%' } }, '有效值：' + (value || '空')))
+  }
+  const selectField = (field: SupervisionField, label: string, value: string, options: readonly [string, string][]): ReactElement => {
+    const raw = own(field)
+    return h('label', { key: field, style: settingsField }, h('span', null, label),
+      h('select', { 'aria-label': label, value: typeof raw === 'string' ? raw : 'inherit', disabled: busy,
+        onChange: (event: ChangeEvent<HTMLSelectElement>) => update(field, event.target.value === 'inherit' ? undefined : event.target.value) },
+        h('option', { value: 'inherit' }, inheritLabel), ...options.map(([option, text]) => h('option', { key: option, value: option }, text))),
+      h('small', { style: { flexBasis: '100%' } }, '有效值：' + (options.find(([option]) => option === value)?.[1] ?? value)))
+  }
+  const listField = (field: SupervisionField, label: string, values: readonly string[], hint: string): ReactElement => {
+    const raw = own(field)
+    const text = Array.isArray(raw) ? (raw as readonly string[]).join('\n') : ''
+    return h('label', { key: field, style: settingsField }, h('span', null, label),
+      h('textarea', { 'aria-label': label, value: text, disabled: busy, rows: 3, placeholder: inheritLabel + '：' + (values.length === 0 ? '空' : values.join(', ')), style: { width: '100%', minHeight: '64px', boxSizing: 'border-box' as const },
+        onChange: (event: ChangeEvent<HTMLTextAreaElement>) => {
+          const rows = event.target.value.split(/[\n,]/u).map(row => row.trim()).filter(row => row.length > 0)
+          update(field, rows.length === 0 ? undefined : rows)
+        } }),
+      h('small', { style: { flexBasis: '100%' } }, hint + ' 有效值：' + (values.length === 0 ? '空' : values.join(', '))))
+  }
+  const route = effective.reviewer.routeMode
+  const softBudget = own('softBudgetHours')
+  return h('section', { 'aria-label': '交付监督配置', style: settingsCard },
+    h('h3', { style: { marginTop: 0 } }, '交付监督'),
+    h('p', null, '当前编辑范围：' + scope + '。此面板只保存配置，不启动定期/嫌疑审计、不注册审计工具、不产生模型调用；运行时尚需后续阶段接入。交付监督仍受「协作管理总闸」和「本工作区总闸」约束。'),
+    h('div', { style: settingsGrid },
+      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '开关与模型路由'), h('p', null, '父代理与子代理共用这条轻量 reviewer 路由；周期性审计和嫌疑审计共用。继承主路由时，owner 不活跃即审计不可用（失败关闭），不回退到旧路由。'), boolField('enabled', '请求启用交付监督', effective.enabled),
+        selectField('reviewer.routeMode', '模型路由', route, [['inherit', SUPERVISION_ROUTE_LABELS.inherit], ['explicit', SUPERVISION_ROUTE_LABELS.explicit]]),
+        textField('reviewer.provider', '显式 provider', effective.reviewer.provider), textField('reviewer.model', '显式 model', effective.reviewer.model),
+        textField('reviewer.reasoningEffort', 'reasoning effort（可选）', effective.reviewer.reasoningEffort),
+        numberField('reviewer.maxTokens', '单次输出上限', effective.reviewer.maxTokens, 256, 8192, 1),
+        numberField('reviewer.timeoutMs', '超时（毫秒）', effective.reviewer.timeoutMs, 5000, 120000, 1000),
+        numberField('reviewer.toolRounds', '只读工具轮数', effective.reviewer.toolRounds, 0, 2, 1),
+        route === 'explicit' ? diagnostic('显式路由会把审计所需的路径/摘要发送给指定的 provider，可能不同于主模型；请确认这是你要的隐私边界。') : null,
+        route === 'explicit' && (effective.reviewer.provider.length === 0 || effective.reviewer.model.length === 0) ? diagnostic('显式路由还缺 provider/model；保存会被拒绝，不会静默回退。') : null),
+      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '定期审计'), h('p', null, '定期审计是底线；程序嫌疑只提前/加深。无新活动时跳过模型调用。'),
+        numberField('scheduledIntervalMinutes', '间隔（分钟）', effective.scheduledIntervalMinutes, 15, 240, 5),
+        numberField('scheduledMaxPerHour', '每小时最多调用', effective.scheduledMaxPerHour, 1, 4, 1),
+        numberField('scheduledMaxPerDay', '每日最多调用', effective.scheduledMaxPerDay, 1, 24, 1),
+        numberField('scheduledDailyTokenBudget', '每日 token 预算', effective.scheduledDailyTokenBudget, 1000, 1000000, 1000),
+        numberField('rollingSummaryHours', '滚动摘要回看（小时）', effective.rollingSummaryHours, 1, 72, 1),
+        numberField('scheduledSummaryTopLanes', 'owner 摘要活跃 lane 上限', effective.scheduledSummaryTopLanes, 1, 20, 1)),
+      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '嫌疑与停滞巡检'), h('p', null, '程序信号只决定是否更深地看；研究/评审票将使用票级 off（本阶段未接入票）。'),
+        selectField('suspicionStartMode', '开始方式', effective.suspicionStartMode, [['ticket-held', SUPERVISION_START_LABELS['ticket-held']], ['first-support-surge', SUPERVISION_START_LABELS['first-support-surge']]]),
+        selectField('suspicionMode', '程序嫌疑模式', effective.suspicionMode, [['auto', SUPERVISION_SUSPICION_LABELS.auto], ['off', SUPERVISION_SUSPICION_LABELS.off]]),
+        numberField('checkIntervalMinutes', '检查间隔（分钟）', effective.checkIntervalMinutes, 5, 60, 1),
+        numberField('noProgressChecks', '连续无进展检查数（K）', effective.noProgressChecks, 2, 12, 1),
+        numberField('fastWindowMinutes', '快周期窗口（分钟）', effective.fastWindowMinutes, 15, 180, 5),
+        numberField('supportWriteThreshold', '支撑写入阈值', effective.supportWriteThreshold, 1, 100, 1),
+        numberField('supportReadBackThreshold', '支撑回读比例', effective.supportReadBackThreshold, 0, 1, 0.05),
+        numberField('cooldownMinutes', '冷却（分钟）', effective.cooldownMinutes, 15, 360, 5),
+        numberField('maxAuditsPer6h', '每 6 小时最多审计', effective.maxAuditsPer6h, 1, 12, 1),
+        numberField('backoffFactor', '退避倍数', effective.backoffFactor, 1, 4, 1),
+        boolField('lazyCheck', '懒检查（不后台唤醒）', effective.lazyCheck), boolField('dryRun', 'dry-run（只记录不投递）', effective.dryRun),
+        numberField('episodeRetentionDays', '审计 episode 保留天数', effective.episodeRetentionDays, 1, 365, 1),
+        numberField('episodeMaxEntries', '每 owner episode 上限', effective.episodeMaxEntries, 100, 10000, 100)),
+      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '投递与预算'), h('p', null, 'info 只写日志；concern 默认只出卡片；alert 还需 noProductGap 与 supportFiles 门槛才自动注入 agent。'),
+        selectField('delivery.concern', 'concern 档', effective.delivery.concern, [['card', SUPERVISION_DELIVERY_LABELS.card], ['card+agent-check', SUPERVISION_DELIVERY_LABELS['card+agent-check']]]),
+        selectField('delivery.alert', 'alert 档', effective.delivery.alert, [['card', SUPERVISION_DELIVERY_LABELS.card], ['card+agent-check', SUPERVISION_DELIVERY_LABELS['card+agent-check']]]),
+        numberField('delivery.alertMinNoProductHours', 'alert：无产品写入小时', effective.delivery.alertMinNoProductHours, 1, 24, 1),
+        numberField('delivery.alertMinSupportFiles', 'alert：支撑文件数', effective.delivery.alertMinSupportFiles, 1, 100, 1),
+        h('label', { style: settingsField }, h('span', null, '软预算（小时）'),
+          h('input', { 'aria-label': '软预算（小时）', type: 'number', min: 1, max: 720, value: typeof softBudget === 'number' ? String(softBudget) : '', disabled: busy, placeholder: inheritLabel + '：' + (effective.softBudgetHours === null ? '关闭' : effective.softBudgetHours), style: { width: '120px' },
+            onChange: (event: ChangeEvent<HTMLInputElement>) => {
+              const text = event.target.value
+              if (text === '') { update('softBudgetHours', undefined); return }
+              const number = Number(text)
+              if (Number.isFinite(number) && number >= 1 && number <= 720) update('softBudgetHours', number)
+            } }),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, h('input', { type: 'checkbox', checked: softBudget === null, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => update('softBudgetHours', event.target.checked ? null : undefined) }), '关闭'),
+          h('small', { style: { flexBasis: '100%' } }, '有效值：' + (effective.softBudgetHours === null ? '关闭（仅人工提醒）' : effective.softBudgetHours + ' 小时')))),
+      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '交付路径'), h('p', null, '产品/支撑根用于区分交付写入与支撑写入；空表示未配置。这里只保存，不改变任何文件或票。'),
+        listField('deliverableRoots', '产品根（每行/逗号一项）', effective.deliverableRoots, '留空继承。'),
+        listField('supportRoots', '支撑根（每行/逗号一项）', effective.supportRoots, '留空继承。'),
+        listField('excludeGlobs', '排除 glob（每行/逗号一项）', effective.excludeGlobs, '留空继承。'))),
+    h('div', { style: settingsActions }, h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, busy ? '正在保存…' : '保存监督配置'),
+      h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(supervisionIntentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
+      h('button', { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取监督配置')),
+    h('p', null, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。保存只写独立 supervision 配置，不写入协作 PolicySnapshot。'),
+    message === null ? null : diagnostic(message),
+    h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术详情（有效监督配置）'), pretty(effective)))
+}
+
+export function SupervisionHistory(props: { readonly remote: ControlsRemote; readonly sessionId: string | null }): ReactElement {
+  const [document, setDocument] = useState<{ readonly episodes: readonly SupervisionEpisode[] } | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [reload, setReload] = useState(0)
+  useEffect(() => {
+    let active = true
+    setMessage(null); setDocument(null)
+    if (props.sessionId === null) return () => { active = false }
+    void Promise.resolve().then(() => props.remote.readSupervision(props.sessionId!)).then(result => {
+      const value = remoteValue(result)
+      if (!active) return
+      setDocument(value === null ? { episodes: [] } : parseSupervisionDocument(value))
+    }).catch(error => { if (active) setMessage('监督记录不可用：' + errorText(error)) })
+    return () => { active = false }
+  }, [props.remote, props.sessionId, reload])
+  return h('section', { 'aria-label': '交付监督记录', style: settingsCard },
+    h('h3', { style: { marginTop: 0 } }, '交付监督记录'),
+    h('p', null, '只读当前会话 owner 的持久化审计 episode；没有推送卡片，也不修改任何票、T/S 或工作树。'),
+    props.sessionId === null ? diagnostic('先选择一个会话查看监督记录。') : message !== null ? diagnostic(message) : document === null ? diagnostic('读取监督记录…') : document.episodes.length === 0 ? diagnostic('当前没有已记录的审计 episode（可能未启用、仍是 dry-run 或尚未到点）。') :
+      h('ul', { style: { display: 'grid', gap: '8px', paddingLeft: '18px' } }, document.episodes.slice().reverse().map(episode => h('li', { key: episode.episodeId },
+        h('strong', null, episode.trigger + ' · ' + episode.severity + ' · ' + episode.verdict + ' · ' + episode.delivery + ' · ' + new Date(episode.at).toISOString() + (episode.ticketId === null ? '' : ' · ' + episode.ticketId) + (episode.research ? ' · 研究/评审标记' : '')),
+        h('div', null, '观察：' + episode.observed),
+        h('div', null, '可能的问题：' + episode.possibleIssue)))),
+    props.sessionId === null ? null : h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督记录'))
+}
 export function SettingsPage(props: PluginConfigViewProps & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObservation }): ReactElement {
   const [saved, setSaved] = useState<PolicySnapshot | null>(null)
   const [draft, setDraft] = useState<PolicyIntent | null>(null)
@@ -1223,9 +1407,10 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
     }).catch(error => { if (active) setMessage('协作配置不可用：' + errorText(error)) })
     return () => { active = false }
   }, [props.remote, reload])
-  if (props.view === 'summary') return h('span', null, '子代理工作树启动设置、协作管理与会话仪器；配置分别保存。')
+  if (props.view === 'summary') return h('span', null, '子代理工作树启动设置、协作管理、交付监督与会话仪器；配置分别保存。')
   const pageStyle = { display: 'grid', gap: '24px', minWidth: 0, width: '100%', maxWidth: '1080px', margin: '0 auto', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
   if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle }, h(StartupSettingsPanel, { remote: props.remote }),
+    h(SupervisionSettingsPanel, { remote: props.remote, workspace: null }),
     h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
   const selected = workspaces.find(row => row.workspaceId === workspace)
   const sessionChoices = settingsSessionChoices(workspaces, workspace)
@@ -1314,12 +1499,14 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
         message === null ? null : diagnostic(message)),
       h('details', { style: { marginTop: '16px' } }, h('summary', null, '技术详情（原始有效策略与变更）'), pretty(preview), pretty(impact)),
       unsupportedSeatsDetails()),
+    h(SupervisionSettingsPanel, { remote: props.remote, workspace }),
     h('section', { 'aria-label': '会话状态查看', style: settingsCard },
       h('h3', { style: { marginTop: 0 } }, '会话状态查看'), h('p', null, '仅查看已存在会话，不修改草稿、不授予权限、不唤醒模型，也不自动打开侧栏。'),
       h('label', { style: settingsField }, '选择会话', h('select', { 'aria-label': '选择查看会话', value: selectedInspection ?? '', style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => setInspection(event.target.value || null) },
         h('option', { value: '' }, '选择会话查看'), ...sessionChoices.ids.map(id => h('option', { key: id, value: id }, id)))),
       sessionChoices.unknown ? diagnostic('会话导航未知或不完整；不能据此断言没有会话。') : sessionChoices.ids.length === 0 ? h('p', null, '当前导航没有列出的会话（不是实例或权限结论）。') : null,
-      selectedInspection === null ? null : h(SettingsInspection, { key: selectedInspection, sessionId: selectedInspection, observer: props.observe(selectedInspection), remote: props.remote })))
+      selectedInspection === null ? null : h(SettingsInspection, { key: selectedInspection, sessionId: selectedInspection, observer: props.observe(selectedInspection), remote: props.remote }),
+      h(SupervisionHistory, { remote: props.remote, sessionId: selectedInspection })))
 }
 
 /** Read only public call material; never serialize the lazy argument reader's internals. */

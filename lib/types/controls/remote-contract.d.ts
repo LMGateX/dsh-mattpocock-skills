@@ -1,4 +1,5 @@
 import type { StartupDesired, StartupStatus } from './startup-state.js';
+import type { SupervisionConfigIntent, SupervisionConfigSnapshot } from './supervision-config.js';
 import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js';
 import type { InstrumentSnapshot } from './instruments.js';
 import type { WindowSnapshot } from './windows.js';
@@ -10,7 +11,7 @@ import type { TicketWindowCommand } from './windows.js';
 import type { CreateWorktree, ResourceBusiness, RetireDisposition } from './resources.js';
 /** Shared by Host and Client; no Host SDK or Node imports enter the browser. */
 export declare const REMOTE_NAMESPACE: "mattpocockControls";
-export declare const REMOTE_METHODS: readonly ["readPolicy", "savePolicy", "listWorkspaces", "readSession", "readSummaries", "applyInstrument", "applyTicketWindow", "resourceAction", "grantPolicy", "historyAction", "worktreeAction", "startupStatus", "saveStartupSettings"];
+export declare const REMOTE_METHODS: readonly ["readPolicy", "savePolicy", "readSupervisionConfig", "saveSupervisionConfig", "readSupervision", "listWorkspaces", "readSession", "readSummaries", "applyInstrument", "applyTicketWindow", "resourceAction", "grantPolicy", "historyAction", "worktreeAction", "startupStatus", "saveStartupSettings"];
 export type RemoteMethod = typeof REMOTE_METHODS[number];
 export type HostJson = null | boolean | number | string | HostJson[] | {
     [key: string]: HostJson;
@@ -64,6 +65,11 @@ export interface RuntimeSnapshot {
     readonly caller: HostCaller;
     readonly policyGrants: PolicyGrants;
     readonly instance: InstrumentInstance;
+    /** The live task assignment for this Session, when one was recorded. */
+    readonly assignment?: {
+        readonly workflowId: string | null;
+        readonly ticketIds: readonly string[];
+    };
     readonly policy: EffectivePolicy;
     readonly records: InstrumentSnapshot | null;
     readonly windows: WindowSnapshot | null;
@@ -170,6 +176,9 @@ export interface ControlsRemote {
     saveStartupSettings(desired: StartupDesired, expectedRevision: number, signal?: AbortSignal): Promise<StartupStatus>;
     readPolicy(): Promise<PolicySnapshot>;
     savePolicy(intent: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>;
+    readSupervisionConfig(): Promise<SupervisionConfigSnapshot>;
+    saveSupervisionConfig(intent: SupervisionConfigIntent, expectedRevision: number): Promise<SupervisionConfigSnapshot>;
+    readSupervision(sessionId: string): Promise<HostJson>;
     listWorkspaces(): Promise<readonly WorkspaceRow[]>;
     readSession(sessionId: string, signal?: AbortSignal): Promise<HostJson>;
     readSummaries(request: SessionSummaryRequest, signal?: AbortSignal): Promise<SessionSummaryBatch>;

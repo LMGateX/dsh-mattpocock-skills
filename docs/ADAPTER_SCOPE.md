@@ -54,3 +54,17 @@
 这明确增加了可选扩展的运行时职责：持久归属/状态、配置解析与受控容量准入。规格进一步明确：仪器不决定何时要用户裁决、票是否真的完成或暂停/取消是否业务合理；模型依据 Skill、约定和文档判断后更新仪器。保留归属/revision/幂等计数与执行程序回执，不另建业务证据 gate、风险分类器、自动审批或自定任务业务优先级。这不取消显式启用窗口的强制准入和必要行为引导，也不取消 worktree 使用/收尾的轻量引导；候选协议与用户项目约定的职责见 [引导设计](<INSTRUMENT_GUIDANCE.md>)。上文“插件本身不提供子代理调度”描述既有 Skill provider，不再用它否定 已接受的可选窗口控制需求；但仍不把完整票图/issue tracker/Git 调度器或通用行为证明器塞进该 provider。
 
 需求已记录，机制、默认值、入口打包与强约束所需宿主 seam 尚待决定，均未实现。既有 vendor、两通道及加载优先级保持不变；研究材料不会自动启用工具、修改正在运行的插件页面或解除发布/模型试验门槛。
+
+## 已接受例外：可选交付监督（2026-10-30）
+
+前述“停止扩展通用行为审计器”继续适用于无界、通用的行为审计与正确性证明；owner 已批准一个边界明确的例外：
+
+- 只覆盖可选的交付监督：工作台账、定期/嫌疑审计、侧栏卡片和受限的 agent 提示。
+- 默认关闭、可独立关闭/卸载；关闭时不监听台账、不注册审计工具、不产生模型调用。
+- 只观察、只建议；不审批/拒绝、不改票、不释放 T/S、不建删工作树、不自动向用户提问。
+- 研究/评审票通过票级 suspicionMode=off 关闭程序嫌疑；定期 agent 审计仍运行，并携带研究标记。
+- 采用独立 supervision 配置文档（方案 B）和工作区设置页；不扩展既有 PolicySnapshot wire schema。
+- 模型路由在工作区二选一：显式 provider/model/effort，或继承主路由；不可用即失败关闭，不静默回退。
+- 后端实现：独立 config 文档、工作区设置页、operator-only remote、内存工作台账、可选 mattpocock_audit、按 owner 持久化的审计 episode、事件驱动定期/嫌疑判断、dry-run、可选 inherit/explicit reviewer 路由、每小时/每日/token 预算、alert 门槛、固定 agent 注入句和只读右栏/设置页历史已落地；功能仍关闭。票级 suspicionMode 已通过 ticket value + assignment 读取；研究/评审标记已进入 episode/prompt/历史；ticket-level 归因摘要已进入 prompt，真实模型试验仍未完成；包清单已同步更新。设计见 [SUPERVISION_PLAN.md](SUPERVISION_PLAN.md)，评审见 [SUPERVISION_IMPLEMENTATION_REVIEW.md](SUPERVISION_IMPLEMENTATION_REVIEW.md)。
+
+本例外不是重新开放通用行为分析器，也不授权安装、启用、发布或真实模型试验；这些仍按 DESIGN.md 与 IMPLEMENTATION_PLAN.md 的独立门禁处理。

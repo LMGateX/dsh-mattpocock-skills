@@ -19,14 +19,18 @@ function startup(extra = {}) {
     restartNeeded: false, state: 'disabled', ...extra }
 }
 function fixture(extra = {}) {
-  const calls = { policy: [], startup: [], refresh: 0, observe: [] }
+  const calls = { policy: [], supervision: [], startup: [], refresh: 0, observe: [] }
   let policy = { revision: 42, extensionEnabled: false, defaults: {}, workspaceOverrides: {} }
+  let supervision = { schemaVersion: 1, revision: 0, defaults: {}, workspaceOverrides: {} }
   let status = startup()
   const remote = {
     readPolicy: async () => ok(copy(policy)),
     listWorkspaces: async () => ok([{ id: 'work-one', title: '审计工作区', status: 'ok', sessionIds: [] }]),
     startupStatus: async () => ok(copy(status)),
     savePolicy: async (intent, revision) => { calls.policy.push({ intent: copy(intent), revision }); policy = { ...copy(intent), revision: revision + 1 }; return ok(copy(policy)) },
+    readSupervisionConfig: async () => ok(copy(supervision)),
+    saveSupervisionConfig: async (intent, revision) => { calls.supervision.push({ intent: copy(intent), revision }); supervision = { schemaVersion: 1, revision: revision + 1, ...copy(intent) }; return ok(copy(supervision)) },
+    readSupervision: async () => ok(null),
     saveStartupSettings: async (desired, revision, signal) => { calls.startup.push({ desired: copy(desired), revision, signal }); status = { ...status, desired: copy(desired), revision: revision + 1, restartNeeded: true, state: 'pending-restart' }; return ok(copy(status)) },
     ...extra,
   }
@@ -283,6 +287,28 @@ test('DOM clicks save startup revision seven independently from management revis
   await click(button(container, '保存并关闭协作管理'))
   assert.equal(f.calls.policy[1].revision, 43)
   assert.equal(f.calls.policy[1].intent.extensionEnabled, false)
+})
+
+
+test('DOM saves supervision route and switch under its own revision, leaving policy untouched', async t => {
+  const f = fixture(), { container, window } = await mount(t, client.SettingsPage, f.props)
+  await React.act(async () => {})
+  await select(named(container, '配置编辑范围'), '')
+  await select(named(container, '请求启用交付监督'), 'on')
+  await select(named(container, '模型路由'), 'explicit')
+  for (const [label, value] of [['显式 provider', 'fixture-provider'], ['显式 model', 'fixture-model']]) {
+    const input = named(container, label)
+    await React.act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, value)
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+  }
+  assert.match(named(container, '交付监督配置').textContent, /配置修订 0/)
+  await click(button(container, '保存监督配置'))
+  assert.equal(f.calls.supervision.length, 1)
+  assert.equal(f.calls.supervision[0].revision, 0)
+  assert.deepEqual(f.calls.supervision[0].intent, { defaults: { enabled: true, reviewer: { routeMode: 'explicit', provider: 'fixture-provider', model: 'fixture-model' } }, workspaceOverrides: {} })
+  assert.equal(f.calls.policy.length, 0)
 })
 
 test('Chinese field controls preserve raw wire names, explicit false and sparse inheritance', async t => {

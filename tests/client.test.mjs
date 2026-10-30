@@ -46,7 +46,7 @@ function contextFixture() {
   ])
   const remote = { $mount: async contribution => { mounts.push(contribution); return async () => {} },
     mattpocockControls: { readPolicy: async () => ok(policy), savePolicy: async intent => ok({ ...intent, revision: 5 }),
-      listWorkspaces: async () => ok([]), readSession: async id => ok(snapshot(id)),
+      listWorkspaces: async () => ok([]), readSession: async id => ok(snapshot(id)), readSupervision: async () => ok(null),
       readSummaries: async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'a'.repeat(64), summary: summarySnapshot(sessionId) })) }), applyInstrument: async () => ok({}),
       historyAction: async () => ok({}), worktreeAction: async () => ok({}) } }
   const ctx = { remote, inject: (dependencies, callback) => { assert.deepEqual(dependencies, ['remote.mattpocockControls']); return callback(ctx) },
@@ -251,7 +251,7 @@ test('policy delegation carries the actual grant revision and cannot be self-gra
 test('timeline registration claims exactly this package tools and retains historical result blocks', async () => {
   const fixture = contextFixture(); await client.apply(fixture.ctx)
   const keys = fixture.entries.filter(row => row.options?.name === 'tool.call.toolview').map(row => row.options.key)
-  assert.deepEqual(keys, ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate'])
+  assert.deepEqual(keys, ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit'])
   assert(!keys.includes('bash')); assert(!keys.includes('ask_user_question'))
   const summaries = new client.SummaryScheduler(async () => ok({ rows: [] }))
   const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'original historical result' }], isError: false }

@@ -15,7 +15,7 @@
 所有 command 包含 operationId、expectedRevision、workflowId、action/value；references 可选。作者、实例、配置、权限与租约不是输入字段，未知字段明确拒绝。
 
 - put-workflow：title 与 axes；每轴自行声明 axisKey/label、exclusive 或 overlapping 统计口径、statusKey/label/可选 meaning/summaryPriority。没有预设阶段、固定摘要桶或强制主状态。空字典可用于票尚未出现的任务。
-- put-ticket：workflowId＋localTicketId；title、按轴明确给出的 statuses；可选 externalRef/summary/disposition。状态与处置原文保存；无默认完成分类/百分比。相同外部票号可在不同实例/工作流出现，不合并写权限或计数。
+- put-ticket：workflowId＋localTicketId；title、按轴明确给出的 statuses；可选 externalRef/summary/disposition/suspicionMode（auto|off，供可选交付监督读取，缺省 auto）。状态与处置原文保存；无默认完成分类/百分比。相同外部票号可在不同实例/工作流出现，不合并写权限或计数。
 - put-decision：decisionId、question、自由 status；可选 pending/awaitingImplementation、关联票、背景、选项、建议、影响、拟裁决者和结果。简单事项不需填审批表。何时提出、解决、撤回或 reopen 由模型/用户按任务决定，无内置转换流程。
 - set-decision-view：实际调用者自己的 read/hidden；不能选别人的 viewer 或直接修改决策业务状态。
 

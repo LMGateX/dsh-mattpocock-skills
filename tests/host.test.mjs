@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { registerHooks, createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
@@ -154,12 +155,12 @@ test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects fo
   await assert.rejects(f.invoke('readPolicy', { principal: 'user:operator' }))
   await assert.rejects(f.invoke('savePolicy', { intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {}, principal: 'fake' }, expectedRevision: 0 }))
   assert.equal((await f.invoke('readSession', { sessionId: 'owner' })).sessionId, 'owner')
-  assert.equal(f.units.size, 3, 'mount opens only the documents it reads')
-  assert.deepEqual([...f.units.keys()].sort(), ['mattpocock_controls', 'mattpocock_policy_grants', 'mattpocock_startup_settings'])
+  assert.equal(f.units.size, 4, 'mount opens only the documents it reads')
+  assert.deepEqual([...f.units.keys()].sort(), ['mattpocock_controls', 'mattpocock_policy_grants', 'mattpocock_startup_settings', 'mattpocock_supervision_config'])
   assert.equal(await f.mounted.ports.instrumentStorage.read('missing'), undefined)
   assert.equal(await f.mounted.ports.windowStorage.read('missing'), undefined)
   assert.equal(await f.mounted.ports.resourceStorage.read(), undefined)
-  assert.equal(f.units.size, 6, 'the first session reads open the remaining domains')
+  assert.equal(f.units.size, 7, 'the first session reads open the remaining domains')
   assert.ok([...f.units.keys()].some(name => name.endsWith('_startup_settings')))
   assert.equal(await f.mounted.ports.resourceLifecycle.verifyInitialBinding(), false)
   assert.deepEqual(await f.mounted.ports.resourceLifecycle.closeEntrypoints(), { closed: false, nativeColdResumeClosed: false })
@@ -594,6 +595,110 @@ test('runtime unit suffix and exact parser share one pending/open handle, not a 
   await assert.rejects(f.mounted.ports.openRuntimeStorage(value => parser(value)), { code: 'invalid-state' })
   assert.equal(opens, 1)
 })
+
+test('supervision config remote is operator-only, independently revisioned and does not alter policy', options, async t => {
+  const f = await assembly(t)
+  const initial = await f.invoke('readSupervisionConfig')
+  assert.deepEqual(initial, { schemaVersion: 1, revision: 0, defaults: {}, workspaceOverrides: {} })
+  const saved = await f.invoke('saveSupervisionConfig', { intent: { defaults: { enabled: true, scheduledIntervalMinutes: 30 }, workspaceOverrides: { W: { reviewer: { maxTokens: 1024 } } } }, expectedRevision: 0 })
+  assert.equal(saved.revision, 1)
+  assert.equal(saved.defaults.enabled, true)
+  assert.equal(saved.workspaceOverrides.W.reviewer.maxTokens, 1024)
+  await assert.rejects(f.invoke('saveSupervisionConfig', { intent: { defaults: {}, workspaceOverrides: {} }, expectedRevision: 0 }), { code: 'revision-conflict' })
+  assert.equal((await f.invoke('readPolicy')).revision, 0)
+  await assert.rejects(f.invoke('readSupervisionConfig', {}, operatorPeer(f.ctx, { id: 'stranger' })), { code: 'access-denied' })
+  await assert.rejects(f.invoke('saveSupervisionConfig', { intent: { defaults: { reviewer: { routeMode: 'explicit', provider: 'p' } }, workspaceOverrides: {} }, expectedRevision: 1 }), { code: 'gateway/input-invalid' })
+})
+
+test('audit tool is absent by default, appears only with enabled config and returns memory-only observations', options, async t => {
+  const off = await assembly(t)
+  assert.equal(off.ctx.tools.get('mattpocock_audit'), undefined)
+  const config = new Map([['state', { schemaVersion: 1, revision: 0, defaults: { enabled: true, deliverableRoots: ['src'] }, workspaceOverrides: {} }]])
+  const f = await assembly(t, {
+    async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true } } },
+  }, undefined, new Map([['mattpocock_supervision_config', config]]))
+  assert.ok(f.ctx.tools.get('mattpocock_audit'))
+  const result = Object.freeze({ isError: false, value: null, content: [] })
+  await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'audit-write-1', arguments: { path: 'src/a.ts' } }, result, async () => ({ kind: 'accept' }))
+  await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'audit-write-2', rootCallId: 'ptc-outer', arguments: { path: 'src/b.ts' } }, result, async () => ({ kind: 'accept' }))
+  const audited = await executeRegistryTool(f.ctx, { name: 'mattpocock_audit', arguments: { request: { action: 'read' } }, callId: 'audit-read-1', agent: f.owner, signal: signal() }, load)
+  assert.equal(audited.isError, false)
+  assert.equal(audited.value.coverage.persistence, 'memory-only')
+  assert.equal(audited.value.summary.productWrites, 2)
+  assert.deepEqual(audited.value.summary.productFiles, ['src/a.ts', 'src/b.ts'])
+  assert.match(audited.value.note, /no model call/i)
+  await f.invoke('saveSupervisionConfig', { intent: { defaults: { enabled: false }, workspaceOverrides: {} }, expectedRevision: 0 })
+  assert.equal(f.ctx.tools.get('mattpocock_audit'), undefined)
+})
+
+
+test('scheduled dry-run persists one episode and exposes it through the read-only remote', options, async t => {
+  const hash = createHash('sha256').update('owner').digest('hex').slice(0, 32)
+  const config = { schemaVersion: 1, revision: 0, defaults: { enabled: true, dryRun: true, deliverableRoots: ['src'], checkIntervalMinutes: 5, scheduledIntervalMinutes: 15 }, workspaceOverrides: {} }
+  const state = { schemaVersion: 1, revision: 0, ownerSessionId: 'owner', workspaceId: 'W', createdAt: 0, lastScheduledAt: 0,
+    lastSuspicionAt: null, consecutiveOnTrack: 0, backoffUntil: null, hourKey: '2026-10-30T08', hourCalls: 0, dailyKey: '2026-10-30', dailyCalls: 0, dailyTokens: 0, episodes: [] }
+  const f = await assembly(t, {
+    async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true } } },
+  }, undefined, new Map([
+    ['mattpocock_supervision_config', new Map([['state', config]])],
+    ['mattpocock_supervision_state_' + hash, new Map([['state', state]])],
+  ]))
+  const result = Object.freeze({ isError: false, value: null, content: [] })
+  await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'scheduled-write', arguments: { path: 'src/a.ts' } }, result, async () => ({ kind: 'accept' }))
+  await new Promise(resolve => setTimeout(resolve, 20))
+  const document = await f.invoke('readSupervision', { sessionId: 'owner' })
+  assert.equal(document.episodes.length, 1)
+  assert.equal(document.episodes[0].trigger, 'scheduled')
+  assert.equal(document.episodes[0].delivery, 'none')
+})
+
+
+test('optional reviewer records adapter token usage without a real provider', options, async t => {
+  const hash = createHash('sha256').update('owner').digest('hex').slice(0, 32)
+  const config = { schemaVersion: 1, revision: 0, defaults: { enabled: true, dryRun: false, deliverableRoots: ['src'], checkIntervalMinutes: 5, scheduledIntervalMinutes: 15 }, workspaceOverrides: {} }
+  const state = { schemaVersion: 1, revision: 0, ownerSessionId: 'owner', workspaceId: 'W', createdAt: 0, lastScheduledAt: 0,
+    lastSuspicionAt: null, consecutiveOnTrack: 0, backoffUntil: null, hourKey: '2026-10-30T08', hourCalls: 0, dailyKey: '2026-10-30', dailyCalls: 0, dailyTokens: 0, episodes: [] }
+  const injected = []
+  const fakeLlm = { async *stream() {
+    yield { type: 'text-delta', text: JSON.stringify({ verdict: 'on-track', severity: 'info', observed: 'fixture review', possibleIssue: 'fixture possible issue', confidence: 0.2 }) }
+    yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }
+  } }
+  const f = await assembly(t, {
+    async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true } } },
+  }, (_ports, _runtime, ctx, owner) => { ctx.provide('llm', fakeLlm); owner.model = { current: () => ({ provider: 'fixture', model: 'fixture' }) }; owner.inject = message => injected.push(message) }, new Map([
+    ['mattpocock_supervision_config', new Map([['state', config]])],
+    ['mattpocock_supervision_state_' + hash, new Map([['state', state]])],
+  ]))
+  await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'review-write', arguments: { path: 'src/a.ts' } }, Object.freeze({ isError: false, value: null, content: [] }), async () => ({ kind: 'accept' }))
+  await new Promise(resolve => setTimeout(resolve, 30))
+  const saved = f.units.get('mattpocock_supervision_state_' + hash).get('state')
+  assert.equal(saved.dailyTokens, 15)
+  assert.equal(saved.episodes.length, 1)
+  assert.equal(saved.episodes[0].verdict, 'on-track')
+  assert.equal(injected.length, 0)
+})
+
+
+test('assigned ticket off marks the scheduled episode as research/review', options, async t => {
+  const hash = createHash('sha256').update('owner').digest('hex').slice(0, 32)
+  const config = { schemaVersion: 1, revision: 0, defaults: { enabled: true, dryRun: true, deliverableRoots: ['src'], checkIntervalMinutes: 5, scheduledIntervalMinutes: 15 }, workspaceOverrides: {} }
+  const state = { schemaVersion: 1, revision: 0, ownerSessionId: 'owner', workspaceId: 'W', createdAt: 0, lastScheduledAt: 0,
+    lastSuspicionAt: null, consecutiveOnTrack: 0, backoffUntil: null, hourKey: '2026-10-30T08', hourCalls: 0, dailyKey: '2026-10-30', dailyCalls: 0, dailyTokens: 0, episodes: [] }
+  const f = await assembly(t, {
+    async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true },
+      assignment: { workflowId: 'flow', ticketIds: ['T1'] }, records: { tickets: [{ workflowId: 'flow', localTicketId: 'T1', revision: 1, value: { title: 'research', statuses: {}, suspicionMode: 'off' }, history: [] }] } } },
+  }, undefined, new Map([
+    ['mattpocock_supervision_config', new Map([['state', config]])],
+    ['mattpocock_supervision_state_' + hash, new Map([['state', state]])],
+  ]))
+  await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'research-write', arguments: { path: 'src/a.ts' } }, Object.freeze({ isError: false, value: null, content: [] }), async () => ({ kind: 'accept' }))
+  await new Promise(resolve => setTimeout(resolve, 20))
+  const document = await f.invoke('readSupervision', { sessionId: 'owner' })
+  assert.equal(document.episodes.length, 1)
+  assert.equal(document.episodes[0].ticketId, 'T1')
+  assert.equal(document.episodes[0].research, true)
+})
+
 test('cached runtime unit preserves table-wide indeterminate latch after committed-but-rejected write', options, async t => {
   const f = await assembly(t), backend = f.ctx.get('storage').backend.get('fixture').kv, original = backend.open.bind(backend)
   let opens = 0

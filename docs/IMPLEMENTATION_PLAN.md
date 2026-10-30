@@ -30,7 +30,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 接受范围见 [DESIGN.md](<DESIGN.md>) 的 2026-10-13 决策节与 [WORKTREE_OBSERVATION.md](<WORKTREE_OBSERVATION.md>)：只观测经 DSH 工具管线成功执行的原生 `create_worktree`（含 PTC 子调度），登记创建事实、读取时创建者活动性与受权 Git 核验；不记录“目录被谁使用”，不自动清理，不新增模型工具。
 
-本阶段授权为**隔离环境内的源码实施与机械验收**：不安装本机 DSH／Profile、不写 `~/.dsh/artifacts`、不 push／Release、不启动第二个服务；pnpm 只以 `exec tsc` 和临时目录内的 `pack` 参与验证。工作树目录名保持 `dsh-mattpocock-skills`，因为既有宿主/兼容用例按该路径段匹配源码加载器（移动工作树而非改测试）。
+本阶段授权为**隔离环境内的源码实施与机械验收**：不安装本机 DSH／Profile、不写 `<DSH_HOME>/artifacts`、不 push／Release、不启动第二个服务；pnpm 只以 `exec tsc` 和临时目录内的 `pack` 参与验证。工作树目录名保持 `dsh-mattpocock-skills`，因为既有宿主/兼容用例按该路径段匹配源码加载器（移动工作树而非改测试）。
 
 | 阶段 | 内容 | 门禁（机械） |
 |---|---|---|
@@ -40,7 +40,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | D 呈现与文案 | 消费分类 + 协议文案、客户端只读列表与 `update-observation` 作者登记；`mattpocock_delegate`／`mattpocock_worktree` 文案改为 lane 自建树 + 观测登记 | 消费／客户端／模型契约用例通过 |
 | E 交付面 | 固定包清单精确 +2（87 + 85 vendor = 172）；宿主与客户端重建 | `scripts/verify-package.mjs --prepack` 通过（清洁提交后） |
 
-已观测结果（Node 24.17.0，规范根 DSH `0.2.1-alpha.2`，`DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs`）：**851 项中 654 通过、0 失败、197 个桥用例按环境门禁 skip**。严格构建门禁 `compareCommittedBuild`（scratch tsc 与提交的 `lib/` 逐字节一致）、客户端独立重建、固定包清单（87 固定 + 85 vendor）均通过。本轮没有模型活动，也没有安装、推送或发布；绑定语义、vendor 字节与宿主补丁均未改变。
+已观测结果（Node 24.17.0，规范根 DSH `0.2.1-alpha.2`，`DSH_CONTROLS_HOST_ROOT=<DSH_INSTALL> node --test tests/*.test.mjs`）：**851 项中 654 通过、0 失败、197 个桥用例按环境门禁 skip**。严格构建门禁 `compareCommittedBuild`（scratch tsc 与提交的 `lib/` 逐字节一致）、客户端独立重建、固定包清单（87 固定 + 85 vendor）均通过。本轮没有模型活动，也没有安装、推送或发布；绑定语义、vendor 字节与宿主补丁均未改变。
 
 技术边界（实现中确认，写入设计口径）：快照读路径本身持有单一效果队列，回放与核验写入不得再经 `track` 重入；E4 只覆盖仍存活的受管子会话，冷会话全量补登记需要新的宿主枚举 seam，不在本轮范围。
 
@@ -48,7 +48,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 接受范围：核对 alpha.3／alpha.4 相对 alpha.2 的宿主变化并适配。**唯一面向插件作者的变化是兼容性判定依据**——声明了 `engines.dsh` 就只按它判断，未声明才回退原有 peer 规则；本插件因此显式声明已实测范围，并补齐宿主侧 fixture 的 Peer 契约。产品运行时代码没有改动。
 
-隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-alpha.4` 得到与 DSH 自身一致的全局布局；未改动本机 DSH 与任何 Profile，未写 `~/.dsh/artifacts`，未 push／Release，未启动第二个服务，未调用模型。
+隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.1-alpha.4` 得到与 DSH 自身一致的全局布局；未改动本机 DSH 与任何 Profile，未写 `<DSH_HOME>/artifacts`，未 push／Release，未启动第二个服务，未调用模型。
 
 | 阶段 | 内容 | 门禁（机械） |
 |---|---|---|
@@ -63,7 +63,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 接受范围：核对 `0.2.2-alpha.2` 相对上一核对线的宿主变化并做最小适配。**唯一破坏本插件运行时代码的接缝是工具执行拆分**：旧单调用 `ctx.tools.execute(ToolExecutionInput)` 被移除，改为 executor 插件拥有的批处理入口；受管原生 `subagent`／`send_message` 派发必须保留原调用的 parent token 与 policy／guard 语义。
 
-隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.2-alpha.2`，另以独立 `DSH_HOME` 安装本工作树打包制品并做无凭据 headless 装载；未改动本机 DSH 与任何 Profile，未写 `~/.dsh/artifacts`，未 push／Release，未启动第二个服务，未调用模型。
+隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.2-alpha.2`，另以独立 `DSH_HOME` 安装本工作树打包制品并做无凭据 headless 装载；未改动本机 DSH 与任何 Profile，未写 `<DSH_HOME>/artifacts`，未 push／Release，未启动第二个服务，未调用模型。
 
 | 阶段 | 内容 | 门禁（机械） |
 |---|---|---|
@@ -192,3 +192,25 @@ The first implementation is complete only when deterministic tests, isolated DSH
 The accepted extensions are specified in [WORKSPACE_WORKFLOW_CONTROLS.md](WORKSPACE_WORKFLOW_CONTROLS.md): workspace policy editing, session-instance lifecycle/dual-window instruments, task-defined ticket progress and persistent pending decisions. [SESSION_INSTRUMENTS.md](SESSION_INSTRUMENTS.md) records accepted GUI principles, owner-session/descendant identity, per-instance T/S, model-led business updates versus program execution facts, nonjudgmental ticket-slot handling, decision attribution and isolation/recovery tests. Accepted clarification excludes plugin-owned business correctness/approval gates: the model decides when to register or resolve matters and when tickets complete/pause/cancel, then updates instruments; deterministic T accounting is not semantic certification. Enabled dual windows still require deterministic admission plus minimal agent protocol injection, with explicit off behavior; optional user project instruction tuning and unvalidated-prompt handling are described in [INSTRUMENT_GUIDANCE.md](INSTRUMENT_GUIDANCE.md). Mechanism-only tests and separately authorized model-behavior tests are distinct gates. These are not completed phases or changed historical outcomes. Individual refill, ticketless research, program-only execution receipts and automatic state consumption remain required; [REACTIVE_WINDOW_INSTRUMENTATION.md](REACTIVE_WINDOW_INSTRUMENTATION.md) identifies existing same-model-step hooks. Before implementation, settle concrete client seats/schema/defaults, supported binding/admission/retirement seams and instance authorization; then run the isolated no-model matrices including two sessions in one workspace, custom states and offline/stale decision handling. Live GUI/profile changes and real-model trials remain separate decisions.
 
 The accepted phased implementation begins as follows. Phase 1 uses the existing strict TypeScript ESM build for policy inheritance/revisioned saves, owner-session identity, atomic persistence and isolated recovery tests. It does not mount new host tools, admissions or GUI. Concrete first-stage interface, unset-capacity handling, storage ownership and test evidence are recorded in [CONTROLS_CORE.md](CONTROLS_CORE.md); The second phase continues: Phase 2 implements unmounted task-defined ticket progress and pending-decision records, per-instance event persistence, actual-author/assignment checks and independent viewer revisions; see [INSTRUMENT_RECORDS.md](INSTRUMENT_RECORDS.md). Later window/admission, resource and host/client integration stages remain pending. Historical release and evaluation gates are unchanged.
+
+## 可选交付监督（2026-10-30；Stage D/E 后端与可选 reviewer 已实现，真实模型/UI 缺口明确）
+
+设计范围见 [DESIGN.md](DESIGN.md) 第 17 节；完整设计见 [SUPERVISION_PLAN.md](SUPERVISION_PLAN.md)，只读实现评审见 [SUPERVISION_IMPLEMENTATION_REVIEW.md](SUPERVISION_IMPLEMENTATION_REVIEW.md)。当前实现独立配置、operator-only remote、工作区设置页、内存工作台账、可选 mattpocock_audit 读工具、按 owner 持久化的审计 episode、事件驱动的定期/嫌疑判断、dry-run、可选 inherit/explicit reviewer 路由、alert 门槛、固定 agent 注入句和只读 episode 历史；监督仍默认关闭。
+
+| 阶段 | 内容 | 门禁 |
+|---|---|---|
+| A | 范围与设计文档更新（本节、DESIGN 第 17 节、ADAPTER_SCOPE 例外） | owner 认可；文档同提交；不改运行时 |
+| B | 独立 supervision 配置文档 + 工作区设置页（已实现）；功能仍关闭 | 全局默认/稀疏覆盖/显式保存/修订；不扩展 PolicySnapshot wire；operator-only remote、30 天/2000 条 episode 保留配置 |
+| C | 内存工作台账 + 可选 mattpocock_audit 工具（已实现） | PTC 嵌套写分类、无写放大、失败隔离、不注册 /audit slash；未启用不注册、禁用即移除 |
+| D | 持久化 episode + 事件驱动定期审计 + dry-run（已实现）；固定时间核心测试覆盖到点/预算 | 到点、无新活动不触发、每小时/每日调用与 token 预算、重启后恢复、dry-run 不投递 |
+| E | 嫌疑/停滞 + alert 门槛 + 固定模板投递（后端已实现；票级/工作区 suspicionMode；研究/评审标记；ticket-level 归因摘要） | K/阈值校准、agent 注入不打断、去重/冷却；未归因写入显式保留 |
+| F | 可选真实模型 reviewer（代码已实现）；真实模型试验未运行 | 单独授权；独立评估记录；不混入机械测试；缺路由时 fail-closed |
+
+D/E 后端和 F 的可选调用路径已实现并通过机械测试；token/每小时预算与只读右栏 episode 列表已补齐。真实模型试验仍未完成。安装、激活、发布、真实模型调用仍按仓库既有独立门禁处理；本轮未为本机安装。
+
+机械验证（2026-10-30，未安装、未调用真实模型）：
+
+- 配置核心 5／5；工作台账 4／4（含 ticket 归因）；审计核心 4／4（含每小时/token 预算）；host 真实 Typert/Remote/工具注册/持久化 episode 测试 39／39，包含 operator-only、独立修订、未启用不注册、禁用即移除、策略不变、scheduled dry-run 和只读 episode remote；Client DOM 30／30 与 client 37／37，包含独立保存、只读监督历史和右栏列表。
+- 全量套件 **964 项：764 通过、0 失败、200 个宿主隔离用例按环境门禁 skip**。
+- 独立 scratch 构建 **74 个 JS/声明产物**逐字节一致；包清单 **93 固定 + 85 vendor = 178**；开发包精确清单与无依赖 controls smoke 通过。
+- 未运行 clean-source prepack（工作树非清洁时被设计拒绝），未安装、激活、发布或调用真实模型。

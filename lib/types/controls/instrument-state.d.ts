@@ -27,6 +27,8 @@ export interface TicketValue {
     readonly statuses: Readonly<Record<string, readonly string[]>>;
     readonly summary?: string | null;
     readonly disposition?: string | null;
+    /** Ticket-level supervision override: off disables program suspicion, not periodic audit. */
+    readonly suspicionMode?: 'auto' | 'off';
 }
 export interface DecisionValue {
     readonly question: string;

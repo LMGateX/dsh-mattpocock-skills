@@ -10,6 +10,8 @@ import type { ControlsAuthority, TrustedSession } from './controls/index.js';
 import type { InstrumentStorage } from './controls/instrument-storage.js';
 import type { InstrumentCommand } from './controls/instrument-state.js';
 import type { PolicyIntent, PolicySnapshot } from './controls/policy.js';
+import type { SupervisionConfigSnapshot } from './controls/supervision-config.js';
+import type { SupervisionEpisode } from './controls/supervision-audit.js';
 import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js';
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js';
 import type { VersionedStorage } from './controls/versioned-storage.js';
@@ -36,9 +38,18 @@ declare module '@deepseek-ai/dsh-llm' {
                 readonly text: string;
             }[];
         };
+        'mattpocock-controls-supervision': {
+            readonly kind: 'mattpocock-controls-supervision';
+            readonly form: 'notice';
+            readonly summary: string;
+            readonly episodeId: string;
+            readonly ownerSessionId: string;
+            readonly severity: 'alert';
+        };
     }
 }
 export declare function makeSnapshotMessage(text: string): UserMessage;
+export declare function makeSupervisionNotice(episode: SupervisionEpisode): UserMessage;
 export declare const HOST_CAPABILITIES: {
     readonly nativeInitialChildCwd: "unsupported";
     readonly allNativeWakeAdmission: "unsupported";
@@ -288,17 +299,22 @@ export declare class MattPocockControlsService extends TypertRemoteService {
     private readonly runtime;
     private readonly ports;
     private readonly grants;
+    private readonly supervision;
     private readonly startup;
     private readonly lifecycle;
-    constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, startup: StartupSupport, lifecycle: {
+    constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, supervision: VersionedStorage<SupervisionConfigSnapshot>, startup: StartupSupport, lifecycle: {
         readonly signal: AbortSignal;
         track<T>(work: () => Promise<T>): Promise<T>;
         readonly onPolicyChanged?: () => void;
+        readonly onSupervisionChanged?: (snapshot: SupervisionConfigSnapshot) => void;
     });
     private run;
     startupStatus(suppliedSignal?: AbortSignal): Promise<StartupStatus>;
     saveStartupSettings(desired: unknown, expectedRevision: unknown, suppliedSignal?: AbortSignal): Promise<StartupStatus>;
     readPolicy(): Promise<PolicySnapshot>;
+    readSupervisionConfig(): Promise<SupervisionConfigSnapshot>;
+    saveSupervisionConfig(intent: unknown, expectedRevision: unknown): Promise<SupervisionConfigSnapshot>;
+    readSupervision(sessionId: unknown): Promise<HostJson>;
     savePolicy(intent: unknown, expectedRevision: unknown): Promise<PolicySnapshot>;
     listWorkspaces(): Promise<readonly WorkspaceRow[]>;
     readSession(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<HostJson>;

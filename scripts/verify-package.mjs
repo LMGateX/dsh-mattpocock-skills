@@ -20,11 +20,17 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/provider.d.ts',
   'lib/controls/index.js',
   'lib/controls/policy.js',
+  'lib/controls/supervision-audit.js',
+  'lib/controls/supervision-config.js',
+  'lib/controls/supervision-ledger.js',
   'lib/controls/state.js',
   'lib/controls/storage.js',
   'lib/controls/validation.js',
   'lib/types/controls/index.d.ts',
   'lib/types/controls/policy.d.ts',
+  'lib/types/controls/supervision-audit.d.ts',
+  'lib/types/controls/supervision-config.d.ts',
+  'lib/types/controls/supervision-ledger.d.ts',
   'lib/types/controls/state.d.ts',
   'lib/types/controls/storage.d.ts',
   'lib/types/controls/validation.d.ts',
@@ -112,11 +118,17 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/provider.d.ts',
   'lib/controls/index.js',
   'lib/controls/policy.js',
+  'lib/controls/supervision-audit.js',
+  'lib/controls/supervision-config.js',
+  'lib/controls/supervision-ledger.js',
   'lib/controls/state.js',
   'lib/controls/storage.js',
   'lib/controls/validation.js',
   'lib/types/controls/index.d.ts',
   'lib/types/controls/policy.d.ts',
+  'lib/types/controls/supervision-audit.d.ts',
+  'lib/types/controls/supervision-config.d.ts',
+  'lib/types/controls/supervision-ledger.d.ts',
   'lib/types/controls/state.d.ts',
   'lib/types/controls/storage.d.ts',
   'lib/types/controls/validation.d.ts',
@@ -191,7 +203,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.4.39'
+const EXPECTED_VERSION = '0.5.0'
 // DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
 // peers declared below only when it is absent. The declared range therefore repeats the exact
 // verdict those peers already produce on both host lines, measured with the real
@@ -256,7 +268,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 87
+const EXPECTED_FIXED_PACKED_FILES = 93
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
