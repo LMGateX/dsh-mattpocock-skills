@@ -2,6 +2,14 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.5.1 制品验收（2026-10-31）
+
+本版只更新来源：distribution `v0.3.1` / 上游 Skills `v1.3.2`（commit `d1478fc`）。promoted 集合仍为 27 个 Skills，stable/beta 成员不变；vendor **85 文件、296,048 bytes**，root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`。16 个 promoted Skill 的 19 个文件更新，运行时、通道语义、provider 和 `engines.dsh` 均未改。
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.5.1.tgz`（**460,167** bytes，sha256 `47746b28622bdc144fcde4856142a4c2bed63d24fe2b373fbc77b099c8bf1f0e`，**178** 成员，源提交 `681ecb3`）通过 `--prepack` 与精确 tarball 验证；固定清单 **93 + 85 vendor = 178**，构建 **74** 个 JS/DTS 产物，Client **261,016 B**。规范宿主 `0.2.2-alpha.2` 上的全量套件 **964 项：764 通过、0 失败、200 skip**。
+
+本轮未运行双宿主、无宿主根、隔离 headless 安装/挂载或真实模型试验，也未把制品安装到本机 Profile。完整记录见 `dist/verification-0.5.1.json`。
+
 ## 0.5.0 制品验收（2026-10-31）
 
 本版新增可选交付监督：独立工作区配置、内存观察台账、可选只读审计工具、持久化 dry-run episode、事件驱动定期/嫌疑检查、可选 reviewer 路由与 fail-closed、每小时/每日/token 预算、票级 attribution、研究/评审标记和右栏/设置页只读历史。默认关闭；没有安装、激活或发布到本机。
