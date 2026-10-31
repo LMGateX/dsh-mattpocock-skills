@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "repository": "https://github.com/LMGateX/mattpocock-skills-distribution.git",
-  "tag": "v0.3.0",
-  "tagObject": "08a0539bc2aea0087284201969897b82c94cc059",
-  "commit": "b8fe790371e1755aae98dedec512720f1aad2dba",
+  "tag": "v0.3.1",
+  "tagObject": "9231a060772908bf8d399cc66fe76e867ffbaf22",
+  "commit": "1058f7f3601835b49d55ce3f2f5eac4b3e7266e1",
   "verifierSha256": "f62039d108fdbfd0bf56165dd8e35a407cf6c11ab1be361351ea37e8bc401bf7",
   "upstreamRepository": "https://github.com/mattpocock/skills",
-  "upstreamCommit": "24fe0ef7737efae15c87225755e9f6f5965e4888"
+  "upstreamCommit": "d1478fcb140db0b93c0c8df17bcfd311844749d0"
 }

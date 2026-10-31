@@ -5,12 +5,12 @@
     "package": "@lmgatex/dsh-mattpocock-skills",
     "version": 1
   },
-  "sourceLockSha256": "16f4e15406c7661997135ed741b7014ea101de8f3bf54f46ef357d775e6b2173",
+  "sourceLockSha256": "7f568342434375abbd88987bf9eee338e9ca0ddcc6218c000a257ae66f08513f",
   "sourceDistribution": {
     "repository": "https://github.com/LMGateX/mattpocock-skills-distribution.git",
-    "tag": "v0.3.0",
-    "tagObject": "08a0539bc2aea0087284201969897b82c94cc059",
-    "commit": "b8fe790371e1755aae98dedec512720f1aad2dba",
+    "tag": "v0.3.1",
+    "tagObject": "9231a060772908bf8d399cc66fe76e867ffbaf22",
+    "commit": "1058f7f3601835b49d55ce3f2f5eac4b3e7266e1",
     "verifier": {
       "path": ".distribution/scripts/verify-channels.mjs",
       "sha256": "f62039d108fdbfd0bf56165dd8e35a407cf6c11ab1be361351ea37e8bc401bf7",
@@ -22,29 +22,29 @@
   },
   "upstream": {
     "repository": "https://github.com/mattpocock/skills",
-    "release": "v1.3.1",
-    "commit": "24fe0ef7737efae15c87225755e9f6f5965e4888",
-    "contentSha256": "3d798a2d058ecfcfcfc91128e7d5c3869b6da352d74e1b59a825160f200f570f"
+    "release": "v1.3.2",
+    "commit": "d1478fcb140db0b93c0c8df17bcfd311844749d0",
+    "contentSha256": "82092e4b2b0283298a202ab0e1fee777b0fa1526cfedbf6bb30029c914347537"
   },
   "manifests": [
     {
       "channel": "beta",
       "path": "vendor/mattpocock-skills/.distribution/channels/beta.json",
       "schemaVersion": 1,
-      "sha256": "353c71b6ffca255ca2d9adbf6732680de10b39df535bb248d5814c26dfd2f560",
+      "sha256": "b92c231d0a82c858c5dda6a833105c8fe9d3694396f151c50af2ff05acdd4c2b",
       "skillCount": 27
     },
     {
       "channel": "stable",
       "path": "vendor/mattpocock-skills/.distribution/channels/stable.json",
       "schemaVersion": 1,
-      "sha256": "51ce41f8f475091ab74476fe4d9c42e5d64a4c35efb6303472e32f4c1a25e8ec",
+      "sha256": "4916d9cf353f9baa5a267f4424e936a8b34020dad22cc361f7c12bafab8a6e8e",
       "skillCount": 27
     }
   ],
   "catalog": {
     "path": "generated/catalog.json",
-    "sha256": "138978c1fd470db926eb72d8caf84ecfed5ac46915816f38bb4e3394b55ea60a",
+    "sha256": "deaaa39f37812869142a143cc36e69ce6a50424d589fb18371398fd7bdab09cd",
     "skillCount": 27
   },
   "inventory": {
@@ -52,7 +52,7 @@
     "root": "vendor/mattpocock-skills",
     "hashAlgorithm": "sha256",
     "fileCount": 85,
-    "totalBytes": 279662,
-    "rootSha256": "00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1"
+    "totalBytes": 296048,
+    "rootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8"
   }
 }

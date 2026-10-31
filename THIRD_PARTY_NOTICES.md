@@ -6,11 +6,11 @@ This package is an unofficial DeepSeek Harness adapter for files selected from [
 
 Current provenance:
 
-- Upstream release: `v1.3.1`
-- Upstream commit: `24fe0ef7737efae15c87225755e9f6f5965e4888`
+- Upstream release: `v1.3.2`
+- Upstream commit: `d1478fcb140db0b93c0c8df17bcfd311844749d0`
 - Source distribution: `LMGateX/mattpocock-skills-distribution`
-- Distribution tag: `v0.3.0`
-- Distribution commit: `b8fe790371e1755aae98dedec512720f1aad2dba`
+- Distribution tag: `v0.3.1`
+- Distribution commit: `1058f7f3601835b49d55ce3f2f5eac4b3e7266e1`
 
 The Matt Pocock Skills files are licensed under the MIT License:
 

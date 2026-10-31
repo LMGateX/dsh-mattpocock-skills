@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "distribution": {
     "repository": "https://github.com/LMGateX/mattpocock-skills-distribution.git",
-    "tag": "v0.3.0",
-    "tagObject": "08a0539bc2aea0087284201969897b82c94cc059",
-    "commit": "b8fe790371e1755aae98dedec512720f1aad2dba",
-    "upstreamCommit": "24fe0ef7737efae15c87225755e9f6f5965e4888"
+    "tag": "v0.3.1",
+    "tagObject": "9231a060772908bf8d399cc66fe76e867ffbaf22",
+    "commit": "1058f7f3601835b49d55ce3f2f5eac4b3e7266e1",
+    "upstreamCommit": "d1478fcb140db0b93c0c8df17bcfd311844749d0"
   },
   "channels": {
     "beta": [
@@ -82,7 +82,7 @@
       "directory": "skills/engineering/ask-matt",
       "skillPath": "skills/engineering/ask-matt/SKILL.md",
       "bodyByteOffset": 151,
-      "sha256": "32b3c71d6dbb5a7c15147e8a503a9df28e9a567f45eba6a6bb42aa903225c6ff"
+      "sha256": "1371f5ce005de0992a44b137748bfb960a56948aa9871b405fe9d90b24332e3c"
     },
     {
       "name": "code-review",
@@ -98,7 +98,7 @@
       "directory": "skills/engineering/code-review",
       "skillPath": "skills/engineering/code-review/SKILL.md",
       "bodyByteOffset": 461,
-      "sha256": "47f4e52c21694def9c7c11cbfbf891ca35eac7a93e395797515be3c8a409ae50"
+      "sha256": "9c921a8d88138a41401d8897ca1bb852088ab1b7b605cdd04edc13e3e8aab6dd"
     },
     {
       "name": "codebase-design",
@@ -130,7 +130,7 @@
       "directory": "skills/engineering/diagnosing-bugs",
       "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
       "bodyByteOffset": 200,
-      "sha256": "9168404abda0967a5d32977e3498cd95fda6807018852f3de736a78357c82b40"
+      "sha256": "849198df88cdb65fd0d97236604c1fca7ff2f22d2f705f9724a800d0266b118d"
     },
     {
       "name": "domain-modeling",
@@ -194,7 +194,7 @@
       "directory": "skills/productivity/grilling",
       "skillPath": "skills/productivity/grilling/SKILL.md",
       "bodyByteOffset": 189,
-      "sha256": "10ff989e7498b23b5acb49d5048f11dcd906757d2f79c5cdf8a00001381296f2"
+      "sha256": "a146842ed93ca43d833550fa9adf02e58cb63c83fea9d4b4522995b82242d4e2"
     },
     {
       "name": "handoff",
@@ -213,7 +213,7 @@
       "directory": "skills/productivity/handoff",
       "skillPath": "skills/productivity/handoff/SKILL.md",
       "bodyByteOffset": 210,
-      "sha256": "7c62de979fdc7ac32fb5ddb2146156c917f80ee070d30fadc9d40343c4b6ed25"
+      "sha256": "4cbb043950dad2ffd3662ff1a5a0b51ae676004b5cae10e3787e8ee7a4ee69d3"
     },
     {
       "name": "implement",
@@ -229,7 +229,7 @@
       "directory": "skills/engineering/implement",
       "skillPath": "skills/engineering/implement/SKILL.md",
       "bodyByteOffset": 131,
-      "sha256": "6d3fd9e83b8f36e5213854779db49b256a457a7ebb4a503e53fa7dcff696adc3"
+      "sha256": "483bdc4ccf4ac31d86ac7beeaa0d0db80313e71e120bb8c59b3196ae5decd53d"
     },
     {
       "name": "implement-spec",
@@ -245,7 +245,7 @@
       "directory": "skills/engineering/implement-spec",
       "skillPath": "skills/engineering/implement-spec/SKILL.md",
       "bodyByteOffset": 133,
-      "sha256": "7a22dd2e60b8fcece478ced9d2533582adf3520d695acd3ab715341535c9e56d"
+      "sha256": "8d8300f7f12325dbfc99cad124a4bcc96ac0d02d0b2d73dfb348e9262afacfc4"
     },
     {
       "name": "improve-codebase-architecture",
@@ -261,7 +261,7 @@
       "directory": "skills/engineering/improve-codebase-architecture",
       "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
       "bodyByteOffset": 214,
-      "sha256": "552240a5ab5cec6b67c15dd1ad6e9f6962b1bca6ce870059a8c2713760c20392"
+      "sha256": "35b03a3db61e0f5aa333ea59b54963e45a3d2ace6649b2ef4f9576603e2582a6"
     },
     {
       "name": "pr",
@@ -317,7 +317,7 @@
       "directory": "skills/engineering/research",
       "skillPath": "skills/engineering/research/SKILL.md",
       "bodyByteOffset": 275,
-      "sha256": "985569f15739c713d6784887c3d186d4ef9ac85bec5ad9c068d25bf0739928e4"
+      "sha256": "1f629e18ab899412683bc6a1c4efb4339999e27c2fdac328f26ee10a8c031d33"
     },
     {
       "name": "retro",
@@ -349,7 +349,7 @@
       "directory": "skills/engineering/setup-matt-pocock-skills",
       "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
       "bodyByteOffset": 266,
-      "sha256": "9a0c21694be19fa3eefc39343355d3af7414716ba364882c7432c2f821eac3e9"
+      "sha256": "b01e05bfe8c323171275c6ceec78b12f1bd4c62dfd26c2cfe8be806d3883f1ed"
     },
     {
       "name": "tdd",
@@ -365,7 +365,7 @@
       "directory": "skills/engineering/tdd",
       "skillPath": "skills/engineering/tdd/SKILL.md",
       "bodyByteOffset": 181,
-      "sha256": "93ea419b76e9caaf26153b828e984f7c3fb136f4caa67b14af95f32ea965a1cc"
+      "sha256": "5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0"
     },
     {
       "name": "teach",
@@ -384,7 +384,7 @@
       "directory": "skills/productivity/teach",
       "skillPath": "skills/productivity/teach/SKILL.md",
       "bodyByteOffset": 179,
-      "sha256": "a32df9dcdfc0c4fdc1c98e1ed3940c5f56b84c1aa90ff60346f32b8b53915b43"
+      "sha256": "550482c2d674b085c9043b87bfdc14a8f2ec453c736119e7fcbb1e9332bffeba"
     },
     {
       "name": "to-questionnaire",
@@ -432,7 +432,7 @@
       "directory": "skills/engineering/to-tickets",
       "skillPath": "skills/engineering/to-tickets/SKILL.md",
       "bodyByteOffset": 317,
-      "sha256": "5c9fba69845c2519b9b35b9af42ae5142c21f8ca15ac2123dc2722002c8058ae"
+      "sha256": "56ec23c5b2782785d4e65bff9e315b6d3aeb4ef977c174a219e99489fada1995"
     },
     {
       "name": "triage",
@@ -480,7 +480,7 @@
       "directory": "skills/engineering/wayfinder",
       "skillPath": "skills/engineering/wayfinder/SKILL.md",
       "bodyByteOffset": 266,
-      "sha256": "fee6e1d0c50f0e736b4ef8a599060c959afae904c9a97d82c97f049fcc3aa0f1"
+      "sha256": "0c9fa96791aebf3b7d654cf35c6aadde97d81f57c17b07d13b27c14d9c46561f"
     },
     {
       "name": "wizard",

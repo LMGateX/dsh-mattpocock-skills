@@ -17,7 +17,7 @@
 - `stable`：上游的正式集合，27 个 Skills。
 - `beta`：`stable` 加上上游正在 `skills/in-progress/` 里预览的内容。目前没有预览项，所以 `beta` 解析出**同样的 27 个 Skills**；它存在的意义是让已经选了 `beta` 的 Profile 继续可用。
 
-本版对应上游 **v1.3.1**（提交 `24fe0ef`）。`PROVENANCE.json` 记录了这个对应关系，因此不必解析 Git 对象就能知道自己在跑上游哪一版；上游自己的 [CHANGELOG](vendor/mattpocock-skills/CHANGELOG.md) 也随包发货。
+本版对应上游 **v1.3.2**（提交 `d1478fc`）。`PROVENANCE.json` 记录了这个对应关系，因此不必解析 Git 对象就能知道自己在跑上游哪一版；上游自己的 [CHANGELOG](vendor/mattpocock-skills/CHANGELOG.md) 也随包发货。
 
 默认是 `stable`。这是非官方适配器，不代表 Matt Pocock 的认可、背书或关联。
 

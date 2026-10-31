@@ -60,10 +60,10 @@ test('source lock is closed, pinned, and duplicate-key rejecting', async () => {
     'upstreamRepository',
     'upstreamCommit',
   ])
-  assert.equal(lock.tagObject, '08a0539bc2aea0087284201969897b82c94cc059')
-  assert.equal(lock.commit, 'b8fe790371e1755aae98dedec512720f1aad2dba')
+  assert.equal(lock.tagObject, '9231a060772908bf8d399cc66fe76e867ffbaf22')
+  assert.equal(lock.commit, '1058f7f3601835b49d55ce3f2f5eac4b3e7266e1')
   assert.equal(lock.verifierSha256, 'f62039d108fdbfd0bf56165dd8e35a407cf6c11ab1be361351ea37e8bc401bf7')
-  assert.equal(lock.upstreamCommit, '24fe0ef7737efae15c87225755e9f6f5965e4888')
+  assert.equal(lock.upstreamCommit, 'd1478fcb140db0b93c0c8df17bcfd311844749d0')
   assert.throws(() => validateSourceLock({ ...lock, extra: true }), /unknown key/)
   assert.throws(() => validateSourceLock({ ...lock, verifierSha256: '0'.repeat(63) }), /verifierSha256/)
   assert.throws(() => validateSourceLock({ ...lock, tag: 'bad..tag' }), /valid Git tag/)
@@ -146,9 +146,9 @@ test('generated catalog has exact channel and invocation semantics', async () =>
   const provenance = parseStrictJsonBytes(await readFile(join(root, 'PROVENANCE.json')), 'PROVENANCE.json')
   assert.deepEqual(provenance.upstream, {
     repository: 'https://github.com/mattpocock/skills',
-    release: 'v1.3.1',
-    commit: '24fe0ef7737efae15c87225755e9f6f5965e4888',
-    contentSha256: '3d798a2d058ecfcfcfc91128e7d5c3869b6da352d74e1b59a825160f200f570f',
+    release: 'v1.3.2',
+    commit: 'd1478fcb140db0b93c0c8df17bcfd311844749d0',
+    contentSha256: '82092e4b2b0283298a202ab0e1fee777b0fa1526cfedbf6bb30029c914347537',
   })
   assert.deepEqual(provenance.manifests.map((entry) => entry.channel), ['beta', 'stable'])
   assert.deepEqual(provenance.manifests.map((entry) => entry.skillCount), [27, 27])
@@ -166,8 +166,8 @@ test('committed vendor artifacts verify without Git metadata', async () => {
     channelSkillCounts: { beta: 27, stable: 27 },
     skillCount: 27,
     vendorFileCount: 85,
-    vendorBytes: 279662,
-    vendorRootSha256: '00b3d0905dadfc2891ad8e05c29fa8690bd88b7355e6d25ca458bcd85527b8d1',
+    vendorBytes: 296048,
+    vendorRootSha256: '70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8',
   })
 })
 
@@ -221,7 +221,7 @@ test('check mode is byte-identical and does not replace outputs', { skip: !hasLo
 
 test('vendored bytes and Git modes match the exact pinned source tree', { skip: !hasLocalSource }, async () => {
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
-  const commit = 'b8fe790371e1755aae98dedec512720f1aad2dba'
+  const commit = '1058f7f3601835b49d55ce3f2f5eac4b3e7266e1'
   for (const entry of inventory.entries) {
     const sourcePath = entry.path
     const header = execFileSync('git', ['-C', localSource, 'ls-tree', commit, '--', sourcePath], { encoding: 'utf8' }).trim()
