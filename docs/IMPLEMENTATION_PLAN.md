@@ -6,6 +6,20 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 仪器工具卡折叠与可读性（2026-11-01，设计已固定；源码未开始）
+
+已认可设计见 [DESIGN.md](<DESIGN.md>) 与详细页面 [INSTRUMENT_TOOL_CARDS.md](<INSTRUMENT_TOOL_CARDS.md>)。本阶段只把设计与实施顺序固定下来；源码实施前不更新 CLIENT_INTEGRATION 的“当前实现”声明，也不声称安装、发布或 GUI 验收。
+
+| 阶段 | 内容 | 门禁 |
+|---|---|---|
+| A 依赖与设计 | 新设计页、DESIGN/PLAN 条目；`package.json` 增加 devDependency `@deepseek-ai/dsh-client-ui-primitives@0.2.1-alpha.1`，只更新 lockfile，避免 pnpm 重排无关条目 | package/lockfile policy；baseline 列表已含 primitives |
+| B SourceCard | `DisclosureRow` + `CodeBlock` + `JsonBlock` + `Button` + `IconSparkleRegular`；纯函数生成英文 action/target 摘要；默认折叠、展开体 360px；保留 `sourceRecord`；`SourceBody` 显式接收 SummaryFace 的 `openDetails` | Client noEmit；build --check |
+| C 测试 | 共享 primitives mock；更新 client.test / client-startup / client-summary-scheduler / client-settings-dom / client-native-activation；折叠/展开/门控/错误/未知/空/externals 用例 | 定向与完整根套件 0 失败；无 React warning |
+| D 文档与制品 | 实施后更新 CLIENT_INTEGRATION（运行时依赖、source card、宽度/换行、测试边界）、HOST_COMPATIBILITY（baseline primitive 与 headerAccessory 边界）、VERIFICATION 新记录；重建 lib client/declaration | 构建、source/lib 一致性、包清单 |
+| E 验收 | 定向测试、完整根套件、客户端构建；安装/刷新制品后单独做真实 GUI 检查 | Happy DOM 与内存 bundle 不作为图形/安装证明 |
+
+本阶段不修改 Host `output.render`、模型上下文、工具键、timeline/rightPanel 语义或原始记录字段。0.2.2-only 的 `headerAccessory` 暂不使用，以保持 0.2.1-alpha.1 兼容。
+
 ## 仪器读取后续优化（2026-10-21）
 
 按[摘要读取契约](<SUMMARY_READS.md>)继续实施，不把已完成的两个缺陷修复视作整个优化目标完成：先新增直接 current-only 摘要及有界认证 Remote；再接集中批读、显示 gate 与闲置 observer 回收；最后测量跨会话失效／排队、验证多会话大历史与可见性／错误恢复，再统一严格构建、完整回归、开发包字节验证及独立双轴复核。冷源加载和 OOM 归因分别限定证据，不冒称消除；FIFO 权限撤销／CAS／模型消费屏障保持。

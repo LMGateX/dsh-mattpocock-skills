@@ -11,6 +11,15 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 仪器工具卡：原生折叠与可读输出（2026-11-01，所有者认可）
+
+- 九个固定包内工具（另含条件注册的 `mattpocock_audit`）继续独占 `tool.call.toolview` 的 wire key；不占用其他工具。
+- 采用 DSH 公开 baseline `@deepseek-ai/dsh-client-ui-primitives` 的 `DisclosureRow` 作为行外壳，展开体输入/输出用 `CodeBlock`，原始记录用 `JsonBlock`，动作使用 `Button`；不复制私有 `ToolRow` CSS、不导入私有组件。
+- 标题保留完整英文 wire 名；摘要保留英文 action/target；默认折叠，展开体上限 360px。preparing/start/result 与 timeline/rightPanel 门控语义不变。
+- 不改变 Host 模型可见输出、source card 的公开 `argsRaw/content/error/meta` 字段、工具键或其他原生布局。
+- 保持 `~0.2.1-alpha.1` 宿主兼容：不使用仅 0.2.2 存在的 `DisclosureRow.headerAccessory`；“打开当前实例”暂放展开体，最低宿主版本提升后再迁移。
+- 详细设计与实施计划见 [仪器工具卡呈现](<INSTRUMENT_TOOL_CARDS.md>)。本决策已认可，但源码、测试、构建、安装与真实 GUI 验收均尚未开始；本段不是完成声明。
+
 ## 仪器读取减负与客户端观测（2026-10-21）
 
 已认可后续源码优化：有界直接授权 summary／版本批读、集中调度、隐藏展示订阅优化与闲置 observer 回收，按多会话大历史／错误恢复矩阵验证。完整接口、权限／当前索引／冷加载边界、FIFO 撤权屏障与验收要求见[摘要读取设计](<SUMMARY_READS.md>)。摘要与完整详情、模型消费分开；不为了性能关闭业务义务、删除历史或更改真实程序事实。源码实施不自动授权安装、发布、SDK／Profile 修改或服务重启。
