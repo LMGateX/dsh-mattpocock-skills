@@ -1,6 +1,6 @@
 # 仪器工具卡：原生折叠与可读输出
 
-> **Status:** 所有者已认可设计；2026-11-01 源码、测试与客户端构建完成。**未安装到本机 DSH/Profile**，未做真实 GUI 验收，发布制品验证待完成。本页固定设计与实施计划；当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建与 clean-source 包验证完成。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。本页固定设计与实施计划；当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 1. 目标与范围
 
@@ -151,4 +151,5 @@ node scripts/build-client.mjs --out lib/client.js --declaration
 - `src/client.ts`：引入 baseline `DisclosureRow/CodeBlock/JsonBlock/Button/IconSparkleRegular`；新增纯函数 `sourceView/sourceAction/sourceTarget` 与 payload 解码；`SourceCard` 默认折叠、展开体 360px、原始记录二级折叠；`sourceRecord` 字段不变；`openDetails` 作为显式回调传入正文。
 - 测试：新增 `tests/fixtures/client-primitives.mjs`，更新五个客户端测试宿主；定向套件 **122 项：116 通过、0 失败、6 skip**。skip 是原生 activation/loader 缺少宿主的 `@deepseek-ai/dsh-client-ui-slots` fixture，不是插件加载失败。DOM 测试覆盖折叠/展开、JSON/纯文本/空/未知、原始记录和 timeline/rightPanel 门控。
 - 构建：`pnpm exec tsc -p tsconfig.client.json --noEmit` 和 `node scripts/build-client.mjs --check` 通过；内存 bundle **275,623 bytes**、8 个私有模块、external 为 React + ui-primitives；已重建 `lib/client.js` 与 `lib/types/client.d.ts`。
-- 边界：未改 Host `output.render`、模型上下文、工具键、原始字段或 timeline/rightPanel 语义；未安装本机 DSH/Profile，未做图形浏览器验收；精确 tarball、tag 和 GitHub Release 在发布阶段单独记录。
+- 边界：未改 Host `output.render`、模型上下文、工具键、原始字段或 timeline/rightPanel 语义；未安装本机 DSH/Profile，未做图形浏览器验收。
+- 制品：clean-source `lmgatex-dsh-mattpocock-skills-0.6.0.tgz` **463,605 bytes**、sha256 `96875746fb75584a4005d4604b577b6fc4460b0c53e18718360300a19eafe1ff`、178 成员；prepack 与精确 tarball 验证通过；规范宿主全量 **967 项：764 通过、0 失败、203 skip**。tag/GitHub Release 在发布阶段记录。

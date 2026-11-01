@@ -2,6 +2,14 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.6.0 制品验收（2026-11-01）
+
+本版新增仪器工具卡原生呈现：使用 DSH 公开 baseline `ui-primitives` 的 `DisclosureRow`、`CodeBlock`、`JsonBlock` 和 `Button`，默认折叠，展开体上限 360px；标题与 action/target 保留英文 wire 值，原始记录二级折叠。未使用仅 0.2.2 存在的 `headerAccessory`；vendor、Skills provider、Host 运行时、通道语义和 `engines.dsh` 未改。
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.6.0.tgz`（**463,605** bytes，sha256 `96875746fb75584a4005d4604b577b6fc4460b0c53e18718360300a19eafe1ff`，**178** 成员，源提交 `7dc3279`）通过 `--prepack` 与精确 tarball 验证；固定清单 **93 + 85 vendor = 178**，构建 **74** 个 JS/DTS 产物，Client **275,623 B**。规范宿主 `0.2.2-alpha.2` 上的全量套件 **967 项：764 通过、0 失败、203 skip**；定向客户端套件 **122 项：116 通过、0 失败、6 skip**。skip 是环境门禁/native host fixture（包括缺少 `@deepseek-ai/dsh-client-ui-slots` 的 activation 用例），不是插件加载失败。
+
+本轮未运行双宿主、无宿主根、隔离 headless 安装/挂载、真实模型试验或图形浏览器验收，也未把制品安装到本机 DSH/Profile。完整记录见 `dist/verification-0.6.0.json`。
+
 ## 0.5.1 制品验收（2026-10-31）
 
 本版只更新来源：distribution `v0.3.1` / 上游 Skills `v1.3.2`（commit `d1478fc`）。promoted 集合仍为 27 个 Skills，stable/beta 成员不变；vendor **85 文件、296,048 bytes**，root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`。16 个 promoted Skill 的 19 个文件更新，运行时、通道语义、provider 和 `engines.dsh` 均未改。

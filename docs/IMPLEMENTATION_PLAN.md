@@ -6,9 +6,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 仪器工具卡折叠与可读性（2026-11-01，源码与机械验收完成；发布待完成）
+## 仪器工具卡折叠与可读性（2026-11-01，源码、机械与包制品验证完成；Release 待发布）
 
-已认可设计见 [DESIGN.md](<DESIGN.md>) 与详细页面 [INSTRUMENT_TOOL_CARDS.md](<INSTRUMENT_TOOL_CARDS.md>)。A-C 已完成：源码使用 baseline 原生组合，客户端类型检查、闭合构建和 122 项定向套件通过（116 通过、0 失败、6 原生宿主 skip）；CLIENT_INTEGRATION 已更新当前实现。D 的包制品/tag/Release 和 E 的真实 GUI 仍需在发布阶段单独验证；不安装本机 DSH/Profile。
+已认可设计见 [DESIGN.md](<DESIGN.md>) 与详细页面 [INSTRUMENT_TOOL_CARDS.md](<INSTRUMENT_TOOL_CARDS.md>)。A-D 已完成：源码使用 baseline 原生组合，客户端类型检查、闭合构建和 122 项定向套件通过（116 通过、0 失败、6 原生宿主 skip）；CLIENT_INTEGRATION 已更新当前实现；clean-source 0.6.0 tarball 通过 prepack 与精确 tarball 验证，规范宿主全量 967 项中 764 通过、0 失败、203 skip。E 的真实 GUI 不执行，且不安装本机 DSH/Profile；tag/GitHub Release 单独记录。
 
 | 阶段 | 内容 | 门禁 |
 |---|---|---|

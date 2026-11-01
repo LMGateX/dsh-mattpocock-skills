@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.6.0",
+    "private": true
+  },
+  "source": {
+    "commit": "7dc3279b2fc69e7fde0dc2883cac1be5d7b741d1",
+    "clean": true
+  },
+  "sourceDistribution": {
+    "tag": "v0.3.1",
+    "commit": "1058f7f3601835b49d55ce3f2f5eac4b3e7266e1"
+  },
+  "upstream": {
+    "release": "v1.3.2",
+    "commit": "d1478fcb140db0b93c0c8df17bcfd311844749d0",
+    "contentSha256": "82092e4b2b0283298a202ab0e1fee777b0fa1526cfedbf6bb30029c914347537"
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.6.0.tgz",
+    "bytes": 463605,
+    "sha256": "96875746fb75584a4005d4604b577b6fc4460b0c53e18718360300a19eafe1ff",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3"
+  },
+  "hostRoots": {
+    "canonical": "local canonical DSH install (path elided)"
+  },
+  "validation": {
+    "canonicalHost": "local DSH 0.2.2-alpha.2 install",
+    "rootTests": {
+      "total": 967,
+      "passed": 764,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 203
+    },
+    "clientTests": {
+      "total": 122,
+      "passed": 116,
+      "failed": 0,
+      "skipped": 6
+    },
+    "exactArchiveVerifier": "passed",
+    "prepackVerifier": "passed",
+    "packagePolicyTests": {
+      "total": 19,
+      "passed": 19,
+      "failed": 0
+    },
+    "buildModules": 74,
+    "fixedFiles": 93,
+    "vendorFiles": 85,
+    "packedFiles": 178,
+    "vendorBytes": 296048,
+    "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "clientBytes": 275623,
+    "clientExternals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "notRun": [
+      "dual-root suite",
+      "no-host-root suite",
+      "isolated headless install/mount",
+      "real-model trial",
+      "graphical-browser/GUI acceptance"
+    ],
+    "modelInvoked": false,
+    "installedOnHost": false,
+    "guiTested": false
+  },
+  "compatibility": {
+    "hostRange": "DSH 0.2.1-alpha.1 through 0.2.2-alpha.* declared; this release was tested against the local canonical 0.2.2-alpha.2 host only. Native activation/loader cases requiring the host ui-slots fixture skipped; no local Profile install."
+  },
+  "review": {
+    "baseline": "v0.5.1",
+    "independentReview": "No separate Standards/Spec review was run for this UI change. The client type check and closed build passed; the focused client suite reported 122 tests (116 passed, 0 failed, 6 skipped), the canonical-host full suite reported 967 tests (764 passed, 0 failed, 203 skipped), and both the clean-source prepack verifier and the exact tarball verifier passed. The skips are environment-gated host/bridge fixtures plus native activation cases lacking the host ui-slots fixture; no GUI or installation was performed.",
+    "privacy": "Current tracked docs were scrubbed of local host paths and private replay specifics; historical Git objects were not rewritten."
+  }
+}
