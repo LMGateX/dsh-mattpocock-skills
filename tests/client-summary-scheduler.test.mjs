@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import vm from 'node:vm'
 import { buildClient } from '../scripts/build-client.mjs'
+import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
 const built = await buildClient()
 const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve)) }
@@ -23,7 +24,8 @@ function harness() {
     Date: class extends Date { static now() { return now } },
     setTimeout(fn, ms) { const id = ++next; timers.set(id, { fn, due: now + ms }); return id }, clearTimeout(id) { timers.delete(id) }, queueMicrotask })
   vm.runInContext(built.code, context)
-  const client = registration.factory(name => { assert.equal(name, 'react'); return {} })
+  const primitives = clientPrimitives({ createElement: () => ({}) })
+  const client = registration.factory(name => { if (name === 'react') return {}; if (name === PRIMITIVES_ID) return primitives; throw new Error('Unexpected request ' + name) })
   const wire = value => vm.runInContext('JSON.parse(' + JSON.stringify(JSON.stringify(value)) + ')', context)
   return { client, timers, document, listeners, now: () => now,
     scheduler: (read, ...options) => new client.SummaryScheduler((request, signal) => Promise.resolve(read(request, signal)).then(wire), ...options),

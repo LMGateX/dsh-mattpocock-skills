@@ -5,17 +5,20 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import { buildClient, generateClientDeclaration, BASELINE_EXTERNALS } from '../scripts/build-client.mjs'
+import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
 const mockReact = {
   createElement: (type, props, ...children) => ({ type, props: { ...(props ?? {}), children } }),
   useEffect: () => {}, useState: value => [typeof value === 'function' ? value() : value, () => {}],
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+  useMemo: create => create(),
 }
 const built = await buildClient()
 const requests = []
 let registration
 vm.runInThisContext('(function(window){' + built.code + '\n})', { filename: 'client.bundle.js' })({ __ModuleLoader__: { load: value => { registration = value } } })
-const client = registration.factory(request => { requests.push(request); if (request === 'react') return mockReact; throw new Error('Unexpected request ' + request) })
+const primitives = clientPrimitives(mockReact)
+const client = registration.factory(request => { requests.push(request); if (request === 'react') return mockReact; if (request === PRIMITIVES_ID) return primitives; throw new Error('Unexpected request ' + request) })
 const clone = value => JSON.parse(JSON.stringify(value))
 const ok = value => ({ ok: true, value })
 const settle = () => new Promise(resolve => setImmediate(resolve))
@@ -63,8 +66,8 @@ function contextFixture() {
 
 test('closed lazy client only requests implicit baseline and inlines private pure modules', () => {
   assert.equal(registration.id, '@lmgatex/dsh-mattpocock-skills')
-  assert.deepEqual([...new Set(requests)], ['react'])
-  assert.deepEqual(built.externals, ['react'])
+  assert.deepEqual([...new Set(requests)].sort(), [PRIMITIVES_ID, 'react'].sort())
+  assert.deepEqual([...built.externals].sort(), [PRIMITIVES_ID, 'react'].sort())
   assert(built.modules.includes('src/controls/remote-contract.ts'))
   assert(!built.code.includes('node:'))
   assert.equal(typeof client.apply, 'function')
@@ -248,6 +251,22 @@ test('policy delegation carries the actual grant revision and cannot be self-gra
   assert.equal(received, undefined)
 })
 
+test('sourceView keeps English wire action and target values without a translated map', () => {
+  const view = (toolName, argsRaw, extra = {}) => client.sourceView({ phase: 'result', callId: 'c', toolName,
+    block: { time: 1, seq: 2, call: { argsRaw }, content: [], isError: false, ...extra } })
+  assert.equal(view('mattpocock_record', JSON.stringify({ request: { action: 'read' } })).summary, 'read')
+  assert.equal(view('mattpocock_record', JSON.stringify({ request: { command: { action: 'put-ticket', workflowId: 'W', localTicketId: 'T', expectedRevision: 7 } } })).summary, 'put-ticket · W/T · rev 7')
+  assert.equal(view('mattpocock_execute', JSON.stringify({ request: { nativeTool: 'subagent', workflowId: 'W', localTicketId: 'T' } })).summary, 'execute · subagent · W/T')
+  const failed = view('mattpocock_record', JSON.stringify({ request: { action: 'read' } }), { isError: true, error: { name: 'Error', code: 'E_BAD', reason: 'bad input' } })
+  assert.equal(failed.summary, 'read · failed: bad input'); assert(failed.color)
+  const stopped = view('mattpocock_record', JSON.stringify({ request: { action: 'read' } }), { isError: true, error: { name: 'Error', code: 'interrupted' } })
+  assert.equal(stopped.summary, 'read · interrupted'); assert(stopped.color)
+  const preparing = client.sourceView({ phase: 'preparing', callId: 'c', toolName: 'mattpocock_record', block: { time: 1 } })
+  assert.equal(preparing.summary, ''); assert.equal(preparing.expandable, false)
+  const running = client.sourceView({ phase: 'start', callId: 'c', toolName: 'mattpocock_record', block: { time: 1, argsRaw: JSON.stringify({ request: { action: 'read' } }) } })
+  assert.equal(running.summary, 'read · running')
+})
+
 test('timeline registration claims exactly this package tools and retains historical result blocks', async () => {
   const fixture = contextFixture(); await client.apply(fixture.ctx)
   const keys = fixture.entries.filter(row => row.options?.name === 'tool.call.toolview').map(row => row.options.key)
@@ -255,8 +274,12 @@ test('timeline registration claims exactly this package tools and retains histor
   assert(!keys.includes('bash')); assert(!keys.includes('ask_user_question'))
   const summaries = new client.SummaryScheduler(async () => ok({ rows: [] }))
   const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'original historical result' }], isError: false }
-  const rendered = client.SourceCard({ summary: summaries.observe('A'), openDetails: () => {}, phase: 'result', callId: 'c', toolName: 'mattpocock_record', block })
-  assert.match(JSON.stringify(rendered), /original historical result/)
+  const base = { summary: summaries.observe('A'), openDetails: () => {}, phase: 'result', callId: 'c', toolName: 'mattpocock_record', block }
+  const collapsed = client.SourceCard({ ...base, useDisclosure: () => ({ expanded: false, toggle: () => {} }) })
+  assert.doesNotMatch(JSON.stringify(collapsed), /original historical result/)
+  const expanded = client.SourceCard({ ...base, useDisclosure: () => ({ expanded: true, toggle: () => {} }) })
+  assert.match(JSON.stringify(expanded), /original historical result/)
+  assert.match(JSON.stringify(expanded), /原始记录/)
   summaries.dispose(); for (const effect of fixture.effects.reverse()) effect?.()
 })
 

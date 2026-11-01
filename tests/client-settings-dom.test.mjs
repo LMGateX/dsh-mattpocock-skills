@@ -4,13 +4,15 @@ import vm from 'node:vm'
 import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../scripts/build-client.mjs'
+import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
 // Real React and DOM integration, not a graphical-browser or live-profile probe.
 // Only the public built exports, DOM interactions and controlled Remote contract are observed.
 const built = await buildClient()
 let registration
 vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
-const client = registration.factory(name => { assert.equal(name, 'react'); return React })
+const primitives = clientPrimitives(React)
+const client = registration.factory(name => { if (name === 'react') return React; if (name === PRIMITIVES_ID) return primitives; throw new Error('Unexpected request ' + name) })
 const ok = value => ({ ok: true, value })
 const copy = value => structuredClone(value)
 function startup(extra = {}) {
@@ -727,13 +729,19 @@ test('hidden header input and source cards use summary policy without retaining 
   t.after(() => { scheduler.dispose(); cache.dispose() })
   const face = { summary: scheduler.observe('gate'), observe: () => cache.observe('gate'), openDetails: () => assert.fail('must never auto-open') }
   const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'historical source survives display hiding' }], isError: false }
+  function useDisclosureStub() {
+    const [expanded, setExpanded] = React.useState(false)
+    return { expanded, toggle: () => setExpanded(value => !value) }
+  }
   function Gates() { return React.createElement(React.Fragment, null,
     React.createElement(client.HeaderEntry, { sessionId: 'gate', ...face }), React.createElement(client.InputSummary, { sessionId: 'gate', ...face }),
-    React.createElement(client.SourceCard, { phase: 'result', callId: 'c', toolName: 'mattpocock_record', block, ...face })) }
+    React.createElement(client.SourceCard, { phase: 'result', callId: 'c', toolName: 'mattpocock_record', block, useDisclosure: useDisclosureStub, ...face })) }
   const { container } = await mount(t, Gates, {})
   const flush = async () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
   await flush()
   assert.equal(fullReads, 0); assert.equal(cache.size, 0)
+  assert.doesNotMatch(container.textContent, /historical source survives/, 'the source card starts collapsed')
+  await click(container.querySelector('[data-disclosure-row]'))
   assert.match(container.textContent, /historical source survives/)
   display.header = true; display.inputSummary = true; scheduler.refresh(); await flush()
   assert.equal(fullReads, 1, 'visible header and input share one full observer')
@@ -741,6 +749,61 @@ test('hidden header input and source cards use summary policy without retaining 
   display.header = false; display.inputSummary = false; scheduler.refresh(); await flush()
   assert.equal(cache.observe('gate').getSnapshot().status, 'unknown', 'hiding both surfaces releases the last full holder')
   assert.equal(fullReads, 1); assert.match(container.textContent, /historical source survives/)
+})
+
+test('expanded source card uses readable code blocks, preserves raw details, and gates its action', async t => {
+  const summary = { sessionId: 'source', caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    instance: { instrumentInstanceId: 'source-instance', ownerSessionId: 'source', controlWorkspaceId: 'work-one' },
+    policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true,
+      display: { header: false, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } },
+    records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] }
+  const observation = { status: 'ready', value: summary, error: null }
+  const summaryObserver = { getSnapshot: () => observation, subscribe: () => () => {}, retain: () => () => {}, refresh: () => {} }
+  let opened = 0
+  const block = { kind: 'tool-result', time: 1, seq: 2, call: { argsRaw: JSON.stringify({ request: { action: 'read', workflowId: 'W' } }) },
+    content: [{ type: 'text', text: JSON.stringify({ ok: true, rows: [1, 2] }) }], isError: false }
+  function Card() { return React.createElement(client.SourceCard, { phase: 'result', callId: 'c', toolName: 'mattpocock_record', block,
+    summary: summaryObserver, observe: () => {}, openDetails: () => { opened++ }, useDisclosure: () => ({ expanded: true, toggle: () => {} }) }) }
+  const { container, root } = await mount(t, Card, {})
+  assert.equal(container.querySelectorAll('pre[data-code-block="json"]').length, 2)
+  assert.match(container.textContent, /"ok": true/)
+  assert.match(container.textContent, /历史快照/)
+  const raw = container.querySelector('details[data-json-block]')
+  assert(raw, 'raw source disclosure must exist'); assert.equal(raw.open, false)
+  await click(raw.querySelector('summary')); assert.equal(raw.open, true)
+  assert.match(container.textContent, /original historical source|mattpocock_record/)
+  await click(button(container, '打开当前实例')); assert.equal(opened, 1)
+  summary.policy.display.timeline = false
+  await React.act(async () => root.render(React.createElement(Card)))
+  assert.doesNotMatch(container.textContent, /历史快照/)
+  assert.equal([...container.querySelectorAll('button')].some(row => row.textContent === '打开当前实例'), false)
+  summary.policy.display.timeline = true; summary.policy.display.rightPanel = false
+  await React.act(async () => root.render(React.createElement(Card)))
+  assert.match(container.textContent, /历史快照/)
+  assert.equal([...container.querySelectorAll('button')].some(row => row.textContent === '打开当前实例'), false)
+})
+
+test('expanded source card distinguishes unknown input, empty output, plain text, and JSON', async t => {
+  const summary = { sessionId: 'source', caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    instance: { instrumentInstanceId: 'source-instance', ownerSessionId: 'source', controlWorkspaceId: 'work-one' },
+    policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true,
+      display: { header: false, inputSummary: false, rightPanel: true, sessionList: false, timeline: false } },
+    records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] }
+  const observation = { status: 'ready', value: summary, error: null }
+  const summaryObserver = { getSnapshot: () => observation, subscribe: () => () => {}, retain: () => () => {}, refresh: () => {} }
+  const empty = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [], isError: false }
+  function Card({ value }) { return React.createElement(client.SourceCard, { phase: 'result', callId: 'c', toolName: 'mattpocock_record', block: value,
+    summary: summaryObserver, observe: () => {}, openDetails: () => assert.fail('timeline is closed'), useDisclosure: () => ({ expanded: true, toggle: () => {} }) }) }
+  const { container, root } = await mount(t, Card, { value: empty })
+  assert.match(container.textContent, /输入未知（调用头不在当前窗口）/)
+  assert.match(container.textContent, /无输出/)
+  await React.act(async () => root.render(React.createElement(Card, { value: { ...empty, content: [{ type: 'text', text: 'line one\nline two' }] } })))
+  assert.match(container.textContent, /line one/)
+  assert.match(container.textContent, /line two/)
+  assert.equal(container.querySelectorAll('pre[data-code-block="json"]').length, 0)
+  await React.act(async () => root.render(React.createElement(Card, { value: { ...empty, content: [{ type: 'text', text: '{"ok":true}' }] } })))
+  assert.equal(container.querySelectorAll('pre[data-code-block="json"]').length, 1)
+  assert.match(container.textContent, /"ok": true/)
 })
 
 test('badge policy gate stays idle at the same committed revision and resumes on root policy revision', async t => {

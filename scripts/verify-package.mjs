@@ -203,7 +203,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.5.1'
+const EXPECTED_VERSION = '0.6.0'
 // DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
 // peers declared below only when it is absent. The declared range therefore repeats the exact
 // verdict those peers already produce on both host lines, measured with the real
@@ -586,7 +586,7 @@ export async function compareCommittedBuild(root) {
     assert(differences.length === 0, 'committed Host lib differs from scratch build:\n' + differences.join('\n'))
     const { buildClient } = await import(pathToFileURL(join(root, 'scripts/build-client.mjs')).href)
     const client = await buildClient({ root, declaration: true })
-    assert(sameJson(client.externals, ['react']), 'Client value externals must remain baseline React only')
+    assert(sameJson(client.externals, ['@deepseek-ai/dsh-client-ui-primitives', 'react']), 'Client value externals must remain React plus the baseline ui-primitives')
     const clientBuilt = [
       { path: 'client.js', mode: 0o644, bytes: Buffer.from(client.code) },
       { path: 'types/client.d.ts', mode: 0o644, bytes: Buffer.from(client.declaration) },

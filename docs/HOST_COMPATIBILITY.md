@@ -12,6 +12,10 @@
 
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，从 `0.1.2-rc.1` 到 `0.2.1-rc.2` 的 `lib/` 产物与最初宿主编译结果**逐字节相同**；`0.2.2-alpha.2` 因上述工具接缝改变了 `lib/host.js`，Client 产物仍逐字节不变。
 
+### 客户端 baseline 与仪器工具卡（2026-11-01）
+
+仪器工具卡使用 DSH 公开 baseline `@deepseek-ai/dsh-client-ui-primitives`，不导入私有 `ToolRow`。`0.2.1-alpha.1` 与 `0.2.2-alpha.2` 的声明都导出 `DisclosureRow`、`CodeBlock`、`JsonBlock`、`Button` 和 `IconSparkleRegular`；`DisclosureRow.headerAccessory` 只在 `0.2.2` 系列出现，因此本轮不使用它，“打开当前实例”放在展开体，保持 `engines.dsh: "~0.2.1-alpha.1"` 不变。客户端 bundle 只把 ui-primitives 视为隐式 baseline external，不写进 `dsh.client.external`。本轮机械验证使用已安装的 0.2.1-alpha.1 声明和 Happy DOM；没有进行 0.2.2 的真实 GUI 挂载，也没有安装到本机 Profile。
+
 早期版本必须修改的多是 **`package.json` 中声明的 peer 依赖范围**；`0.2.1-alpha.2` 与 `0.2.2-alpha.2` 则是真正的运行时接缝适配。peer 范围问题两次具体表现不同：
 
 - **`0.1.7-alpha.2`**：旧声明 `^0.1.2-rc.1` 不满足该预发布版本，安装会出现「peer 不满足」告警，但仍可安装。

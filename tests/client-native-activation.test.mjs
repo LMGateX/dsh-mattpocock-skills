@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import vm from 'node:vm'
 import React from 'react'
+import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const hostRequire = hostRoot ? createRequire(pathToFileURL(join(hostRoot, 'package.json'))) : undefined
@@ -59,8 +60,9 @@ async function assembly(t) {
   let registration
   const source = await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE ?? new URL('../lib/client.js', import.meta.url), 'utf8')
   vm.runInThisContext('(function(window){' + source + '\n})', { filename: 'native-client.bundle.js' })({ __ModuleLoader__: { load: value => { registration = value } } })
-  const plugin = registration.factory(name => { assert.equal(name, 'react'); return React })
-  return { ctx, plugin, calls, tabs, load, source }
+  const primitives = clientPrimitives(React)
+  const plugin = registration.factory(name => { if (name === 'react') return React; if (name === PRIMITIVES_ID) return primitives; throw new Error('Unexpected request ' + name) })
+  return { ctx, plugin, calls, tabs, load, source, primitives }
 }
 
 test('native Client plugin fiber activates after self-mounting its declared Remote namespace', native, async t => {
@@ -80,7 +82,7 @@ test('native Client teardown removes all namespace-owned UI and permits a clean 
   for (let turn = 0; turn < 2; turn++) {
     const fiber = f.ctx.plugin(f.plugin); await fiber
     assert.equal(fiber.state, 2)
-    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : 1, seat)
+    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 10 : 1, seat)
     assert.equal(f.tabs.length, 1)
     await fiber.dispose()
     for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, 0, seat)
@@ -110,7 +112,7 @@ async function browserBoot(f) {
   const graph = { rev: 'synthetic-boot', entries: [{ id, url: '/synthetic-client.js', rev: 'synthetic-client' }],
     batches: [{ phase: 'application', url: '/synthetic-client.js', rev: 'synthetic-client', entries: [id] }] }
   const modules = moduleExports.createClientModuleSystem(target, { id: bootstrap.id, exports: moduleExports }, {
-    boot: graph, staticModules: { react: React }, loadBundle: async url => {
+    boot: graph, staticModules: { react: React, [PRIMITIVES_ID]: f.primitives }, loadBundle: async url => {
       assert.equal(url, '/synthetic-client.js')
       vm.runInThisContext('(function(window){' + f.source + '\n})')({ __ModuleLoader__: target })
     },
@@ -153,7 +155,7 @@ test('native browser graph removal and re-add replace the fiber without leaked o
   const seats = ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
     'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview']
   const registered = () => {
-    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : 1, seat)
+    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 10 : 1, seat)
     assert.equal(f.tabs.length, 1)
   }
   registered()

@@ -18,7 +18,7 @@ This document is the authoritative implementation contract. A later implementati
 - 标题保留完整英文 wire 名；摘要保留英文 action/target；默认折叠，展开体上限 360px。preparing/start/result 与 timeline/rightPanel 门控语义不变。
 - 不改变 Host 模型可见输出、source card 的公开 `argsRaw/content/error/meta` 字段、工具键或其他原生布局。
 - 保持 `~0.2.1-alpha.1` 宿主兼容：不使用仅 0.2.2 存在的 `DisclosureRow.headerAccessory`；“打开当前实例”暂放展开体，最低宿主版本提升后再迁移。
-- 详细设计与实施计划见 [仪器工具卡呈现](<INSTRUMENT_TOOL_CARDS.md>)。本决策已认可，但源码、测试、构建、安装与真实 GUI 验收均尚未开始；本段不是完成声明。
+- 详细设计与实施计划见 [仪器工具卡呈现](<INSTRUMENT_TOOL_CARDS.md>)。2026-11-01 源码、客户端测试与闭合构建已完成；未安装本机 DSH/Profile，未做真实 GUI 验收，发布制品与 tag 以 [公开验证说明](<VERIFICATION.md>) 为准。
 
 ## 仪器读取减负与客户端观测（2026-10-21）
 

@@ -314,6 +314,17 @@ export declare function SettingsPage(props: PluginConfigViewProps & {
     readonly refreshAll: () => void;
     readonly observe: (sessionId: string) => SessionObservation;
 }): ReactElement;
+type SourceState = 'preparing' | 'running' | 'ok' | 'error' | 'stopped';
+export interface SourceView {
+    readonly state: SourceState;
+    readonly summary: string;
+    readonly color: string | null;
+    readonly expandable: boolean;
+}
+/** Compact English summary from wire action/target values; no translated title map. */
+export declare function sourceAction(toolName: string, request: Record<string, unknown> | null): string;
+export declare function sourceTarget(request: Record<string, unknown> | null): string;
+export declare function sourceView(props: ToolCallViewProps): SourceView;
 /** Read only public call material; never serialize the lazy argument reader's internals. */
 export declare function sourceRecord(props: ToolCallViewProps): unknown;
 /** Only our own wire Tool names may claim a toolview; never another plugin's key. */

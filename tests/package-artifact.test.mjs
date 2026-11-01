@@ -47,9 +47,9 @@ function validMembers() {
   ]
 }
 
-test('0.5.1 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.5.1' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.5.1')
+test('0.6.0 package policy admits exactly four metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.6.0' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.6.0')
   assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
     'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
   ])
@@ -59,7 +59,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.5.1',
+    version: '0.6.0',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),

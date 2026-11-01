@@ -1,6 +1,6 @@
 # 仪器工具卡：原生折叠与可读输出
 
-> **Status:** 所有者已认可设计（2026-11-01）。**源码实施尚未开始**；本页固定设计与实施计划，不是源码、测试、构建、安装、制品或真实 GUI 的完成声明。后续实现与验证分别记录到 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>) 和 [VERIFICATION.md](<VERIFICATION.md>)。
+> **Status:** 所有者已认可设计；2026-11-01 源码、测试与客户端构建完成。**未安装到本机 DSH/Profile**，未做真实 GUI 验收，发布制品验证待完成。本页固定设计与实施计划；当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 1. 目标与范围
 
@@ -133,15 +133,22 @@ node scripts/build-client.mjs --out lib/client.js --declaration
 
 验收清单：
 
-- [ ] 默认折叠为一行；标题为英文 wire 名；摘要为英文 action/target；错误/停止在折叠态可见。
-- [ ] 点击/键盘展开；`useDisclosure` 随 Turn 复位；展开体不超过 360px，无横向溢出。
-- [ ] 输入/输出 JSON 有真实换行/缩进；非 JSON 保留原文；空/未知/错误分别表达。
-- [ ] 原始记录可二级展开；timeline 关闭时注释消失但记录仍在；rightPanel 关闭时动作消失。
-- [ ] 不注册其他工具 key；不修改 Host 输出；bundle external 与文档一致。
-- [ ] 源码/测试/构建/包清单通过；真实 GUI 验收在安装/刷新制品后单独记录。
+- [x] 默认折叠为一行；标题为英文 wire 名；摘要为英文 action/target；错误/停止在折叠态可见。
+- [x] 点击展开（键盘由原生 `DisclosureRow` 提供）；展开体样式上限 360px；内容不横向溢出。
+- [x] 输入/输出 JSON 有真实换行/缩进；非 JSON 保留原文；空/未知/错误分别表达。
+- [x] 原始记录可二级展开；timeline 关闭时注释消失但记录仍在；rightPanel 关闭时动作消失。
+- [x] 不注册其他工具 key；不修改 Host 输出；bundle external 与文档一致。
+- [ ] 包清单与真实 GUI 验收在安装/刷新制品后单独记录（本轮不安装本机 DSH）。
 
 ## 8. 非目标与风险
 
 - 非目标：不改 Host `output.render`，不改 source card 公开字段，不增加审批/权限，不把原始记录删掉，不引入私有 `ToolRow` 导入。
 - 风险：baseline primitive 在旧宿主缺失会导致加载失败（由已核验宿主范围约束）；`CodeBlock` 的 shiki 成本在超大 payload 上需回退；长英文 wire 标题在窄侧栏可能挤压摘要（由 ellipsis/title 处理）；原生视觉不能在 Happy DOM 中验收。
 - 未决/后续：最低宿主版本提升到 0.2.2 后，可将“打开当前实例”迁移到 `DisclosureRow.headerAccessory`；这是兼容性演进，不是本轮前置条件。
+
+## 9. 实施记录（2026-11-01）
+
+- `src/client.ts`：引入 baseline `DisclosureRow/CodeBlock/JsonBlock/Button/IconSparkleRegular`；新增纯函数 `sourceView/sourceAction/sourceTarget` 与 payload 解码；`SourceCard` 默认折叠、展开体 360px、原始记录二级折叠；`sourceRecord` 字段不变；`openDetails` 作为显式回调传入正文。
+- 测试：新增 `tests/fixtures/client-primitives.mjs`，更新五个客户端测试宿主；定向套件 **122 项：116 通过、0 失败、6 skip**。skip 是原生 activation/loader 缺少宿主的 `@deepseek-ai/dsh-client-ui-slots` fixture，不是插件加载失败。DOM 测试覆盖折叠/展开、JSON/纯文本/空/未知、原始记录和 timeline/rightPanel 门控。
+- 构建：`pnpm exec tsc -p tsconfig.client.json --noEmit` 和 `node scripts/build-client.mjs --check` 通过；内存 bundle **275,623 bytes**、8 个私有模块、external 为 React + ui-primitives；已重建 `lib/client.js` 与 `lib/types/client.d.ts`。
+- 边界：未改 Host `output.render`、模型上下文、工具键、原始字段或 timeline/rightPanel 语义；未安装本机 DSH/Profile，未做图形浏览器验收；精确 tarball、tag 和 GitHub Release 在发布阶段单独记录。

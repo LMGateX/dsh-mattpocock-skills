@@ -2,6 +2,7 @@ import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore 
 import type { ReactElement, ChangeEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { Button, CodeBlock, DisclosureRow, IconSparkleRegular, JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -1509,6 +1510,192 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       h(SupervisionHistory, { remote: props.remote, sessionId: selectedInspection })))
 }
 
+type SourceState = 'preparing' | 'running' | 'ok' | 'error' | 'stopped'
+export interface SourceView {
+  readonly state: SourceState
+  readonly summary: string
+  readonly color: string | null
+  readonly expandable: boolean
+}
+interface SourcePayload { readonly kind: 'json' | 'text'; readonly text: string; readonly note: string | null }
+
+const SOURCE_ERROR_COLOR = 'var(--dsw-alias-state-error-primary, #dc2626)'
+const SOURCE_STOPPED_COLOR = 'var(--dsw-alias-state-warn-label, #b45309)'
+const SOURCE_CAPTION_COLOR = 'var(--dsw-alias-label-caption, #6b7280)'
+const SOURCE_SECONDARY_COLOR = 'var(--dsw-alias-label-secondary, #4b5563)'
+/** Expanded bodies and payloads are user-opened; parse/format only then, with a cap for pathological results. */
+const SOURCE_MAX_INLINE = 200_000
+const SOURCE_SUMMARY_STYLE = { display: 'inline-flex', alignItems: 'center', minWidth: 0, maxWidth: '100%' } as const
+const SOURCE_SUMMARY_TEXT_STYLE = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--dsh-content-font-size-secondary, 13px)', lineHeight: 'calc(24px + var(--dsh-content-font-delta, 0px))' } as const
+const SOURCE_SECTION_STYLE = { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 } as const
+const SOURCE_SECTION_LABEL_STYLE = { color: SOURCE_CAPTION_COLOR, fontSize: '11px', lineHeight: '16px', margin: '0 0 0 4px' } as const
+const SOURCE_CAPTION_STYLE = { margin: '0 0 0 4px', color: SOURCE_CAPTION_COLOR, fontSize: '12px', lineHeight: '18px' } as const
+const SOURCE_PRE_STYLE = { margin: '0 0 0 4px', maxHeight: '200px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', borderRadius: '8px', border: '.5px solid var(--dsw-alias-border-l1, rgba(127,127,127,.25))', background: 'var(--dsw-alias-markdown-code-block, rgba(127,127,127,.08))', color: SOURCE_SECONDARY_COLOR, font: 'var(--dsw-font-markdown-code-block-small, 12px/1.5 ui-monospace, monospace)', padding: '8px 10px' } as const
+const SOURCE_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '360px', overflowY: 'auto', overflowX: 'hidden', minWidth: 0, marginTop: '2px', paddingRight: '2px' } as const
+const SOURCE_NOTE_STYLE = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', minWidth: 0 } as const
+const SOURCE_NOTE_TEXT_STYLE = { minWidth: 0, color: SOURCE_CAPTION_COLOR, fontSize: '12px', lineHeight: '18px', overflowWrap: 'anywhere' } as const
+
+function sourceTruncatedLabel(total: number): string { return '内容过长（' + String(total) + ' 字符），已截断显示' }
+function isSourceRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) }
+function sourceTextField(value: unknown): string | null { return typeof value === 'string' && value.trim() !== '' ? value.trim() : null }
+function sourceFirstLine(value: string): string { const newline = value.search(/\r?\n/u); return newline === -1 ? value : value.slice(0, newline) }
+function sourceTruncate(value: string, max: number): string { return value.length <= max ? value : value.slice(0, Math.max(1, max - 1)) + '…' }
+function sourceParse(text: string): unknown | undefined {
+  if (text === '' || text.length > SOURCE_MAX_INLINE) return undefined
+  try { return JSON.parse(text) as unknown } catch { return undefined }
+}
+function sourceRequest(argsRaw: string | null): Record<string, unknown> | null {
+  if (argsRaw === null) return null
+  const parsed = sourceParse(argsRaw)
+  if (!isSourceRecord(parsed)) return null
+  return isSourceRecord(parsed.request) ? parsed.request : parsed
+}
+function sourceCommand(request: Record<string, unknown> | null): Record<string, unknown> | null {
+  return request !== null && isSourceRecord(request.command) ? request.command : null
+}
+function sourceArgsRaw(props: ToolCallViewProps): string | null {
+  if (props.phase === 'preparing') return null
+  if (props.phase === 'start') return props.block.argsRaw
+  return props.block.call?.argsRaw ?? null
+}
+function sourceState(props: ToolCallViewProps): SourceState {
+  if (props.phase === 'preparing') return 'preparing'
+  if (props.phase === 'start') return 'running'
+  if (props.block.error?.code === 'interrupted') return 'stopped'
+  return props.block.isError ? 'error' : 'ok'
+}
+/** Compact English summary from wire action/target values; no translated title map. */
+export function sourceAction(toolName: string, request: Record<string, unknown> | null): string {
+  const command = sourceCommand(request)
+  const commandAction = command === null ? null : sourceTextField(command.action)
+  if (commandAction !== null) return commandAction
+  const action = request === null ? null : sourceTextField(request.action)
+  if (action !== null) return action
+  if (toolName === 'mattpocock_execute') return 'execute'
+  if (toolName === 'mattpocock_assign') return 'assign'
+  if (toolName === 'mattpocock_delegate') return 'delegate'
+  return toolName.replace(/^mattpocock_/u, '') || 'instrument'
+}
+export function sourceTarget(request: Record<string, unknown> | null): string {
+  if (request === null) return ''
+  const command = sourceCommand(request)
+  const pick = (key: string): unknown => command !== null && command[key] !== undefined ? command[key] : request[key]
+  const parts: string[] = []
+  const add = (value: string | null): void => { if (value !== null && value !== '' && !parts.includes(value)) parts.push(value) }
+  add(sourceTextField(request.nativeTool))
+  add(sourceTextField(request.sessionId))
+  const workflow = sourceTextField(pick('workflowId'))
+  const item = sourceTextField(pick('localTicketId')) ?? sourceTextField(pick('decisionId'))
+  if (workflow !== null && item !== null) add(workflow + '/' + item)
+  else { add(workflow); add(item) }
+  add(sourceTextField(request.resourceId))
+  add(sourceTextField(pick('bindingId')))
+  add(sourceTextField(pick('observationId')))
+  add(sourceTextField(pick('state')))
+  add(sourceTextField(request.domain))
+  const query = isSourceRecord(request.query) ? request.query : null
+  add(sourceTextField(query?.kind))
+  add(sourceTextField(request.kind))
+  add(sourceTextField(request.recordId))
+  const historyIds = Array.isArray(request.historyIds) ? request.historyIds.filter(value => typeof value === 'string') : []
+  if (historyIds.length > 0) add(String(historyIds.length) + ' history item(s)')
+  const ticketIds = Array.isArray(request.ticketIds) ? request.ticketIds.filter(value => typeof value === 'string') : []
+  if (ticketIds.length > 0) add(String(ticketIds.length) + ' ticket(s)')
+  const description = sourceTextField(request.description)
+  if (description !== null) add(sourceFirstLine(description))
+  add(sourceTextField(request.provider))
+  const expectedRevision = pick('expectedRevision')
+  if (typeof expectedRevision === 'number' && Number.isSafeInteger(expectedRevision)) add('rev ' + String(expectedRevision))
+  const generation = pick('generation')
+  if (typeof generation === 'number' && Number.isSafeInteger(generation)) add('gen ' + String(generation))
+  if (typeof request.included === 'boolean') add(request.included ? 'include' : 'exclude')
+  return sourceTruncate(parts.join(' · '), 180)
+}
+export function sourceView(props: ToolCallViewProps): SourceView {
+  const state = sourceState(props)
+  if (state === 'preparing') return { state, summary: '', color: null, expandable: false }
+  const request = sourceRequest(sourceArgsRaw(props))
+  const parts = [sourceAction(props.toolName, request), sourceTarget(request)].filter(part => part !== '')
+  if (state === 'running') parts.push('running')
+  if (state === 'stopped') parts.push('interrupted')
+  if (state === 'error') {
+    const error = props.phase === 'result' ? props.block.error : undefined
+    const reason = error === undefined ? null : sourceTextField(error.reason) ?? sourceTextField(error.code)
+    parts.push(reason === null ? 'failed' : 'failed: ' + sourceFirstLine(reason))
+  }
+  return { state, summary: sourceTruncate(parts.join(' · '), 180), color: state === 'error' ? SOURCE_ERROR_COLOR : state === 'stopped' ? SOURCE_STOPPED_COLOR : null, expandable: true }
+}
+function sourceSummaryElement(view: SourceView): ReactElement | null {
+  if (view.summary === '') return null
+  return h('span', { style: SOURCE_SUMMARY_STYLE },
+    h('span', { 'aria-hidden': true, style: { flex: 'none', width: 2, height: 2, borderRadius: 1, background: SOURCE_CAPTION_COLOR, opacity: 0.55, margin: '0 8px' } }),
+    h('span', { title: view.summary, style: { ...SOURCE_SUMMARY_TEXT_STYLE, color: view.color ?? 'inherit' } }, view.summary))
+}
+function decodeSourcePayload(text: string, fallbackNote: string | null = null): SourcePayload {
+  if (text === '') return { kind: 'text', text: '', note: fallbackNote }
+  if (text.length > SOURCE_MAX_INLINE) return { kind: 'text', text, note: '内容较长，按原文显示' }
+  const parsed = sourceParse(text)
+  if (parsed === undefined) return { kind: 'text', text, note: fallbackNote }
+  if (typeof parsed === 'string') return { kind: 'text', text: parsed, note: fallbackNote }
+  try {
+    const pretty = JSON.stringify(parsed, null, 2)
+    return { kind: 'json', text: pretty ?? text, note: fallbackNote }
+  } catch { return { kind: 'text', text, note: fallbackNote } }
+}
+function sourceInput(props: ToolCallViewProps): SourcePayload | null {
+  const argsRaw = sourceArgsRaw(props)
+  if (argsRaw === null) return null
+  return decodeSourcePayload(argsRaw, props.phase === 'start' ? '参数可能仍在准备中，按原文显示' : null)
+}
+function sourceOutput(props: ToolCallViewProps): SourcePayload | null {
+  if (props.phase !== 'result') return null
+  const content = props.block.content
+  if (content.length === 0) return null
+  const texts: string[] = []
+  const other: string[] = []
+  for (const block of content) {
+    if (block.type === 'text') texts.push(block.text)
+    else other.push(block.type)
+  }
+  const otherNote = other.length === 0 ? null : '另含非文本内容：' + other.join(', ')
+  if (texts.length === 0) return { kind: 'text', text: '[non-text content: ' + other.join(', ') + ']', note: null }
+  if (texts.length === 1) return decodeSourcePayload(texts[0]!, otherNote)
+  const payloads = texts.map(text => decodeSourcePayload(text))
+  if (payloads.every(payload => payload.kind === 'json')) return { kind: 'json', text: payloads.map(payload => payload.text).join('\n\n'), note: otherNote }
+  return { kind: 'text', text: texts.join('\n\n'), note: otherNote }
+}
+function sourceErrorText(props: ToolCallViewProps): string | null {
+  if (props.phase !== 'result' || !props.block.isError) return null
+  const error = props.block.error
+  if (error === undefined) return '错误详情不可用（请查看原始记录）'
+  const text = [error.name, error.code, error.reason].filter((value): value is string => typeof value === 'string' && value.trim() !== '').join(' · ')
+  return text === '' ? '错误详情不可用（请查看原始记录）' : text
+}
+function sourcePayloadElement(payload: SourcePayload): ReactElement {
+  const content = payload.kind === 'json'
+    ? h(CodeBlock, { code: payload.text, lang: 'json', showHeader: true, copyLabel: '复制', copiedLabel: '已复制' })
+    : payload.text === '' ? h('span', { style: SOURCE_CAPTION_STYLE }, '空文本') : h('pre', { style: SOURCE_PRE_STYLE }, payload.text)
+  return h('div', { style: { minWidth: 0 } }, content, payload.note === null ? null : h('p', { style: SOURCE_CAPTION_STYLE }, payload.note))
+}
+function sourceBody(props: ToolCallViewProps, openDetails: () => void, annotate: boolean, canOpenDetails: boolean): ReactElement {
+  const children: ReactElement[] = []
+  const input = sourceInput(props)
+  if (input === null) children.push(h('p', { key: 'input-unknown', style: SOURCE_CAPTION_STYLE }, '输入未知（调用头不在当前窗口）'))
+  else if (input.kind === 'text' && input.text === '') children.push(h('p', { key: 'input-empty', style: SOURCE_CAPTION_STYLE }, '输入为空'))
+  else children.push(h('div', { key: 'input', style: SOURCE_SECTION_STYLE }, h('div', { style: SOURCE_SECTION_LABEL_STYLE }, '输入'), sourcePayloadElement(input)))
+  if (props.phase === 'result') {
+    const output = sourceOutput(props)
+    children.push(h('div', { key: 'output', style: SOURCE_SECTION_STYLE }, h('div', { style: SOURCE_SECTION_LABEL_STYLE }, '输出'), output === null ? h('p', { style: SOURCE_CAPTION_STYLE }, '无输出') : sourcePayloadElement(output)))
+  } else children.push(h('p', { key: 'running-output', style: SOURCE_CAPTION_STYLE }, '运行中，尚无输出'))
+  const error = sourceErrorText(props)
+  if (error !== null) children.push(h('div', { key: 'error', style: SOURCE_SECTION_STYLE }, h('div', { style: SOURCE_SECTION_LABEL_STYLE }, '错误'), h('pre', { style: { ...SOURCE_PRE_STYLE, color: SOURCE_ERROR_COLOR } }, error)))
+  if (annotate) children.push(h('div', { key: 'source-note', style: SOURCE_NOTE_STYLE },
+    h('span', { style: SOURCE_NOTE_TEXT_STYLE }, '来源记录 · call ' + props.callId + ' · 历史快照；当前事实以实例账本为准。'),
+    canOpenDetails ? h(Button, { size: 'sm', variant: 'ghost', onClick: openDetails }, '打开当前实例') : null))
+  children.push(h(JsonBlock, { key: 'raw', label: '原始记录（JSON）', payload: sourceRecord(props), defaultOpen: false, truncatedLabel: sourceTruncatedLabel }))
+  return h('div', { style: SOURCE_BODY_STYLE }, ...children)
+}
+
 /** Read only public call material; never serialize the lazy argument reader's internals. */
 export function sourceRecord(props: ToolCallViewProps): unknown {
   if (props.phase === 'preparing') return { phase: props.phase, callId: props.callId, name: props.toolName, time: props.block.time, note: 'Arguments are still preparing and may be incomplete.' }
@@ -1518,10 +1705,26 @@ export function sourceRecord(props: ToolCallViewProps): unknown {
 /** Only our own wire Tool names may claim a toolview; never another plugin's key. */
 export function SourceCard(props: ToolCallViewProps & SummaryFace): ReactElement {
   const observation = useSummaryObservation(props.summary)
+  const disclosure = props.useDisclosure()
+  const view = useMemo(() => sourceView(props), [props.phase, props.block, props.toolName])
   const annotate = observation.status === 'ready' && observation.value.policy.display.timeline
-  return h('section', { 'aria-label': '协作工具记录', style: { boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px', overflowWrap: 'anywhere', textAlign: 'left' } }, h('strong', null, props.toolName),
-    annotate ? diagnostic('来源记录 · call ' + props.callId + ' · 历史快照；当前事实以实例账本为准。') : null,
-    pretty(sourceRecord(props)), annotate && observation.value.policy.display.rightPanel ? h('button', { type: 'button', onClick: props.openDetails }, '打开当前实例') : null)
+  const canOpenDetails = annotate && observation.status === 'ready' && observation.value.policy.display.rightPanel
+  const open = disclosure.expanded && view.expandable
+  const body = useMemo(() => open ? sourceBody(props, props.openDetails, annotate, canOpenDetails) : null,
+    [open, annotate, canOpenDetails, props.phase, props.block, props.callId, props.toolName, props.openDetails])
+  return h('section', { 'aria-label': '协作工具记录', 'data-tool': props.toolName, 'data-state': view.state,
+    style: { boxSizing: 'border-box', width: '100%', maxWidth: '100%', minWidth: 0, textAlign: 'left' } },
+  h(DisclosureRow, {
+    icon: h(IconSparkleRegular, { size: 14 }),
+    title: props.toolName || 'instrument',
+    running: view.state === 'preparing' || view.state === 'running',
+    open,
+    expandable: view.expandable,
+    expandOnRowClick: true,
+    keepContentWhenOpen: true,
+    onToggle: disclosure.toggle,
+    collapsedContent: sourceSummaryElement(view),
+  }, body))
 }
 
 export const inject = ['slots', 'remote', 'sidebarRight', 'sidebarRightTabs']

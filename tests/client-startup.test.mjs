@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import vm from 'node:vm'
 import { buildClient } from '../scripts/build-client.mjs'
+import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
 // Renderer adapter mirrors the existing client.test public React hook fixture.
 // It exercises exported renderers and DOM event props, never private controller fields.
@@ -9,7 +10,8 @@ const react = { createElement: (type, props, ...children) => ({ type, props: { .
 const built = await buildClient()
 let registration
 vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
-const client = registration.factory(name => { assert.equal(name, 'react'); return react })
+const primitives = clientPrimitives(react)
+const client = registration.factory(name => { if (name === 'react') return react; if (name === PRIMITIVES_ID) return primitives; throw new Error('Unexpected request ' + name) })
 const ok = value => ({ ok: true, value })
 const settle = () => new Promise(resolve => setImmediate(resolve))
 const hint = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页或热重载不能代替进程重启。兼容支持由同一插件包提供；安装或更新插件后，保存下次启动请求，再正常重启 DSH。是否生效以当前运行状态为准；兼容性尚未验证时，反复重启也不会生效。'
@@ -151,7 +153,7 @@ test('startup settings always show restart hint and distinguish saved next start
   assert.match(text(tree), /草稿：禁用（未保存）/)
   assert.match(text(tree), /当前生效：禁用/)
   assert(text(tree).includes(hint))
-  assert.deepEqual(built.externals, ['react'])
+  assert.deepEqual([...built.externals].sort(), [PRIMITIVES_ID, 'react'].sort())
   assert(!built.code.includes('node:'))
 })
 
