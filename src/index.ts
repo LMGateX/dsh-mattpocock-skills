@@ -26,10 +26,13 @@ export const DEFAULT_CHANNEL: Channel = CHANNELS.includes('stable') ? 'stable' :
 
 export interface Config {
   channel: Channel
+  /** Opt in to the binding-first delegate creation tool. Default false. */
+  delegate?: boolean
 }
 
 export const Config: Schema<Config> = Schema.object({
   channel: Schema.union([...CHANNELS]).default(DEFAULT_CHANNEL),
+  delegate: Schema.boolean().default(false).description('注册绑定式 mattpocock_delegate（默认关闭；普通派发用宿主原生 subagent）'),
 }).description('选择 Matt Pocock 技能分发渠道')
 
 /** Register one immutable bundled Skill provider for the selected channel. */
@@ -51,7 +54,7 @@ export function apply(ctx: Context, config: Config = { channel: DEFAULT_CHANNEL 
   if (typeof ctx.inject === 'function') ctx.inject(['storageDomain', 'tools', 'agents', 'workspaceRegistry', 'sessionQuery', 'systemPrompt', 'typert', 'connection'], async (scope) => {
     try {
       const [{ mountHost }, { createRuntime }] = await Promise.all([import('./host.js'), import('./runtime.js')])
-      const host = await mountHost(scope, { createRuntime, onPolicyChanged: () => invalidateSkills?.() })
+      const host = await mountHost(scope, { createRuntime, onPolicyChanged: () => invalidateSkills?.(), delegate: config.delegate === true })
       gate.resolve = host.skillsEnabledForCwd
     } catch (error) {
       scope.logger(name).warn('Workspace controls unavailable; Skills delivery remains mounted: %s', error)

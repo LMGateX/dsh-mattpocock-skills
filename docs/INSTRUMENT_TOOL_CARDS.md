@@ -1,10 +1,10 @@
 # 仪器工具卡：原生折叠与可读输出
 
-> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成，2026-11-03 [v0.7.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0) 发布。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。0.7.0 源码线已移除 `mattpocock_execute`，当前为八个固定工具 + 条件 `mattpocock_audit`；本页保留设计与 0.6.0 实施记录。当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成，2026-11-03 [v0.7.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0) 发布。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。0.7.0 源码线已移除 `mattpocock_execute`；0.8.0 默认是七个固定工具 + 条件 `mattpocock_audit`，`mattpocock_delegate` 仅显式 opt-in。本页保留设计与 0.6.0 实施记录。当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 1. 目标与范围
 
-0.6.0 发行版有九个固定工具（0.7.0 已移除 `mattpocock_execute`，现为八个固定 + 条件 `mattpocock_audit`，客户端共九个 wire key）。这些工具注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
+0.6.0 发行版有九个固定工具（0.7.0 已移除 `mattpocock_execute`；0.8.0 默认七个固定 + 条件 `mattpocock_audit`，delegate 为 opt-in 第八项；客户端共九个 wire key）。这些工具注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
 
 - 默认折叠为一行短卡，保留“前面/后面的工具调用”可读性；
 - 展开时显示清晰的输入、输出、错误和原始记录；
@@ -67,7 +67,7 @@
 | 失败 | `read · failed: <reason>`（错误色） |
 | interrupted | `read · interrupted`（警告色） |
 
-2026-11-03 决策，0.7.0 已移除 `mattpocock_execute`；新会话不再产生该卡片。旧会话/历史记录仍可读取；0.7.0 不再为该工具键注册本插件卡片，原生记录不因工具移除而删除。`mattpocock_delegate` 保留为强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
+2026-11-03 决策，0.7.0 已移除 `mattpocock_execute`；新会话不再产生该卡片。旧会话/历史记录仍可读取；0.7.0 不再为该工具键注册本插件卡片，原生记录不因工具移除而删除。`mattpocock_delegate` 保留为 opt-in 强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
 
 固定区块标签（输入/输出/错误/原始记录/来源记录）沿用插件现有中文；标题和 action/target 保留英文。
 

@@ -17,6 +17,8 @@ export type Channel = string;
 export declare const DEFAULT_CHANNEL: Channel;
 export interface Config {
     channel: Channel;
+    /** Opt in to the binding-first delegate creation tool. Default false. */
+    delegate?: boolean;
 }
 export declare const Config: Schema<Config>;
 /** Register one immutable bundled Skill provider for the selected channel. */

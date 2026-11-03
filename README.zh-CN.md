@@ -49,9 +49,9 @@
 
 ## 可选协作控制
 
-可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.7.1 挂载八项固定工具 + 条件 `mattpocock_audit`（`mattpocock_execute` 已移除；客户端共九个 wire key）及第三方设置/常驻摘要/右侧详情。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
+可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.8.0 默认挂载七项固定工具 + 条件 `mattpocock_audit`；`mattpocock_delegate` 是仅由插件配置 `delegate: true` 启用的可选第八项（`mattpocock_execute` 已移除）。客户端仍声明九个 wire key，以呈现 opt-in delegate 与历史卡片；第三方设置/常驻摘要/右侧详情在宿主服务存在时提供。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
 
-**设计更新（2026-11-03，已在 0.7.0 源码线实施；C 阶段于 0.7.1 完成）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（持久意图、实际 header 核对、创建 binding 并 assign 票范围）；`mattpocock_execute` 已移除，不再有 execute 路径。C（原生观察读取时关联/账本补齐）已在 0.7.1 源码线实施：持久 `native-observed` 执行事实，以及读取时 observed/inferred 工作树关联；不新增模型工具、Remote 方法或强绑定写入口。0.7.1 制品已构建并验证；安装/激活仍走独立门禁，本轮未安装本机 DSH/Profile/GUI；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
+**设计更新（2026-11-03；0.7.x 原生优先，0.8.0 delegate opt-in）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察。`mattpocock_delegate` 保留绑定式创建实现，但**默认不注册**，只有 profile 显式 `delegate: true` 才启用；启用后仍执行持久意图、实际 header 核对、创建 binding 并 assign 票范围。`mattpocock_execute` 已移除，不再有 execute 路径。C 实施持久 `native-observed` 执行事实及读取时 observed/inferred 工作树关联；不新增模型工具、Remote 方法或强绑定写入口。安装/激活仍走独立门禁，本轮未安装本机 DSH/Profile/GUI；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
 
 T/S 超限或观测未知不拒绝合法原生委派，不新增业务审批。Git 工作树由 agent 自行创建、合并和删除；已清理树退出持续注入，废弃未清理仍提示，历史不默认过期。
 

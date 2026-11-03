@@ -22,7 +22,7 @@ async function pathExists(path) {
 
 test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.name, '@lmgatex/dsh-mattpocock-skills')
-  assert.equal(packageJson.version, '0.7.1')
+  assert.equal(packageJson.version, '0.8.0')
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
@@ -59,9 +59,10 @@ test('exports the closed channel set declared by the vendored distribution', asy
   assert.deepEqual(plugin.CHANNELS, ['beta', 'stable'])
   assert.deepEqual(plugin.CHANNELS, Object.keys(plugin.CATALOG.channels).sort())
   assert.equal(plugin.DEFAULT_CHANNEL, 'stable')
-  assert.deepEqual(plugin.Config({}), { channel: 'stable' })
-  assert.deepEqual(plugin.Config({ channel: 'stable' }), { channel: 'stable' })
-  assert.deepEqual(plugin.Config({ channel: 'beta' }), { channel: 'beta' })
+  assert.deepEqual(plugin.Config({}), { channel: 'stable', delegate: false })
+  assert.deepEqual(plugin.Config({ channel: 'stable' }), { channel: 'stable', delegate: false })
+  assert.deepEqual(plugin.Config({ channel: 'beta' }), { channel: 'beta', delegate: false })
+  assert.deepEqual(plugin.Config({ channel: 'stable', delegate: true }), { channel: 'stable', delegate: true })
   assert.throws(() => plugin.Config({ channel: 'nightly' }))
 })
 

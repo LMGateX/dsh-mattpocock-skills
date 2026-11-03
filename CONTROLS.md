@@ -2,7 +2,7 @@
 
 ## 当前提供什么
 
-协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.7.1：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实与读取时 observed/inferred 关联，以及 Host/Client 接口均已实现。0.7.1 的模型面仍是八个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 只作强绑定创建，C 阶段没有新增模型工具或 Remote 方法。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
+协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.8.0：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实与读取时 observed/inferred 关联，以及 Host/Client 接口均已实现。0.8.0 的默认模型面是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。C 阶段没有新增模型工具或 Remote 方法。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
 
 **业务判断由 agent 按 Skills、用户约定和任务文档作出。** 仪器记录进度、待办、真实绑定和执行事实，不另设统一完成标准、容量审批或工作树处置审批。主代理自己用已授权的 Git/Shell 工具准备、合并和清理工作树。
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | 设置与会话仪器 | 全局默认、工作区覆盖、owner 归属、受授票范围、原生客户端入口 | 管理默认关闭；保存设置不等于安装启用 |
 | T/S | 占用、参考值、超额、统计覆盖程度；T 与 S 独立，S 的在跑数是宿主的实时运行状态（live Agent.status，idle 常驻不计），读取为内存投影，并按 `S.depth` 给出 direct/deeper/unknown 深度结构 | S 枚举不完整或成员资格不可读时是明示下界（总数未知）；超限或未知不拒绝派发，不另要求批准；被计为 running 的 run 无 end 消失时按子代理自身日志的公开词表产生 item（不可读时明示 unobservable）并唤醒主代理 |
-| 绑定式创建（delegate） | 创建前技术授权、持久意图、原生 continuable 创建、实际 header 核对、worktree binding 与票范围 assign；普通无绑定 lane 改由宿主原生 `subagent`/`subagent_fork` 创建 | 只在需要 ticket↔tree 强绑定或持久意图/幂等时使用；默认关闭设置只影响本插件的显式初始 cwd 路径；失败/不确定不伪报重启即可 |
+| 绑定式创建（delegate，opt-in） | 创建前技术授权、持久意图、原生 continuable 创建、实际 header 核对、worktree binding 与票范围 assign；普通无绑定 lane 改由宿主原生 `subagent`/`subagent_fork` 创建 | 默认不注册；只有 profile 显式 `delegate: true` 才启用。只在需要 ticket↔tree 强绑定或持久意图/幂等时使用；header 不能证明实际 cwd 时保持 accepted-unknown，不要重试，改用 native + assign |
 | 续聊 | 原生 send_message 继续同一个 child、历史和目录 | 后续消息不是重新创建，不用它改绑旧 child 的 cwd |
 | 工作树状态 | active / discarded / cleaned 的实际作者报告，与程序绑定事实分别保存 | discarded 未清理仍提醒；cleaned 退出当前视图，保留历史 |
 | 当前注入 | 新鲜读取、按类别有界摘要、待办计数、查询定位、变更去重 | 摘要不是全部正文，unknown 不是 0 |
@@ -46,7 +46,7 @@
 
 ## 2. 准备工作树，再创建与续聊
 
-> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})`，插件只观察/登记；需要 ticket↔tree 强绑定或需要其持久意图/幂等时用 `mattpocock_delegate` 的绑定式创建。0.7.0 已移除 `mattpocock_execute`，delegate 的模型描述已改为 binding-first creation；C（原生观察读取时关联/账本补齐）于 0.7.1 完成：原生生命周期事实写入 owner runtime 文档，读取时给出 activity、observed worktree 与 inferred lane，并只对 coordinator 返回。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)与[验证](<docs/VERIFICATION.md>)。
+> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})`，插件只观察/登记。`mattpocock_delegate` 保留功能，但 0.8.0 起**默认不注册**；只有 profile 显式设置 `delegate: true` 时才作为绑定式创建入口启用。0.7.0 已移除 `mattpocock_execute`；C（原生观察读取时关联/账本补齐）于 0.7.1 完成：原生生命周期事实写入 owner runtime 文档，读取时给出 activity、observed worktree 与 inferred lane，并只对 coordinator 返回。本机 DSH 的 child `header.cwd` 是父目录，不能证明实际初始 cwd 时 delegate 保持 accepted-unknown，不要把它当作 confirmed binding。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)与[验证](<docs/VERIFICATION.md>)。
 
 **默认路径（native-first，普通无绑定 lane）**
 
@@ -56,7 +56,9 @@
 4. 后续用原生 `send_message` 继续同一 child，不为一次追问另建 child，也不修改它已有的 cwd。
 5. 主代理自己决定合并与清理；这条路径只产生 observation + assignment，没有强 binding。观测看注入快照；用 `mattpocock_worktree` 读取 binding，处置树观测时用 `update-observation`。`cleaned` 是作者声明，不是宿主物理删除回执。
 
-**强绑定路径（binding-first，只有需要 ticket↔tree 时）**
+**delegate 默认关闭。** 需要试用时，在插件 profile 配置中显式加 `delegate: true` 并重新加载/重启；不启用时模型面没有该工具，native 路径、assignment、binding/observation 读取和历史卡片不受影响。是否安装、是否启用、当前进程是否已加载仍是三件事。
+
+**强绑定路径（可选，默认不注册；只有 profile 设置 `delegate: true` 时才可用）**
 
 1. 先准备/创建树，再调用 `mattpocock_delegate`，传 `worktree`、`workflowId`、`ticketIds`、`operationId`。它在创建前持久化意图，以该树为初始 cwd 创建 child，核对实际 `child/parent/cwd` header，创建 binding（task/ticketIds）并 assign 票范围。
 2. 读取返回的 acceptance、actualChildSessionId、actualCwd、bindingId 与登记状态。持久意图不是已绑定证明；只有实际 header 核对后才报告 confirmed。
@@ -172,13 +174,13 @@ records/windows 使用显式 targets，worktrees 使用 bindingIds；均保留�
 | mattpocock_assign | 对真实直接子代理登记受授票范围 |
 | mattpocock_history | 分页历史、详情、当前范围及显式副本/源旧历史整理 |
 | mattpocock_worktree | **读取/更新绑定**、观测处置、程序重核对；不创建 binding |
-| mattpocock_delegate | **强绑定创建**：创建 child 并写 worktree binding/task/tickets；仅在需要 ticket↔tree 强绑定、持久意图/幂等/创建前范围检查时使用；普通无绑定 lane 用原生 subagent({cwd}) + assign |
+| mattpocock_delegate | **opt-in 强绑定创建**：只有 profile `delegate: true` 时注册；创建 child 并写 worktree binding/task/tickets；仅在需要 ticket↔tree 强绑定、持久意图/幂等/创建前范围检查时使用；普通无绑定 lane 用原生 subagent({cwd}) + assign |
 
 工具使用真实调用 Agent/session，不接受正文自报 principal、owner、作者或执行回执。策略委托可撤销，子代理不能自授权。源清理由实际 owner coordinator 或认证用户执行；Session 导航和输入的 operationId 都不是授权。原生/preset 隐藏工具时按不可用处理，不绕过。
 
-**ticket↔worktree 看 binding，不看 assignment/execution**：binding 由 delegate 写、worktree 读/更新；assignment 只写 child↔ticket 权限；已移除的 execute 从未包含 cwd/bindingId。0.7.1 的 native-observed execution fact 只回答“这个 native child 最近一次观测到的生命周期”，**不是** binding；读取时工作树/lane 关联已明确标 `observed`/`inferred`。
+**ticket↔worktree 看 binding，不看 assignment/execution**：binding 由 opt-in delegate 写、worktree 读/更新；assignment 只写 child↔ticket 权限；已移除的 execute 从未包含 cwd/bindingId。0.7.1 的 native-observed execution fact 只回答“这个 native child 最近一次观测到的生命周期”，**不是** binding；读取时工作树/lane 关联已明确标 `observed`/`inferred`。
 
-0.7.1 固定工具面仍是八项（controls、record、window、resource、assign、history、worktree、delegate）+ 条件 `mattpocock_audit`；客户端共九个 wire key。历史 0.6.0 发行版的九个固定工具（含 `mattpocock_execute`）记录保留为历史。C 已实施但不新增工具/Remote 方法；强绑定写入口仍只有 delegate。
+0.8.0 默认工具面是七项（controls、record、window、resource、assign、history、worktree）+ 条件 `mattpocock_audit`；`mattpocock_delegate` 是显式 `delegate: true` 的可选第八项。客户端仍声明九个 wire key，供 opt-in delegate 与历史卡片；历史 0.6.0 发行版的九个固定工具（含 `mattpocock_execute`）记录保留为历史。C 已实施但不新增工具/Remote 方法；强绑定写入口仍只有 delegate。
 
 ## 7. 通知与工程部署
 

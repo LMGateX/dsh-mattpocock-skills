@@ -8,11 +8,11 @@ import { caller, mountedFixture, operator, policy, sdk, signal } from './fixture
 // an explicit null, and every rejection must name the accepted values or the fix.
 
 const FIXED_TOOLS = ['mattpocock_controls', 'mattpocock_record', 'mattpocock_window',
-  'mattpocock_resource', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree',
-  'mattpocock_delegate']
+  'mattpocock_resource', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree']
+const OPT_IN_TOOLS = ['mattpocock_delegate']
 
-async function readyMounted(t) {
-  const f = await mountedFixture(t)
+async function readyMounted(t, options) {
+  const f = await mountedFixture(t, options)
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   f.ctx.tools.register(sdk.defineTool({ name: 'send_message', description: 'mechanical native fixture',
     parameters: { agent_id: { type: 'string', required: true }, message: { type: 'string', required: true } },
@@ -23,20 +23,32 @@ async function readyMounted(t) {
 
 const text = result => JSON.stringify([result.error?.message ?? null, result.content ?? null])
 
-test('the model surface registers eight fixed instruments, no execute wrapper, and audit only when enabled', async t => {
+test('the default model surface registers seven fixed instruments; delegate is opt-in and audit stays conditional', async t => {
   const f = await mountedFixture(t)
   for (const name of FIXED_TOOLS) assert.ok(f.ctx.tools.get(name), name + ' must be registered')
-  assert.equal(FIXED_TOOLS.length, 8)
+  assert.equal(FIXED_TOOLS.length, 7)
+  for (const name of OPT_IN_TOOLS) assert.equal(f.ctx.tools.get(name), undefined, name + ' is opt-in and must stay unregistered by default')
   assert.equal(f.ctx.tools.get('mattpocock_execute'), undefined, 'execute is retired and must not be a model tool')
   assert.equal(f.ctx.tools.get('mattpocock_audit'), undefined, 'audit is conditional and stays off by default')
   assert.equal(f.ctx.tools.get('mattpocock_execute', f.root), undefined)
   const visible = f.ctx.tools.schemas(f.root).map(row => row.name)
   assert.equal(visible.includes('mattpocock_execute'), false)
   assert.deepEqual(visible.filter(name => name.startsWith('mattpocock_')).sort(), [...FIXED_TOOLS].sort())
+
+  const opted = await mountedFixture(t, { delegate: true })
+  for (const name of OPT_IN_TOOLS) assert.ok(opted.ctx.tools.get(name), name + ' must be registered when opted in')
+  const optedVisible = opted.ctx.tools.schemas(opted.root).map(row => row.name)
+  assert.deepEqual(optedVisible.filter(name => name.startsWith('mattpocock_')).sort(), [...FIXED_TOOLS, ...OPT_IN_TOOLS].sort())
+})
+
+test('delegate config is opt-in and defaults off', async () => {
+  const { Config } = await import('../src/index.ts')
+  assert.equal(Config({}).delegate, false)
+  assert.equal(Config({ delegate: true }).delegate, true)
 })
 
 test('delegate is described as binding-first creation, not a general dispatcher', async t => {
-  const f = await mountedFixture(t)
+  const f = await mountedFixture(t, { delegate: true })
   const description = f.ctx.tools.get('mattpocock_delegate').description
   assert.match(description, /Binding-first creation/)
   assert.match(description, /ticket↔worktree binding/)
@@ -58,7 +70,7 @@ test('an assignment grant accepts an omitted workflowId and omitted ticketIds', 
 })
 
 test('model-facing rejections name the accepted values', async t => {
-  const f = await readyMounted(t)
+  const f = await readyMounted(t, { delegate: true })
   const provider = await f.execute('mattpocock_delegate', { request: { description: 'x', prompt: 'y', provider: 'bogus' } })
   assert.equal(provider.isError, true)
   assert.match(text(provider), /accepted provider values: spawn, fork/)

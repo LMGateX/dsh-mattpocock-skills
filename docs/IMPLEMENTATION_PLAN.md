@@ -22,7 +22,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## 原生派发优先与 execute 退役（2026-11-03；B/D/E 已完成，v0.7.0 已发布；C 已于 0.7.1 完成并发布）
 
-已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面仍是八个固定工具 + 条件 `mattpocock_audit`（客户端九个 wire key），native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成：owner runtime document 增加 `nativeExecutions`，快照给出 coordinator-only 的 activity/worktree/lane 读取投影，工作树观测行派生 `nativeChildren`；不新增模型工具、Remote 方法、存储域或强绑定写入口。0.7.1 制品已构建并精确验证（471,954 bytes，sha256 `326a4343794609baae07b36108b2096e4cc8a6633d11d127f4caded44ee1ed70`，180 成员，源提交 `b8fe19e`），并已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` 指向 docs 验证提交 `770b0e7`）。0.7.0 制品（463,589 bytes，sha256 `cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1`，178 成员，源提交 `d2dd86e`）也已发布（tag `v0.7.0` -> `ea08bdd`）。两者均未安装到本机 DSH/Profile。
+已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面为七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_delegate` 在 0.8.0 改为 `delegate: true` 显式 opt-in 的可选第八项（客户端仍九个 wire key，供 opt-in/历史卡片）。native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成：owner runtime document 增加 `nativeExecutions`，快照给出 coordinator-only 的 activity/worktree/lane 读取投影，工作树观测行派生 `nativeChildren`；不新增模型工具、Remote 方法、存储域或强绑定写入口。0.7.1 制品已构建并精确验证（471,954 bytes，sha256 `326a4343794609baae07b36108b2096e4cc8a6633d11d127f4caded44ee1ed70`，180 成员，源提交 `b8fe19e`），并已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` 指向 docs 验证提交 `770b0e7`）。0.7.0 制品（463,589 bytes，sha256 `cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1`，178 成员，源提交 `d2dd86e`）也已发布（tag `v0.7.0` -> `ea08bdd`）。两者均未安装到本机 DSH/Profile。
 
 | 阶段 | 内容 | 门禁 |
 |---|---|---|
@@ -31,8 +31,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | C 原生观察补齐（完成，0.7.1） | 从 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 记 `native-observed` 执行事实；从原生 child 初始 cwd + `create_worktree` 做读取时观察关联（worktree=observed，lane=inferred），工作树观测行派生 `nativeChildren`；保持 S/结局/通知；不写强 binding、不替换 delegate、不新增工具/Remote。详细见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) | 观察事实来源正确；无重复派发；无新模型工具；关联不冒充强 binding；binding 读写/历史回归；完整根套件 0 失败 |
 | D delegate 定位与验收（完成） | 默认指导改 native-first；delegate 明确为 binding-first creation（只在需要 ticket↔tree 强绑定或持久意图/幂等时使用）；更新 Host 模型描述、CONTROLS、WORKTREE_BINDINGS/OBSERVATION 与工具卡；方案 A 保留 delegate，不在本轮退役 | 文档/描述一致；普通 lane 不会被引导去用 delegate；强绑定成功/失败/取消/acceptance 语义不变；prepared worktree + workflow/ticket binding/assign 回归 |
 | E 验证与发布（源码、制品与发布完成；本机安装未授权） | 严格构建、生成物一致、包清单、根套件、模型契约、PTC、无凭据装载；补 delegate 强绑定与 native 无绑定回归；VERIFICATION 追加记录；已 push `main`、tag `v0.7.0` 并创建 GitHub Release；本机安装另行决定 | 不把源码/内存 fixture 当发行包或当前 GUI；不改历史验证数字；强 binding 可核验；clean-source prepack 与精确 tarball 通过 |
+| F delegate 默认禁用（0.8.0） | 插件 Config 增加 `delegate`（默认 false）；`mountHost` 仅在显式 opt-in 时注册 `mattpocock_delegate`；保留实现、历史 binding 与客户端历史卡片；更新 DESIGN/NATIVE/CONTROLS/README/验证说明 | 默认模型面 7 + 条件 audit；opt-in 后 8 + audit；native + assign 单 child 回归不变；无新增工具/Remote/存储域；完整套件 0 失败 |
 
-A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C 已在 0.7.1 完成，观察关联与执行事实均为读取/运行事实，不是新派发路径或强绑定。`tests/model-contract.test.mjs` 已断言工具面无 `mattpocock_execute`、固定八项 + 条件 audit；旧 execute 测试已改写为 native/assign/delegate 回归，不能把旧测试通过当成新工具面已验收。D 不授权退役 delegate；若未来要退役，必须先有等价强绑定写入口并单独更新 DESIGN。
+A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C 已在 0.7.1 完成，观察关联与执行事实均为读取/运行事实，不是新派发路径或强绑定。0.8.0 追加 F：delegate 默认不注册，只有 `delegate: true` 才保留可选绑定式创建。`tests/model-contract.test.mjs` 现已断言默认无 `mattpocock_execute`、默认七项 + 条件 audit，以及 opt-in 后的第八项 delegate。旧 execute 测试已改写为 native/assign/delegate 回归，不能把旧测试通过当成新工具面已验收。D 不授权自动启用 delegate；若未来要删除实现，必须先有等价强绑定设计并单独更新 DESIGN。
 
 ### 0.7.1 C 实施与验证（2026-11-03，隔离工作树内完成；已发布；未安装）
 
@@ -57,7 +58,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 | 首次目录能力与可信技术授权 | [宿主补丁交付](<../host-patches/README.md>)、[宿主接口](<HOST_INTEGRATION.md>) |
 | 持久意图、实际绑定、discarded/cleaned 与源 checkpoint/旧版本删除 | [工作树绑定](<WORKTREE_BINDINGS.md>) |
 | 历史副本、主动查询、三源域整理及非原子部分结果 | [历史核心](<HISTORY_CORE.md>) |
-| 九项模型工具（当时；0.7.0 已退役 execute，现为八项固定 + 条件 audit）、客户端历史与源清理操作 | [中文使用指南](<../CONTROLS.md#6-工具与实际权限>) |
+| 默认七项模型工具 + opt-in delegate + 条件 audit（0.7.0 已退役 execute）、客户端历史与源清理操作 | [中文使用指南](<../CONTROLS.md#6-工具与实际权限>) |
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 

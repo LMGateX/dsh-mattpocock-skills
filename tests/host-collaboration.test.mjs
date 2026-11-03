@@ -84,7 +84,7 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
     async created() {}, async observe(event) { events.push(event) }, async preStep() { return [owned] },
     async postExecute() { return [owned] }, context() { return '' }, async dispose() { events.push({ kind: 'runtime-dispose' }) }, ...runtimeExtras,
   }
-  const mounted = await api.mountHost(ctx, { createRuntime: async ports => { factorySetup?.(ports, runtime, ctx, f.owner); return runtime } })
+  const mounted = await api.mountHost(ctx, { delegate: runtimeExtras.delegate !== undefined, createRuntime: async ports => { factorySetup?.(ports, runtime, ctx, f.owner); return runtime } })
   const gateway = new sdk.TypertGatewayService(ctx, {})
   t.after(async () => { await mounted.dispose(); await domainFacility.closeAll() })
   const invoke = (method, args = {}, peer = operator) => gateway.invoke({ namespace: 'mattpocockControls', method, args, peer, signal: signal() })

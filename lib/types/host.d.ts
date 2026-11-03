@@ -255,6 +255,8 @@ export interface HostPorts {
 }
 export interface HostOptions {
     createRuntime(ports: HostPorts): Promise<RuntimeFacade>;
+    /** Opt in to the binding-first delegate creation tool; omitted means disabled. */
+    readonly delegate?: boolean;
     /** Notified after a saved policy change so derived caches can be refreshed. */
     readonly onPolicyChanged?: () => void;
     /** Explicit trusted launch configuration; not a Remote/GUI/model path. */

@@ -1,13 +1,13 @@
 # 原生派发优先与绑定式创建
 
-> **Status:** 所有者 2026-11-03 认可方案 A（普通 lane native-first，强绑定 lane 用 delegate）。B/D/E 已在 0.7.0 源码线实施：模型面不再注册 `mattpocock_execute`，普通派发为原生 `subagent`/`subagent_fork`/`send_message`，delegate 为绑定式创建。C（原生观察的读取时关联/账本补齐）已在 0.7.1 源码线实施：owner runtime 文档保存 native-observed 执行事实，读取时给出 activity、observed worktree 与 inferred lane，并为工作树观测派生 `nativeChildren`；不新增模型工具、Remote 方法或强绑定写入口。详细规格见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>)，结果见 [VERIFICATION.md](<VERIFICATION.md>)。0.7.0 制品已构建、精确验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；制品源提交 `d2dd86e`）；0.7.1 也已完成验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` 指向 docs 验证提交 `770b0e7`；制品源提交 `b8fe19e`）。本机 DSH/Profile 仍未安装。
+> **Status:** 所有者 2026-11-03 认可方案 A（普通 lane native-first，强绑定 lane 用 delegate）。B/D/E 已在 0.7.0 源码线实施：模型面不再注册 `mattpocock_execute`，普通派发为原生 `subagent`/`subagent_fork`/`send_message`；C（原生观察的读取时关联/账本补齐）已在 0.7.1 源码线实施：owner runtime 文档保存 native-observed 执行事实，读取时给出 activity、observed worktree 与 inferred lane，并为工作树观测派生 `nativeChildren`；不新增模型工具、Remote 方法或强绑定写入口。0.8.0 起 delegate 功能保留但**默认不注册**，只有 profile 显式 `delegate: true` 才作为可选第八项启用。详细规格见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>)，结果见 [VERIFICATION.md](<VERIFICATION.md>)。0.7.0 制品已构建、精确验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；制品源提交 `d2dd86e`）；0.7.1 也已完成验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` 指向 docs 验证提交 `770b0e7`；制品源提交 `b8fe19e`）。本机 DSH/Profile 仍未安装。
 > 公开资料边界：本页只记录设计与公开代码事实；本地实测以聚合计数出现，不发布原始会话、日志、路径或用户内容。
 
 ## 1. 决策摘要
 
 - **普通无绑定 lane 的派发属于宿主。** 普通 child 由模型直接调用宿主 `subagent` / `subagent_fork` 创建，后续用 `send_message` 续聊；工作树由宿主 `create_worktree` 创建，首次 child cwd 由原生 `subagent` 的 `cwd` 传入。插件不再提供模型可见的通用派发包装。
 - **`mattpocock_execute` 退役。** 不再作为派发工具注册或宣传。它记的是 execution fact / lease，不提供 cwd/worktree；S 已按宿主 live `Agent.status` 计数，lease 仅作审计；其“记录执行事实”的模型可见描述与实际原生派发不一致，已在一次本地实测中造成 15 个额外 child（重复或补记派发）与 13 条重复消息。迁移期若保留兼容别名，最多保留一个 minor 版本，且只能拒绝并指向原生替代，绝不再次派发；目标版本删除该工具及 `executeManaged`/`executeNative` 包装路径。
-- **`mattpocock_delegate` 保留为绑定式创建（binding-first creation）。** 它不是默认派发路径；仅当需要可核验的 ticket↔worktree 强绑定，或需要其持久意图/幂等/创建前 scope 时使用：先持久化创建意图，再以准备的工作树为初始 cwd（省略则继承父 cwd）创建 continuable child，核对实际 `child/parent/cwd` header，写入 binding（task/ticketIds），并 assign 票范围。普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`，不需要 delegate。
+- **`mattpocock_delegate` 保留为可配置的绑定式创建（binding-first creation），默认不注册。** 只有 profile 显式 `delegate: true` 时才启用；它不是默认派发路径，仅当需要可核验的 ticket↔worktree 强绑定，或需要其持久意图/幂等/创建前 scope 时使用：先持久化创建意图，再以准备的工作树为初始 cwd（省略则继承父 cwd）创建 continuable child，核对实际 `child/parent/cwd` header，写入 binding（task/ticketIds），并 assign 票范围。普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`，不需要 delegate。
 - **强绑定、观察、分配是三件事。** `mattpocock_delegate` 是当前唯一的 binding 创建入口；`mattpocock_worktree` 读取/更新 binding，并用 `update-observation` 处置树观测（观测本身看注入快照）；`mattpocock_assign` 只写 child↔ticket 权限。原生 `create_worktree` 观测只记录“谁建了哪棵树”，不会自动写一条 child↔tree 强绑定；读取时的关联必须标为 observed/inferred，不能冒充 binding。
 - **执行事实来自观察（C 已于 0.7.1 实施）。** 原生 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 是程序事实来源；owner runtime 文档按 child session 保存 `nativeExecutions` 事实（`executionId = sessionId`），不要求模型补记，也不把模型文字当回执。S 继续按宿主 live `Agent.status` 计数；普通路径不以 lease 为前提。读取时 worktree 关联只在初始 cwd 精确匹配当前 `create_worktree` 观测时标 `observed`，lane 从 assignment/binding 推导标 `inferred`；它们不是强 binding。0.7.0 只有 S/结局/通知与 worktree observation；0.7.1 补齐持久执行事实与读取时关联。
 - **旧宿主按 capability 兼容。** 没有原生 cwd/创建 seam 的宿主仍使用随包兼容提供者或明确拒绝；`host-patches/` 与 startup cwd 设置保留为旧宿主路径，不构成保留 execute 的理由。
@@ -94,7 +94,7 @@
 | 原生 `subagent` / `subagent_fork` / `send_message` | **默认派发/续聊** | 宿主公开能力；插件观察 | — |
 | 原生 `create_worktree` / `working_directory` | **默认工作树/cwd** | 宿主公开能力；插件观察建树 | — |
 
-当前 0.7.1 工具面仍是 **八个固定工具 + 条件 `mattpocock_audit`**（客户端共九个 wire key）；历史 0.6.0 发行版是九个固定工具，含 execute。delegate 保留，因此不把工具数进一步降到七个；未来若要退役 delegate，必须先有等价的强绑定写入口并单独更新 DESIGN。C 不新增工具或 Remote 方法。
+当前 0.8.0 默认工具面是 **七个固定工具 + 条件 `mattpocock_audit`**；`mattpocock_delegate` 是显式 `delegate: true` 的可选第八项，客户端仍共九个 wire key（opt-in/历史卡片）。历史 0.6.0 发行版是九个固定工具，含 execute。delegate 实现保留，默认不注册；未来若要删除实现，必须先有等价强绑定写入口并单独更新 DESIGN。C 不新增工具或 Remote 方法。
 
 ## 4. 目标流程
 
@@ -178,8 +178,8 @@ create_worktree（原生；父代理先准备好树）
 - **startup cwd 设置**：保留为旧宿主/兼容提供者路径；正常原生 `subagent({cwd})` 不经过该设置，也不应被它阻断。delegate 在当前宿主使用原生 cwd seam；该设置只作为旧宿主 fallback。
 - **send_message**：移除包装前必须验证 `additionalContexts` 与 `concludeTurn` 在原生工具管线中仍被正确处理；若插件有专属 adjacency 逻辑，先移到 `postExecute`。
 - **执行事实**：移除包装不等于放弃事实；用 `native-observed` 记录，不以模型文字或空 lease 冒充程序回执。
-- **delegate 去留**：方案 A 保留 delegate 为强 binding 创建入口；C 的 observation 关联不是替代品。若未来要退役 delegate，必须先接受一个等价的强绑定写入口（例如显式 post-create bind），并单独更新 DESIGN；不能在没有替代时先删 delegate，丢失创建前 scope 与持久意图。
-- **工具计数**：0.7.1 仍是八个固定工具 + 条件 audit（客户端九个 wire key）；0.6.0 及更早发行版的九个固定工具记录保留为历史。README/CONTROLS/工具卡按当前实际注册描述。C 只增加 runtime 事实/读取投影，不增加工具。
+- **delegate 去留**：方案 A 保留 delegate 实现为可选的强 binding 创建入口，0.8.0 默认不注册；C 的 observation 关联不是替代品。若未来要删除实现，必须先接受一个等价的强绑定写入口（例如显式 post-create bind），并单独更新 DESIGN；不能在没有替代时先删 delegate，丢失创建前 scope 与持久意图。
+- **工具计数**：0.8.0 默认是七个固定工具 + 条件 audit；delegate 仅在 `delegate: true` 时作为可选第八项注册。客户端九个 wire key 保留给 opt-in/历史卡片。0.6.0 及更早发行版的九个固定工具记录保留为历史。README/CONTROLS/工具卡按当前实际注册描述。C 只增加 runtime 事实/读取投影，不增加工具。
 - **安装/发布**：本页不授权安装、发布、Profile 修改或服务重启；这些仍按 DESIGN/VERIFICATION 的独立门禁。
 
 ## 7. 文档索引
@@ -193,9 +193,9 @@ create_worktree（原生；父代理先准备好树）
 | [PTC_HOOK_SEMANTICS.md](<PTC_HOOK_SEMANTICS.md>) | PTC 嵌套路径与“观察而非包装”的目标语义 |
 | [ADAPTER_SCOPE.md](<ADAPTER_SCOPE.md>) | 薄适配边界：不提供通用子代理调度 |
 | [STARTUP_CWD_SUPPORT.md](<STARTUP_CWD_SUPPORT.md>) | 旧宿主 cwd 设置/兼容提供者的范围 |
-| [WORKTREE_BINDINGS.md](<WORKTREE_BINDINGS.md>) | delegate 的强绑定协议与 native-first 观察的边界 |
+| [WORKTREE_BINDINGS.md](<WORKTREE_BINDINGS.md>) | opt-in delegate 的强绑定协议与 native-first 观察的边界 |
 | [WORKTREE_OBSERVATION.md](<WORKTREE_OBSERVATION.md>) | 原生建树观测与 child↔tree 读取时关联的后续 |
 | [CONTINUABLE_WORKSPACES.md](<CONTINUABLE_WORKSPACES.md>) | 历史研究；顶部状态说明原生 seam 已交付 |
 | [CONSUMPTION.md](<CONSUMPTION.md>) | 注入协议：执行事实来自原生观察；execute 已在 0.7.0 移除 |
-| [INSTRUMENT_TOOL_CARDS.md](<INSTRUMENT_TOOL_CARDS.md>) | 0.6.0 九项历史与 0.7.0 八项固定 + 条件 audit 的工具卡说明 |
+| [INSTRUMENT_TOOL_CARDS.md](<INSTRUMENT_TOOL_CARDS.md>) | 0.6.0 九项历史与 0.8.0 默认七项 + opt-in delegate + 条件 audit 的工具卡说明 |
 | README（[en](<../README.md>)、[zh-CN](<../README.zh-CN.md>)） | 设计更新提示，不把未实现目标说成当前行为 |

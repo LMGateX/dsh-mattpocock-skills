@@ -3,7 +3,7 @@
 > 状态：**源码已实施（2026-10-13），隔离工作树内机械验收通过；未安装到本机 DSH/Profile，也未发布**。本轮实现只覆盖原生 `create_worktree` 事件观测，实施范围、覆盖边界与门禁结果见第 11 节。
 > 公开资料边界：本文引用的本机会话存储抽样与 SDK 安装产物仅作本地核对，不随公开仓库分发，也不充当公共原始证明；公开证据范围见[公开验证说明](<VERIFICATION.md>)。
 
-> 2026-11-03 C 阶段（0.7.1 已完成）：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联。观测行新增 `nativeChildren`（`created-tree` / `initial-cwd`，均标 `observed`），runtime 快照新增 `nativeExecutions` 与 `worktree`/`lane` 读取投影（worktree 标 `observed`，lane 标 `inferred`）。这只是读取时关联，不写 delegate 风格的强 binding，也不替代 delegate；delegate 仍是唯一强绑定写入口；`mattpocock_execute` 已在 0.7.0 移除，C 不新增模型工具或 Remote 方法。详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 C 阶段（0.7.1 已完成）：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联。观测行新增 `nativeChildren`（`created-tree` / `initial-cwd`，均标 `observed`），runtime 快照新增 `nativeExecutions` 与 `worktree`/`lane` 读取投影（worktree 标 `observed`，lane 标 `inferred`）。这只是读取时关联，不写 delegate 风格的强 binding，也不替代 delegate；delegate 仍是唯一强绑定写入口，但 0.8.0 默认不注册，只有显式 `delegate: true` 才启用；`mattpocock_execute` 已在 0.7.0 移除，C 不新增模型工具或 Remote 方法。详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 ## 0. 目标与非目标
 

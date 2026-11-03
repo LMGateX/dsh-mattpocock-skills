@@ -189,7 +189,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
 }
 
 // Installed SDK registries + actual mountHost/RuntimeFacade composition. No GUI/profile boot.
-export async function mountedFixture(t, { futureNativeActivityKnown = false, seedUnits = new Map(), sessionLogs = new Map(), configureBeforeMount, runtimeCreated } = {}) {
+export async function mountedFixture(t, { futureNativeActivityKnown = false, delegate = false, seedUnits = new Map(), sessionLogs = new Map(), configureBeforeMount, runtimeCreated } = {}) {
   const ctx = new sdk.Context(), agents = new Map(), nativeLive = new Set()
   const root = actualAgent('root'), child = actualAgent('child', { parent: 'root', managed: true })
   agents.set(root.id, root); agents.set(child.id, child)
@@ -229,7 +229,7 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, see
       return [...nativeLive].map(id => ({ kind: 'child', id, mode: 'continuable', label: 'fixture-live', activity: 'running', hasChildren: false }))
     } })
   }
-  const mounted = await host.mountHost(ctx, { async createRuntime(ports) {
+  const mounted = await host.mountHost(ctx, { delegate, async createRuntime(ports) {
     const openRuntime = ports.openRuntimeStorage.bind(ports)
     ports.openRuntimeStorage = async parse => { runtimeStorage = await openRuntime(parse); return runtimeStorage }
     // Only nativeActivity is simulated here; nativeSubagentActivity stays the host counter

@@ -1,6 +1,6 @@
 # 原生执行事实与读取时关联（C 阶段）
 
-> **Status:** 2026-11-03 设计增量；**0.7.1 已实施、完成机械验证并发布**（tag `v0.7.1` -> `770b0e7`，制品源 `b8fe19e`；未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。**
+> **Status:** 2026-11-03 设计增量；**0.7.1 已实施、完成机械验证并发布**（tag `v0.7.1` -> `770b0e7`，制品源 `b8fe19e`；未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。** 0.8.0 只将 delegate 默认关闭（opt-in），C 事实/关联语义不变。
 > 公开资料边界：只记录公开事件、合成测试与聚合结果；不发布原始会话、Profile 或本机路径。
 
 ## 0. 目标与非目标
@@ -137,7 +137,7 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 2. 重复事件/热重载不产生第二行、不重复通知；没有 end 的 disposed 保持 `outcome: null`。
 3. child 初始 cwd 精确匹配 observation path 时 `worktree.source === 'observed'`；仅 assignment/binding 的 lane 是 `source: 'inferred'`；不写强 binding，binding 行数不变。
 4. `nativeChildren` 区分 `initial-cwd` 与 `created-tree`；路径不同不关联；不声称目录被使用。
-5. S、nativeStops、owner 通知、worktree binding/observation、history 回归；模型工具面仍是八个固定 + 条件 audit。
+5. S、nativeStops、owner 通知、worktree binding/observation、history 回归；默认模型工具面是七个固定 + 条件 audit，delegate 仅在显式 `delegate: true` 时作为可选第八项。
 6. 旧 runtime document 可解析；观察失败不改变原生事件结果；coordinator 以外不返回执行事实；管理关闭不新增/更新事实且已有行仍可读，重新启用后恢复写入。
 7. clean-source prepack、精确 tarball、完整测试与独立 verifier 通过；本轮不发布、不安装本机。
 

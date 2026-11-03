@@ -221,9 +221,10 @@ test('execution facts are coordinator-only and keep S, nativeStops and owner not
 test('C adds no model tool and no Remote method', async t => {
   const f = await mountedFixture(t)
   const visible = f.ctx.tools.schemas(f.root).map(row => row.name).filter(name => name.startsWith('mattpocock_')).sort()
-  assert.deepEqual(visible, ['mattpocock_assign', 'mattpocock_controls', 'mattpocock_delegate', 'mattpocock_history',
+  assert.deepEqual(visible, ['mattpocock_assign', 'mattpocock_controls', 'mattpocock_history',
     'mattpocock_record', 'mattpocock_resource', 'mattpocock_window', 'mattpocock_worktree'])
-  assert.equal(visible.length, 8)
+  assert.equal(visible.length, 7)
+  assert.equal(f.ctx.tools.get('mattpocock_delegate'), undefined, 'delegate is opt-in, not part of the default C surface')
   assert.equal(core.REMOTE_METHODS.length, 16)
   assert.equal(core.REMOTE_METHODS.includes('readNativeExecutions'), false)
 })

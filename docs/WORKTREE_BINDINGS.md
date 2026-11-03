@@ -2,7 +2,7 @@
 
 2026-10-06。用户认可的工作树绑定登记已实现于[绑定核心](<../src/controls/worktree-bindings.ts>)，并由 runtime / Host 的创建、读取、重核对和状态工具组合。本轮在初始登记协议之上增加源 checkpoint、稳定创建作者/摘要、定向旧版本删除及来源缺口说明，见第 8 节。主代理按任务约定自己创建、合并和清理 Git 工作树；本模块只保存关系和实际作者声明，不设置处置审批。仓库源码与安装部署分别进行。
 
-> 2026-11-03 方向，0.7.0 已实施：普通 native `subagent({cwd})` 路径不经过本绑定协议；`registerIntent → confirm` 是 `mattpocock_delegate` 的**强绑定路径**（binding-first creation），不再用可选 managed creation 概括其职责。binding 行带 task/ticketIds，`mattpocock_worktree` 读取/更新；`mattpocock_assign` 只写 child↔ticket 权限；`mattpocock_execute` 已移除。原生 `create_worktree` 观测不写强 binding；C 阶段（读取时关联，标 observed/inferred）仍待后续，本轮没有新增存储/账本。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 方向，0.7.0 已实施；0.8.0 起 delegate 默认不注册：普通 native `subagent({cwd})` 路径不经过本绑定协议；`registerIntent → confirm` 是 opt-in `mattpocock_delegate` 的**强绑定路径**（binding-first creation），不再用可选 managed creation 概括其职责。binding 行带 task/ticketIds，`mattpocock_worktree` 读取/更新；`mattpocock_assign` 只写 child↔ticket 权限；`mattpocock_execute` 已移除。原生 `create_worktree` 观测不写强 binding；C 阶段（读取时关联，标 observed/inferred）仍待后续，本轮没有新增存储/账本。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 ## 1. 职责与小 interface
 

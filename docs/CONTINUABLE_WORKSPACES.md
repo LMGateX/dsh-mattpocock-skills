@@ -6,7 +6,7 @@
 > 这是对 [worktree 总研究](<WORKTREE_ISOLATION.md>)的使用场景补充与优先级修正，不是已实现功能或已批准设计。
 > 本文区分上游明文、宿主源码事实与适配建议；没有新增真实模型工作流试验，也没有声称首次工作树绑定已经端到端实现。
 
-> **2026-11-03 状态更新：** 文中第 6 节的“首次 child cwd 宿主提案”已在当前宿主交付（`startActivation` + `SubagentStartRequest.cwd`；见 [DESIGN.md](<DESIGN.md>) 的 2026-10-09 节）。普通无绑定 lane 的设计目标已改为 native-first：原生 `create_worktree` + `subagent({cwd})`；插件的通用 dispatch 包装 `mattpocock_execute` 已在 0.7.0 移除，`mattpocock_delegate` 保留为强绑定创建（只有需要 ticket↔tree 时使用）。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成，不新增模型工具或强绑定写入口。本文保留为历史研究，不把旧提案当当前缺口；详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>) 与 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>)。
+> **2026-11-03 状态更新：** 文中第 6 节的“首次 child cwd 宿主提案”已在当前宿主交付（`startActivation` + `SubagentStartRequest.cwd`；见 [DESIGN.md](<DESIGN.md>) 的 2026-10-09 节）。普通无绑定 lane 的设计目标已改为 native-first：原生 `create_worktree` + `subagent({cwd})`；插件的通用 dispatch 包装 `mattpocock_execute` 已在 0.7.0 移除；`mattpocock_delegate` 保留强绑定创建实现，但 0.8.0 默认不注册，只有 profile `delegate: true` 时才作为可选工具启用。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成，不新增模型工具或强绑定写入口。本文保留为历史研究，不把旧提案当当前缺口；详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>) 与 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>)。
 
 ## 1. 结论与上一轮修正
 
