@@ -28,9 +28,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 <a id="bounded-tool-outputs"></a>
 
-## 插件模型工具输出减负（2026-11-04，源码/双轴通过；精确制品与发行门禁中）
+## 插件模型工具输出减负（2026-11-04，源码/双轴/精确制品与下载通过；已发布/未安装）
 
-接受范围与唯一详细契约见 [DESIGN](<DESIGN.md>) 和 [BOUNDED_TOOL_OUTPUTS](<BOUNDED_TOOL_OUTPUTS.md>)。先在本插件模型工具 Adapter 处理放大，不以任何 DSH spill/GC/PTC 改动或外部清理补丁为依赖。A/B/C/D 的隔离实现与复审修复已完成；E 的双宿主源码回归与固定 SHA 8ec081d 的双轴复核已通过；F 已完成，初始被拒候选原样封存，插件内两文件窄修复后重新固定源码并签收，从新源码构建的唯一 accepted 归档、独立严格验包及 1086 项精确矩阵（1080 pass、6 个已知 UI skip、0 fail，Manager 13/13）均通过，G 待远端发布与下载回验；目标版本 0.10.0。所有者已授权 push/tag/GitHub Release，暂不为本机安装。本段不复用旧版本测试计数作为新方案验收。
+接受范围与唯一详细契约见 [DESIGN](<DESIGN.md>) 和 [BOUNDED_TOOL_OUTPUTS](<BOUNDED_TOOL_OUTPUTS.md>)。先在本插件模型工具 Adapter 处理放大，不以任何 DSH spill/GC/PTC 改动或外部清理补丁为依赖。A/B/C/D 的隔离实现与复审修复已完成；E 的双宿主源码回归与固定 SHA 8ec081d 的双轴复核已通过；F 已完成，初始被拒候选原样封存，插件内两文件窄修复后重新固定源码并签收，从新源码构建的唯一 accepted 归档、独立严格验包及 1086 项精确矩阵（1080 pass、6 个已知 UI skip、0 fail，Manager 13/13）均通过，G 已完成非 force push、新 source tag/Release 与五资产逐字节及 strict tarball 下载回验，仍未安装本机；目标版本 0.10.0。所有者已授权 push/tag/GitHub Release，暂不为本机安装。本段不复用旧版本测试计数作为新方案验收。
 
 | 阶段 | 工作与交付 | 完成门禁 |
 |---|---|---|
@@ -40,7 +40,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | D mutation 与同类堵漏（源码与全工具面回归完成） | record/window/assign/worktree 小回执；controls/resource/history/delegate/audit 全工具面有界输出；保留内部完整结果/Remote | 实际成功写不因输出预算伪报失败；window ignored/generation；assign 无其他 owner 状态；policy 部分页不可回填；audit 独立注册也覆盖 |
 | E 契约/兼容与机械验收（源码与双轴复审完成） | 工具描述、schemaVersion 2、PTC 示例、旧工具卡、新 DTO 测试；300 次重复读；权限/故障/多语言/长 metadata/双版本回归 | 真实 typed value/render 均受限；内部通知、captureBusiness、FIFO 撤权、preStep/postExecute frontier 不退化；严格构建与完整根套件 0 失败，skip 明示 |
 | F 生成物与精确包（完成，S2 唯一精确制品与完整矩阵通过） | 同步 lib/声明/私有 Module allowlist；clean-source prepack、唯一 accepted 归档（被拒候选另记）、精确 tarball 验证；VERIFICATION 追加实际结果 | source/lib/包字节一致；未打本次补丁的受支持宿主公开契约通过；不把内存 fixture 当 GUI/部署，不改旧版本验收数字 |
-| G push / tag / GitHub Release（已授权，待实施） | 所有者已授权隔离环境中完成实施与发布；新版本目标 0.10.0，不覆盖既有版本；远端 refs/下载摘要核对 | 不 npm publish、不为本机安装，不改当前 Profile/SDK、不清理或重启；真实 GUI 现场安装另行决定 |
+| G push / tag / GitHub Release（完成，已发布与下载回验/未安装） | 所有者已授权隔离环境中完成实施与发布；新版本目标 0.10.0，不覆盖既有版本；远端 refs/下载摘要核对 | 不 npm publish、不为本机安装，不改当前 Profile/SDK、不清理或重启；真实 GUI 现场安装另行决定 |
 
 必要细则只在详细契约维护，本计划不复制 DTO 和 locator 规则。性能结论须分开记插件结果字节、投影成本、宿主 spill 文件与 Node heap/RSS；不能承诺旧文件自动消失或所有宿主内存问题都被解决。
 

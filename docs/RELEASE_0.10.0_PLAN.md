@@ -1,6 +1,6 @@
 # 0.10.0 发行准备与精确制品门禁
 
-> 状态：**阶段 3–4 已在主代理明确放行的 clean-source 8ec081d 完成；阶段 5 尚待远端写入与下载回验**。初始准备停止点及被拒候选记录保留，不作 accepted 证明。S2 源码双轴、prepack、唯一新制品 strict tarball、主代理独立验包与完整矩阵均 GREEN；后续仍须主代理明确授权具体 main 文档提交、source tag 与 Release，不自动安装本机。实际结果见 [VERIFICATION](<VERIFICATION.md>)。
+> 状态：**阶段 3–5 已完成；v0.10.0 已发布且五资产下载回验通过，未安装本机**。初始准备停止点及被拒候选记录保留，不作 accepted 证明。S2 源码双轴、prepack、唯一新制品 strict tarball、主代理独立验包与完整矩阵均 GREEN；主代理随后明确授权 M1 main/source tag/Release，非 force push 与新 Release、下载 5/5 逐字节及 strict tarball 回验实际通过。source/tag 固定 8ec081d，其后只补录文档结果，不重包、不移 tag，不自动安装本机。实际结果见 [VERIFICATION](<VERIFICATION.md>)。
 
 权威范围：[有界模型输出契约](<BOUNDED_TOOL_OUTPUTS.md>)、[设计](<DESIGN.md>)与[实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)；[0.9.0 验收](<VERIFICATION.md>)只作历史基线，不回填本版结果。版本目标 `0.10.0`，继承已发布的 `0.9.0`。
 
@@ -50,7 +50,7 @@
 6. [plugin-manager compatibility 测试](<../tests/plugin-manager-compatibility.test.mjs>) 的 before hook 还会打两个 synthetic upgrade 包；它们不是 accepted archive，须单独记作 fixture。没有 SDK 根的本轮准备测试会全部 skip，不构成 PluginManager 通过。
 7. 公开记录只保存脱敏计数、工具链、源 SHA 与精确包 identity；原始日志/会话/机器路径留在隔离目录，不作为公开 Release 资产。主代理追加本版验证，不改历史版本数字。
 
-## 5. 发布与下载回验（全部待执行）
+## 5. 发布与下载回验（已完成，source/tag 与五资产固定）
 
 - 仅在主代理明确确认候选和精确包门禁全部 GREEN 后进入远端写入；仓库固定为 `LMGateX/dsh-mattpocock-skills`。
 - 写入前读取 origin/main 和全部相关 refs/Release；确认 `S` 的 ancestry 与 main 新鲜度。新远端提交要先交集成方同步/复验，禁止 force push 或改写别人的分支。

@@ -32,7 +32,7 @@ This document is the authoritative implementation contract. A later implementati
 - **接口分层。** 模型结果使用 schemaVersion 2，明确迁移旧 snapshot 访问；内部完整结果、Remote、客户端完整编辑、通知/历史捕获、权限/CAS 与模型消费水位保持原语义。当前读不能先造全历史再裁剪；正文不会隐藏在 meta/errors 中。不提供无界 full 逃逸。
 - **保留真实义务。** 当前状态/回执保留 scope、适用修订、generation/ignored、partial/unknown、来源及续读定位。每页/片/重试复核当前权限；assigned 不因 detail 获得 owner 历史权限。policy 分页不是完整 save intent。
 - **范围收窄。** 仅在本次独立输出工作中收窄 2026-11-01 工具卡“不改变模型输出”的限制；旧卡片/宿主公开字段与历史交付记录不改写。2026-10-21 UI summary 不等于模型当前仪器，也不是本次修复已完成的证明。
-- **交付授权与状态（2026-11-04 更新）。** 所有者已授权由 subagents 在隔离环境实施、验收、push、tag 与 GitHub Release；目标版本 0.10.0，继承已发布 0.9.0 的事实边界修复。源码已实施，固定 clean-source SHA 8ec081d0375231278e151890aae51434d07bddca 已通过双宿主源码回归、Standards/Spec 双轴复审、唯一精确制品与完整 PluginManager 矩阵；远端发布/下载回验尚待，不从源码或制品通过推断当前 GUI 已生效。**不为本机安装**，不改当前 Profile/SDK、不清理存量 spill、不重启服务，npm publication 也不在授权内。
+- **交付授权与状态（2026-11-04 更新）。** 所有者已授权由 subagents 在隔离环境实施、验收、push、tag 与 GitHub Release；目标版本 0.10.0，继承已发布 0.9.0 的事实边界修复。源码已实施，固定 clean-source SHA 8ec081d0375231278e151890aae51434d07bddca 已通过双宿主源码回归、Standards/Spec 双轴复审、唯一精确制品与完整 PluginManager 矩阵；已发布 v0.10.0 并通过五资产下载回验，仍不从源码、制品或发布成功推断当前 GUI 已生效；未安装本机。**不为本机安装**，不改当前 Profile/SDK、不清理存量 spill、不重启服务，npm publication 也不在授权内。
 
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 

@@ -139,7 +139,10 @@
     "realPtcRunnerInvoked": false,
     "isolatedHeadlessManagerTested": true,
     "installedOnHost": false,
-    "guiTested": false
+    "guiTested": false,
+    "downloadVerifier": "passed",
+    "downloadAllFiveByteIdentical": true,
+    "githubAssetDigestsMatched": true
   },
   "rejectedCandidate": {
     "sourceCommit": "27fd924d474628eae30e79a9606976314f53ccf1",
@@ -151,9 +154,9 @@
     "reproduciblePayloadMatches": true
   },
   "boundaries": {
-    "noPush": true,
-    "noTag": true,
-    "noRelease": true,
+    "noPush": false,
+    "noTag": false,
+    "noRelease": false,
     "noNpmPublish": true,
     "noLocalInstall": true,
     "noSdkOrProfileModification": true,
@@ -166,12 +169,12 @@
     "noHeapLeakOrConstantColdReadClaim": true
   },
   "release": {
-    "status": "pending",
+    "status": "published",
     "tag": "v0.10.0",
     "intendedTagCommit": "8ec081d0375231278e151890aae51434d07bddca",
-    "tagObject": null,
-    "tagCommit": null,
-    "url": null,
+    "tagObject": "e466c12885a7f7bda3333df7f8f161827843cd8d",
+    "tagCommit": "8ec081d0375231278e151890aae51434d07bddca",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0",
     "sourceCommit": "8ec081d0375231278e151890aae51434d07bddca",
     "assets": [
       "lmgatex-dsh-mattpocock-skills-0.10.0.tgz",
@@ -180,6 +183,82 @@
       "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.source-commit",
       "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.pnpm-version"
     ],
-    "downloadVerified": false
-  }
+    "downloadVerified": true,
+    "id": 433201727,
+    "publishedAt": "2026-11-03T20:49:28Z",
+    "mainAtPublication": "b2456e97ddcafdd366deaf3243da440aad5dbbf4",
+    "assetMetadata": [
+      {
+        "id": 707045094,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.0.tgz",
+        "size": 500162,
+        "state": "uploaded",
+        "digest": "sha256:53bfd050d64f95f19045bd3ecb94d89057cdfde57e2df29e81a1476469f8d7f2",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.10.0/lmgatex-dsh-mattpocock-skills-0.10.0.tgz"
+      },
+      {
+        "id": 707045098,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.pnpm-version",
+        "size": 7,
+        "state": "uploaded",
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.10.0/lmgatex-dsh-mattpocock-skills-0.10.0.tgz.pnpm-version"
+      },
+      {
+        "id": 707045097,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.sha256",
+        "size": 107,
+        "state": "uploaded",
+        "digest": "sha256:a932f9840feb4b4fad2d0550bf15b84aa732af0eaf422b57b1b4336c0ceadf6a",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.10.0/lmgatex-dsh-mattpocock-skills-0.10.0.tgz.sha256"
+      },
+      {
+        "id": 707045099,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.size",
+        "size": 7,
+        "state": "uploaded",
+        "digest": "sha256:8f4196ee0bb64ef7baa877fac7e37aa22636ce55ba295f9e32e80e794100914a",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.10.0/lmgatex-dsh-mattpocock-skills-0.10.0.tgz.size"
+      },
+      {
+        "id": 707045093,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.source-commit",
+        "size": 41,
+        "state": "uploaded",
+        "digest": "sha256:ae312819597e992750c3a681bf1684c1414c21e3dff5e7686b64898365dc4148",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.10.0/lmgatex-dsh-mattpocock-skills-0.10.0.tgz.source-commit"
+      }
+    ],
+    "download": {
+      "allFiveByteIdentical": true,
+      "sha256": "53bfd050d64f95f19045bd3ecb94d89057cdfde57e2df29e81a1476469f8d7f2",
+      "bytes": 500162,
+      "source": {
+        "commit": "8ec081d0375231278e151890aae51434d07bddca",
+        "clean": true
+      },
+      "pnpm": "11.8.0",
+      "buildFiles": 80,
+      "members": {
+        "directories": 0,
+        "files": 184,
+        "symlinks": 0,
+        "expectedFiles": 184
+      },
+      "targets": 19,
+      "vendor": {
+        "channelSkillCounts": {
+          "beta": 27,
+          "stable": 27
+        },
+        "skillCount": 27,
+        "vendorFileCount": 85,
+        "vendorBytes": 296048,
+        "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8"
+      }
+    },
+    "acceptedAssetsUnchanged": true,
+    "rejectedAssetsUnchanged": true
+  },
+  "verificationCommit": "b2456e97ddcafdd366deaf3243da440aad5dbbf4"
 }
