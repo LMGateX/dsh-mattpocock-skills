@@ -63,10 +63,10 @@
 **强绑定路径（可选，默认不注册；只有 profile 设置 `delegate: true` 时才可用）**
 
 1. 先准备/创建树，再调用 `mattpocock_delegate`，传 `worktree`、`workflowId`、`ticketIds`、`operationId`。它在创建前持久化意图，以该树为请求初始 cwd 创建 child，核对实际 `child/parent/cwd` header（只作为来源值），创建 binding（task/ticketIds）并尝试 assignment。creation 被接受不等于 binding 或 assignment 已完成。
-2. 读取返回的 acceptance、actualChildSessionId、actualCwd、bindingId 与登记状态。持久意图不是已绑定证明；只有实际 header 核对后才报告 confirmed。
+2. 读取返回的 creation/binding/assignment、childId 与登记状态。持久意图不是已绑定证明；header 核对匹配只支持声明式 binding，不证明实际初始/当前目录。
 3. 省略 `worktree` 时仍会记录继承 cwd 的 binding，但它不是某棵专用树的强绑定；若 lane 之后自己用 `create_worktree` 建树，那棵树只进 observation，不会自动改写这条 binding。
 
-**当前失败后的安全操作：** 原生接受回执中的 childId 必须保留，不因 header/binding 失败改用 native 再创建同一任务。当前 confirm 失败会跳过 assign，同 operationId 回放不自动补票范围，reconcile 也只核对 binding；核验当前父子关系与权限后，可对已有 child 显式调用 `mattpocock_assign`。不确定是否创建/授权成功时先查原操作与真实 child，不凭请求中的 ticketIds 当授予证明。三种效果的结构化结果是后续待实施项；省略 worktree 也不让 header 变成实际初始目录证明。
+**当前失败后的安全操作：** 原生接受回执中的 childId 必须保留，不因 header/binding 失败改用 native 再创建同一任务。confirm 失败会跳过 assign，同 operationId 回放不自动补票范围，reconcile 也只核对 binding；核验当前父子关系与权限后，可对已有 child 显式调用 `mattpocock_assign`。不确定是否创建/授权成功时先查原操作与真实 child，不凭请求中的 ticketIds 当授予证明。0.9.0 已把 creation/binding/assignment 作为独立结果字段返回；重放可另带当前 `recovery`，但不重派、不隐式授权。省略 worktree 也不让 header 变成实际初始目录证明。
 
 delegate 的持久意图/幂等也适用于省略 `worktree` 的托管创建；本指南只展开强绑定场景。
 
