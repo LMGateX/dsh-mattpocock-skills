@@ -1,10 +1,10 @@
 # 仪器工具卡：原生折叠与可读输出
 
-> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。本页固定设计与实施计划；当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。0.7.0 源码线已移除 `mattpocock_execute`，当前为八个固定工具 + 条件 `mattpocock_audit`；本页保留设计与 0.6.0 实施记录。当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 1. 目标与范围
 
-当前九个固定工具（2026-11-03 设计退役 `mattpocock_execute` 后目标为八个；迁移期仍按九个实现。另含条件注册的 `mattpocock_audit`，当前共十个、目标九个）注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
+0.6.0 发行版有九个固定工具（0.7.0 已移除 `mattpocock_execute`，现为八个固定 + 条件 `mattpocock_audit`，客户端共九个 wire key）。这些工具注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
 
 - 默认折叠为一行短卡，保留“前面/后面的工具调用”可读性；
 - 展开时显示清晰的输入、输出、错误和原始记录；
@@ -63,11 +63,11 @@
 | `mattpocock_window` reserve | `reserve · W/T` |
 | `mattpocock_history` query kind=ticket | `query · ticket` |
 | `mattpocock_delegate` | `delegate · <description> · spawn` |
-| `mattpocock_execute`（退役中；旧会话只读） | `execute · subagent · W/T` |
+| `mattpocock_execute`（0.6.0 历史；0.7.0 已移除，旧会话只读） | `execute · subagent · W/T` |
 | 失败 | `read · failed: <reason>`（错误色） |
 | interrupted | `read · interrupted`（警告色） |
 
-2026-11-03 设计退役 `mattpocock_execute`；实现后新会话不再产生该卡片。旧会话/历史记录中的卡片保留只读显示，不因工具移除而删除。`mattpocock_delegate` 保留为强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
+2026-11-03 决策，0.7.0 已移除 `mattpocock_execute`；新会话不再产生该卡片。旧会话/历史记录中的卡片保留只读显示，不因工具移除而删除。`mattpocock_delegate` 保留为强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
 
 固定区块标签（输入/输出/错误/原始记录/来源记录）沿用插件现有中文；标题和 action/target 保留英文。
 

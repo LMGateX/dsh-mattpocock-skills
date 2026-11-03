@@ -20,19 +20,19 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 本阶段不修改 Host `output.render`、模型上下文、工具键、timeline/rightPanel 语义或原始记录字段。0.2.2-only 的 `headerAccessory` 暂不使用，以保持 0.2.1-alpha.1 兼容。
 
-## 原生派发优先与 execute 退役（2026-11-03，文档先行）
+## 原生派发优先与 execute 退役（2026-11-03；B/D/E 已完成，C 待后续）
 
-已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 退役。本阶段只固定设计与文档，不修改 `src/`、`lib/`、测试、包清单或当前 Profile/GUI；不宣称工具已移除。当前发行版仍注册九项固定工具（含 `mattpocock_execute`）。
+已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面是八个固定工具 + 条件 `mattpocock_audit`（客户端九个 wire key），native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）明确留待后续，本轮没有新增存储或账本。0.7.0 制品已构建并精确验证，但未安装到本机 DSH/Profile、未发布、未推送、未打标签。
 
 | 阶段 | 内容 | 门禁 |
 |---|---|---|
-| A 设计与文档 | DESIGN 新节；本计划；NATIVE_DISPATCH_FIRST；CONTROLS、HOST_INTEGRATION、PTC_HOOK_SEMANTICS、ADAPTER_SCOPE、STARTUP_CWD_SUPPORT、WORKTREE_BINDINGS/OBSERVATION、CONTINUABLE_WORKSPACES、CONSUMPTION、INSTRUMENT_TOOL_CARDS、README 的状态说明 | 文档间无“已移除/已生效”的越级声明；明示当前发行版仍注册 execute；delegate 的强 binding 创建入口职责写清 |
-| B 移除 execute | 不再注册 `mattpocock_execute`；删除/隔离 `executeManaged` 与 `executeNative` 包装路径；更新模型契约、consumption 注入句、client `OWN_TOOL_NAMES`/摘要/工具卡与工具计数；确认原生 `send_message` 的 `additionalContexts`/`concludeTurn` 由宿主处理 | 工具面断言；native `subagent`+`mattpocock_assign` 单 child 回归；native send 不重复；PTC 嵌套；完整根套件 |
-| C 原生观察补齐 | 从 `agent/created`、child header、`subagent/end` 记 `native-observed` 执行事实；从原生 child 初始 cwd + `create_worktree` 做读取时 lane 关联（标 observed/inferred）；保持 S/结局/通知；不写强 binding、不替换 delegate | 观察事实来源正确；无重复派发；无新模型工具；关联不冒充强 binding；binding 读写/历史回归 |
-| D delegate 定位与验收 | 默认指导改 native-first；delegate 明确为 binding-first creation（只在需要 ticket↔tree 强绑定或持久意图/幂等时使用）；更新 Host 模型描述、CONTROLS、WORKTREE_BINDINGS/OBSERVATION 与工具卡；方案 A 保留 delegate，不在本轮退役 | 文档/描述一致；普通 lane 不会被引导去用 delegate；强绑定成功/失败/取消/acceptance 语义不变 |
-| E 验证与发布 | 严格构建、生成物一致、包清单、根套件、模型契约、PTC、无凭据装载；补 delegate 强绑定与 native 无绑定回归；VERIFICATION 追加记录；发布/安装另行决定 | 不把源码/内存 fixture 当发行包或当前 GUI；不改历史验证数字；强 binding 可核验 |
+| A 设计与文档（完成） | DESIGN 新节；本计划；NATIVE_DISPATCH_FIRST；CONTROLS、HOST_INTEGRATION、PTC_HOOK_SEMANTICS、ADAPTER_SCOPE、STARTUP_CWD_SUPPORT、WORKTREE_BINDINGS/OBSERVATION、CONTINUABLE_WORKSPACES、CONSUMPTION、INSTRUMENT_TOOL_CARDS、README 的状态说明 | 文档间无“已移除/已生效”的越级声明；delegate 的强 binding 创建入口职责写清 |
+| B 移除 execute（完成） | 不再注册 `mattpocock_execute`；删除 `executeManaged` 与 `executeNative` 包装路径及未使用的嵌套派发 helper/types；更新模型契约、consumption 注入句、client `OWN_TOOL_NAMES`/摘要/工具卡与工具计数；原生 `send_message` 的 `additionalContexts`/`concludeTurn` 由宿主处理 | 工具面断言（无 execute，固定 8 + 条件 audit，客户端 9 key）；native `subagent`+`mattpocock_assign` 单 child 回归；native send 不重复；PTC 嵌套；完整根套件 0 失败 |
+| C 原生观察补齐（待后续，本轮未实施） | 从 `agent/created`、child header、`subagent/end` 记 `native-observed` 执行事实；从原生 child 初始 cwd + `create_worktree` 做读取时 lane 关联（标 observed/inferred）；保持 S/结局/通知；不写强 binding、不替换 delegate | 观察事实来源正确；无重复派发；无新模型工具；关联不冒充强 binding；binding 读写/历史回归 |
+| D delegate 定位与验收（完成） | 默认指导改 native-first；delegate 明确为 binding-first creation（只在需要 ticket↔tree 强绑定或持久意图/幂等时使用）；更新 Host 模型描述、CONTROLS、WORKTREE_BINDINGS/OBSERVATION 与工具卡；方案 A 保留 delegate，不在本轮退役 | 文档/描述一致；普通 lane 不会被引导去用 delegate；强绑定成功/失败/取消/acceptance 语义不变；prepared worktree + workflow/ticket binding/assign 回归 |
+| E 验证与发布（源码与制品准备完成；安装/发布未授权） | 严格构建、生成物一致、包清单、根套件、模型契约、PTC、无凭据装载；补 delegate 强绑定与 native 无绑定回归；VERIFICATION 追加记录；发布/安装另行决定 | 不把源码/内存 fixture 当发行包或当前 GUI；不改历史验证数字；强 binding 可核验；clean-source prepack 与精确 tarball 通过 |
 
-A 的文档变更本次完成；B–E 未开始。B 开始前，`tests/model-contract.test.mjs` 仍按当前工具面测试 `mattpocock_execute`；移除时必须同步改夹具，不能把旧测试通过当成新工具面已验收。D 不授权退役 delegate；若未来要退役，必须先有等价强绑定写入口并单独更新 DESIGN。
+A/B/D/E 已在 0.7.0 源码与制品准备中完成；C 仍待后续，本轮没有以读取时关联或新账本冒充 C 完成。`tests/model-contract.test.mjs` 已断言工具面无 `mattpocock_execute`、固定八项 + 条件 audit；旧 execute 测试已改写为 native/assign/delegate 回归，不能把旧测试通过当成新工具面已验收。D 不授权退役 delegate；若未来要退役，必须先有等价强绑定写入口并单独更新 DESIGN。
 
 ## 仪器读取后续优化（2026-10-21）
 
@@ -50,7 +50,7 @@ A 的文档变更本次完成；B–E 未开始。B 开始前，`tests/model-con
 | 首次目录能力与可信技术授权 | [宿主补丁交付](<../host-patches/README.md>)、[宿主接口](<HOST_INTEGRATION.md>) |
 | 持久意图、实际绑定、discarded/cleaned 与源 checkpoint/旧版本删除 | [工作树绑定](<WORKTREE_BINDINGS.md>) |
 | 历史副本、主动查询、三源域整理及非原子部分结果 | [历史核心](<HISTORY_CORE.md>) |
-| 九项模型工具（当时；2026-11-03 决策退役 execute 后目标为八项固定 + 条件 audit）、客户端历史与源清理操作 | [中文使用指南](<../CONTROLS.md#6-工具与实际权限>) |
+| 九项模型工具（当时；0.7.0 已退役 execute，现为八项固定 + 条件 audit）、客户端历史与源清理操作 | [中文使用指南](<../CONTROLS.md#6-工具与实际权限>) |
 
 源码实施不等于安装到当前 SDK/Profile/GUI；不授权发布、推送或历史模型 campaign。数据清理必须如实区分历史副本与源日志，不把隐藏当删除，也不以默认 TTL 破坏本 session 全工作树历史。最终能力与验证以本轮完成记录为准。
 

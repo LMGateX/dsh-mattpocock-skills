@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { fixture, mountedFixture, loadSDK, host, sdk, core, caller, operator, actualAgent, signal, deferred, policy, workflow, ticket } from './fixtures/runtime-host.mjs'
+import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 const rejectsCode = (promise, code) => assert.rejects(promise, error => error.code === code)
 
 async function ready(t, options = {}) {
@@ -8,12 +9,9 @@ async function ready(t, options = {}) {
   await f.apply('put-workflow', { value: workflow })
   return f
 }
-function nativeChild(f, id = 'new-child', parent = 'root') {
+async function nativeChild(f, id = 'new-child', parent = 'root') {
   const child = actualAgent(id, { parent, managed: true, cwd: '/native-original-cwd' })
-  f.setNative(async () => {
-    await f.created(child)
-    return { isError: false, value: { childId: child.id, message: 'delivered; released; slot=0' } }
-  })
+  await f.created(child)
   return child
 }
 
@@ -52,36 +50,39 @@ test('actual agent and operator author business updates; old child assignment na
   await rejectsCode(f.runtime.savePolicy(caller('root'), policy(), 1, signal()), 'access-denied')
 })
 
-test('future controlled native activity: new child gets actual assignment, null-workflow research shares root S with zero T', async t => {
+test('native subagent plus assign: ticketless research shares root S with zero T and never creates a second child', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 }) })
-  const first = nativeChild(f, 'research-child')
-  const r = await f.managed({ nativeTool: 'subagent_fork' })
-  assert.equal(r.outcome, 'success')
+  const before = [...f.agents.keys()]
+  const first = await nativeChild(f, 'research-child')
+  await f.assign(first.id, null, [])
+  assert.deepEqual([...f.agents.keys()], [...before, first.id], 'native creation plus assign creates exactly the one child')
   let child = await f.read(first.id)
   assert.deepEqual(child.records.scope, { kind: 'assigned', workflowId: null, ticketIds: [] })
   assert.deepEqual(child.records.workflows, [])
   assert.deepEqual(child.records.tickets, [])
   assert.equal(child.windows.T.used, 0)
-  const second = nativeChild(f, 'research-grandchild', first.id)
-  await f.managed({ id: first.id })
+  const second = await nativeChild(f, 'research-grandchild', first.id)
+  await f.assign(second.id, null, [], first.id)
   const root = await f.read()
   assert.equal(root.windows.S.used, 2)
   assert.equal(root.windows.T.used, 0)
-  assert(root.windows.executions.every(e => e.workflowId === null && e.localTicketId === null && e.ticketApplicable === false))
   assert.equal((await f.read(second.id)).instance.instrumentInstanceId, root.instance.instrumentInstanceId)
-  nativeChild(f, 'research-over-reference')
-  await f.managed()
-  assert.equal(f.nativeCalls.length, 3)
+  await nativeChild(f, 'research-over-reference')
+  await f.assign('research-over-reference', null, [])
+  assert.equal(f.agents.size, before.length + 3, 'assign never dispatches an additional child')
   assert.equal((await f.read()).windows.S.overcommitted, true)
+  assert.deepEqual((await f.read()).worktreeBindings, [], 'the native-only path writes no strong binding')
 })
 
-test('future controlled native activity: managed ticket assignment narrows new child permissions', async t => {
+test('native subagent plus assign narrows new child permissions without a second child', async t => {
   const f = await ready(t, { known: true })
   await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
   await f.apply('put-ticket', { localTicketId: 'B', value: ticket() })
   await f.window('reserve', 'A')
-  const child = nativeChild(f)
-  await f.managed({ workflowId: 'flow', localTicketId: 'A' })
+  const child = await nativeChild(f)
+  const afterNative = [...f.agents.keys()]
+  await f.assign(child.id, 'flow', ['A'])
+  assert.deepEqual([...f.agents.keys()], afterNative, 'assign reuses the actual direct child')
   const childView = await f.read(child.id)
   assert.deepEqual(childView.records.scope, { kind: 'assigned', workflowId: 'flow', ticketIds: ['A'] })
   assert.deepEqual(childView.records.tickets.map(t => t.localTicketId), ['A'])
@@ -90,69 +91,51 @@ test('future controlled native activity: managed ticket assignment narrows new c
 })
 
 
-test('future controlled native activity: only a disposed resident session releases S; idle/end/business text do not', async t => {
+test('only a disposed resident session releases S; idle/end/business text do not', async t => {
   const f = await ready(t, { known: true })
   for (const id of ['A', 'B', 'C']) await f.apply('put-ticket', { localTicketId: id, value: ticket() })
   await f.window('reserve', 'A'); await f.window('reserve', 'B')
-  const first = nativeChild(f, 'same-session')
-  await f.managed({ workflowId: 'flow', localTicketId: 'A' })
+  const first = await nativeChild(f, 'same-session')
+  await f.assign(first.id, 'flow', ['A'])
   await f.event(first, 'agent-status', { status: 'running' })
   await f.event(first, 'agent-status', { status: 'idle' })
   await f.event(first, 'subagent-end', { runId: 'ended', provider: 'spawn', local: true, stopReason: 'completed' })
   let root = await f.read()
-  assert.equal(root.windows.S.used, 1); assert.equal(root.windows.S.byState.running, 1)
+  assert.equal(root.windows.S.used, 1, 'Idle, end and business text never release a resident native session')
   await f.window('release', 'A', { generation: 1 }); await f.window('reserve', 'C')
   root = await f.read()
   assert.equal(root.windows.T.used, 2); assert.equal(root.windows.S.used, 1)
-  const replacement = nativeChild(f, first.id)
-  await f.managed({ workflowId: 'flow', localTicketId: 'B' })
+  const replacement = await nativeChild(f, first.id)
+  await f.assign(replacement.id, 'flow', ['B'])
   assert.notEqual(first, replacement)
-  // The host counts the one resident session, not the plugin's two lease generations.
+  // The host counts the one resident session, not plugin bookkeeping for its runs.
   assert.equal((await f.read()).windows.S.used, 1)
   await f.event(first)
   root = await f.read()
   assert.equal(root.windows.S.used, 1, 'a superseded run of a still-resident session is not a release')
-  assert.equal(root.windows.executions.at(-1).state, 'accepted')
   await f.event(replacement)
   root = await f.read()
   assert.equal(root.windows.S.used, 0); assert.equal(root.windows.T.used, 2)
-  nativeChild(f, 'refill')
-  await f.managed({ workflowId: 'flow', localTicketId: 'B' })
+  await nativeChild(f, 'refill')
+  await f.assign('refill', 'flow', ['B'])
   assert.equal((await f.read()).windows.S.used, 1)
   assert.equal((await f.read()).windows.S.countKnown, true)
 })
 
-test('future controlled native activity: output/message JSON and absent object proof retain unknown capacity', async t => {
-  const f = await fixture(t, { known: true, initialPolicy: policy() })
-  f.setNative(async () => {
-    // The host has a running child the plugin never received an object for; the JSON
-    // text claiming "released" is not an activity fact.
-    f.nativeLive.add('native-child-without-object-proof')
-    return { isError: false, value: { state: 'released', sessionId: 'old-child', receipt: { S: 0 } } }
-  })
-  await f.managed()
-  await f.runtime.observe({ kind: 'agent-disposed', sessionId: 'old-child' })
-  await f.event(f.agents.get('old-child'), 'subagent-end', { runId: 'json-released', provider: 'spawn', local: true, stopReason: 'released' })
-  const snap = await f.read()
-  assert.equal(snap.windows.S.used, 1, 'the native host count, not the release JSON, is authoritative')
-  assert.equal(snap.windows.S.countKnown, true)
-  assert.equal(snap.windows.executions[0].state, 'unknown')
-  assert.equal(snap.windows.S.available, 1)
-  await f.managed()
-  assert.equal(f.nativeCalls.length, 2)
-})
-
-test('unmanaged exact native object observations make knowledge unknown, never a guessed empty enumeration', async t => {
+test('unmanaged exact native object observations make knowledge unknown while native creation and assign still work', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy() })
   await f.event(f.agents.get('old-child'), 'agent-status', { status: 'running' })
-  const snap = await f.read()
+  let snap = await f.read()
   assert.equal(snap.windows.runtimeKnowledge.known, false)
   assert.equal(snap.windows.runtimeKnowledge.reason, 'unmanaged-native-execution-observed')
-  await f.managed()
-  assert.equal(f.nativeCalls.length, 1)
+  const child = await nativeChild(f)
+  await f.assign(child.id, null, [])
+  snap = await f.read()
+  assert.equal(snap.windows.S.used, 1, 'the host live count remains authoritative')
+  assert.equal(snap.windows.runtimeKnowledge.known, false)
 })
 
-test('actual installed host ports nativeActivity is false with actual objects: unknown S remains advisory while T works', async t => {
+test('actual installed host runs the native subagent directly; no execute wrapper reserves or duplicates it', async t => {
   const f = await mountedFixture(t)
   const actual = await f.mounted.ports.nativeActivity('root')
   assert.equal(actual.known, false)
@@ -170,12 +153,41 @@ test('actual installed host ports nativeActivity is false with actual objects: u
   let nativeCalls = 0
   f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'mechanical native', parameters: {},
     output: { schema: { type: 'null' }, render: () => [] }, async execute() { nativeCalls++; return null } }))
-  const r = await f.execute('mattpocock_execute', { request: { nativeTool: 'subagent', arguments: {}, workflowId: null, localTicketId: null } })
-  assert.equal(r.isError, false)
-  assert.equal(nativeCalls, 1)
+  assert.equal((await f.execute('subagent')).isError, false)
+  assert.equal(nativeCalls, 1, 'the host tool body ran once')
+  assert.equal(f.ctx.tools.get('mattpocock_execute'), undefined)
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.T.used, 1)
   assert.equal(snap.windows.runtimeKnowledge.known, false)
+})
+
+test('PTC nested native subagent dispatch is observed once and injects the current state', async t => {
+  const f = await mountedFixture(t, { futureNativeActivityKnown: true })
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  let nestedParent, created = 0
+  f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'mechanical PTC native target', parameters: {},
+    output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) {
+      nestedParent = exec.parent
+      created += 1
+      const child = actualAgent('ptc-native-child', { parent: 'root', managed: true }); child.status = 'running'
+      f.agents.set(child.id, child)
+      await f.runtime.created(caller(child.id), exec.signal, child)
+      return null
+    } }))
+  f.ctx.tools.register(sdk.defineTool({ name: 'ptc_outer', description: 'mechanical PTC outer tool', parameters: {},
+    output: { schema: { type: 'json' }, render: () => [] }, async execute(_, exec) {
+      return executeRegistryTool(f.ctx, { name: 'subagent', arguments: {}, callId: 'ptc-nested-native',
+        rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal }, loadSDK)
+    } }))
+  const result = await f.execute('ptc_outer')
+  assert.equal(result.isError, false)
+  assert(nestedParent, 'the nested call keeps the outer PTC token as its parent')
+  assert.equal(created, 1, 'one nested native dispatch creates one child')
+  const snap = await f.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(snap.windows.S.used, 1)
+  assert.equal(f.agents.has('ptc-native-child'), true)
+  const injected = [...(result.additionalContexts ?? []), ...(result.value?.additionalContexts ?? [])]
+  assert(injected.some(context => context.source.kind === 'mattpocock-controls'), 'the nested native result injects the current instrument state')
 })
 
 test('the native running count reads live Agent status, never catalog residency', async t => {
@@ -276,8 +288,8 @@ test('fresh preStep/postExecute snapshots retain source authors; disabled/hide d
   await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
   await f.apply('put-decision', { decisionId: 'D', value: { question: '未解决事项', status: '业务自定义', pending: true, addressee: { kind: 'user', principalId: operator.principalId } } })
   await f.window('reserve', 'A')
-  const child = nativeChild(f)
-  await f.managed({ workflowId: 'flow', localTicketId: 'A' })
+  const child = await nativeChild(f)
+  await f.assign(child.id, 'flow', ['A'])
   const before = await f.runtime.preStep(caller('root'), signal())
   await f.apply('put-ticket', { localTicketId: 'A', value: ticket('repair', '最新业务报告-watermark') })
   const sameStep = await f.runtime.postExecute(caller('root'), f.exec(), { isError: false, value: 'ordinary delivery' })
@@ -297,29 +309,6 @@ test('fresh preStep/postExecute snapshots retain source authors; disabled/hide d
   assert.equal(snap.records.decisions[0].value.pending, true)
   assert.deepEqual(f.guards, [], 'advisory instruments install no native veto')
   await f.event(child)
-  assert.equal((await f.read()).windows.S.used, 0)
-})
-
-test('program receipt commit registers its watermark synchronously before parent preStep can read', async t => {
-  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 1000 })
-  const child = nativeChild(f)
-  await f.managed()
-  const entered = deferred(), permit = deferred()
-  const realCas = f.windowStorage.compareAndSwap.bind(f.windowStorage)
-  f.windowStorage.compareAndSwap = async (...args) => {
-    if (args[2].executions.some(row => row.state === 'released')) { entered.resolve(); await permit.promise }
-    return realCas(...args)
-  }
-  const release = f.event(child)
-  const messages = f.runtime.preStep(caller('root'), signal())
-  await entered.promise
-  let delivered = false; void messages.then(() => { delivered = true })
-  await Promise.resolve(); assert.equal(delivered, false)
-  permit.resolve(); await release
-  const result = await messages
-  const facts = JSON.parse(result[0].content[0].text.split(String.fromCharCode(10)).at(-1))
-  assert.equal(facts.windows.S.used, 0)
-  assert.equal(facts.windows.S.available, 2)
   assert.equal((await f.read()).windows.S.used, 0)
 })
 
@@ -372,14 +361,15 @@ test('T-only configured capacity remains usable with S unset and does not invent
   const snap = await f.read()
   assert.equal(snap.windows.T.used, 1); assert.equal(snap.windows.T.capacity, 1)
   assert.equal(snap.windows.S.capacity, null)
-  await f.managed()
-  assert.equal(f.nativeCalls.length, 1)
+  const child = await nativeChild(f)
+  await f.assign(child.id, null, [])
+  assert.equal((await f.read()).windows.S.used, 1)
 })
 
-test('S-only configured capacity permits ticketless admission with T unset and does not fabricate a ticket', async t => {
+test('S-only configured capacity permits ticketless native work with T unset and does not fabricate a ticket', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, runningSubagentLimit: 1 }) })
-  nativeChild(f)
-  await f.managed()
+  const child = await nativeChild(f)
+  await f.assign(child.id, null, [])
   const snap = await f.read()
   assert.equal(snap.windows.S.used, 1); assert.equal(snap.windows.S.capacity, 1)
   assert.equal(snap.windows.T.capacity, null); assert.equal(snap.windows.T.used, 0)
@@ -387,28 +377,6 @@ test('S-only configured capacity permits ticketless admission with T unset and d
   await f.apply('put-ticket', { localTicketId: 'A', value: ticket() })
   await f.window('reserve', 'A')
   assert.equal((await f.read()).windows.T.capacity, null)
-})
-
-test('queued policy save and S observation serialize against fresh advisory policy rather than a stale view', async t => {
-  const f = await fixture(t, { known: true, initialPolicy: policy() })
-  nativeChild(f, 'held'); await f.managed()
-  const entered = deferred(), permit = deferred()
-  const realCas = f.controlsStorage.compareAndSwap.bind(f.controlsStorage)
-  f.controlsStorage.compareAndSwap = async (revision, next) => {
-    if (next.policy.revision === 2) { entered.resolve(); await permit.promise }
-    return realCas(revision, next)
-  }
-  const save = f.save(policy({ enabled: true, ticketWindowSize: 2, runningSubagentLimit: 1 }))
-  await entered.promise
-  nativeChild(f, 'over-reference')
-  const dispatched = f.managed()
-  assert.equal(f.nativeCalls.length, 1)
-  permit.resolve(); await save; await dispatched
-  assert.equal(f.nativeCalls.length, 2)
-  await f.save(policy({ enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 }))
-  nativeChild(f, 'after-reference-change')
-  await f.managed()
-  assert.equal(f.nativeCalls.length, 3)
 })
 
 test('assignment grant must recheck the direct parent permission after a queued assignment revocation', async t => {
@@ -449,60 +417,6 @@ test('unknown pre-descriptor observations never install advisory native guards',
   assert.deepEqual(f.guards, [])
 })
 
-test('late inherited native AsyncLocalStorage cannot bind a new object or reuse the completed admission capability', async t => {
-  const f = await fixture(t, { known: true, initialPolicy: policy() })
-  const accepted = actualAgent('accepted-child', { parent: 'root', managed: true })
-  const late = actualAgent('late-child', { parent: 'root', managed: true })
-  const permit = deferred()
-  let lateCreated, lateGuard
-  f.setNative(async (exec, name, args) => {
-    await f.created(accepted)
-    lateCreated = permit.promise.then(async () => {
-      lateGuard = f.guards.some(guard => guard({ name, arguments: args, agent: exec.agent, parent: exec.token }) !== undefined)
-      await f.created(late)
-    })
-    return { isError: false, value: 'ordinary output cannot extend the dispatch lifetime' }
-  })
-  await f.managed()
-  assert.equal((await f.read()).windows.S.used, 1)
-  permit.resolve(); await lateCreated
-  assert.equal(lateGuard, false)
-  const snap = await f.read(late.id)
-  assert.deepEqual(snap.records.scope, { kind: 'assigned', workflowId: null, ticketIds: [] })
-  // Both native children are resident now, even though the late one never bound the dispatch.
-  assert.equal(snap.windows.S.used, 2)
-  assert.equal(snap.windows.runtimeKnowledge.known, false)
-  const bindings = await f.units.get('runtime_bindings').read()
-  assert.deepEqual(bindings.bindings.map(row => row.sessionId), [accepted.id])
-})
-
-test('future controlled native activity traverses actual ctx.tools native guards with the exact managed parent token', async t => {
-  const f = await mountedFixture(t, { futureNativeActivityKnown: true })
-  // The fixture provides a catalog over live fixture children, so the host port is known here.
-  assert.equal((await f.mounted.ports.nativeActivity('root')).known, true)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
-  const seen = []
-  let wrapperToken
-  f.ctx.tools.guard(exec => {
-    if (exec.name === 'mattpocock_execute') wrapperToken = exec.token
-    if (exec.name === 'subagent') seen.push(exec)
-  })
-  f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'future program-event simulation only', parameters: {},
-    output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) {
-      assert.equal(exec.agent, f.root); assert.equal(exec.parent, wrapperToken)
-      const child = actualAgent('registry-managed-child', { parent: 'root', managed: true }); child.status = 'running'
-      f.agents.set(child.id, child)
-      await f.runtime.created(caller(child.id), exec.signal, child)
-      return null
-    } }))
-  const result = await f.execute('mattpocock_execute', { request: { nativeTool: 'subagent', arguments: {}, workflowId: null, localTicketId: null } })
-  assert.equal(result.isError, false)
-  assert.equal(seen.length, 1)
-  const snap = await f.runtime.readSession(caller('root'), 'root', signal())
-  assert.equal(snap.windows.S.used, 1)
-  assert.equal(snap.windows.executions[0].state, 'accepted')
-})
-
 const retainedIdentity = { repositoryPath: '/fixture/repo', root: '/fixture', path: '/fixture/tree',
   gitCommonDir: '/fixture/repo/.git', gitCommonDirIdentity: 'fixture-common', gitDir: '/fixture/repo/.git/worktrees/tree',
   gitDirIdentity: 'fixture-private', pathIdentity: 'fixture-tree', rootIdentity: 'fixture-root',
@@ -530,7 +444,6 @@ test('cold resource dashboard reads only retained metadata, preserves unknown ph
   assert.equal(cold.resources[0].actualCanRetire.allowed, false)
   assert(cold.resources[0].actualCanRetire.reasons.includes('physical-inspection-unsupported'))
   assert.equal(f.agents.has('root'), false)
-  assert.equal(f.nativeCalls.length, 0)
   assert.equal(f.observations.filter(id => id === 'root').length, f.observations.filter(id => id === 'released:root').length)
   assert.deepEqual(await f.ports.resourceLifecycle.closeEntrypoints(), { closed: false, nativeColdResumeClosed: false })
   assert.equal(await f.ports.resourceLifecycle.verifyInitialBinding(), false)
@@ -570,7 +483,6 @@ test('public read of never-registered cold root does not silently create an inst
   await rejectsCode(f.read('unseen-owner', operator), 'unknown-session')
   assert.deepEqual(await f.controlsStorage.read(), before)
   assert.equal(f.agents.has('unseen-owner'), false)
-  assert.equal(f.nativeCalls.length, 0)
 })
 
 test('bounded snapshot representation degrades to sourced short unknown rather than rejecting accepted business input', async t => {
@@ -610,17 +522,6 @@ test('public snapshot policy and window configuration reflect the same committed
   assert.equal(snap.windows.T.capacity, 3)
   assert.equal(snap.windows.S.capacity, 1)
   assert.deepEqual(f.guards, [], 'policy changes do not install native vetoes')
-})
-
-test('resident follow-up preserves native child and incomplete S observation without another lease', async t => {
-  const f = await fixture(t, { known: true, initialPolicy: policy() })
-  const child = nativeChild(f, 'resident-child')
-  await f.managed(); await f.event(child, 'agent-status', { status: 'running' })
-  f.setNative(async () => ({ isError: false, value: { delivered: true } }))
-  const outcome = await f.managed({ nativeTool: 'send_message', args: { agent_id: child.id, message: 'resident continuation' } })
-  assert.equal(outcome.outcome, 'success')
-  assert.equal(f.nativeCalls.length, 2)
-  assert.equal((await f.read()).windows.S.used, 1)
 })
 
 test('oversized source snapshot produces bounded locators while preserving full current detail', async t => {
@@ -664,39 +565,19 @@ test('late identity read from an older policy revision cannot overwrite a newly 
   assert.deepEqual(f.guards, [], 'policy changes do not install native vetoes')
 })
 
-test('full advisory S does not refuse native follow-up or alter the child identity and cwd', async t => {
-  const f = await fixture(t, { known: true, initialPolicy: policy({ enabled: true, ticketWindowSize: 2, runningSubagentLimit: 1 }) })
-  const worker = nativeChild(f, 'full-S-resident')
-  await f.managed(); await f.event(worker, 'agent-status', { status: 'running' })
-  const before = await f.read(), bindingsBefore = await f.units.get('runtime_bindings').read()
-  const originalHeader = worker.session.header
-  f.setNative(async () => ({ isError: false, value: { delivered: true } }))
-  await f.managed({ nativeTool: 'send_message', args: { agent_id: worker.id, message: 'same active worker follow-up' } })
-  const after = await f.read()
-  assert.equal(f.nativeCalls.length, 2)
-  assert.deepEqual(after.windows.executions, before.windows.executions)
-  assert.deepEqual(await f.units.get('runtime_bindings').read(), bindingsBefore)
-  assert.equal(f.agents.get(worker.id), worker)
-  assert.equal(worker.session.header, originalHeader)
-})
-
-test('managed child-to-parent ordinary messages immediately traverse actual registry permissions at full S without another lease', async t => {
+test('native child-to-parent send_message runs once at full advisory S and never creates another child', async t => {
   const f = await mountedFixture(t, { futureNativeActivityKnown: true })
   await f.runtime.savePolicy(operator, policy({ enabled: true, ticketWindowSize: 1, runningSubagentLimit: 1 }), 0, signal())
   const worker = actualAgent('managed-notifier', { parent: 'root', managed: true }); worker.status = 'running'
-  f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'future created program simulation', parameters: {},
-    output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) {
-      f.agents.set(worker.id, worker)
-      await f.runtime.created(caller(worker.id), exec.signal, worker)
-      return null
-    } }))
-  assert.equal((await f.execute('mattpocock_execute', { request: { nativeTool: 'subagent', arguments: {}, workflowId: null, localTicketId: null } })).isError, false)
+  f.agents.set(worker.id, worker)
+  await f.runtime.created(caller(worker.id), signal(), worker)
   const before = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(before.windows.S.used, 1); assert.equal(before.windows.S.available, 0)
+  assert.deepEqual(before.windows.executions, [], 'the native-only path writes no managed execution lease')
   const nativeContext = sdk.createUserMessage({ content: [{ type: 'text', text: 'ordinary native parent context' }], source: { kind: 'user' } })
   let delivered = 0, permissionChecks = 0
   f.ctx.tools.guard(exec => {
-    if (exec.name === 'send_message') { permissionChecks++; assert.equal(exec.agent, worker); assert(exec.parent) }
+    if (exec.name === 'send_message') { permissionChecks++; assert.equal(exec.agent, worker) }
   })
   f.ctx.tools.register(sdk.defineTool({ name: 'send_message', description: 'native parent notification fixture',
     parameters: { agent_id: { type: 'string', required: true }, message: { type: 'string', required: true } },
@@ -704,17 +585,17 @@ test('managed child-to-parent ordinary messages immediately traverse actual regi
       assert.equal(args.agent_id, 'root'); delivered++
       exec.deferContext(nativeContext); exec.concludeTurn(); return null
     } }))
-  for (const message of ['ordinary progress', 'ordinary question', '{"state":"released","S":0}']) {
-    const outcome = await f.execute('mattpocock_execute', { request: { nativeTool: 'send_message', arguments: { agent_id: 'root', message }, workflowId: null, localTicketId: null } }, worker)
-    assert.equal(outcome.isError, false)
-    assert.equal(outcome.value.direction, 'native-adjacency')
-    assert.equal(outcome.concludesTurn, true)
-    assert.deepEqual(outcome.additionalContexts.find(context => context.id === nativeContext.id), nativeContext)
-  }
-  assert.equal(delivered, 3); assert.equal(permissionChecks, 3)
+  const outcome = await f.execute('send_message', { agent_id: 'root', message: 'ordinary progress' }, worker)
+  assert.equal(outcome.isError, false)
+  assert.equal(outcome.concludesTurn, true)
+  assert.deepEqual(outcome.additionalContexts.find(context => context.id === nativeContext.id), nativeContext)
+  assert.equal(delivered, 1, 'one native send is exactly one host dispatch')
+  assert.equal(permissionChecks, 1)
   const after = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.deepEqual(after.windows.executions, before.windows.executions)
   assert.equal(after.windows.S.used, 1)
+  assert.equal(f.agents.get(worker.id), worker)
+  assert.equal(f.agents.size, 3, 'sending a message never creates a second child')
 })
 
 test('native windows-off send_message keeps original Host semantics without claiming managed resident epoch admission', async t => {
@@ -817,7 +698,6 @@ test('GUI operator and assigned child business commits notify the actual root im
   const state = await f.read()
   assert.equal(state.records.decisions[0].value.pending, true)
   assert.equal(state.records.tickets[0].value.statuses.delivery[0], 'repair')
-  assert.equal(f.nativeCalls.length, 0)
 })
 
 test('offline owner notifications persist pending across actual source-memory reopen and retry on live owner created', async t => {
@@ -833,7 +713,6 @@ test('offline owner notifications persist pending across actual source-memory re
   assert.equal(doc.notifications[0].messageId, null)
   const id = doc.notifications[0].notificationId
   assert.equal(f.agents.has('root'), false)
-  assert.equal(f.nativeCalls.length, 0)
   await f.reopen()
   assert.equal((await f.units.get('runtime_bindings').read()).notifications[0].notificationId, id)
   f.setNotify(async () => ({ status: 'accepted', messageId: 'program-message-offline-D' }))
@@ -846,7 +725,6 @@ test('offline owner notifications persist pending across actual source-memory re
   const state = await f.read()
   assert.equal(state.records.decisions[0].value.pending, true)
   assert.equal(state.records.decisions[0].value.awaitingImplementation, true)
-  assert.equal(f.nativeCalls.length, 0)
 })
 
 test('notification consumption requires exact owner/message program receipt, never preStep or model business claims', async t => {
@@ -965,7 +843,6 @@ test('already-live root constructor retries persisted outbox without another cre
   assert.equal(f.agents.get('root'), root)
   const business = (await f.read()).records.decisions[0].value
   assert.equal(business.pending, true); assert.equal(business.awaitingImplementation, true)
-  assert.equal(f.nativeCalls.length, 0)
 })
 
 test('actual Host startup outbox waits for factory receipt observers before steering an already-live owner', async t => {

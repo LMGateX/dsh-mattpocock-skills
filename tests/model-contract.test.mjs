@@ -7,6 +7,10 @@ import { caller, mountedFixture, operator, policy, sdk, signal } from './fixture
 // message are the only schema a model has: an omitted optional field must behave exactly like
 // an explicit null, and every rejection must name the accepted values or the fix.
 
+const FIXED_TOOLS = ['mattpocock_controls', 'mattpocock_record', 'mattpocock_window',
+  'mattpocock_resource', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree',
+  'mattpocock_delegate']
+
 async function readyMounted(t) {
   const f = await mountedFixture(t)
   await f.runtime.savePolicy(operator, policy(), 0, signal())
@@ -19,21 +23,30 @@ async function readyMounted(t) {
 
 const text = result => JSON.stringify([result.error?.message ?? null, result.content ?? null])
 
-test('a ticketless execution fact accepts an omitted workflowId exactly like explicit null', async t => {
-  const f = await readyMounted(t)
-  const shape = { nativeTool: 'send_message', arguments: { agent_id: 'root', message: 'ordinary progress' } }
-  const omitted = await f.execute('mattpocock_execute', { request: shape })
-  assert.equal(omitted.isError, false, text(omitted))
-  const explicit = await f.execute('mattpocock_execute', { request: { ...shape, workflowId: null, localTicketId: null } })
-  assert.equal(explicit.isError, false, text(explicit))
+test('the model surface registers eight fixed instruments, no execute wrapper, and audit only when enabled', async t => {
+  const f = await mountedFixture(t)
+  for (const name of FIXED_TOOLS) assert.ok(f.ctx.tools.get(name), name + ' must be registered')
+  assert.equal(FIXED_TOOLS.length, 8)
+  assert.equal(f.ctx.tools.get('mattpocock_execute'), undefined, 'execute is retired and must not be a model tool')
+  assert.equal(f.ctx.tools.get('mattpocock_audit'), undefined, 'audit is conditional and stays off by default')
+  assert.equal(f.ctx.tools.get('mattpocock_execute', f.root), undefined)
+  const visible = f.ctx.tools.schemas(f.root).map(row => row.name)
+  assert.equal(visible.includes('mattpocock_execute'), false)
+  assert.deepEqual(visible.filter(name => name.startsWith('mattpocock_')).sort(), [...FIXED_TOOLS].sort())
 })
 
-test('a present but invalid ticket value teaches the null alternative instead of demanding an id', async t => {
-  const f = await readyMounted(t)
-  const bad = await f.execute('mattpocock_execute', { request: { nativeTool: 'send_message',
-    arguments: { agent_id: 'root', message: 'ordinary progress' }, workflowId: '' } })
-  assert.equal(bad.isError, true)
-  assert.match(text(bad), /or null when this work belongs to no ticket/)
+test('delegate is described as binding-first creation, not a general dispatcher', async t => {
+  const f = await mountedFixture(t)
+  const description = f.ctx.tools.get('mattpocock_delegate').description
+  assert.match(description, /Binding-first creation/)
+  assert.match(description, /ticket↔worktree binding/)
+  assert.match(description, /native subagent\/subagent_fork and mattpocock_assign/)
+  assert.match(description, /create_worktree/)
+  assert.match(description, /actual child\/parent\/cwd header/)
+  assert.match(description, /operationId/)
+  assert.match(description, /ticketIds/)
+  assert.doesNotMatch(description, /Preferred flow/)
+  assert.doesNotMatch(description, /let the lane create its own tree/)
 })
 
 test('an assignment grant accepts an omitted workflowId and omitted ticketIds', async t => {

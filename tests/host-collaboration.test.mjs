@@ -376,7 +376,12 @@ test('delegate tool preserves native permission pipeline and accepts only safe c
   t.after(remove)
   assert.equal((await execute(f, 'mattpocock_delegate', request)).isError, true)
   assert.equal(calls.length, 1)
-  assert.match(f.ctx.tools.get('mattpocock_delegate').description, /operationId/)
+  const description = f.ctx.tools.get('mattpocock_delegate').description
+  assert.match(description, /operationId/)
+  assert.match(description, /Binding-first creation/)
+  assert.match(description, /ticket↔worktree binding/)
+  assert.match(description, /native subagent\/subagent_fork and mattpocock_assign/)
+  assert.doesNotMatch(description, /Preferred flow|let the lane create its own tree/)
 })
 
 test('worktree service routes strict operator input and rejects unavailable old runtimes explicitly', options, async t => {

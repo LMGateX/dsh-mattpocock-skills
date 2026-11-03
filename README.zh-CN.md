@@ -43,15 +43,15 @@
 - DSH 默认识别 `AGENTS.md` 与 `CLAUDE.md`，无需批量改写为某一种文件名。
 - **后台派发不等于 headless 保活。** 当前 headless 等 root idle 后汇总并退出，不能承诺后台子任务继续正常完成及回传。Web 场景不能由此直接推断；完整无人值守工作流需另行解决宿主生命周期。
 - Git/worktree、浏览器、网络研究与共享笔记目录依赖目标环境和权限。provider 不安装这些工具、不授予外部写权限，也不绕过文件策略。
-- **宿主版本。** Skills provider 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2` 与 `0.2.1-alpha.1` 上核对，该部分始终无需修改运行时代码。`0.2.1-alpha.2` 是第一个需要适配的宿主（原生子代理 activation seam）。`0.2.1-alpha.3` 移除了 `connection.operator`，改为 owner 的 `connection.browserPeer`；可选控制面读取的是旧属性，因此从 alpha.3 起它会在注册九个工具之前中断装载，而 Skills 分发不受影响（cordis 默认日志级别会丢弃 `warn`，所以实机终端上看不到任何提示）。现在以版本中立方式读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者都不存在时失败关闭），并由用例覆盖两种拼写。`0.2.1-alpha.4` 改变了安装期门禁的判定依据：声明了 `engines.dsh` 就只按它判断，未声明才回退到 `@deepseek-ai/dsh*` peer 规则。本版本声明 `"engines.dsh": "~0.2.1-alpha.1"`，与既有 peer 判定实测等价：门禁放行 `0.2.1-alpha.1` 到 `0.2.2-alpha.*`，拒绝 `0.2.0-rc.2` 与 `0.3.0-alpha.1`；该范围在 `0.2.1-alpha.2` 与 `0.2.1-alpha.4` 两版门禁实现上都测过。`0.2.2-alpha.2` 是第二个需要运行时代码适配的宿主：工具执行拆入 executor 插件并移除了旧的单调用 `ctx.tools.execute`，受管原生派发因此改用公开 `ToolExecutionPipeline`；旧宿主仍保留单调用回退。Skills provider 本身不变。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
+- **宿主版本。** Skills provider 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2` 与 `0.2.1-alpha.1` 上核对，该部分始终无需修改运行时代码。`0.2.1-alpha.2` 是第一个需要适配的宿主（原生子代理 activation seam）。`0.2.1-alpha.3` 移除了 `connection.operator`，改为 owner 的 `connection.browserPeer`；可选控制面读取的是旧属性，因此从 alpha.3 起它会在注册九个工具之前中断装载，而 Skills 分发不受影响（cordis 默认日志级别会丢弃 `warn`，所以实机终端上看不到任何提示）。现在以版本中立方式读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者都不存在时失败关闭），并由用例覆盖两种拼写。`0.2.1-alpha.4` 改变了安装期门禁的判定依据：声明了 `engines.dsh` 就只按它判断，未声明才回退到 `@deepseek-ai/dsh*` peer 规则。本版本声明 `"engines.dsh": "~0.2.1-alpha.1"`，与既有 peer 判定实测等价：门禁放行 `0.2.1-alpha.1` 到 `0.2.2-alpha.*`，拒绝 `0.2.0-rc.2` 与 `0.3.0-alpha.1`；该范围在 `0.2.1-alpha.2` 与 `0.2.1-alpha.4` 两版门禁实现上都测过。`0.2.2-alpha.2` 在 `mattpocock_execute` 尚存时是需要运行时代码适配的宿主：工具执行拆入 executor 插件并移除了旧的单调用 `ctx.tools.execute`，该包装在那一宿主线上改用公开 `ToolExecutionPipeline`。0.7.0 源码线已整体移除该包装及 `executeNative` 路径，普通派发使用宿主原生工具。Skills provider 本身不变。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
 ## 可选协作控制
 
-可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、创建时工作树绑定、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；宿主服务齐备时，独立挂载九项工具（2026-11-03 设计退役 `mattpocock_execute` 后目标为八个固定工具 + 条件审计工具；见下方设计更新）及第三方设置/常驻摘要/右侧详情。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
+可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.7.0 挂载八项固定工具 + 条件 `mattpocock_audit`（`mattpocock_execute` 已移除；客户端共九个 wire key）及第三方设置/常驻摘要/右侧详情。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
 
-**设计更新（2026-11-03）。** 已接受“原生派发优先”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（创建 binding 并 assign 票范围）；`mattpocock_execute` 退役中。当前发行版仍注册旧包装；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)。
+**设计更新（2026-11-03，已在 0.7.0 源码线实施）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（持久意图、实际 header 核对、创建 binding 并 assign 票范围）；`mattpocock_execute` 已移除，不再有 execute 路径。C（原生观察读取时关联/账本补齐）仍待后续。0.7.0 制品已构建并验证，但未安装、未发布；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
 
 T/S 超限或观测未知不拒绝合法原生委派，不新增业务审批。Git 工作树由 agent 自行创建、合并和删除；已清理树退出持续注入，废弃未清理仍提示，历史不默认过期。
 

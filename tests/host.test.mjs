@@ -305,19 +305,6 @@ test('typed Git output, confinement failure and credential/config redirection fa
   assert.equal(absent.launched.length, 0)
 })
 
-test('managed native nesting traverses original registry guards, token parent and actual caller', options, async t => {
-  const f = await assembly(t)
-  let authorizedParent, executed = 0
-  f.mounted.ports.installManagedGuard(exec => exec.name === 'subagent' && (authorizedParent === undefined || exec.parent !== authorizedParent) ? 'native requires managed private capability' : undefined)
-  f.ctx.tools.register(sdk.defineTool({ name: 'subagent', description: 'mechanical native seam, no agent or model', parameters: { prompt: { type: 'string', required: true } },
-    output: { schema: { type: 'null' }, render: () => [] }, async execute(_, exec) { assert.equal(exec.agent, f.owner); assert.equal(exec.parent, authorizedParent); executed++; return null } }))
-  f.ctx.tools.register(sdk.defineTool({ name: 'fixture_managed', description: 'mechanical wrapper', parameters: {}, output: { schema: { type: 'null' }, render: () => [] },
-    async execute(_, exec) { authorizedParent = exec.token; try { const result = await f.mounted.ports.executeNative(exec, 'subagent', { prompt: 'fixture' }); assert.equal(result.isError, false); return null } finally { authorizedParent = undefined } } }))
-  const execute = name => executeRegistryTool(f.ctx, { name, arguments: name === 'subagent' ? { prompt: 'fixture' } : {}, callId: 'nested-test:' + name, agent: f.owner, signal: signal() }, load)
-  assert.equal((await execute('subagent')).isError, true)
-  assert.equal((await execute('fixture_managed')).isError, false)
-  assert.equal(executed, 1)
-})
 test('Remote in-flight work observes teardown cancellation, drains before disposal and cannot call afterward', options, async t => {
   const f = await assembly(t)
   let enteredResolve; const entered = new Promise(resolve => { enteredResolve = resolve })
@@ -506,13 +493,6 @@ test('operator workspace navigation exposes actual sessionIds without loading co
   await assert.rejects(f.invoke('listWorkspaces', {}, operatorPeer(f.ctx, { id: 'unrelated-peer' })))
 })
 
-test('controlled wrapper binds this-based native SDK conclusion and deferred contexts to original exec', options, async t => {
-  const borrowed = sdk.createUserMessage({ content: [{ type: 'text', text: 'native borrowed context' }], source: { kind: 'test-instrument', form: 'instructions' } })
-  const f = await assembly(t, { async executeManaged(_caller, _request, exec) { exec.deferContext(borrowed); exec.concludeTurn(); return { accepted: true } } })
-  const result = await executeRegistryTool(f.ctx, { name: 'mattpocock_execute', arguments: { request: {} }, callId: 'bound-conclude', agent: f.owner, signal: signal() }, load)
-  assert.equal(result.isError, false); assert.equal(result.concludesTurn, true)
-  assert.deepEqual(result.additionalContexts.find(context => context.id === borrowed.id), borrowed)
-})
 const notificationInput = { notificationId: 'notification-1', ownerSessionId: 'owner', instrumentInstanceId: 'instance-1', businessRevision: 7, authorPrincipalId: 'agent:child' }
 test('owned notifications never activate cold owners and accepted attempts have fresh native IDs', options, async t => {
   const f = await assembly(t), inbox = []

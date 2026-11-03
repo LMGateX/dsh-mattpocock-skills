@@ -166,9 +166,9 @@ rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Rele
 | 无凭据 headless 装载 | 独立 `DSH_HOME` 安装 `0.4.39` 制品（428,735 bytes、sha256 `0732000b…`、172 成员）；默认 `stable` 装载 27 个 Skills、11 个模型可见，无插件 warn／error，模型请求前以 `MISSING_CREDENTIAL` 结束。headless 不组合 Web 的 `connection`／`workspaceRegistry`，可选控制面按设计不挂载，所以这次装载只证明 Skills 分发与宿主门禁 |
 | 模型调用 | 无 |
 
-适配后的运行时代码改动只有两个接缝：`src/host.ts` 的 `executeNative` 和旧子代理回退的结构化类型。Skill 正文、vendor 字节、通道语义、provider 优先级与 `engines.dsh` 声明均未改变。测试夹具侧新增了公开 pipeline 的单调用适配、真实 `SessionProjectionRegistry`、以 `ctx.plugin()` 挂载异步服务，以及 0.2.2 的 official-bundles 读取；这些不改变产品入口。
+该 0.6.0 适配的运行时代码改动只有两个接缝：`src/host.ts` 的 `executeNative`（0.7.0 已删除）和旧子代理回退的结构化类型。Skill 正文、vendor 字节、通道语义、provider 优先级与 `engines.dsh` 声明均未改变。测试夹具侧新增了公开 pipeline 的单调用适配、真实 `SessionProjectionRegistry`、以 `ctx.plugin()` 挂载异步服务，以及 0.2.2 的 official-bundles 读取；这些不改变产品入口。
 
-> 2026-11-03 设计变更：`mattpocock_execute` 退役中；上表的“受管原生调用”适配记录的是将被移除的 execute 包装路径。普通无绑定派发改用原生 `subagent`/`subagent_fork`/`send_message` + `create_worktree`/`cwd`；`mattpocock_delegate` 保留为强绑定创建，不随 execute 退役。本表作为历史兼容记录保留，不把旧适配当成目标架构。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 设计变更，0.7.0 已实施：本表（含上文“受管原生调用”）是 0.6.0 的 execute 包装适配历史；0.7.0 已删除该工具及 `executeManaged`/`executeNative` 路径。普通无绑定派发使用原生 `subagent`/`subagent_fork`/`send_message` + `create_worktree`/`cwd`；`mattpocock_delegate` 保留为强绑定创建，不随 execute 退役。C 仍待后续。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 核对范围与方法
 

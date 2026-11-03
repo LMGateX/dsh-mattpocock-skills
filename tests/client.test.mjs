@@ -256,7 +256,7 @@ test('sourceView keeps English wire action and target values without a translate
     block: { time: 1, seq: 2, call: { argsRaw }, content: [], isError: false, ...extra } })
   assert.equal(view('mattpocock_record', JSON.stringify({ request: { action: 'read' } })).summary, 'read')
   assert.equal(view('mattpocock_record', JSON.stringify({ request: { command: { action: 'put-ticket', workflowId: 'W', localTicketId: 'T', expectedRevision: 7 } } })).summary, 'put-ticket · W/T · rev 7')
-  assert.equal(view('mattpocock_execute', JSON.stringify({ request: { nativeTool: 'subagent', workflowId: 'W', localTicketId: 'T' } })).summary, 'execute · subagent · W/T')
+  assert.equal(view('mattpocock_delegate', JSON.stringify({ request: { description: 'Worker', workflowId: 'W' } })).summary, 'delegate · W · Worker')
   const failed = view('mattpocock_record', JSON.stringify({ request: { action: 'read' } }), { isError: true, error: { name: 'Error', code: 'E_BAD', reason: 'bad input' } })
   assert.equal(failed.summary, 'read · failed: bad input'); assert(failed.color)
   const stopped = view('mattpocock_record', JSON.stringify({ request: { action: 'read' } }), { isError: true, error: { name: 'Error', code: 'interrupted' } })
@@ -270,7 +270,11 @@ test('sourceView keeps English wire action and target values without a translate
 test('timeline registration claims exactly this package tools and retains historical result blocks', async () => {
   const fixture = contextFixture(); await client.apply(fixture.ctx)
   const keys = fixture.entries.filter(row => row.options?.name === 'tool.call.toolview').map(row => row.options.key)
-  assert.deepEqual(keys, ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit'])
+  assert.deepEqual(keys, ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit'])
+  assert.equal(keys.includes('mattpocock_execute'), false)
+  assert.equal(client.OWN_TOOL_NAMES.length, 9, 'eight fixed instruments plus the conditional audit card')
+  assert.equal(client.OWN_TOOL_NAMES.includes('mattpocock_execute'), false)
+  assert.equal(client.OWN_TOOL_NAMES.includes('mattpocock_audit'), true)
   assert(!keys.includes('bash')); assert(!keys.includes('ask_user_question'))
   const summaries = new client.SummaryScheduler(async () => ok({ rows: [] }))
   const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'original historical result' }], isError: false }

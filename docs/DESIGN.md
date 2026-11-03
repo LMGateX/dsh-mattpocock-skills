@@ -8,26 +8,26 @@
 - **Local checkout:** `<working copy of this repository>`
 - **Public plugin repository:** `https://github.com/LMGateX/dsh-mattpocock-skills`
 - **Private source distribution:** `https://github.com/LMGateX/mattpocock-skills-distribution`
-- **2026-11-03 decision:** native dispatch first for unbound lanes; `mattpocock_execute` retirement accepted; `mattpocock_delegate` retained as the binding-first creation path. Implementation and release are pending (see the first section below).
+- **2026-11-03 decision, implemented in the 0.7.0 source line:** native dispatch first for unbound lanes; `mattpocock_execute` removed from the model surface; `mattpocock_delegate` retained as the binding-first creation path. Phase C (native observation correlation/ledger) remains pending. The 0.7.0 artifact is built and verified but not installed, published, tagged or pushed (see the first section below and [VERIFICATION.md](<VERIFICATION.md>)).
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 原生派发优先与 execute 退役（2026-11-03，所有者认可；文档已固定，代码未实施）
+## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 待后续）
 
 本节收窄 2026-10-06 的执行包装、2026-10-09 的插件 cwd 派发默认用法和 2026-10-13 的 `mattpocock_delegate.worktree` 默认派发用法；强绑定 lane 仍由 delegate 写 binding，T/S、票与裁决、工作树绑定/观测、历史与通知语义不变。详细设计与迁移见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 - **派发属于宿主。** 普通 child 由模型直接调用宿主 `subagent` / `subagent_fork` 创建，后续用 `send_message` 续聊；工作树由宿主 `create_worktree` 创建，首次 child cwd 由原生 `subagent` 的 `cwd` 传入。插件不再提供模型可见的通用派发包装。
-- **`mattpocock_execute` 退役。** 不再作为派发工具注册或宣传。它不提供 cwd/worktree；S 已按宿主 live `Agent.status` 计数，执行 lease 仅作审计；其“记录执行事实”的模型可见描述与实际原生派发不一致，已在一次本地实测中造成 15 个额外 child（重复或补记派发）与 13 条重复消息。迁移期若保留兼容别名，最多保留一个 minor 版本，且只能拒绝并指向原生替代，绝不再次派发；目标版本删除该工具及 `executeManaged`/`executeNative` 包装路径。
+- **`mattpocock_execute` 已退役（0.7.0 移除）。** 不再作为派发工具注册或宣传。它不提供 cwd/worktree；S 已按宿主 live `Agent.status` 计数，执行 lease 仅作审计；其“记录执行事实”的模型可见描述与实际原生派发不一致，已在一次本地实测中造成 15 个额外 child（重复或补记派发）与 13 条重复消息。0.7.0 直接删除该工具及 `executeManaged`/`executeNative` 包装路径，没有保留可派发的兼容别名；旧会话记录仍可只读显示。
 - **`mattpocock_delegate` 保留为绑定式创建（binding-first creation）。** 它不是默认派发路径；仅当需要可核验的 ticket↔worktree 强绑定，或需要其持久意图/幂等/创建前 scope 时使用：先持久化创建意图，再以准备的工作树为初始 cwd（省略则继承父 cwd）创建 child，核对实际 header，写入 binding（task/ticketIds），并 assign 票范围。普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`。它是当前唯一的 binding 创建入口；`mattpocock_worktree` 只读取、更新或重核对已有 binding，不创建新 binding。不得与 execute 并存。
 - **`mattpocock_assign` 保留。** 只对真实直接 child 登记受授 workflow/ticket；不派发、不创建 child。创建前 scope 由 delegate（若使用）检查，创建后由 assign 再检查；普通 native 路径以 assign 为准。
 - **执行事实来自观察，工作树强绑定由 delegate 写入。** 原生 `agent/created`、child header、`subagent/end` 是执行事实来源；`mattpocock_delegate` 的 `registerIntent → confirm` 才是 child↔初始 cwd/task/ticketIds 的强 binding 创建入口。成功的 `create_worktree` 只产生树创建 observation；读取时可用 creator + assignment/binding 关联出 lane，但必须标为 observed/inferred，不能冒充强 binding。S 继续按宿主 live `Agent.status` 计数；普通路径不再以 lease 为前提。
 - **绑定观察的后续。** C 阶段可以在保持现有 `registerIntent → confirm` 语义的前提下，扩展“原生 child 初始 cwd + `create_worktree`”的读取时关联，方便 native-first 路径显示 lane；但这是 observed/inferred 关联，不是 delegate 风格的强 binding，也不替代 delegate。方案 A 保留 delegate 为强绑定创建入口；若未来要退役它，必须先接受等价的 post-create bind 或自动强绑定设计并单独更新本节。
 - **旧宿主兼容。** 没有原生 cwd/创建 seam 的宿主仍按 capability 使用随包兼容提供者或明确拒绝；`host-patches/` 与 startup cwd 设置保留为旧宿主路径，不构成保留 execute 的理由。当前宿主优先原生；不得用版本字符串冒充能力。
-- **验收与迁移。** 代码、测试、生成物和发布另阶段执行；本决策先固定文档。移除 execute 至少验收：模型工具面不再注册它；native `subagent` + `mattpocock_assign` 只产生一个 child；native `send_message` 不重复投递；PTC 嵌套路径仍注入状态；无 execute 时 S、结局、通知与绑定观测仍完整。强绑定验收：delegate 以准备好的 `worktree` 创建时只产生一个 child，并写出 requested/actual cwd、task、ticketIds 的 binding；`mattpocock_worktree` 能读到它；原生无绑定 lane 不得静默产生强 binding。完成前 README/CONTROLS 不得声称已移除。
+- **验收与迁移。** B（移除 execute）、D（delegate 绑定式创建）与 E（构建/制品/发布准备）已在 0.7.0 源码线完成；C（原生观察读取时关联/账本补齐）明确留待后续，本轮没有新增存储或账本。本决策不授权安装、Profile 修改、发布、推送或打标签。移除 execute 至少验收：模型工具面不再注册它；native `subagent` + `mattpocock_assign` 只产生一个 child；native `send_message` 不重复投递；PTC 嵌套路径仍注入状态；无 execute 时 S、结局、通知与绑定观测仍完整。强绑定验收：delegate 以准备好的 `worktree` 创建时只产生一个 child，并写出 requested/actual cwd、task、ticketIds 的 binding；`mattpocock_worktree` 能读到它；原生无绑定 lane 不得静默产生强 binding。完成前 README/CONTROLS 不得声称已移除。
 
 ## 仪器工具卡：原生折叠与可读输出（2026-11-01，所有者认可）
 
-- 九个固定包内工具（2026-11-03 决策退役 `mattpocock_execute` 后目标为八个；当前发行版与迁移期仍可能是九个；delegate 按方案 A 保留为强绑定写入口，不计划进一步减少；另含条件注册的 `mattpocock_audit`）继续独占 `tool.call.toolview` 的 wire key；不占用其他工具。
+- 八个固定包内工具（0.7.0 已移除 `mattpocock_execute`；delegate 按方案 A 保留为强绑定写入口，不计划进一步减少；另含条件注册的 `mattpocock_audit`，客户端共九个 wire key）继续独占 `tool.call.toolview` 的 wire key；不占用其他工具。历史 0.6.0 发行版的九个固定工具记录保留为历史。
 - 采用 DSH 公开 baseline `@deepseek-ai/dsh-client-ui-primitives` 的 `DisclosureRow` 作为行外壳，展开体输入/输出用 `CodeBlock`，原始记录用 `JsonBlock`，动作使用 `Button`；不复制私有 `ToolRow` CSS、不导入私有组件。
 - 标题保留完整英文 wire 名；摘要保留英文 action/target；默认折叠，展开体上限 360px。preparing/start/result 与 timeline/rightPanel 门控语义不变。
 - 不改变 Host 模型可见输出、source card 的公开 `argsRaw/content/error/meta` 字段、工具键或其他原生布局。
@@ -65,7 +65,7 @@ This document is the authoritative implementation contract. A later implementati
 
 ## 宿主原生初始 cwd seam（2026-10-09，已获所有者认可）
 
-> 2026-11-03 更新：当前宿主优先原生 cwd；本节的兼容提供者/fallback 只服务旧宿主，通用 dispatch 包装按顶部新节退役中；delegate 的绑定式创建仍使用此 cwd 授权路径。
+> 2026-11-03 更新：当前宿主优先原生 cwd；本节的兼容提供者/fallback 只服务旧宿主，通用 dispatch 包装已在 0.7.0 移除；delegate 的绑定式创建仍使用此 cwd 授权路径。
 
 - 已核对 DSH `0.2.1-alpha.2` 的公开 `@deepseek-ai/dsh-subagent`：`startContinuable` 已删除，改为 `startActivation(spec)`，`SubagentStartRequest.cwd?` 由提供者自行解析并经会话工作目录 owner 记录；省略仍继承父目录。
 - 实际加载的服务同时暴露 `startActivation` 与会话工作目录 owner（`workingDirectory.ensure`）时，本插件使用宿主原生 seam 传递显式首次 cwd；否则仍使用随包版本固定兼容提供者。能力判定只来自实际加载的公开服务对象，不来自版本字符串、模型输入或用户声明。

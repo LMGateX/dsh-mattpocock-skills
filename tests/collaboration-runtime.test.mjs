@@ -258,22 +258,33 @@ test('RuntimeFacade captures authored ticket versions without repeat growth and 
  assert.equal((await f.runtime.historyAction(caller('other'),'other',{action:'query',query:{kind:'ticket'}},signal())).total,0)
 })
 
-test('RuntimeFacade persists worktree intent before native creation and confirms actual header',async t=>{
- const f=await fixture(t),calls=installCreation(f),native=f.ports.createContinuable
+test('delegate binding-first creation persists intent, confirms the prepared worktree header and assigns its tickets',async t=>{
+ const f=await fixture(t,{initialPolicy:policy()}),calls=installCreation(f),native=f.ports.createContinuable
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
  f.ports.createContinuable=async(exec,request)=>{
   const before=await f.runtime.worktreeAction(caller('root'),'root',{action:'read'},signal())
   assert.equal(before.rows.length,1)
   assert.equal(before.rows[0].value.plannedChildSessionId,request.childId)
   assert.equal(before.rows[0].value.outcome,'pending')
+  assert.equal(before.rows[0].value.requestedCwd,'/trees/A')
+  assert.equal(before.rows[0].value.task,'Build A')
+  assert.deepEqual(before.rows[0].value.ticketIds,['A'])
   return native(exec,request)
  }
- const first=await f.runtime.delegate(caller('root'),{description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'bind-A'},f.exec())
+ const first=await f.runtime.delegate(caller('root'),{description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'bind-A',workflowId:'flow',ticketIds:['A']},f.exec())
  assert.equal(first.accepted,true)
+ assert.equal(calls.length,1,'one prepared worktree creates exactly one child')
  assert.equal(calls[0].cwd,'/trees/A')
  const binding=await f.runtime.worktreeAction(caller('root'),'root',{action:'read'},signal())
- assert.equal(binding.rows[0].value.actualChildSessionId,first.childId)
- assert.equal(binding.rows[0].value.actualCwd,'/trees/A')
- assert.equal(binding.rows[0].value.outcome,'confirmed')
+ const row=binding.rows[0]
+ assert.equal(row.value.actualChildSessionId,first.childId)
+ assert.equal(row.value.requestedCwd,'/trees/A')
+ assert.equal(row.value.actualCwd,'/trees/A')
+ assert.equal(row.value.task,'Build A')
+ assert.deepEqual(row.value.ticketIds,['A'])
+ assert.equal(row.value.outcome,'confirmed')
+ assert.deepEqual((await f.read(first.childId)).records.scope,{kind:'assigned',workflowId:'flow',ticketIds:['A']},'delegate assigns the real child in the same creation')
  assert.equal((await f.read()).worktreeBindings.length,1)
  assert.equal(Object.hasOwn((await f.read()).worktreeBindings[0],'history'),false)
 })

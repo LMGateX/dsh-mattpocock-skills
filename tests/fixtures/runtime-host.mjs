@@ -93,8 +93,8 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
   // This fixture is the native host: created children are live sessions and a disposed
   // session is gone. The S count under test reads these facts, never the plugin's ledger.
   const nativeLive = new Set()
-  const cold = new Map(), observations = [], nativeCalls = [], gitCalls = [], guards = [], notificationCalls = [], stops = []
-  let stopRevision = 0
+  const cold = new Map(), observations = [], gitCalls = [], guards = [], notificationCalls = [], stops = []
+  let stopRevision = 0, nativeRevision = 0
   const controlsStorage = new core.MemoryControlsStorage()
   const instrumentStorage = new core.MemoryInstrumentStorage()
   const windowStorage = new core.MemoryWindowStorage()
@@ -114,7 +114,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
       }
     } },
   }
-  let runtime, native = async () => ({ isError: false, value: { note: 'No created/observe proof' } })
+  let runtime
   let notify = async () => ({ status: 'offline', messageId: null })
   let runnerFactory = () => { throw new core.ResourceError('access-denied', 'no permitted fake runner installed') }
   const units = new Map()
@@ -130,10 +130,9 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     async nativeActivity() { return { known, reason: known ? null : 'native-subagent-activity-lower-bound', liveAgents: [...agents.values()] } },
     async nativeSubagentActivity() { return { known, running: nativeLive.size, total: nativeLive.size, reason: known ? null : 'native-subagent-activity-lower-bound' } },
     nativeSubagentStops() { return stops },
-    nativeSubagentCountRevision() { return stopRevision },
+    nativeSubagentCountRevision() { return stopRevision + nativeRevision },
     installNativeGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     installManagedGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
-    async executeNative(exec, name, args) { nativeCalls.push({ exec, name, args }); return native(exec, name, args) },
     async openRuntimeStorage(parse) { return ports.openUnitStorage('runtime_bindings', parse) },
     async openUnitStorage(name, parse) {
       if (!units.has(name)) units.set(name, new core.MemoryVersionedStorage(parse))
@@ -147,13 +146,13 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
   // both observations reach the fixture through the runtime facade the test drives.
   const wrapRuntime = instance => {
     const created = instance.created.bind(instance), observe = instance.observe.bind(instance)
-    instance.created = async (who, control, agent) => { nativeLive.add(agent.id); return await created(who, control, agent) }
+    instance.created = async (who, control, agent) => { if (!nativeLive.has(agent.id)) { nativeLive.add(agent.id); nativeRevision += 1 } return await created(who, control, agent) }
     instance.observe = async event => {
       // A session stays native-live while its current Agent object is resident; disposing a
       // superseded run of the same session id is not the session going away.
       if (event.kind === 'agent-disposed') {
         const current = event.actualAgent === undefined ? undefined : agents.get(event.actualAgent.id)
-        if (current === undefined || current === event.actualAgent) nativeLive.delete(event.sessionId)
+        if ((current === undefined || current === event.actualAgent) && nativeLive.delete(event.sessionId)) nativeRevision += 1
       }
       return await observe(event)
     }
@@ -163,10 +162,10 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
   t.after(() => runtime.dispose())
   if (initialPolicy) await runtime.savePolicy(operator, initialPolicy, 0, signal())
   const f = { runtime, ports, agents, nativeLive, cold, stops, ctx, controlsStorage, instrumentStorage, windowStorage, resourceStorage,
-    units, grants, observations, nativeCalls, gitCalls, guards, notificationCalls,
+    units, grants, observations, gitCalls, guards, notificationCalls,
     setNotify(fn) { notify = fn },
     async reopen() { await runtime.dispose(); runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs })); f.runtime = runtime; return runtime },
-    setNative(fn) { native = fn }, setRunner(fn) { runnerFactory = fn },
+    setRunner(fn) { runnerFactory = fn },
     async read(id = 'root', who = caller(id)) { return runtime.readSession(who, id, signal()) },
     async save(intent) { return runtime.savePolicy(operator, intent, (await runtime.readPolicy(operator, signal())).revision, signal()) },
     async apply(action, fields, id = 'root', who = caller(id)) {
@@ -179,11 +178,8 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     async assign(sessionId, workflowId, ticketIds = [], from = 'root') {
       return runtime.assign(caller(from), { sessionId, workflowId, ticketIds }, signal())
     },
-    exec(id = 'root', callId = 'execute-' + ++serial) {
-      return { name: 'mattpocock_execute', arguments: {}, callId, rootCallId: callId, token: {}, agent: agents.get(id), signal: signal(), deferContext() {}, concludeTurn() {} }
-    },
-    async managed({ id = 'root', nativeTool = 'subagent', args = {}, workflowId = null, localTicketId = null, exec = f.exec(id) } = {}) {
-      return runtime.executeManaged(caller(id), { nativeTool, arguments: args, workflowId, localTicketId }, exec)
+    exec(id = 'root', callId = 'delegate-' + ++serial) {
+      return { name: 'mattpocock_delegate', arguments: {}, callId, rootCallId: callId, token: {}, agent: agents.get(id), signal: signal(), deferContext() {}, concludeTurn() {} }
     },
     stop(item) { stops.push(item); stopRevision += 1 },
     async created(a) { agents.set(a.id, a); await runtime.created(caller(a.id), signal(), a) },

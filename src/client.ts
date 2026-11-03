@@ -32,7 +32,7 @@ export const PACKAGE_NAME = '@lmgatex/dsh-mattpocock-skills'
 export const TAB_KIND = 'mattpocock-collaboration'
 export const TAB_ID = PACKAGE_NAME + ':collaboration'
 export const ROW_KEY = PACKAGE_NAME + '#dsh-mattpocock-skills'
-export const OWN_TOOL_NAMES = ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_execute', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit'] as const
+export const OWN_TOOL_NAMES = ['mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_controls', 'mattpocock_assign', 'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit'] as const
 export const UNSUPPORTED_SEATS = Object.freeze([
   { key: 'secondary-header', reason: 'No additive full-width secondary session header slot.' },
   { key: 'persistent-session-list-badge', reason: 'Native leading decoration is idle-only; hover detail is hover-only.' },
@@ -1571,7 +1571,6 @@ export function sourceAction(toolName: string, request: Record<string, unknown> 
   if (commandAction !== null) return commandAction
   const action = request === null ? null : sourceTextField(request.action)
   if (action !== null) return action
-  if (toolName === 'mattpocock_execute') return 'execute'
   if (toolName === 'mattpocock_assign') return 'assign'
   if (toolName === 'mattpocock_delegate') return 'delegate'
   return toolName.replace(/^mattpocock_/u, '') || 'instrument'
@@ -1582,7 +1581,6 @@ export function sourceTarget(request: Record<string, unknown> | null): string {
   const pick = (key: string): unknown => command !== null && command[key] !== undefined ? command[key] : request[key]
   const parts: string[] = []
   const add = (value: string | null): void => { if (value !== null && value !== '' && !parts.includes(value)) parts.push(value) }
-  add(sourceTextField(request.nativeTool))
   add(sourceTextField(request.sessionId))
   const workflow = sourceTextField(pick('workflowId'))
   const item = sourceTextField(pick('localTicketId')) ?? sourceTextField(pick('decisionId'))

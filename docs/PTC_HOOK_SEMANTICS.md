@@ -1,6 +1,6 @@
 # PTC 嵌套调用下的钩子与派发语义
 
-> 2026-11-03 决策：普通无绑定 lane 的派发回到宿主原生工具；需要 ticket↔worktree 强绑定时用 `mattpocock_delegate` 的绑定式创建；`mattpocock_execute` 退役中。本文第 3 节的“托管路径”描述的是当前发行版中将被移除的 execute 包装；目标路径是 native `subagent`/`subagent_fork`/`send_message` 直接派发 + 生命周期观察，以及 delegate 的强绑定创建。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 决策，0.7.0 已实施：普通无绑定 lane 的派发使用宿主原生工具；需要 ticket↔worktree 强绑定时用 `mattpocock_delegate` 的绑定式创建；`mattpocock_execute` 已从模型面移除。本文第 3 节中的 execute 包装描述保留为 0.6.0 历史；当前路径是 native `subagent`/`subagent_fork`/`send_message` 直接派发 + 生命周期观察，以及 delegate 的强绑定创建。C（原生观察读取时关联/账本补齐）仍待后续。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 DSH 的 PTC（programmatic tool calling）模式允许模型在一次 `run_code` 里串联大量工具调用。
 本插件的状态注入与派发观测是否会被这种包装方式影响，结论与依据如下。
@@ -24,24 +24,21 @@ DSH 的 PTC（programmatic tool calling）模式允许模型在一次 `run_code`
 ## 3. 派发（subagent）观测来自生命周期事件，而非工具包装
 
 插件观测 `agent/created` / `agent/status` / `agent/disposed`（`src/host.ts:816,832,833`），
-并在 `src/runtime.ts:395-437` 中判定受管（execute 包装或 delegate 强绑定）与未托管：
+并区分受管（delegate 强绑定）与未托管原生事件：
 
-- execute 包装路径（**过渡实现，按 2026-11-03 决策移除**）：模型调用 `mattpocock_execute`，插件以 `windowsProgram.reserveExecution` 预留后，
-  在 `nativeDispatch.run(dispatch, () => ports.executeNative(...))`（`src/runtime.ts:488`）内触发原生派发，
-  子代理以 `origin==='subagent'` 且 `parentSession` 匹配被识别（`src/runtime.ts:398-409`）。
-- 普通目标路径（按 2026-11-03 设计）：模型直接调用原生 `subagent` / `subagent_fork` / `send_message`；插件只从生命周期事件观察，不再提供模型可见的 dispatch wrapper。
+- execute 包装路径（**0.6.0 历史，0.7.0 已移除**）：旧模型调用 `mattpocock_execute`，插件以 `windowsProgram.reserveExecution` 预留后在 `nativeDispatch.run(dispatch, () => ports.executeNative(...))` 内触发原生派发。0.7.0 不再注册该工具，也不存在 `executeManaged`/`executeNative` 路径。
+- 普通当前路径：模型直接调用原生 `subagent` / `subagent_fork` / `send_message`；插件只从生命周期事件观察，不提供模型可见的 dispatch wrapper。
 - 强绑定目标路径：需要 ticket↔worktree 绑定时，模型调用 `mattpocock_delegate`；它在 PTC 内同样以原生创建 + 实际 header 核对创建 binding。它不是通用 dispatch wrapper，仍按一个调用粒度对账。
 - 未托管路径：任何其它来源创建的子代理一旦进入成员资格就会被宿主实时运行状态计数并进入 S；插件另外把该账本缺口记为
   `unmanaged-native-execution-observed` 审计，不代表「零个执行」。只有宿主没有可用的原生目录 seam 时，
   `execution-admission` 才是 unsupported，并给出机械原因。
 
 这些路径都基于 SDK 生命周期事件，与子代理是在顶层工具还是 `run_code` 程序里创建无关。
-PTC 嵌套调用持有各自的 `exec`/callId，因此预留、凭据与释放仍按调用粒度对账。
+PTC 嵌套调用持有各自的 `exec`/callId；delegate 的强绑定路径仍按调用粒度做持久意图与 reservation 对账，普通原生路径没有插件预留/释放账本。
 
 ## 4. 需要明确的边界
 
-- **管理功能关闭的工作区**：当前发行版的 `mattpocock_execute` 走非准入路径（`src/runtime.ts:469-473`），
-  插件不做预留与释放对账，子代理一律按未托管原生活动记入账本审计；它们仍由宿主的实时运行状态计入 S（原生目录提供成员资格，live `Agent.status` 决定 running，目录 `activity` 不是执行）。这不是漏判，是策略状态。该 execute 包装随 2026-11-03 决策退役后，原生路径不再有这条分支；delegate 强绑定路径仍按调用粒度 reservation/释放对账。
+- **管理功能关闭的工作区（0.6.0 历史 execute 行为）**：旧 `mattpocock_execute` 走非准入路径（当时 `src/runtime.ts:469-473`），插件不做预留与释放对账，子代理按未托管原生活动记入账本审计。0.7.0 移除 execute 后普通原生路径不再有此分支；它们仍由宿主实时运行状态计入 S（原生目录提供成员资格，live `Agent.status` 决定 running，目录 `activity` 不是执行）。delegate 强绑定路径仍按调用粒度 reservation/释放对账。
 - **无法归因的嵌套调用**：若某个嵌套 `exec` 没有可用的 agent 归属，插件的 post-execute 直接放行，
   该次调用不附带状态块；下一次 pre-step 仍会注入。
 

@@ -181,7 +181,6 @@ export interface RuntimeFacade {
      * the admitted model step (turn:step), so one step's repeated assembly passes stay one delivery step. */
     preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[], stepKey?: string): Promise<readonly UserMessage[]>;
     postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>, stepKey?: string): Promise<readonly UserMessage[]>;
-    executeManaged?(caller: HostCaller, request: HostJson, exec: ToolRunContext): Promise<unknown>;
     assign?(caller: HostCaller, request: HostJson, signal: AbortSignal): Promise<unknown>;
     serializePolicyPermission?<T>(effect: () => Promise<T>): Promise<T>;
     notificationCommitted?(ownerSessionId: string, notificationId: string, messageId: string): Promise<void>;
@@ -217,7 +216,6 @@ export interface HostPorts {
     /** Program-only proof on the exact live model surface; preparation/log existence is not visibility. */
     snapshotVisible?(caller: HostCaller, actualAgent: Agent, message: UserMessage): boolean;
     notifyOwner(input: OwnerNotificationInput, signal: AbortSignal): Promise<OwnerNotificationResult>;
-    executeNative(exec: ToolExecution, name: 'subagent' | 'subagent_fork' | 'send_message', args: unknown): Promise<ToolExecutionResult>;
     /** Technical scope preflight before runtime records intent; creates no native child or durable facts. */
     authorizeInitialChildCwd?(exec: ToolRunContext, cwd: string): Promise<void>;
     /** Returns native inbox acceptance only; runtime verifies actual session facts separately. */

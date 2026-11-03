@@ -9,7 +9,7 @@ import { classifyRunnerFailure, matchesSignature } from '@deepseek-ai/dsh-sandbo
 import type { ConfinedArgv } from '@deepseek-ai/dsh-sandbox'
 import type { AuthorizedGitRunner } from './controls/git-worktrees.js'
 import { ResourceError } from './controls/resources.js'
-import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-session-query'
@@ -101,64 +101,6 @@ interface NativeActivationFacade {
 /** Pre-activation continuation spelling still exposed by hosts before 0.2.1-alpha.2. */
 interface LegacyContinuationFacade {
   readonly startContinuable?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown }>
-}
-/** Single-call tool dispatch on the host line before the 0.2.2 executor split. */
-interface LegacyToolExecutionFacade {
-  execute(input: {
-    readonly callId: ToolExecution['callId']
-    readonly rootCallId: ToolExecution['rootCallId']
-    readonly parent: ToolExecution['token']
-    readonly name: string
-    readonly arguments: unknown
-    readonly agent: Agent
-    readonly signal: AbortSignal
-  }): Promise<ToolExecutionResult>
-}
-/** One prepared nested call on the 0.2.2+ pipeline. Kept structural because the
- * pipeline subpath does not exist on the older host line this package still supports. */
-type NestedToolExecution = Readonly<Record<string, unknown>>
-type NestedToolOutcome = { readonly kind: 'post-result' | 'final-result'; readonly result: ToolExecutionResult }
-type NestedToolPreparation = ({ readonly kind: 'dispatch'; readonly exec: NestedToolExecution }) | NestedToolOutcome
-interface NestedToolPipeline {
-  prepare(input: {
-    readonly callId: ToolExecution['callId']
-    readonly rootCallId: ToolExecution['rootCallId']
-    readonly parent: ToolExecution['token']
-    readonly name: string
-    readonly arguments: unknown
-    readonly agent: Agent
-    readonly signal: AbortSignal
-  }): Promise<NestedToolPreparation>
-  dispatch(exec: NestedToolExecution): Promise<NestedToolOutcome>
-  complete(exec: NestedToolExecution, outcome: NestedToolOutcome): Promise<ToolExecutionResult>
-}
-interface NestedToolPipelineModule {
-  readonly ToolExecutionPipeline: new (ctx: Context) => NestedToolPipeline
-}
-const NESTED_TOOL_PIPELINE_SPECIFIER = '@deepseek-ai/dsh-tools/pipeline'
-let nestedToolPipelineModule: Promise<NestedToolPipelineModule> | undefined
-/** Load the public nested-dispatch pipeline only after the host proves the 0.2.2+ registry shape. */
-function loadNestedToolPipeline(): Promise<NestedToolPipelineModule> {
-  return nestedToolPipelineModule ??= import(NESTED_TOOL_PIPELINE_SPECIFIER) as Promise<NestedToolPipelineModule>
-}
-/** 0.2.2 split batch execution into executor plugins; the old single-call `execute` is gone. */
-function hasToolExecutorSelection(tools: Context['tools']): boolean {
-  return typeof (tools as unknown as { readonly setExecutor?: unknown }).setExecutor === 'function'
-}
-/** Dispatch one plugin-owned nested call without selecting a model-facing executor. The
- * public pipeline keeps the enclosing call token, policy, guards, and result settlement. */
-async function executeNestedTool(ctx: Context, exec: ToolExecution, name: string, args: unknown): Promise<ToolExecutionResult> {
-  const { ToolExecutionPipeline } = await loadNestedToolPipeline()
-  const pipeline = new ToolExecutionPipeline(ctx)
-  // The three managed native tools are unconditional on the tested host. Omitting the
-  // optional step tool-set preserves the pre-0.2.2 managed-dispatch contract instead of
-  // silently narrowing it to the model's current declaration.
-  const preparation = await pipeline.prepare({
-    callId: ToolCallId(exec.callId + ':managed'), rootCallId: exec.rootCallId, parent: exec.token,
-    name, arguments: args, agent: exec.agent!, signal: exec.signal,
-  })
-  if (preparation.kind !== 'dispatch') return preparation.result
-  return await pipeline.complete(preparation.exec, await pipeline.dispatch(preparation.exec))
 }
 function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
   const subagents = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
@@ -1006,7 +948,6 @@ export interface RuntimeFacade {
    * the admitted model step (turn:step), so one step's repeated assembly passes stay one delivery step. */
   preStep(caller: HostCaller, signal: AbortSignal, acceptedMessages?: readonly UserMessage[], stepKey?: string): Promise<readonly UserMessage[]>
   postExecute?(caller: HostCaller, exec: ToolExecution, result: Readonly<ToolExecutionResult>, stepKey?: string): Promise<readonly UserMessage[]>
-  executeManaged?(caller: HostCaller, request: HostJson, exec: ToolRunContext): Promise<unknown>
   assign?(caller: HostCaller, request: HostJson, signal: AbortSignal): Promise<unknown>
   serializePolicyPermission?<T>(effect: () => Promise<T>): Promise<T>
   notificationCommitted?(ownerSessionId: string, notificationId: string, messageId: string): Promise<void>
@@ -1033,7 +974,6 @@ export interface HostPorts {
   /** Program-only proof on the exact live model surface; preparation/log existence is not visibility. */
   snapshotVisible?(caller: HostCaller, actualAgent: Agent, message: UserMessage): boolean
   notifyOwner(input: OwnerNotificationInput, signal: AbortSignal): Promise<OwnerNotificationResult>
-  executeNative(exec: ToolExecution, name: 'subagent' | 'subagent_fork' | 'send_message', args: unknown): Promise<ToolExecutionResult>
   /** Technical scope preflight before runtime records intent; creates no native child or durable facts. */
   authorizeInitialChildCwd?(exec: ToolRunContext, cwd: string): Promise<void>
   /** Returns native inbox acceptance only; runtime verifies actual session facts separately. */
@@ -1610,14 +1550,6 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         return { status: 'accepted', messageId: message.id }
       },
       gitRunnerForSession(sessionId, signal) { return createAuthorizedGitRunner(ctx, sessionId, AbortSignal.any([signal, lifetime.signal])) },
-      async executeNative(exec, name, args) {
-        agentCaller(ctx, exec.agent); exec.signal.throwIfAborted()
-        // 0.2.2 owns batch dispatch in executor plugins and removed the old single-call
-        // registry execute. A composite tool still needs the enclosing token and policy,
-        // so it uses the public nested pipeline instead of selecting a model executor.
-        if (hasToolExecutorSelection(ctx.tools)) return executeNestedTool(ctx, exec, name, args)
-        return (ctx.tools as unknown as LegacyToolExecutionFacade).execute({ callId: ToolCallId(exec.callId + ':managed'), rootCallId: exec.rootCallId, parent: exec.token, name, arguments: args, agent: exec.agent!, signal: exec.signal })
-      },
       async authorizeInitialChildCwd(exec, cwd) {
         lifetime.signal.throwIfAborted(); exec.signal.throwIfAborted()
         const caller = agentCaller(ctx, exec.agent)
@@ -1814,12 +1746,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (parsed.action !== 'read') throw new ControlsError('feature-disabled', 'this tool only reads recorded resources; pass {action:"read", resourceId}. Creating, borrowing and retiring trees is Git work you do with the host tools.')
       return active.resourceAction(caller, caller.sessionId!, parsed, exec.signal)
     })
-    if (active.delegate) tool('mattpocock_delegate', 'Create a continuable spawn/fork child: description, prompt, optional provider ("spawn" or "fork"; default "spawn"), worktree, operationId, workflowId and ticketIds. Preferred flow: let the lane create its own tree with the host\'s create_worktree — the instrument observes and registers that native creation — and pass an absolute worktree path only when you prepared one yourself, because the child then starts there. Retrying the same operationId never creates a second child; use a new operationId when you want another one. When workflowId is given, ticketIds must name at least one ticket already recorded in this instrument; omit workflowId entirely for a ticketless research lane. If recording is reported unknown or failed, read the binding with mattpocock_worktree before retrying.', async (raw, caller, exec) => {
+    if (active.delegate) tool('mattpocock_delegate', 'Binding-first creation of a continuable spawn/fork child: description, prompt, optional provider ("spawn" or "fork"; default "spawn"), prepared worktree, operationId, workflowId and ticketIds. Use this only when you need a durable, verifiable ticket↔worktree binding (or the persistent intent, idempotency and pre-creation scope check that come with it); ordinary unbound lanes should use the host\'s native subagent/subagent_fork and mattpocock_assign instead. Prepare the worktree first with the host\'s create_worktree and pass its absolute path as worktree: the child starts there, the actual child/parent/cwd header is verified, and the binding records the requested/actual cwd with the task and ticketIds before the ticket assignment is written. Omitting worktree records only the inherited cwd, not a claim that the lane owns a dedicated tree. Retrying the same operationId never creates a second child; use a new operationId when you want another one. When workflowId is given, ticketIds must name at least one ticket already recorded in this instrument; omit workflowId entirely for a ticketless research lane. If recording is reported unknown or failed, read the binding with mattpocock_worktree before retrying.', async (raw, caller, exec) => {
       record(raw, 'delegation request', ['description', 'prompt', 'provider', 'worktree', 'operationId', 'workflowId', 'ticketIds'])
       await ports.authorizeCaller(caller, caller.sessionId!); return active.delegate!(caller, parseHostJson(raw), exec)
-    })
-    if (active.executeManaged) tool('mattpocock_execute', 'Record one execution fact you actually observed for a native delegation (nativeTool as "subagent", "subagent_fork" or "send_message", its arguments, plus workflowId and localTicketId; omit both or pass null when the execution belongs to no ticket). Never record an execution you did not observe. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
-      await ports.authorizeCaller(caller, caller.sessionId!); return active.executeManaged!(caller, parseHostJson(raw), exec)
     })
     if (active.assign) tool('mattpocock_assign', 'Record only authenticated delegation assignments as {sessionId, workflowId, ticketIds}; omit workflowId (or pass null) and omit ticketIds for a grant with no ticket. Never self-grant user policy access. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!); return active.assign!(caller, parseHostJson(raw), exec.signal)
