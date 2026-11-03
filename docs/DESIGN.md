@@ -12,17 +12,17 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 仪器事实边界与恢复（2026-11-04，所有者认可；仅设计固定，未实施）
+## 仪器事实边界与恢复（2026-11-04，所有者认可；0.9.0 已实施并验证）
 
-本节是当前权威增量，收窄下方历史 C 阶段的“初始 cwd 已关联/已完成”口径，补足 delegate 部分成功、迟到事件及消费契约。完整设计、兼容规则和验收矩阵见 [INSTRUMENT_FACT_BOUNDARIES.md](<INSTRUMENT_FACT_BOUNDARIES.md>)；实施切片见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>) 的同名节。本轮只固定文档，不修改运行时，不授权代码实施、推送/发布、安装、SDK/Profile 配置或服务重启；0.7.0/0.7.1/0.8.0 的既有交付记录不回填为本轮验收。
+本节是当前权威增量，收窄下方历史 C 阶段的“初始 cwd 已关联/已完成”口径，补足 delegate 部分成功、迟到事件及消费契约。完整设计、兼容规则和验收矩阵见 [INSTRUMENT_FACT_BOUNDARIES.md](<INSTRUMENT_FACT_BOUNDARIES.md>)；实施切片见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>) 的同名节。0.9.0 已在源码实施，并由完整测试与精确制品验证（见 [VERIFICATION.md](<VERIFICATION.md>)）；尚未 push/tag/GitHub Release、未 npm publish、未安装本机 DSH/Profile/GUI。0.7.0/0.7.1/0.8.0 的既有交付记录不回填为本轮验收。
 
 - **native-first 不变。** delegate 默认不注册且保留实现；不恢复 execute，不新增模型工具、Remote 方法、存储 domain、cwd resolver 或调度器。
-- **header 是来源值，不是有效初始 cwd。** C 当前保存的 `initialCwd` 实为 child header cwd，后续以 `headerCwd` 的语义明确来源。仅 header 路径相等不得产生实际初始目录/强绑定声明；没有宿主证明时保持 unknown。`created-tree` 的创建者事实不依赖 cwd 证明。旧字段、旧 history 与旧 binding 兼容读，不自动升级证据、不静默重写历史。
-- **创建、binding、assignment 分别报告。** 保留已接受 child 身份；confirm 失败时明确 assignment 尚未执行，提交不确定时如实 unknown。同 operationId 不重复创建、不自动补授权；reconcile 仅修 binding；需要补票范围时对已有 child 显式 assign 并重新核验当前权限。native + assign 的默认指导只针对新的正常 lane，不能成为已接受/不确定操作的第二次创建。
-- **迟到 end 不以 live Agent 为前提。** 使用已核验的 session/owner/run 身份接收宿主已发布结局；旧 run 的 end 不覆盖新 run，无法可靠归属时报告既有 health 缺口。S、nativeStops 和通知来源及门控不变。
+- **header 是来源值，不是有效初始 cwd。** C 在 0.8.0 及更早版本保存的 `initialCwd` 实为 child header cwd；0.9.0 起以 `headerCwd` 明确来源。仅 header 路径相等不得产生实际初始目录/强绑定声明；没有宿主证明时保持 unknown。`created-tree` 的创建者事实不依赖 cwd 证明，header 为 null 也保留创建者关联。旧字段、旧 history 与旧 binding 兼容读，不自动升级证据、不静默重写历史。
+- **创建、binding、assignment 分别报告。** 0.9.0 在结果中分开返回 creation/binding/assignment，另列 recording/persistence 与 recovery。保留已接受 child 身份；confirm 失败时明确 assignment 为 not-attempted，提交不确定时如实 unknown。同 operationId 不重复创建、不自动补授权；reconcile 仅修 binding；需要补票范围时对已有 child 显式 assign 并重新核验当前权限。native + assign 的默认指导只针对新的正常 lane，不能成为已接受/不确定操作的第二次创建。
+- **迟到 end 不以 live Agent 为前提。** 0.9.0 使用已核验的 session/owner/run 身份与 `runId` 围栏接收宿主已发布结局；旧 run 的 end 不覆盖新 run，新 start 缺 runId 不继承旧 run，旧 Agent 的 disposed 不清掉新 live run；无 owner view 时只报 native-executions 覆盖缺口，不写 outcome、不扫冷日志。S、nativeStops 和通知来源及门控不变。
 - **来源按字段区分。** 两类 lane 都标 inferred；树创建/宿主结局标 observed；清理与业务状态标 authored，不能互相继承证明力。
 - **默认指导和消费减负有条件。** 只读 lane 不承担建树义务，未注册 delegate 不进默认指导；管理 OFF 不抹义务也不继续命令新增受管行为。stale 正文只在来源/权限/版本及真实可见性可确认不变时去重；新义务、撤权、策略切换、上下文重建与恢复 current 必须正确传递。
-- **真实宿主形态优先验收。** 补父 header cwd + 后续工作目录事件、有票部分成功、dispose 后 end/跨 run、旧数据与撤权/可见性回归；旧机械测试通过不证明新契约已实现。源码、制品、安装和当前进程分别核验。
+- **真实宿主形态优先验收。** 补父 header cwd + 后续工作目录事件、有票部分成功、dispose 后 end/跨 run、旧数据与撤权/可见性回归。0.9.0 已由源码与测试覆盖并与精确制品核对；旧机械测试通过仍不单独证明新契约，源码/制品通过也不等于已安装或当前 GUI 已更新。
 
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 
@@ -33,9 +33,9 @@ This document is the authoritative implementation contract. A later implementati
 - **`mattpocock_delegate` 保留为可配置的绑定式创建（binding-first creation），默认不注册。** 它不是默认派发路径；只有 profile 显式设置 `delegate: true` 时才注册，且仅当需要可核验的 ticket↔worktree 强绑定，或需要其持久意图/幂等/创建前 scope 时使用：先持久化创建意图，再以准备的工作树为初始 cwd（省略则继承父 cwd）创建 child，核对实际 header，写入 binding（task/ticketIds），并 assign 票范围。普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`。它是当前唯一的 binding 创建入口；`mattpocock_worktree` 只读取、更新或重核对已有 binding，不创建新 binding。不得与 execute 并存。
 - **`mattpocock_assign` 保留。** 只对真实直接 child 登记受授 workflow/ticket；不派发、不创建 child。创建前 scope 由 delegate（若使用）检查，创建后由 assign 再检查；普通 native 路径以 assign 为准。
 - **执行事实来自观察，工作树强绑定由 delegate 写入。** 原生 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 是执行事实来源；0.7.1 把这些事实按 child session 持久化在 owner runtime document 的 `nativeExecutions`（`executionId = sessionId`，重跑更新同一行，`activity` 只在读取时取 live Agent，`outcome` 只取宿主 `stopReason`）。opt-in 的 `mattpocock_delegate`（0.8.0 默认不注册）的 `registerIntent → confirm` 才是 child↔初始 cwd/task/ticketIds 的强 binding 创建入口。成功的 `create_worktree` 只产生树创建 observation；读取时可用 creator + assignment/binding 关联出 lane，但必须标为 observed/inferred，不能冒充强 binding。S 继续按宿主 live `Agent.status` 计数；普通路径不再以 lease 为前提。
-- **绑定观察的读取时关联（0.7.1 的历史实现）。** 当时用首次 child header cwd 精确匹配 `create_worktree`，生成 `worktree: observed` 与 `nativeChildren`（`created-tree` / `initial-cwd`）；lane 从 assignment/binding 推导。账本及这些投影已交付，但 header 不能据此证明实际初始 cwd，“实际初始目录关联已验证”的结论撤回，后续契约以 2026-11-04 节为准，尚未实施。它们从来不是 delegate 风格的强 binding。方案 A 仍保留 delegate 实现；0.8.0 起默认不注册。未来若退役它，须先接受等价强绑定设计并另更新本节。
+- **绑定观察的读取时关联（0.7.1 的历史实现）。** 当时用首次 child header cwd 精确匹配 `create_worktree`，生成 `worktree: observed` 与 `nativeChildren`（`created-tree` / `initial-cwd`）；lane 从 assignment/binding 推导。账本及这些投影已交付，但 header 不能据此证明实际初始 cwd，“实际初始目录关联已验证”的结论撤回，后续契约以 2026-11-04 节为准；0.9.0 已取消 `initial-cwd` 路径关联，只保留 `created-tree`。它们从来不是 delegate 风格的强 binding。方案 A 仍保留 delegate 实现；0.8.0 起默认不注册。未来若退役它，须先接受等价强绑定设计并另更新本节。
 - **旧宿主兼容。** 没有原生 cwd/创建 seam 的宿主仍按 capability 使用随包兼容提供者或明确拒绝；`host-patches/` 与 startup cwd 设置保留为旧宿主路径，不构成保留 execute 的理由。当前宿主优先原生；不得用版本字符串冒充能力。
-- **验收与迁移。** B（移除 execute）、D（delegate 绑定式创建）与 E（构建/制品/发布准备）已在 0.7.0 源码线完成；C（原生观察读取时关联/账本补齐）已在 0.7.1 完成，规格与验收见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。0.8.0 将 delegate 默认关闭；只有显式 `delegate: true` 才注册，普通 lane 的 native + assign 路径不变。C 不写强 binding、不新增模型工具、不新增 Remote 方法或存储域；观察失败不阻断 native 事件、S、nativeStops 或通知。0.7.0/0.7.1 的发布、推送和 tag 已按发布记录执行；本决策仍不授权安装或 Profile 修改。移除 execute 至少验收：模型工具面不再注册它；native `subagent` + `mattpocock_assign` 只产生一个 child；native `send_message` 不重复投递；PTC 嵌套路径仍注入状态；无 execute 时 S、结局、通知与绑定观测仍完整。强绑定验收：delegate 以准备好的 `worktree` 创建时只产生一个 child，并写出 requested/actual cwd、task、ticketIds 的 binding；`mattpocock_worktree` 能读到它；原生无绑定 lane 不得静默产生强 binding。
+- **验收与迁移。** B（移除 execute）、D（delegate 绑定式创建）与 E（构建/制品/发布准备）已在 0.7.0 源码线完成；C（原生观察读取时关联/账本补齐）已在 0.7.1 完成，规格与验收见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。0.8.0 已把 delegate 默认关闭；只有显式 `delegate: true` 才注册，普通 lane 的 native + assign 路径不变。C 不写强 binding、不新增模型工具、不新增 Remote 方法或存储域；观察失败不阻断 native 事件、S、nativeStops 或通知。0.7.0/0.7.1 的发布、推送和 tag 已按发布记录执行；本决策仍不授权安装或 Profile 修改。移除 execute 至少验收：模型工具面不再注册它；native `subagent` + `mattpocock_assign` 只产生一个 child；native `send_message` 不重复投递；PTC 嵌套路径仍注入状态；无 execute 时 S、结局、通知与绑定观测仍完整。强绑定验收：delegate 以准备好的 `worktree` 创建时只产生一个 child，并写出 requested/actual cwd、task、ticketIds 的 binding；`mattpocock_worktree` 能读到它；原生无绑定 lane 不得静默产生强 binding。
 
 ## delegate 默认禁用（2026-11-03，所有者认可；0.8.0 源码实施）
 
@@ -43,7 +43,7 @@ This document is the authoritative implementation contract. A later implementati
 
 - **默认关闭。** 插件 Config 新增布尔项 `delegate`（默认 `false`）；缺省或 `false` 时 `mattpocock_delegate` 不注册，显式 `delegate: true` 才 opt-in。默认模型面为七个固定工具（controls、record、window、resource、assign、history、worktree）+ 条件 `mattpocock_audit`；opt-in 后才出现可选第八项 delegate。
 - **保留的原因。** 该工具仍有独立的 binding-first 创建、持久意图、operationId 幂等、创建前 ticket scope 和 `registerIntent → confirm` 语义，供后续观察或在能证明实际 child cwd 的宿主上使用；本轮不删除实现、不删历史 binding、不新增替代机制。
-- **不替宿主补语义。** 本机 DSH 的 child `header.cwd` 是创建时父目录；插件不从 `workingDirectory.ensure`、setup event 或路径推断中补一个“有效 cwd”来让 binding 看起来 confirmed。header 无法证明时，delegate 保持 `accepted-unknown`/`recording: failed`，不得冒充强绑定；这不表示 child 没有创建。已接受/不确定的原操作不得改用 native 重建，应核对已有 child 并按需要显式补 assign；今后的普通新 lane 用 native + `mattpocock_assign`。creation/binding/assignment 分离结果是 2026-11-04 的待实施增量。
+- **不替宿主补语义。** 本机 DSH 的 child `header.cwd` 是创建时父目录；插件不从 `workingDirectory.ensure`、setup event 或路径推断中补一个“有效 cwd”来让 binding 看起来 confirmed。header 无法证明时，0.9.0 的 delegate 报告 binding 未确认/unknown，同时保留 creation accepted 的 child 身份；binding confirmed 仍只来自显式 header checkpoint 匹配，不得冒充实际初始/当前目录证明。已接受/不确定的原操作不得改用 native 重建，应核对已有 child 并按需要显式补 assign；今后的普通新 lane 用 native + `mattpocock_assign`。creation/binding/assignment 分离与 recovery 已在 0.9.0 完成。
 - **客户端 wire key。** 客户端仍声明九个 `OWN_TOOL_NAMES` wire key，用于 opt-in delegate 与历史工具卡；这不等同于默认模型注册，也不改变默认模型面。
 - **验收。** 默认 visible 工具面不含 delegate；`delegate: true` 时注册且原 description/权限/强绑定回归通过；native subagent + assign 单 child 回归不变；无新增工具/Remote/存储域；完整套件与精确制品通过前不发布。本决策不授权本机安装或 Profile 修改。
 

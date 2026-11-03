@@ -1,25 +1,25 @@
 # 原生执行事实与读取时关联（C 阶段）
 
-> **Status:** 2026-11-03 设计增量；**0.7.1 已实施、完成机械验证并发布**（tag `v0.7.1` -> `770b0e7`，制品源 `b8fe19e`；未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。** 0.8.0 只将 delegate 默认关闭（opt-in），C 事实/关联语义不变。
+> **Status:** 2026-11-03 设计增量；**0.7.1 已实施、完成机械验证并发布**（tag `v0.7.1` -> `770b0e7`，制品源 `b8fe19e`；未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。** 0.8.0 只将 delegate 默认关闭（opt-in）；0.9.0 已按事实边界收窄 C 的目录语义（见下节与第 7 节），0.7.1 的字段形状仅作历史。
 > 公开资料边界：只记录公开事件、合成测试与聚合结果；不发布原始会话、Profile 或本机路径。
 
-## 2026-11-04 修订：事实边界已固定，尚未实施
+## 2026-11-04 修订：0.9.0 已实施并验证
 
-**后续实施以 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 为准。** 下方保留 0.7.1 的字段形状、事件映射和历史机械验收，不代表真实初始目录已经证明：`initialCwd` 实际取自 header，应按 headerCwd 语义兼容读取，不能据路径相等派生实际初始目录/强绑定。`created-tree` 的创建者事实不得依赖 header 非空。dispose 后已发布 end 应使用已验证 owner/session/run 身份处理；重复/跨 run/缺 runId 不得覆盖新运行，不能关联时进入既有 health。旧 history/binding 不重写、不升级证据；管理有意关闭不记观察失败。详见新页第 3、5、8 节及 [实施计划](<IMPLEMENTATION_PLAN.md>)，本次不改代码或已发布验证数字。
+**0.9.0 已按 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 实施。** 下方 0.7.1 的字段形状、事件映射和历史机械验收保留为历史，不代表当前字段形状。0.9.0 的当前契约是：`headerCwd` 替代 `initialCwd` 读模型，旧 `initialCwd` 单键兼容读取，两键同值归一化、冲突拒绝；不再由 header 路径相等生成 `initial-cwd` 或 worktree 关联；`nativeChildren` 只保留 `created-tree`，header 为 null 也保留创建者关联；迟到已发布 end 使用 owner/session/run 与 `runId` 围栏，旧 run 不覆盖新 run，已发布 outcome 不被不同 outcome 静默改写，新 start 缺 `runId` 不继承旧 run，旧 Agent 的 disposed 不清掉新 live run；rowless late end 在 dispose 后仍按 owner 索引显示覆盖缺口，无 owner view 时只报 gap 不写。旧 history/binding 不重写、不升级证据；管理有意关闭不记观察失败。第 7 节记录 0.9.0 实施，源码/测试/制品结果见 [VERIFICATION](<VERIFICATION.md>)。
 
 ## 0. 历史 C 阶段目标与非目标
 
 **目标**：
 
 1. 普通原生 `subagent` / `subagent_fork` 创建的子会话有可查询的 `native-observed` 执行事实，不再只有 live S 和原生 outcome item。
-2. 历史实现从 child header cwd + `create_worktree` 生成 observed 路径关联；2026-11-04 已确认该来源不能证明实际初始目录，后续须收窄为 header 来源或取消无证关联，不能继续称“实际初始目录已关联”。
+2. 历史实现从 child header cwd + `create_worktree` 生成 observed 路径关联；2026-11-04 已确认该来源不能证明实际初始目录。0.9.0 已取消该路径相等关联，执行事实只保留 `headerCwd` 来源值，不能继续称“实际初始目录已关联”。
 3. 保留现有 S、nativeStops、owner 通知、assignment、worktree binding/observation 与 history 行为；这些事实之间不互相冒充。
 
 **非目标**：
 
 - 不恢复 `mattpocock_execute`，不提供通用派发包装。
 - 不新增模型工具或新的派发入口。
-- 不把 native child 自动绑定到 ticket/tree；需要强绑定时仍用 opt-in 的 `mattpocock_delegate`（0.8.0 默认不注册）。
+- 不把 native child 自动绑定到 ticket/tree；需要强绑定时仍用 opt-in 的 `mattpocock_delegate`（0.8.0 起默认不注册，0.9.0 保持）。
 - 不把“初始 cwd 等于某棵树”说成“正在使用”或“独占”；没有目录占用机制。
 - 不解析所有冷会话日志重建历史；C 只记录本轮 runtime 实际收到的原生生命周期事件。旧会话/未观察到的原生 child 保持 unknown。
 - 不把模型文字或业务完成标签当成执行回执。
@@ -76,7 +76,9 @@ interface NativeExecutionFact {
 
 同一 child 的重复事件必须幂等：候选行与现有行等价时不产生新的 document revision；不把重复 `subagent/start` 当成第二个 child，也不重复发通知。
 
-## 2. 历史实现：读取时投影（目录语义须按顶部修订收窄）
+## 2. 历史实现：读取时投影（0.7.1；0.9.0 已收窄）
+
+以下代码块与规则是 0.7.1 历史投影，不是 0.9.0 当前字段/读取行为；当前行为见第 7 节。
 
 ### 2.1 NativeExecutionView
 
@@ -115,7 +117,7 @@ readonly nativeChildren: readonly {
 
 ### 2.3 不写强 binding
 
-C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 observation 转成 binding。强 binding 仍然只由 opt-in 的 `mattpocock_delegate` 写入（0.8.0 默认不注册，只有显式 `delegate: true` 才启用）。任何读取投影都不得改变 binding 的 `bindingId`、`actualChildSessionId`、`actualCwd` 或业务状态。
+C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 observation 转成 binding。强 binding 仍然只由 opt-in 的 `mattpocock_delegate` 写入（0.8.0 起默认不注册，0.9.0 保持；只有显式 `delegate: true` 才启用）。任何读取投影都不得改变 binding 的 `bindingId`、`actualChildSessionId`、`actualCwd` 或业务状态。
 
 ## 3. 对外表面
 
@@ -135,7 +137,9 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 - 记录上限：document 保留每个 child 一行；snapshot 最多 64 行。child 的完整历史由 history 查询，不在当前注入里无限增长。
 - 没有新存储 domain、没有新模型工具、没有新 Remote 方法；若后续需要，另立设计。
 
-## 5. 历史 C 阶段验收（不代替 2026-11-04 增量）
+## 5. 历史 C 阶段验收（0.7.1；不代替 0.9.0 验收）
+
+以下为 0.7.1 历史验收；0.9.0 的覆盖与计数见 [VERIFICATION](<VERIFICATION.md>) 的 0.9.0 节。
 
 1. `agent/created` + `subagent/start` + `subagent/end` 产生一行 `nativeExecutions`；`activity` 随 live Agent 变化，`outcome` 来自宿主 stopReason。
 2. 重复事件/热重载不产生第二行、不重复通知；没有 end 的 disposed 保持 `outcome: null`。
@@ -151,3 +155,15 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 - 视图：`RuntimeSnapshot.nativeExecutions` 仅 coordinator，最近 64 行最新在前；`activity` 读取时取 live Agent；`lane` 标 `inferred`；`worktree` 仅精确初始 cwd 匹配当前 observation 时标 `observed`。工作树观测行增加读取时 `nativeChildren`（`created-tree` / `initial-cwd`，`observed`）。
 - 对外：`ConsumptionSnapshot.nativeExecutions` 与 facts 分类；仅在有行时追加协议说明；`mattpocock_history` 通过既有 runtime capture 记录 `kind: native-execution`、`domain: runtime`、`recordId: executionId`、`version: document.revision`。客户端窗口/观测面板只读展示。
 - 边界：写入门控为 `view.policy.extensionEnabled`（关闭时不新增/更新、已有行可读，重新启用后恢复）；没有新模型工具、Remote 方法或存储域；没有 `registerIntent/confirm` 或 `worktrees_*` 写入；binding 字段/行数不变。完整测试计数、客户端/构建产物、clean-source 制品字节与 sha256 见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。
+
+## 7. 0.9.0 事实边界实施（2026-11-04，隔离工作树；未安装）
+
+0.9.0 已按 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 修改读取与生命周期语义；本节是当前行为，第 1-6 节保留 0.7.1 历史记录。
+
+- **目录字段。** `NativeExecutionFact` 以 `headerCwd` 暴露并只写 header 来源值；`initialCwd` 只是 legacy 读取兼容。旧单键可读；新旧两键同值归一化，冲突显式失败。`headerCwd` 为 null 表示没有可读 header 值，不是“没有目录”，也不证明实际初始/当前目录。
+- **关联。** 不再由 `headerCwd` 路径相等生成 `worktree` 或 `initial-cwd` 关系。`nativeChildren` 只有 `created-tree`（`source: 'observed'`），取 observation 的 `creatorSessionId`，不依赖 header 非空；空数组只表示没有可观测的创建者关联，不表示没人使用目录。
+- **生命周期。** `subagent/end` 带 `runId` 做围栏：旧 run 的 end 不覆盖新 run；已发布 outcome 不被不同 outcome 静默改写；新 start 缺 `runId` 不继承旧 run，与当前 running 行无法区分时保持现状，其他无法归属的边报告关联缺口。旧 Agent 的 `disposed` 不清掉新 live run。
+- **迟到 end 与缺口。** 同一 runtime 仍保留 owner view 时，disposed 后到达的已发布 end 可写入同一 run 的 outcome；没有任何可信 owner view 或没有 durable row 时，只把 native-executions coverage gap 记入既有 health，不扫冷日志、不重试、不猜结果，也不伪称“已保存”。
+- **范围。** 只处理 local subagent/end；non-local 不是本仪器执行事实。没有新增模型工具、Remote 方法、存储域或强绑定写入口；默认仍是 7 固定 + 条件 audit，delegate opt-in 第八项，Remote 16，客户端 9 wire key。
+
+完整套件、构建与精确制品见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.9.0 节；0.7.1 的历史计数不充当 0.9.0 结果。

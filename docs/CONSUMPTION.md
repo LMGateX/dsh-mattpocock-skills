@@ -8,9 +8,9 @@
 
 [机械测试](<../tests/consumption.test.mjs>)只验证核心边界与模拟 host 消息组合，不证明安装版 SDK 接入、真实模型遵守协议或运行中的 GUI 已生效。既有规则来源：[响应式同一步消费](<REACTIVE_WINDOW_INSTRUMENTATION.md>)、[最小引导](<INSTRUMENT_GUIDANCE.md>)、[session 实例与业务归属](<SESSION_INSTRUMENTS.md>)。
 
-## 2026-11-04 后续契约（设计固定，尚未实施）
+## 2026-11-04 契约（0.9.0 已实施）
 
-[事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 第 3、6、7、8 节补足本模块：header 来源不冒充实际初始 cwd；两个 lane 都显式 inferred；只读 lane 无建树义务；可信 Host 未注册 delegate 时默认协议不推荐它。管理 OFF 只保留既有义务/合法事实，不追加要求新增受管操作的通用命令。stale 减负只合并可证明在真实有效输入仍可见、同权限/协议/事实版本/原因的重复旧正文；上下文重建、可见性未知、撤权、OFF、新待办/结局及恢复 current 不能被吞掉。复用现有 visibility、刷新退避、单 step 门控和提交 frontier，不新增工具/Remote/domain。下方接口和故障机制是已发布实现记录，后续变更尚未做，不能把本文新增要求视为当前行为。
+[事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 第 3、6、7、8 节已在 0.9.0 实施：header 来源不冒充实际初始 cwd；execution lane 与 worktree-observation lane 都从 assignment/binding 读取并标 `inferred`；只读 lane 无建树义务；可信 Host 未注册 delegate 时默认协议不推荐它。`delegateRegistered` 仅当可信 Host 配置 `delegate: true` 且 facade 实际提供 delegate 时为 true；消费协议只在该值为 true 时指示受管 delegate，否则保留事实而不追加受管行动。管理 OFF 只保留既有义务/合法事实，不追加要求新增受管操作的通用命令。stale 失败/重试沿用既有实现：失败/timeout 明确 stale 或 unknown，不把旧快照当 current，不吞新义务；去重仍受可见性、权限、协议与事实版本约束。复用现有 visibility、刷新退避、单 step 门控和提交 frontier，不新增工具/Remote/domain。下方接口和故障机制为 0.9.0 当前实现。
 
 ## 确切导出
 
@@ -131,8 +131,8 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 1. business records 是作者报告，不是程序 S 回执或物理资源证明；保留当前作者与引用，业务状态名称/定义不折算。
 2. Skills、用户约定与任务文档决定交付、完成、暂停、取消、reopen 和提问；模型认为必要时登记待裁决，没有统一审批 gate。
 3. windows **显式 configured** 时才注入 T reserve/release/reacquire 引导。T 与程序 S 独立；S 的 used 是宿主的实时运行状态（live `Agent.status`，idle 常驻不计；成员资格只在成员变更节点刷新），宿主枚举不完整时明示为下界；被计为 running 的 run 无 end 消失时，只读该 child 自身日志按公开词表产生 `nativeStops` item（`error` 附已发布 diagnostic、`aborted` 附取消原因、无 `turn/end` 时明示 `unobservable`）并唤醒主代理，执行释放只更新审计行；不等待整批；无票 assignment 不造票/不造 T。
-4. 执行事实来自原生生命周期观察（native-observed，0.7.1 已实施）：owner coordinator 的当前视图有 `nativeExecutions` 类别（最多 64 行，最新在前），只描述宿主发布的 state/outcome 与读取时 activity；0.7.1 的 worktree 关联实际由 header cwd 精确匹配当前 `create_worktree` 观测并标 `observed`，它不能证明实际初始目录；此语义按顶部待实施契约收窄。lane 从 assignment/binding 读取并标 `inferred`，两者都不是强 binding，也不写成任务完成。行存在时协议正文追加一行原生执行事实说明（含 observed/inferred 标签与 history 查询指针）；没有行时不追加。ticket↔worktree 强绑定仍由 opt-in 的 mattpocock_delegate 创建（0.8.0 默认不注册）、mattpocock_worktree 读/更新/重核对，child↔ticket assignment 由 mattpocock_assign/delegate 写；mattpocock_execute 已在 0.7.0 移除。列出真实 capabilities，包括 unsupported 与原因；configured 不伪装所有 native 路径均可强制。
-5. binding/lifecycle configured 时提醒退休须依实际身份、引用/租约和授权操作；业务“完成”不能当删除授权。`worktreeObservations[].nativeChildren` 是读取时 observed 关联（`created-tree` / `initial-cwd`），空数组表示没有可观测关联，不是“无人使用”。
+4. 执行事实来自原生生命周期观察（native-observed，0.7.1 已实施；0.9.0 收窄）：owner coordinator 的当前视图有 `nativeExecutions` 类别（最多 64 行，最新在前），只描述宿主发布的 state/outcome 与读取时 activity；0.9.0 起字段是 `headerCwd`（header 来源值，不证明实际初始目录），不再由 header 路径相等生成 initial-cwd/worktree 关联。lane 从 assignment/binding 读取并标 `inferred`，两者都不是强 binding，也不写成任务完成。行存在时协议正文追加一行原生执行事实说明（含 header 来源值与 inferred 标签、history 查询指针）；没有行时不追加。ticket↔worktree 强绑定仍由 opt-in 的 mattpocock_delegate 创建（0.9.0 仍默认不注册）、mattpocock_worktree 读/更新/重核对，child↔ticket assignment 由 mattpocock_assign/delegate 写；mattpocock_execute 已在 0.7.0 移除。列出真实 capabilities，包括 unsupported 与原因；configured 不伪装所有 native 路径均可强制。
+5. binding/lifecycle configured 时提醒退休须依实际身份、引用/租约和授权操作；业务“完成”不能当删除授权。`worktreeObservations[].nativeChildren` 是读取时 observed 关联（0.9.0 仅 `created-tree`），空数组表示没有可观测的创建者关联，不是“无人使用”。
 6. feature OFF 的最新快照明确覆盖旧 window/admission 协议；不停止已接受执行、不清记录/资源义务。display OFF 只改显示，不改仪器消费。
 
 固定协议与诊断不夹带开发版本、“candidate/未验证”、模型试验状态等元数据。真实业务文本、任务定义及真实 capability/health reason 仍作为数据保留；Host 必须保证来源正确，不把开发评估备注塞进事实字段。
@@ -140,7 +140,7 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 ## Freshness、去重与故障
 
 - 成功取得/校验的最新快照返回 current；health 有 stale/unknown/unavailable/error/failed 时为 stale，reason 为 snapshot-health-degraded。freshness 描述本次读取，不把内部 null/unknown metrics 猜成 0。
-- 以下是当前实现；重复正文的后续减负以顶部待实施契约为准。失败/timeout 不返回 snapshot，也不把旧快照当 current：已有一份成功取得的正文时，正文明说 Instrument state stale 并附稳定 reason，随后是上次成功取得的正文（可能已过期，不是当前容量、完成或释放证明）；无已验证正文时正文明说 Instrument state unknown。有已验证正文则 freshness 为 stale，否则 unavailable；cachedText 随即失效为 null，重复失败重写同一 stale 正文、不叠加标头。identity/policy 前导读取失败时，若该 session 已有 retained association，仍用其上次成功正文加同一 stale 标头，而不是清空事实。前导失败与 representation-boundary 通知走与快照相同的 baseline/可见性判定：相同正文仍在真实输入中时不重复追加。下次成功重新发送有效正文，哪怕 watermark 与失败前相同。
+- 以下是当前实现；重复正文的减负与 stale 处理以顶部 0.9.0 契约为准，不改变下文的失败/可见性语义。失败/timeout 不返回 snapshot，也不把旧快照当 current：已有一份成功取得的正文时，正文明说 Instrument state stale 并附稳定 reason，随后是上次成功取得的正文（可能已过期，不是当前容量、完成或释放证明）；无已验证正文时正文明说 Instrument state unknown。有已验证正文则 freshness 为 stale，否则 unavailable；cachedText 随即失效为 null，重复失败重写同一 stale 正文、不叠加标头。identity/policy 前导读取失败时，若该 session 已有 retained association，仍用其上次成功正文加同一 stale 标头，而不是清空事实。前导失败与 representation-boundary 通知走与快照相同的 baseline/可见性判定：相同正文仍在真实输入中时不重复追加。下次成功重新发送有效正文，哪怕 watermark 与失败前相同。
 - 稳定机械 reason：consumption-timeout、durability-commit-failed、commit-frontier-overflow、snapshot-read-failed、identity-mismatch、superseded-read。不把内部 exception 文本或开发 metadata 注入模型。
 - 一次被 admitted 的 model step（turn:step）内**最多安装一份**快照：Host 会对同一个 step 多次组装请求，一次 step 内也可能完成多次嵌套工具结果，而该 step 里已经排队的消息对 Host 可见性判定尚不可见；这些组装之间其他执行体可能仍在改写事实，所以即使正文不同，同一步的后续组装也不再安装，最新事实随**下一个** admitted step 投递。模型自己那次仪器工具调用的结果里本就带着该调用产生的最新 snapshot，因此只有「别的执行体在同一步内写入」的增量会晚一步可见。
 - 被机械预算截断的正文（超长字符串、数组前 8 行、超 32 字段对象）附整体 digest（signature/tailSignature/fieldsSignature），使省略部分的变化也进入指纹，不只比较可见前缀与长度。

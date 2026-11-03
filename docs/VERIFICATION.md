@@ -2,7 +2,52 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-04 状态：0.8.0 将 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；默认模型面为 7 固定 + 条件 audit。0.8.0 的测试/构建计数与精确 clean-source 制品见下方专节；tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样；未 npm 发布、未安装本机 DSH/Profile/GUI。
+> 2026-11-04 状态：0.9.0 是当前源码线；事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，但尚未 push/tag/GitHub Release、未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
+
+## 0.9.0 制品验收（2026-11-04，隔离工作树；已验证，尚未 push/tag/release；未安装）
+
+本版实施事实边界与恢复：执行事实以 `headerCwd` 表达 header 来源值（旧 `initialCwd` 单键兼容读取；两键同值归一化、冲突拒绝）；不再由 header 路径相等生成 `initial-cwd`/worktree 关联，`nativeChildren` 只保留 `created-tree`（header 为 null 也保留）；迟到 `subagent/end` 使用 owner/session/run 事实与 `runId` 围栏，旧 run 不覆盖新 run、新 start 缺 `runId` 不继承旧 run、旧 Agent 的 disposed 不清掉新 live run；无 owner view 时只报 native-executions 覆盖缺口，不写 outcome、不扫冷日志、不重试。delegate 结果分开报告 `creation`/`binding`/`assignment`，并另列 `recording`/`persistence`/`recovery`；confirm 失败 assignment=not-attempted，assign 提交不确定=unknown，accepted child 不重建；replay 不隐式 assign，recovery 与旧 result 分开。`delegateRegistered` 仅当可信 Host 配置 `delegate: true` 且 facade 实际提供 delegate 时为 true；消费协议只在 `delegateRegistered === true` 时指示 delegate，OFF 保留事实但不追加受管行动。没有新增模型工具、Remote 方法、存储域或强绑定写入口；默认仍是 7 固定 + 条件 audit（delegate opt-in 第八项）、Remote 16、客户端 9 wire key。
+
+源码提交：`708b277a2bb6699de05c822572057b29b842d0ab`（分支 `release-0.9.0-fact-boundaries`）。验证在干净 detached 工作树中重新安装、构建并运行完整套件；未修改主检出、其他工作树或 vendor。
+
+### 构建、测试与包门禁
+
+依次执行并通过：
+
+1. `pnpm install --frozen-lockfile --ignore-scripts`（pnpm 11.8.0）
+2. `pnpm exec tsc -p tsconfig.json`
+3. `chmod 755 lib/compatibility/cli.js`
+4. `pnpm exec tsc -p tsconfig.client.json --noEmit`
+5. `node scripts/build-client.mjs --out lib/client.js --declaration`：**278,881 B**，8 个浏览器安全私有模块，外部请求仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React
+6. `DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs`：**997 项：794 通过、0 失败、0 cancelled、203 skip**。203 是缺少显式 SDK 根/双根等环境门禁，不是加载失败。
+7. `node scripts/verify-vendor.mjs`：beta/stable 各 27 Skills；vendor **85 文件、296,048 B**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`
+8. 清洁源码提交上 `node scripts/verify-package.mjs --prepack`：**95 固定 + 85 vendor = 180** 个打包成员，构建 **76** 个 JS/DTS 产物
+
+定向套件：`model-contract` **7/7**；`client.test.mjs` **39/39**；`consumption.test.mjs` **26/26**；`native-executions` **11/11**；`native-execution-runtime` **16/16**；`collaboration-runtime` **21/21**。
+
+### 精确制品
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.9.0.tgz` 保存在 `/tmp/dsh-0.9.0-artifact/`：**476,121 bytes**，sha256 `756f9d48f448266e80397a736afddda30301991c483d4695cce6528151a9beac`，**180 成员**（95 固定 + 85 vendor），源码提交 `708b277`，pnpm 11.8.0，npm 11.13.0，GNU tar 1.35。打包使用 `npm pack`；`package.json` 按本仓库 verifier 的既有规则仅去掉打包成员末尾一个 LF（源码 10,340 B -> 成员 10,339 B），其余字节不变。
+
+精确验证命令：
+
+```text
+node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-mattpocock-skills-0.9.0.tgz \
+  --sha256-file /tmp/dsh-0.9.0-artifact/lmgatex-dsh-mattpocock-skills-0.9.0.tgz.sha256 \
+  --size-file /tmp/dsh-0.9.0-artifact/lmgatex-dsh-mattpocock-skills-0.9.0.tgz.size \
+  --source-commit-file /tmp/dsh-0.9.0-artifact/lmgatex-dsh-mattpocock-skills-0.9.0.tgz.source-commit \
+  --pnpm-version-file /tmp/dsh-0.9.0-artifact/lmgatex-dsh-mattpocock-skills-0.9.0.tgz.pnpm-version
+```
+
+结果：source clean=true、commit 匹配、sha256/bytes/180 成员/模式/导出目标与 vendor 全部通过。`--prepack` 另行确认提交的 `lib/` 与同源码构建逐字节一致。
+
+### 边界
+
+- **binding 是声明式 header checkpoint**：`binding: confirmed` 只表示显式 header checkpoint 匹配 planned child/parent/requested cwd，不是实际初始/当前目录证明；reconcile 只修 binding，不补 assignment、不证明目录。0.9.0 没有新增实际 cwd 证明 seam。
+- **coverage gap 是证据缺口**：迟到 end 只有在同一 runtime 仍保留 owner view 时才写 outcome；没有任何可信 owner view 时只报 native-executions coverage gap，不扫冷日志、不重试、不猜结果；这不是“已保存”。
+- **未安装、未 npm 发布**：未执行 DSH install、Profile 编辑、服务重启或 GUI 变更；发布待 push/tag/release。
+- **模型与接口面**：默认 7 固定 + 条件 audit，delegate 仅 opt-in 第八项；Remote 16；客户端 9 wire key；没有新增模型工具、Remote 方法、存储域或强绑定写入口。
+- 完整记录见 `dist/verification-0.9.0.json`（随后提交）。
 
 ## 0.8.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 

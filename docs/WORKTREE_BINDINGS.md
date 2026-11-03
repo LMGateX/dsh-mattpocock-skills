@@ -2,7 +2,7 @@
 
 2026-10-06。用户认可的工作树绑定登记已实现于[绑定核心](<../src/controls/worktree-bindings.ts>)，并由 runtime / Host 的创建、读取、重核对和状态工具组合。本轮在初始登记协议之上增加源 checkpoint、稳定创建作者/摘要、定向旧版本删除及来源缺口说明，见第 8 节。主代理按任务约定自己创建、合并和清理 Git 工作树；本模块只保存关系和实际作者声明，不设置处置审批。仓库源码与安装部署分别进行。
 
-> 2026-11-03 方向，0.7.0 已实施；0.8.0 起 delegate 默认不注册：普通 native `subagent({cwd})` 路径不经过本绑定协议；`registerIntent → confirm` 是 opt-in `mattpocock_delegate` 的**强绑定路径**（binding-first creation），不再用可选 managed creation 概括其职责。binding 行带 task/ticketIds，`mattpocock_worktree` 读取/更新；`mattpocock_assign` 只写 child↔ticket 权限；`mattpocock_execute` 已移除。原生 `create_worktree` 观测不写强 binding；C 阶段（读取时关联，标 observed/inferred）已于 0.7.1 完成，本轮没有新增存储/账本。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 方向，0.7.0 已实施；0.8.0 起 delegate 默认不注册：普通 native `subagent({cwd})` 路径不经过本绑定协议；`registerIntent → confirm` 是 opt-in `mattpocock_delegate` 的**强绑定路径**（binding-first creation），不再用可选 managed creation 概括其职责。binding 行带 task/ticketIds，`mattpocock_worktree` 读取/更新；`mattpocock_assign` 只写 child↔ticket 权限；`mattpocock_execute` 已移除。原生 `create_worktree` 观测不写强 binding；C 阶段（读取时关联，标 observed/inferred）已于 0.7.1 完成，本轮没有新增存储/账本。0.9.0 已按事实边界收窄 binding/assignment 结果与恢复，见第 4 节 2026-11-04 段。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 ## 1. 职责与小 interface
 
@@ -59,7 +59,7 @@ purgeHistory(owner, actualAuthor, {
 1. 主代理准备已有工作树。runtime 在写创建意图前调用 Host 的可信初始 cwd 预检查，核验真实 caller、当前文件权限与规范化绝对路径，并再次确认父身份。未授权或公开初始 cwd 能力不支持时直接明确失败；不写伪授权意图。分配稳定 operationId 与 plannedChildSessionId。
 2. **先 await registerIntent 成功持久提交**，再调用 nativeCreate。只有首次 CAS 获胜的新操作返回 dispatch=true；相同 operationId 的并发调用、重开或重试全部 dispatch=false，不能把 replay 当成新 created 回执。
 3. 原生 create 的 spec.sessionId 使用持久 plannedChildSessionId，cwd 使用 requestedCwd；Host 在真正副作用边界独立重验当前权限/身份，预检查不是权限令牌。保留原生重复 sessionId 检查，不临时生成替代 child。省略 cwd 的普通派发保持继承；宿主能力及目录映射契约见[Host 初始目录授权](<HOST_INTEGRATION.md#source-only-continuable-creation-and-initial-cwd-authorization>)。
-4. 读取原生实际持久 header，再 confirm。实际 child/parent/cwd 必须与意图精确相同；成功时填 actualChildSessionId、actualCwd、accepted/confirmed。以后该关系与初始目录不可变化；热续聊/冷恢复不重新指定目录。
+4. 读取原生实际持久 header，再 confirm。实际 child/parent/cwd 必须与意图精确相同；该确认是显式 header checkpoint，不是 child 实际初始/当前目录证明（见第 4 节 2026-11-04 段）。成功时填 actualChildSessionId、actualCwd、accepted/confirmed。以后该关系与初始目录不可变化；热续聊/冷恢复不重新指定目录。
 5. 拒绝或取消由 recordOutcome 明确记录 acceptance 与 outcome。accepted+cancelled/failed 不等于 rejected；accepted-unknown 也不是 confirmed。
 
 崩溃可能发生在提交意图后、nativeCreate 前；也可能发生在原生接受后、登记成功前。本模块**没有跨域事务、exactly-once 或跨崩溃自动重派**。dispatch=true 只允许本次首次提交的 caller 继续一次 native side effect；跨重启不能恢复这个许可。恢复程序按 plannedChildSessionId 检索真实持久 header：存在则 reconcile(header)，缺失/不可核验则 reconcile(null) 标记 accepted-unknown（acceptance 可以仍为 unknown），报告不确定并保留登记，不按“找不到 header”猜拒绝、更不自动重派。已确认或已明确拒绝的登记不会被 null reconcile 降级。
@@ -68,9 +68,9 @@ purgeHistory(owner, actualAuthor, {
 
 ## 4. 原生接受与保存失败分别报告
 
-### 2026-11-04 待实施补足：三种效果与已有 child 恢复
+### 2026-11-04 已实现：三种效果与已有 child 恢复
 
-已接受 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 第 3、4 节；这里只固定后续契约，不声称当前结果已改造。creation acceptance、binding 确认和 assignment 授予分别报告；confirm 失败导致 assign 未调用时明确 not-attempted，调用后无法确认提交则 unknown。相同 operationId 不再创建/隐式授权；原始结果回放和当前恢复状态分开。reconcile 只核对 binding，需要补票范围时对同一真实 child 显式调用 assign，并按当前权限复验。header 无法证明实际初始 cwd 时不补“有效 cwd”、不强行 confirm；省略 worktree 也不能豁免证明。旧 confirmed 行/历史仍兼容读取并标明当时证明范围，不自动降级、不升级证据、不改历史。以下保存失败规则继续适用。
+已按 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 第 3、4 节在 0.9.0 实施。delegate 结果分别给出 `creation`（accepted/rejected/unknown）、`binding`（confirmed/unconfirmed/unknown）、`assignment`（granted/not-attempted/failed/unknown），并另列 `recording`（recorded/failed/unknown）与 `persistence`（未持久化时明确 failed）；重放另给当前可读的 `recovery`，原始 result 与恢复状态分开。confirm 失败导致 assign 未调用时明确 assignment 为 not-attempted；assign 已调用但无法确认提交则 unknown。相同 operationId 不再创建、不隐式授权；已接受 child 永不重建，replay 只回读现有结果与 recovery。需补票范围时对同一真实 child 显式调用 assign，并按当前权限复验。`binding: confirmed` 只表示显式 header checkpoint 与 planned child/parent/requested cwd 匹配，不是实际初始/当前目录证明；reconcile 只核对 binding，不补 assignment、不证明目录。header 无法证明实际初始 cwd 时不补“有效 cwd”、不强行 confirm；省略 worktree 也不能豁免这一证明边界。旧 confirmed 行/历史仍兼容读取并标明当时证明范围，不自动降级、不升级证据、不改历史。以下保存失败规则继续适用。
 
 若 nativeCreate 已接受，而 confirm/recordOutcome 持久写抛错，runtime 必须保留原生 childId/acceptance，并报告“创建已接受，绑定记录保存失败/待核对”，**不能报告“未创建”诱发重派**。instrument 的写异常不撤销原生 side effect。
 

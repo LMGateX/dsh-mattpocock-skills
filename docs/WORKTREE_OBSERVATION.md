@@ -1,13 +1,13 @@
 # 工作树创建事件观测（设计草案 v1）
 
-> 状态：**源码已实施（2026-10-13），隔离工作树内机械验收通过；未安装到本机 DSH/Profile，也未发布**。本轮实现只覆盖原生 `create_worktree` 事件观测，实施范围、覆盖边界与门禁结果见第 11 节。
+> 状态：**源码已实施（2026-10-13），隔离工作树内机械验收通过；0.9.0 已收窄目录/来源语义（2026-11-04）；未安装到本机 DSH/Profile，也未发布**。基础实现只覆盖原生 `create_worktree` 事件观测，实施范围、覆盖边界与门禁结果见第 11 节；0.9.0 契约见顶部修订。
 > 公开资料边界：本文引用的本机会话存储抽样与 SDK 安装产物仅作本地核对，不随公开仓库分发，也不充当公共原始证明；公开证据范围见[公开验证说明](<VERIFICATION.md>)。
 
-> 2026-11-03 C 阶段（0.7.1 已完成）：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联。观测行新增 `nativeChildren`（`created-tree` / `initial-cwd`，均标 `observed`），runtime 快照新增 `nativeExecutions` 与 `worktree`/`lane` 读取投影（worktree 标 `observed`，lane 标 `inferred`）。这只是读取时关联，不写 delegate 风格的强 binding，也不替代 delegate；delegate 仍是唯一强绑定写入口，但 0.8.0 默认不注册，只有显式 `delegate: true` 才启用；`mattpocock_execute` 已在 0.7.0 移除，C 不新增模型工具或 Remote 方法。详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 C 阶段（0.7.1 已完成）：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联。观测行新增 `nativeChildren`（`created-tree` / `initial-cwd`，均标 `observed`），runtime 快照新增 `nativeExecutions` 与 `worktree`/`lane` 读取投影（worktree 标 `observed`，lane 标 `inferred`）。这只是读取时关联，不写 delegate 风格的强 binding，也不替代 delegate；delegate 仍是唯一强绑定写入口，但 0.8.0 默认不注册，只有显式 `delegate: true` 才启用；`mattpocock_execute` 已在 0.7.0 移除，C 不新增模型工具或 Remote 方法。详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。0.9.0 已取消 `initial-cwd` 路径关联，`nativeChildren` 只保留 `created-tree`；以上为 0.7.1 历史记录。
 
-## 2026-11-04 后续修订（已认可，未实施）
+## 2026-11-04 修订（0.9.0 已实施）
 
-[事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 是目录声明/来源标签的最新契约：header cwd 不是实际初始目录；两类 lane 都应标 inferred，cleaned/notes 是 authored；created-tree 只依赖创建者事实、不依赖 cwd 证明。0.7.1 的 initial-cwd/worktree 路径投影属于下方历史实现，不能继续当作实际初始目录证明。此次只固定文档，不改记录、不改历史、不新增工具/Remote/domain。
+[事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 是目录声明/来源标签的最新契约。0.9.0 已实施：header cwd 不是实际初始目录；execution lane 与 worktree-observation lane 都标 `inferred`，cleaned/notes 是 `authored`；`created-tree` 只依赖创建者事实、不依赖 cwd 证明，header 为 null 也保留；不再由 header 路径相等生成 `initial-cwd` 关联。0.7.1 的 initial-cwd/worktree 路径投影属于下方历史实现，不能继续当作实际初始目录证明。0.9.0 不改历史记录、不新增工具/Remote/domain，尚未安装。
 
 ## 0. 目标与非目标
 
@@ -108,19 +108,19 @@ DSH 没有“目录被谁占用”的机制：
 
 ### 5.4 票信息按 creator 关联既有 lane 记录
 
-**后续要求（设计已固定，未实施）：** 以下 lane 由 assignment/binding 派生，统一显式标 `source: inferred`；模型、客户端、可查询投影保持一致。整行来自 program 不会让 lane 升格 observed；cleaned/notes 仍是 authored，不证明物理删除。
+**0.9.0 已实施：** 以下 lane 由 assignment/binding 派生，统一显式标 `source: inferred`；模型、客户端、可查询投影保持一致。整行来自 program 不会让 lane 升格 observed；cleaned/notes 仍是 authored，不证明物理删除。
 
 - 观察记录本身不含票信息；读取时用 `creatorSessionId` 关联两类既有记录取票：运行期分配账本（`assignments`）提供 `workflowId` 与 `ticketIds`，lane 绑定（`plannedChildSessionId`／`actualChildSessionId`）提供 `task` 并在没有分配账本时兜底 `ticketIds`。
 - 绑定行本身**不携带 `workflowId`**（`WorktreeBindingIntent` 只有票、任务与目录），所以两者都缺时如实报告 `lane: null`，不猜一个工作流。
 - 竞态：子代理可能在父的 `confirm` 落库前就建树；因此关联必须同时查 planned 与 actual 两个 id。
 - 原生 subagent／既无 binding 也无 assignment 的会话：票信息如实显示 unknown，可由作者在业务备注里补；本能力不猜测。
 
-### 5.4a 历史原生执行事实与 nativeChildren（0.7.1 C；目录语义见顶部修订）
+### 5.4a 原生执行事实与 nativeChildren（0.7.1 引入；0.9.0 已收窄）
 
-- 原生执行事实来自宿主生命周期事件（`agent/created`、`subagent/start|end`、`agent/disposed`），保存在 owner runtime document 的 `nativeExecutions`；一行对应一个 native child session，`executionId = sessionId`，重跑/热重载更新同一行。
-- `nativeChildren` 是读取时从这些事实派生的只读关联：`created-tree` 表示 observation 的 `creatorSessionId` 就是该 native child（只说明它创建了这棵树，不说明它正在使用）；`initial-cwd` 表示 child 的初始 cwd 与 observation 的 `path` 精确相等且 child 不是创建者（不做前缀、软链或当前 cwd 推断）。
-- 两者都标 `source: 'observed'`，长度为空表示没有可观测关联，不是“无人使用”。读取投影不写 `worktrees_*`、不调用 `registerIntent/confirm`、不改变任何 binding 字段或业务状态。
-- `nativeExecutions[].worktree` 同样只在初始 cwd 精确匹配某条当前 observation 路径时出现，并取该路径最新的一条 observation；路径不同就是 null。
+- 原生执行事实来自宿主生命周期事件（`agent/created`、`subagent/start|end`、`agent/disposed`），保存在 owner runtime document 的 `nativeExecutions`；一行对应一个 native child session，`executionId = sessionId`，重跑/热重载更新同一行。0.9.0 起字段为 `headerCwd`（header 来源值），旧 `initialCwd` 仅兼容读取。
+- `nativeChildren` 是读取时从这些事实派生的只读关联：0.9.0 只保留 `created-tree`，表示 observation 的 `creatorSessionId` 就是该 native child（只说明它创建了这棵树，不说明它正在使用）；不再生成 `initial-cwd` 关系，header 路径相等不证明 child 启动于或使用该树。
+- `created-tree` 标 `source: 'observed'`，创建者的 `headerCwd` 可以为 null 并保留；长度为空表示没有可观测关联，不是“无人使用”。读取投影不写 `worktrees_*`、不调用 `registerIntent/confirm`、不改变任何 binding 字段或业务状态。
+- `nativeExecutions` 行只暴露 `headerCwd` 来源值与 inferred lane，不再有由路径匹配产生的 `worktree` 字段。
 
 ### 5.5 呈现与通知
 
@@ -230,4 +230,4 @@ DSH 没有“目录被谁占用”的机制：
 
 **改动**：新增 [native-executions.ts](<../src/controls/native-executions.ts>)（事实/view 类型、严格 parse、事件幂等 fold、activity/lane/worktree/nativeChildren 纯投影）；[runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`（旧文档缺字段按空数组）；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入事实、快照投影、health、history capture（`kind: native-execution`）、`nativeChildren`；consumption/client 增加类别、协议行与只读展示；package 固定清单精确 +2（`lib/controls/native-executions.js`、`lib/types/controls/native-executions.d.ts`），当前 **95 固定 + 85 vendor = 180**。
 
-**验证**：完整根套件 **977 项：774 通过、0 失败、203 skip**；`native-executions` 模块 9／9，`native-execution-runtime` 8／8（含 `extensionEnabled` 写入门控），client 定向 39／39（含 native execution / nativeChildren 呈现），consumption 24／24。clean-source 制品、精确 tarball 与计数见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。0.7.1 已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` -> `770b0e7`；制品源 `b8fe19e`）；未安装本机 DSH/Profile/GUI，未 npm 发布。
+**验证**：完整根套件 **977 项：774 通过、0 失败、203 skip**；`native-executions` 模块 9／9，`native-execution-runtime` 8／8（含 `extensionEnabled` 写入门控），client 定向 39／39（含 native execution / nativeChildren 呈现），consumption 24／24。clean-source 制品、精确 tarball 与计数见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。0.7.1 已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` -> `770b0e7`；制品源 `b8fe19e`）；未安装本机 DSH/Profile/GUI，未 npm 发布。0.9.0 的当前计数与制品见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.9.0 节；本段保留 0.7.1 历史。

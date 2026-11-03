@@ -6,23 +6,25 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 仪器事实边界与恢复（2026-11-04；设计固定，实现均未开始）
+## 仪器事实边界与恢复（2026-11-04；0.9.0 已完成并验证）
 
-用户认可只读复核结论，本轮仅固定 [DESIGN](<DESIGN.md>) 与 [事实边界详细设计](<INSTRUMENT_FACT_BOUNDARIES.md>)；不做运行时代码、迁移、构建/制品或部署。本计划不指定新版本号，不改变已发布测试计数/哈希，不授权 push/Release、安装、Profile/SDK 修改或服务重启。后续源码实施另行安排，下面所有实现/验收项都仍待开始。
+用户认可的只读复核结论已在 0.9.0 源码实施并验证：源码提交 `708b277a2bb6699de05c822572057b29b842d0ab`（分支 `release-0.9.0-fact-boundaries`），完整测试、闭合构建和精确制品均通过；尚未 push/tag/GitHub Release、未 npm publish、未安装本机 DSH/Profile/GUI。历史 0.7.0/0.7.1/0.8.0 的测试计数与发布记录不回填。
 
 | 切片与状态 | 内容与既有 seam | 完成门禁 |
 |---|---|---|
-| A 文档固定（完成；仅文档） | 权威决策、详细设计、术语及相关契约同步；历史实现与待实施要求分开 | 无行为已生效的越级声明；链接/空白检查；独立只读一致性复核；改动仅文档 |
-| B 目录事实与兼容（未开始） | [native-executions](<../src/controls/native-executions.ts>)、[runtime-state](<../src/controls/runtime-state.ts>)、[runtime](<../src/runtime.ts>)、历史/当前投影：明确 headerCwd，停用无证的实际初始目录关联，保留 creator 事实和旧数据来源 | 详细设计 F1-F3；header=父目录的真实形态；字段冲突不任选/不 reset；无新的 cwd 解释器；不重写旧历史/binding |
-| C 生命周期覆盖（未开始） | [Host](<../src/host.ts>) 与 runtime 复用已认证 session/owner/run 归属，迟到 end 不依赖 live registry；缺口入既有 health | L1-L3；dispose/end 两种顺序、重复/跨 run/无 runId；新 run 不受旧 end 影响；不改变 S/nativeStops/通知或有意关闭门控 |
-| D 部分成功与恢复（未开始） | delegate 原有 journal/结果/查询分开报告创建、binding、assignment；同 operationId 只回读/回放；已有工具恢复已有 child | P1-P3；有票 confirm 失败、assign 提交不确定、显式补授权与撤权；零重复创建/再发任务/隐式授权；reconcile 不伪报票范围修复 |
-| E 来源与最小指导（未开始） | [worktree-observations](<../src/controls/worktree-observations.ts>)、[消费](<../src/controls/consumption.ts>)、[客户端](<../src/client.ts>)：两种 lane inferred、清理 authored；默认工具/只读/管理 OFF 条件指导 | S1/C1；默认 7 + 条件 audit，opt-in delegate 不变；只读无需建树；按字段标来源，不新增工具/Remote/domain |
-| F stale 减负（未开始） | 复用现有消费 identity、visibility oracle、刷新 gate 与提交 frontier，合并同事实/同原因重复旧正文 | C2-C3；上下文重建、不可证可见性、撤权、OFF、新待办与恢复 current；对照脚本完整旧正文减少，未知与义务不消失 |
-| G 集成验收（未开始） | 完整矩阵、严格类型/闭合构建、全套测试、独立 Standards/Spec 复核；公开 seam 无模型探针与 fixture 分开记证据等级 | native+assign 单 child、send 单消息、PTC、T/S、owner 隔离、历史/源清理/旧 binding 回归；另获交付授权时才验证精确制品，不以源码代安装/GUI |
+| A 文档固定（完成） | 权威决策、详细设计、术语及相关契约同步；历史实现与 0.9.0 要求分开 | 无行为已生效的越级声明；链接/空白检查；独立只读一致性复核；改动仅文档 |
+| B 目录事实与兼容（已完成） | [native-executions](<../src/controls/native-executions.ts>)、[runtime-state](<../src/controls/runtime-state.ts>)、[runtime](<../src/runtime.ts>)、历史/当前投影：明确 headerCwd，停用无证的实际初始目录关联，保留 creator 事实和旧数据来源 | 详细设计 F1-F3；header=父目录的真实形态；字段冲突不任选/不 reset；无新的 cwd 解释器；不重写旧历史/binding |
+| C 生命周期覆盖（已完成） | [Host](<../src/host.ts>) 与 runtime 复用已认证 session/owner/run 归属，迟到 end 不依赖 live registry；缺口入既有 health | L1-L3；dispose/end 两种顺序、重复/跨 run/无 runId；新 run 不受旧 end 影响；不改变 S/nativeStops/通知或有意关闭门控 |
+| D 部分成功与恢复（已完成） | delegate 原有 journal/结果/查询分开报告创建、binding、assignment；同 operationId 只回读/回放；已有工具恢复已有 child | P1-P3；有票 confirm 失败、assign 提交不确定、显式补授权与撤权；零重复创建/再发任务/隐式授权；reconcile 不伪报票范围修复 |
+| E 来源与最小指导（已完成） | [worktree-observations](<../src/controls/worktree-observations.ts>)、[消费](<../src/controls/consumption.ts>)、[客户端](<../src/client.ts>)：两种 lane inferred、清理 authored；默认工具/只读/管理 OFF 条件指导 | S1/C1；默认 7 + 条件 audit，opt-in delegate 不变；只读无需建树；按字段标来源，不新增工具/Remote/domain |
+| F stale 减负（已完成） | 复用现有消费 identity、visibility oracle、刷新 gate 与提交 frontier，合并同事实/同原因重复旧正文 | C2-C3；上下文重建、不可证可见性、撤权、OFF、新待办与恢复 current；对照脚本完整旧正文减少，未知与义务不消失 |
+| G 集成验收（已完成） | 完整矩阵、严格类型/闭合构建、全套测试、独立 Standards/Spec 复核；公开 seam 无模型探针与 fixture 分开记证据等级 | native+assign 单 child、send 单消息、PTC、T/S、owner 隔离、历史/源清理/旧 binding 回归；精确制品已验证，不以源码/制品代安装/GUI |
 
-本轮文档校验：13 个 Markdown 文档的 205 个本地链接引用均可定位，空白检查通过；独立只读一致性复核未提出待修项。仅完成 A，不运行实现/构建/测试/迁移或制品验收，不改旧发布结果。
+**0.9.0 结果：** 完整根套件 **997 项：794 通过、0 失败、0 cancelled、203 skip**（203 为缺显式 SDK 根/双根等环境门禁，不是加载失败）；闭合构建 **76 个 JS/DTS**，客户端 bundle **278,881 B**、8 个浏览器安全私有模块、externals 仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React；vendor **85 文件、296,048 B**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`；beta/stable 各 27 Skills；**95 固定 + 85 vendor = 180** 个打包成员。精确 clean-source 制品 **476,121 bytes**，sha256 `756f9d48f448266e80397a736afddda30301991c483d4695cce6528151a9beac`，源码提交 `708b277`；`--prepack` 与精确 `--tarball` verifier 均通过。未安装本机 DSH/Profile/GUI，未 npm publish；发布待 push/tag/release。完整记录见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.9.0 节。
 
-**顺序与停止条件：** B 先固定新旧目录含义，再统一客户端/消费的来源呈现；C、D 保持各自效果与现有权限 seam，不借共享 runtime 把修复扩成重构；E 的条件指导先于 F 的交付去重。每个切片先补对应反例，再完成最小改动和回归；遇到必须新增宿主证明 seam、模型工具、Remote 或 domain 的需要时先返回设计决策，不能实现中默增。G 通过前不得写“事实语义已修复/整体完成”。
+文档阶段记录的 13 个 Markdown 文档、205 个本地链接校验与独立复核作为历史保留；0.9.0 已越过仅文档阶段，完成源码、测试与制品验收。
+
+**顺序与停止条件：** B 先固定新旧目录含义，再统一客户端/消费的来源呈现；C、D 保持各自效果与现有权限 seam，不借共享 runtime 把修复扩成重构；E 的条件指导先于 F 的交付去重。0.9.0 已按此顺序完成并通过 G。后续改动如遇到必须新增宿主证明 seam、模型工具、Remote 或 domain 的需要，仍须先返回设计决策，不能实现中默增；源码/制品通过不等于已安装或当前 GUI 已更新。
 
 ## 仪器工具卡折叠与可读性（2026-11-01，v0.6.0 已发布）
 
