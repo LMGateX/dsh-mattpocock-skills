@@ -1,5 +1,20 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.10.0 model-result contract (implementation in progress)
+
+This is a deliberate change to the optional collaboration tools, not to upstream Skill bodies. The candidate uses schemaVersion 2 and bounds the final UTF-8 JSON result: 64 KiB for current reads/pages/content and 8 KiB for mutation receipts/plugin diagnostics. It does not require a DSH patch, change source-history retention or reclaim existing spill files. Exact implementation and artifact status is recorded in [verification](<docs/VERIFICATION.md>).
+
+- A model call to mattpocock_record read returns a bounded **current instrument view**, not the old full RuntimeSnapshot. Use the returned query shapes to page current records, T/S-related facts, failure outcomes, pending releases, worktree reminders and health. Read shown/total/more and coverage; an omitted row is not an absent obligation.
+- A model mutation returns a small receipt rather than snapshot. Code that reads result.snapshot must migrate explicitly. appliedRevision identifies the original operation; use the separately reported businessRevision or viewerRevision for the next command's expectedRevision. Window generation/ignored and delegate creation/binding/assignment/recording/recovery facts retain their meanings.
+- Long selected bodies return a locator. Read them with mattpocock_record detail using locator and offset; join data strings in order, verify totalBytes/contentHash, then parse the assembled JSON. offset/nextOffset are UTF-8 byte positions. A changed version, mount or scope requires a new locator and a fresh assembly; never join old and new fragments.
+- A locator grants no access. Every piece rechecks the original domain permissions. Assigned children do not gain owner-wide history, policy configuration or worktree-registry access. Missing/purged/unavailable and byte-deferred data remain distinct.
+- A controls read is marked completeIntent:false. Reconstruct all defaults and workspace overrides at the same policy revision before forming the existing full-replacement save intent. Never submit only the displayed page as the full policy.
+- Internal core/Remote full snapshots and the settings editor keep their interfaces; there is no model full-snapshot fallback. Existing tool cards and old session JSON remain readable. Registration names/counts, native dispatch, provenance, author identity and business semantics do not change.
+
+This delivery does **not** install the candidate into the local DSH/Profile or restart the running service. Installation is a separate decision even after a release is published.
+
+## Upstream Skills v1.3 migration
+
 This adapter delivers the upstream Matt Pocock Skills bodies unchanged. Upstream v1.3 renamed a
 document convention, and **no skill will tell you when the old name is gone**. This page lists what
 you have to change by hand. Nothing here runs automatically.

@@ -30,7 +30,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## 插件模型工具输出减负（2026-11-04，设计固定；待实施）
 
-接受范围与唯一详细契约见 [DESIGN](<DESIGN.md>) 和 [BOUNDED_TOOL_OUTPUTS](<BOUNDED_TOOL_OUTPUTS.md>)。先在本插件模型工具 Adapter 处理放大，不以任何 DSH spill/GC/PTC 改动或外部清理补丁为依赖。当前仅 A 完成；后续各阶段尚未执行。本段不复用旧版本测试计数作为新方案验收。
+接受范围与唯一详细契约见 [DESIGN](<DESIGN.md>) 和 [BOUNDED_TOOL_OUTPUTS](<BOUNDED_TOOL_OUTPUTS.md>)。先在本插件模型工具 Adapter 处理放大，不以任何 DSH spill/GC/PTC 改动或外部清理补丁为依赖。A 已完成，B/C/D 在隔离工作树并行实施，E/F/G 尚待实际验收与发布；目标版本 0.10.0。所有者已授权 push/tag/GitHub Release，暂不为本机安装。本段不复用旧版本测试计数作为新方案验收。
 
 | 阶段 | 工作与交付 | 完成门禁 |
 |---|---|---|

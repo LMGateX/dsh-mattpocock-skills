@@ -47,6 +47,10 @@
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
+## 插件内工具输出减负（0.10.0 候选）
+
+目前在隔离工作树实施。[有界输出设计](<docs/BOUNDED_TOOL_OUTPUTS.md>) 将插件模型工具的全快照改为当前视图、小写回执及逐次授权、按版本分段的正文；在 typed execute 返回前处理，不给 DSH spill/GC/PTC 打补丁，不删历史、不为本机安装或重启。新 schema 的用法见[迁移说明](<MIGRATION.md>)，实际完成状态见[验证摘要](<docs/VERIFICATION.md>)。
+
 ## 可选协作控制
 
 可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.9.0 默认挂载七项固定工具 + 条件 `mattpocock_audit`；`mattpocock_delegate` 是仅由插件配置 `delegate: true` 启用的可选第八项（`mattpocock_execute` 已移除）。客户端仍声明九个 wire key，以呈现 opt-in delegate 与历史卡片；第三方设置/常驻摘要/右侧详情在宿主服务存在时提供。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。

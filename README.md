@@ -54,6 +54,10 @@ Compatibility notes for the currently inspected local DSH implementation (not a 
 
 See the [thin-adapter scope](docs/ADAPTER_SCOPE.md), [evidence-based compatibility inventory](docs/COMPATIBILITY.md), and [host compatibility record](docs/HOST_COMPATIBILITY.md) (Chinese). These notes neither rewrite upstream bodies or historical campaign results nor lift activation/release gates.
 
+## Plugin-owned output reduction (0.10.0 candidate)
+
+Implementation is in progress in isolated worktrees. The [bounded-output design](<docs/BOUNDED_TOOL_OUTPUTS.md>) replaces full model-facing snapshots with current views, small mutation receipts and permission-checked, versioned content pieces across the plugin tools. The change happens before the typed execute result reaches host logging; it does not patch DSH spill/GC/PTC, delete history, install into the local profile or restart the service. See [result-contract migration](<MIGRATION.md>) and [actual verification status](<docs/VERIFICATION.md>) before using the new schema.
+
 ## Optional collaboration controls
 
 The optional TypeScript extension includes revisioned global/workspace settings, durable owner-session instruments, task-defined tickets/decisions, advisory T/S, initial worktree binding, bounded current context, paginated history and explicit source-history cleanup, plus a native lazy client. The immutable Skill provider remains independent. The 0.9.0 optional mount supplies seven fixed tools plus the conditional `mattpocock_audit` tool by default; `mattpocock_delegate` is an opt-in eighth tool enabled only by the plugin config `delegate: true` (`mattpocock_execute` is removed). The client still claims nine wire keys so it can render opt-in delegate and historical cards. Third-party settings/header/right-panel contributions appear when host services are present. Management starts off and reference limits are unset. Read [the controls guide](<CONTROLS.md>).
