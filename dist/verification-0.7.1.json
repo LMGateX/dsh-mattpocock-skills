@@ -10,7 +10,7 @@
     "branch": "release/0.7.1-native-observation",
     "clean": true
   },
-  "verificationCommit": null,
+  "verificationCommit": "770b0e79e6667eab1f460221d8fe48ada36f2e6d",
   "artifact": {
     "name": "lmgatex-dsh-mattpocock-skills-0.7.1.tgz",
     "bytes": 471954,
@@ -80,21 +80,35 @@
       "real-model trial",
       "graphical-browser/GUI acceptance",
       "local DSH/Profile install",
-      "push/tag/release/npm publish"
+      "npm publish"
     ],
     "modelInvoked": false,
     "installedOnHost": false,
     "guiTested": false
   },
   "boundaries": {
-    "noPush": true,
-    "noTag": true,
-    "noRelease": true,
+    "noPush": false,
+    "noTag": false,
+    "noRelease": false,
     "noNpmPublish": true,
     "noLocalInstall": true,
     "noStrongBindingWriterAdded": true,
     "noNewModelTool": true,
     "noNewRemoteMethod": true,
     "noNewStorageDomain": true
+  },
+  "release": {
+    "tag": "v0.7.1",
+    "tagCommit": "770b0e79e6667eab1f460221d8fe48ada36f2e6d",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1",
+    "sourceCommit": "b8fe19ef2c9f46c0a5a1b111243accd3bcfc0971",
+    "verificationCommit": "770b0e79e6667eab1f460221d8fe48ada36f2e6d",
+    "assets": [
+      "lmgatex-dsh-mattpocock-skills-0.7.1.tgz",
+      "lmgatex-dsh-mattpocock-skills-0.7.1.tgz.sha256",
+      "lmgatex-dsh-mattpocock-skills-0.7.1.tgz.size",
+      "lmgatex-dsh-mattpocock-skills-0.7.1.tgz.source-commit",
+      "lmgatex-dsh-mattpocock-skills-0.7.1.tgz.pnpm-version"
+    ]
   }
 }

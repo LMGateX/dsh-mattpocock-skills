@@ -1,6 +1,6 @@
 # 原生执行事实与读取时关联（C 阶段）
 
-> **Status:** 2026-11-03 设计增量；**0.7.1 已实施并完成机械验证**（隔离工作树，未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。**
+> **Status:** 2026-11-03 设计增量；**0.7.1 已实施、完成机械验证并发布**（tag `v0.7.1` -> `770b0e7`，制品源 `b8fe19e`；未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。**
 > 公开资料边界：只记录公开事件、合成测试与聚合结果；不发布原始会话、Profile 或本机路径。
 
 ## 0. 目标与非目标
@@ -119,7 +119,7 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 - `ConsumptionSnapshot.nativeExecutions`：有界当前行；协议文本增加一条原生执行事实说明（只展示 observed/inferred 标签，不写成任务完成）。
 - 客户端窗口投影：在 T/S/outcome 之后显示原生执行事实摘要与行；工作树观测面板显示 `nativeChildren` 关联及标签。
 - `mattpocock_history`：通过现有 runtime capture 记录 `kind: 'native-execution'`、`domain: 'runtime'`、`recordId: executionId`；按 document revision 保留历史。查询走现有 history，不新增模型工具。
-- `docs/CONSUMPTION.md`、`CONTROLS.md`、`WORKTREE_OBSERVATION.md`、`VERIFICATION.md` 更新为 C 已实施（0.7.1 源码线与制品验证完成；未发布、未安装）。
+- `docs/CONSUMPTION.md`、`CONTROLS.md`、`WORKTREE_OBSERVATION.md`、`VERIFICATION.md` 更新为 C 已实施（0.7.1 源码线与制品验证完成；0.7.1 已发布；未安装本机）。
 
 ## 4. 失败、边界与兼容
 

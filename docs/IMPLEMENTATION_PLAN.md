@@ -20,9 +20,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 本阶段不修改 Host `output.render`、模型上下文、工具键、timeline/rightPanel 语义或原始记录字段。0.2.2-only 的 `headerAccessory` 暂不使用，以保持 0.2.1-alpha.1 兼容。
 
-## 原生派发优先与 execute 退役（2026-11-03；B/D/E 已完成，v0.7.0 已发布；C 已于 0.7.1 完成）
+## 原生派发优先与 execute 退役（2026-11-03；B/D/E 已完成，v0.7.0 已发布；C 已于 0.7.1 完成并发布）
 
-已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面仍是八个固定工具 + 条件 `mattpocock_audit`（客户端九个 wire key），native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成：owner runtime document 增加 `nativeExecutions`，快照给出 coordinator-only 的 activity/worktree/lane 读取投影，工作树观测行派生 `nativeChildren`；不新增模型工具、Remote 方法、存储域或强绑定写入口。0.7.0 制品已构建并精确验证（463,589 bytes，sha256 `cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1`，178 成员，源提交 `d2dd86e`），并已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`），但未安装到本机 DSH/Profile。
+已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面仍是八个固定工具 + 条件 `mattpocock_audit`（客户端九个 wire key），native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成：owner runtime document 增加 `nativeExecutions`，快照给出 coordinator-only 的 activity/worktree/lane 读取投影，工作树观测行派生 `nativeChildren`；不新增模型工具、Remote 方法、存储域或强绑定写入口。0.7.1 制品已构建并精确验证（471,954 bytes，sha256 `326a4343794609baae07b36108b2096e4cc8a6633d11d127f4caded44ee1ed70`，180 成员，源提交 `b8fe19e`），并已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` 指向 docs 验证提交 `770b0e7`）。0.7.0 制品（463,589 bytes，sha256 `cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1`，178 成员，源提交 `d2dd86e`）也已发布（tag `v0.7.0` -> `ea08bdd`）。两者均未安装到本机 DSH/Profile。
 
 | 阶段 | 内容 | 门禁 |
 |---|---|---|
@@ -34,12 +34,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C 已在 0.7.1 完成，观察关联与执行事实均为读取/运行事实，不是新派发路径或强绑定。`tests/model-contract.test.mjs` 已断言工具面无 `mattpocock_execute`、固定八项 + 条件 audit；旧 execute 测试已改写为 native/assign/delegate 回归，不能把旧测试通过当成新工具面已验收。D 不授权退役 delegate；若未来要退役，必须先有等价强绑定写入口并单独更新 DESIGN。
 
-### 0.7.1 C 实施与验证（2026-11-03，隔离工作树内完成；未安装）
+### 0.7.1 C 实施与验证（2026-11-03，隔离工作树内完成；已发布；未安装）
 
 - 新增 [native-executions.ts](<../src/controls/native-executions.ts>) 的严格事实解析/事件 fold/纯投影；owner [runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`，旧文档缺字段按空数组；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入、读取投影、health、history（`kind: native-execution`）与 `nativeChildren`。
 - 不新增模型工具或 Remote 方法；仍为八个固定工具 + 条件 audit（客户端九个 wire key）；`mattpocock_worktree` 描述只补充 `nativeChildren` 是读取时 observed、不是强 binding。
 - 完整根套件 **977 项：774 通过、0 失败、203 skip**（新增 `native-executions` 9、`native-execution-runtime` 8、consumption 1、client 1）；定向模块/运行时/客户端/消费套件均 0 失败。
-- 精确 clean-source 制品、字节/哈希/成员数、prepack 与 tarball 验证、以及 0.7.1 发布准备边界，统一见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。本阶段未安装本机 DSH/Profile/GUI，未 push、tag、npm publish。
+- 精确 clean-source 制品、字节/哈希/成员数、prepack 与 tarball 验证、以及 0.7.1 发布边界，统一见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。0.7.1 已 push `main`、tag `v0.7.1` 并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)；未安装本机 DSH/Profile/GUI，未 npm publish。
 
 ## 仪器读取后续优化（2026-10-21）
 

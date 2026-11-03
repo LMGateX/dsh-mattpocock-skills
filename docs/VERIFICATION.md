@@ -2,13 +2,13 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-03 状态：方案 A 的 B/D/E 已实施于 0.7.0 源码线并发布；C（原生观察读取时关联/账本补齐）已在 0.7.1 源码线完成并做精确制品验证，但**未推送、未打标签、未创建 Release、未 npm 发布、未安装本机 DSH/Profile/GUI**。本页 0.6.0/0.7.0 记录是历史制品；0.7.1 的精确制品验证见下方专节，0.7.0 的精确记录保持原样。
+> 2026-11-03 状态：方案 A 的 B/D/E 已实施于 0.7.0 源码线并发布；C（原生观察读取时关联/账本补齐）已在 0.7.1 源码线完成、精确制品验证并发布。0.7.1 的 tag `v0.7.1` 指向 docs 验证提交 `770b0e7`，验收 tarball 的源提交仍是 `b8fe19e`。未 npm 发布、未安装本机 DSH/Profile/GUI。本页 0.6.0/0.7.0 记录是历史制品；0.7.1 的精确制品验证见下方专节，0.7.0 的精确记录保持原样。
 
-## 0.7.1 制品验收（2026-11-03，隔离工作树；未发布/未安装）
+## 0.7.1 制品验收（2026-11-03，隔离工作树；已发布/未安装）
 
 本版完成方案 A 的 C 阶段：owner runtime document 增加 `nativeExecutions`（一行一个 native child session，严格解析、旧文档缺字段按空数组），从 `agent/created`、`subagent/start|end`、`agent/disposed` 幂等写入；快照仅向 coordinator 返回最近 64 行，附带读取时 `activity`、`observed` worktree 与 `inferred` lane；工作树观测行增加读取时 `nativeChildren`（`created-tree` / `initial-cwd`，均 `observed`）。不新增模型工具、Remote 方法、存储域或强绑定写入口；`mattpocock_delegate` 仍是唯一强绑定创建者，S/nativeStops/owner 通知保持。native execution 事实的写入与工作树观测一样遵循 `extensionEnabled` 门控：管理关闭时不新增/更新，已有行仍可读，重新启用后恢复。
 
-源码提交：`b8fe19ef2c9f46c0a5a1b111243accd3bcfc0971`（分支 `release/0.7.1-native-observation`，基于 `196cbfe`；该提交修正了原生执行事实的 `extensionEnabled` 写入门控，取代此前 `af2cf6f` 的 0.7.1 制品记录）。工作树是 `/home/dev/dev/isolated/0.7.1-native-observation/dsh-mattpocock-skills`；验证未修改主检出、其他工作树或 vendor。
+源码提交：`b8fe19ef2c9f46c0a5a1b111243accd3bcfc0971`（分支 `release/0.7.1-native-observation`，基于 `196cbfe`；该提交修正了原生执行事实的 `extensionEnabled` 写入门控，取代此前 `af2cf6f` 的 0.7.1 制品记录）。工作树是 `/home/dev/dev/isolated/0.7.1-native-observation/dsh-mattpocock-skills`；验证未修改主检出、其他工作树或 vendor。发布记录：tag `v0.7.1` 指向 docs 验证提交 `770b0e7`（docs-only 收紧）；验收 tarball 的源提交仍是 `b8fe19e`；[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)。
 
 ### 构建、测试与包门禁
 
@@ -44,7 +44,7 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.7.1-artifact/lmgatex-dsh-ma
 ### 边界
 
 - **没有安装**：未执行任何 DSH install、Profile 编辑、服务重启、GUI 变更或本机插件激活。
-- **没有发布**：未 push、未打 tag、未创建 Release、未 npm publish；0.7.1 制品只存在于上述隔离目录。
+- **未 npm 发布、未本机安装**：已 push `main` 与 tag `v0.7.1`，并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)；未 npm publish，未执行 DSH install、Profile 编辑、服务重启或 GUI 变更。
 - **C 已完成且不改变既有路径**：写入门控遵循 `extensionEnabled`（关闭时不新增/更新、已有行可读）；观察写失败只产生 health/unknown，不影响 native 事件、S、nativeStops、通知或工作树 binding；没有 `registerIntent/confirm` 或 `worktrees_*` 写入，binding 行数/字段不变。
 - 工具面仍是 **8 固定 + 条件 `mattpocock_audit`**（客户端 9 个 wire key），Remote 仍是 16 个方法；`mattpocock_worktree` 描述只补充读取时 `nativeChildren` 的 observed 语义。
 
