@@ -122,6 +122,7 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 
 ## 4. 失败、边界与兼容
 
+- **写入门控**：native execution 事实的写入与工作树观测一样遵循 `view.policy.extensionEnabled`。管理关闭时不新增、不更新任何 `nativeExecutions` 行，也不把“跳过写入”记为观察失败；已有行仍按 coordinator 读取投影返回。重新启用后，后续原生生命周期边继续正常写入。
 - 观察写入失败只记录 health/unknown，绝不让 `agent/created`、`subagent/start|end` 失败；S/nativeStops/通知路径不变。
 - 没有 native 事件、没有 header、没有 parent 或 child 不属于当前 owner instance：不写行；读取时保持空/unknown。
 - 旧 runtime document 无 `nativeExecutions`：按空数组解析；不伪造历史。
@@ -136,7 +137,7 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 3. child 初始 cwd 精确匹配 observation path 时 `worktree.source === 'observed'`；仅 assignment/binding 的 lane 是 `source: 'inferred'`；不写强 binding，binding 行数不变。
 4. `nativeChildren` 区分 `initial-cwd` 与 `created-tree`；路径不同不关联；不声称目录被使用。
 5. S、nativeStops、owner 通知、worktree binding/observation、history 回归；模型工具面仍是八个固定 + 条件 audit。
-6. 旧 runtime document 可解析；观察失败不改变原生事件结果；coordinator 以外不返回执行事实。
+6. 旧 runtime document 可解析；观察失败不改变原生事件结果；coordinator 以外不返回执行事实；管理关闭不新增/更新事实且已有行仍可读，重新启用后恢复写入。
 7. clean-source prepack、精确 tarball、完整测试与独立 verifier 通过；本轮不发布、不安装本机。
 
 ## 6. 实施记录（0.7.1，2026-11-03，隔离工作树）
@@ -144,4 +145,4 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 - 事实：`RuntimeDocument.nativeExecutions`（一行一个 native child session，`executionId = sessionId`；严格 parse + 唯一性；旧文档缺字段按空数组）；`agent/created`/`subagent/start|end`/`agent/disposed` 幂等 fold，`agent/status` 不写；初始 cwd 不可变；观察失败只进 health，不影响 native 事件、S、nativeStops 或通知。
 - 视图：`RuntimeSnapshot.nativeExecutions` 仅 coordinator，最近 64 行最新在前；`activity` 读取时取 live Agent；`lane` 标 `inferred`；`worktree` 仅精确初始 cwd 匹配当前 observation 时标 `observed`。工作树观测行增加读取时 `nativeChildren`（`created-tree` / `initial-cwd`，`observed`）。
 - 对外：`ConsumptionSnapshot.nativeExecutions` 与 facts 分类；仅在有行时追加协议说明；`mattpocock_history` 通过既有 runtime capture 记录 `kind: native-execution`、`domain: runtime`、`recordId: executionId`、`version: document.revision`。客户端窗口/观测面板只读展示。
-- 边界：没有新模型工具、Remote 方法或存储域；没有 `registerIntent/confirm` 或 `worktrees_*` 写入；binding 字段/行数不变。完整测试计数、客户端/构建产物、clean-source 制品字节与 sha256 见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。
+- 边界：写入门控为 `view.policy.extensionEnabled`（关闭时不新增/更新、已有行可读，重新启用后恢复）；没有新模型工具、Remote 方法或存储域；没有 `registerIntent/confirm` 或 `worktrees_*` 写入；binding 字段/行数不变。完整测试计数、客户端/构建产物、clean-source 制品字节与 sha256 见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。

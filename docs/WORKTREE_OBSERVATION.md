@@ -220,7 +220,7 @@ DSH 没有“目录被谁占用”的机制：
 
 ## 12. C 阶段实施记录（0.7.1，隔离工作树内完成，未安装）
 
-**范围**：普通 native `subagent`/`subagent_fork` child 的 `native-observed` 执行事实，以及 child 初始 cwd/创建者与 `create_worktree` observation 的读取时关联；不写强 binding、不新增工具/Remote/存储域、不改变 S/nativeStops/通知。
+**范围**：普通 native `subagent`/`subagent_fork` child 的 `native-observed` 执行事实，以及 child 初始 cwd/创建者与 `create_worktree` observation 的读取时关联；写入与工作树观测一样受 `extensionEnabled` 门控（关闭时不新增/更新，已有行可读）；不写强 binding、不新增工具/Remote/存储域、不改变 S/nativeStops/通知。
 
 **改动**：新增 [native-executions.ts](<../src/controls/native-executions.ts>)（事实/view 类型、严格 parse、事件幂等 fold、activity/lane/worktree/nativeChildren 纯投影）；[runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`（旧文档缺字段按空数组）；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入事实、快照投影、health、history capture（`kind: native-execution`）、`nativeChildren`；consumption/client 增加类别、协议行与只读展示；package 固定清单精确 +2（`lib/controls/native-executions.js`、`lib/types/controls/native-executions.d.ts`），当前 **95 固定 + 85 vendor = 180**。
 

@@ -112,7 +112,7 @@ workflow 自定义进度轴、状态键、含义和互斥/重叠计数。仪器�
 
 自动文本每细类别使用固定机械预算，提供 shown / total / more 和查询定位；长字段标 truncated。预算不限制可创建的票、待办或工作树数量。未列明细仍保留待办计数和 unknown 健康计数，不能把“没展开”读成“没有”。
 
-原生执行事实来自 `agent/created`、`subagent/start`、`subagent/end`、`agent/disposed` 的宿主事件，一行对应一个 native child session（`executionId` 即 `sessionId`），不是每回合一行；重复事件与热重载复用同一行。`activity` 是读取时 live Agent 状态，不持久化；`outcome` 只来自宿主公开的 `stopReason`，没有 end 就是 null。worktree 关联只在 child 初始 cwd 与当前 `create_worktree` 观测路径**精确相等**时出现，标 `observed`；lane 从 assignment/binding 读取，标 `inferred`；两者都不是强 binding、不表示目录被使用，也不是任务完成回执。旧 runtime 文档无该字段时按空数组解析。
+原生执行事实来自 `agent/created`、`subagent/start`、`subagent/end`、`agent/disposed` 的宿主事件，一行对应一个 native child session（`executionId` 即 `sessionId`），不是每回合一行；重复事件与热重载复用同一行。`activity` 是读取时 live Agent 状态，不持久化；`outcome` 只来自宿主公开的 `stopReason`，没有 end 就是 null。worktree 关联只在 child 初始 cwd 与当前 `create_worktree` 观测路径**精确相等**时出现，标 `observed`；lane 从 assignment/binding 读取，标 `inferred`；两者都不是强 binding、不表示目录被使用，也不是任务完成回执。写入与工作树观测一样遵循协作管理总闸：管理关闭时不新增、不更新事实，已有行仍可读取，重新启用后恢复。旧 runtime 文档无该字段时按空数组解析。
 
 实际消费边界读取新鲜状态，只等待相关已登记持久化操作，不等子代理整个运行。pre-step 与 post-execute 只在视图变化时追加新文本，system context 提供短查询指针；不在三条路径反复追加同一全文。历史修订变化不会仅因全局 revision 让无业务变化的当前全文重新注入。退出未来注入不擦除已经写入原生对话历史的旧消息。
 

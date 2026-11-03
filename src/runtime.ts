@@ -667,6 +667,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return {...base,kind}
   }
   const recordNativeExecution=async(view:SessionControlsView,event:NativeExecutionEvent):Promise<void>=>{
+    // C writes follow the same optional-extension gate as worktree observations. Existing rows
+    // remain readable; management-off adds or updates nothing and is not an observation failure.
+    if(!view.policy.extensionEnabled)return
     try{
       await update(old=>{
         const current=old.nativeExecutions.find(row=>row.executionId===event.sessionId)

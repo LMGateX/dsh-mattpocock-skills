@@ -106,6 +106,41 @@ test('disposed without a published end stays disposed with outcome null', async 
   assert.equal((await runtimeDocument(f)).revision, before, 'a repeated disposal writes no revision')
 })
 
+test('native execution writes follow the management extension gate and preserve existing rows when off', async t => {
+  const f = await fixture(t) // management starts OFF
+  const offChild = actualAgent('gated-off', { parent: 'root', managed: true, cwd: '/trees/OFF' })
+  await f.created(offChild)
+  await f.event(offChild, 'subagent-start', { runId: 'off-run', provider: 'spawn', local: true })
+  await f.event(offChild, 'subagent-end', { runId: 'off-run', provider: 'spawn', local: true, stopReason: 'completed' })
+  const offDocument = await runtimeDocument(f)
+  assert.equal(offDocument?.nativeExecutions?.length ?? 0, 0, 'management off adds no native execution fact')
+  assert.deepEqual((await f.read()).nativeExecutions, [])
+
+  await f.save(policy())
+  const onChild = actualAgent('gated-on', { parent: 'root', managed: true, cwd: '/trees/ON' })
+  await f.created(onChild)
+  await f.event(onChild, 'subagent-start', { runId: 'on-run', provider: 'spawn', local: true })
+  let snap = await f.read()
+  assert.equal(snap.nativeExecutions.length, 1, 're-enabling management records the next native execution')
+  assert.equal(snap.nativeExecutions[0].sessionId, onChild.id)
+  assert.equal(snap.nativeExecutions[0].state, 'running')
+  await f.event(onChild, 'subagent-end', { runId: 'on-run', provider: 'spawn', local: true, stopReason: 'completed' })
+  snap = await f.read()
+  assert.equal(snap.nativeExecutions[0].state, 'ended')
+  assert.equal(snap.nativeExecutions[0].outcome, 'completed')
+
+  const offPolicy = { extensionEnabled: false, defaults: { workspace: { enabled: true }, ticketProgress: { enabled: true },
+    pendingDecisions: { enabled: true }, windows: { enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 } }, workspaceOverrides: {} }
+  await f.save(offPolicy)
+  assert.equal((await f.read()).nativeExecutions.length, 1, 'management off keeps existing rows readable')
+  assert.equal((await f.read()).nativeExecutions[0].sessionId, onChild.id)
+  const laterChild = actualAgent('gated-later', { parent: 'root', managed: true, cwd: '/trees/LATER' })
+  await f.created(laterChild)
+  await f.event(laterChild, 'subagent-start', { runId: 'later-run', provider: 'spawn', local: true })
+  assert.equal((await runtimeDocument(f)).nativeExecutions.length, 1, 'management off adds no row for a later child')
+  assert.deepEqual((await f.read()).nativeExecutions.map(row => row.sessionId), [onChild.id])
+})
+
 test('an exact initial cwd matches a current observation and nativeChildren separates relations', async t => {
   const f = await fixture(t, { initialPolicy: policy() })
   const creator = actualAgent('creator-child', { parent: 'root', managed: true, cwd: '/trees/A' })
