@@ -46,6 +46,10 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/controls/versioned-storage.d.ts',
   'lib/host.js',
   'lib/runtime.js',
+  'lib/model-tools.js',
+  'lib/types/model-tools.d.ts',
+  'lib/controls/model-output.js',
+  'lib/types/controls/model-output.d.ts',
   'lib/client.js',
   'lib/types/host.d.ts',
   'lib/types/runtime.d.ts',
@@ -146,6 +150,10 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/controls/versioned-storage.d.ts',
   'lib/host.js',
   'lib/runtime.js',
+  'lib/model-tools.js',
+  'lib/types/model-tools.d.ts',
+  'lib/controls/model-output.js',
+  'lib/types/controls/model-output.d.ts',
   'lib/client.js',
   'lib/types/host.d.ts',
   'lib/types/runtime.d.ts',
@@ -207,7 +215,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.9.0'
+const EXPECTED_VERSION = '0.10.0'
 // DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
 // peers declared below only when it is absent. The declared range therefore repeats the exact
 // verdict those peers already produce on both host lines, measured with the real
@@ -272,7 +280,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 95
+const EXPECTED_FIXED_PACKED_FILES = 99
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

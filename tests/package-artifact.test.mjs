@@ -47,9 +47,9 @@ function validMembers() {
   ]
 }
 
-test('0.9.0 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.9.0' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.9.0')
+test('0.10.0 package policy admits exactly four metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.10.0' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.10.0')
   assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
     'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
   ])
@@ -59,7 +59,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.9.0',
+    version: '0.10.0',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
@@ -68,6 +68,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
+    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]10[.]0/],
     // Derived from the manifest so the drift guard never pins a release number.
     [{ ...packageJson, version: '1.0.0' }, new RegExp(String(packageJson.version).replaceAll('.', '\\.'))],
     [{ ...packageJson, private: false }, /private/],
@@ -106,15 +107,34 @@ test('locale metadata verification rejects unknown structure and changed public 
   ]) assert.throws(() => validatePackageLocale('locale/worktree-bridge/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 95 fixed files, 85 vendor files and 76 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 95)
-  assert.equal(EXPECTED_PACKED_FILES, 180)
-  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 76)
+test('exact package inventory contains 99 fixed files, 85 vendor files and 80 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 99)
+  assert.equal(EXPECTED_PACKED_FILES, 184)
+  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 80)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 180)
+  assert.equal(members.size, 184)
   for (const path of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
+})
+
+test('bounded model output modules are private exact package members, not public entry points', () => {
+  const expected = [
+    'lib/model-tools.js', 'lib/types/model-tools.d.ts',
+    'lib/controls/model-output.js', 'lib/types/controls/model-output.d.ts',
+  ]
+  const selected = paths => paths.filter(path => /(?:^|\/)(?:model-tools|model-output)[.]/.test(path)).sort()
+  for (const files of [packageJson.files, PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES]) {
+    assert.deepEqual(selected(files), [...expected].sort())
+  }
+  assert.equal(packageJson.exports['./model-tools'], undefined)
+  assert.equal(packageJson.exports['./controls/model-output'], undefined)
+  for (const path of expected) {
+    assert.throws(() => validatePackagePolicy({ ...packageJson, files: packageJson.files.filter(candidate => candidate !== path) }), /allowlist/)
+  }
+  for (const entry of ['./model-tools', './controls/model-output']) {
+    assert.throws(() => validatePackagePolicy({ ...packageJson, exports: { ...packageJson.exports, [entry]: './' + expected[0] } }), /exports/)
+  }
 })
 
 test('peer-binding support adds only its exact JS and declaration paths to the closed package inventory', () => {
