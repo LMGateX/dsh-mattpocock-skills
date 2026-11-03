@@ -9,7 +9,7 @@
 - **`mattpocock_execute` 退役。** 不再作为派发工具注册或宣传。它记的是 execution fact / lease，不提供 cwd/worktree；S 已按宿主 live `Agent.status` 计数，lease 仅作审计；其“记录执行事实”的模型可见描述与实际原生派发不一致，已在一次本地实测中造成 15 个额外 child（重复或补记派发）与 13 条重复消息。迁移期若保留兼容别名，最多保留一个 minor 版本，且只能拒绝并指向原生替代，绝不再次派发；目标版本删除该工具及 `executeManaged`/`executeNative` 包装路径。
 - **`mattpocock_delegate` 保留为绑定式创建（binding-first creation）。** 它不是默认派发路径；仅当需要可核验的 ticket↔worktree 强绑定，或需要其持久意图/幂等/创建前 scope 时使用：先持久化创建意图，再以准备的工作树为初始 cwd（省略则继承父 cwd）创建 continuable child，核对实际 `child/parent/cwd` header，写入 binding（task/ticketIds），并 assign 票范围。普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`，不需要 delegate。
 - **强绑定、观察、分配是三件事。** `mattpocock_delegate` 是当前唯一的 binding 创建入口；`mattpocock_worktree` 读取/更新 binding，并用 `update-observation` 处置树观测（观测本身看注入快照）；`mattpocock_assign` 只写 child↔ticket 权限。原生 `create_worktree` 观测只记录“谁建了哪棵树”，不会自动写一条 child↔tree 强绑定；读取时的关联必须标为 observed/inferred，不能冒充 binding。
-- **执行事实来自观察。** 原生 `agent/created`、child header、`subagent/end` 是程序事实来源；插件记录 `native-observed` 执行事实，不要求模型补记，也不把模型文字当回执。S 继续按宿主 live `Agent.status` 计数；普通路径不再以 lease 为前提。
+- **执行事实来自观察（C 阶段目标；0.7.0 尚未实现）。** 原生 `agent/created`、child header、`subagent/end` 是程序事实来源；C 阶段将记录 `native-observed` 执行事实，不要求模型补记，也不把模型文字当回执。S 继续按宿主 live `Agent.status` 计数；普通路径不再以 lease 为前提。0.7.0 只有现有 S/结局/通知与 worktree observation，尚未持久化 native-observed 执行事实或做 child↔tree 读取时关联。
 - **旧宿主按 capability 兼容。** 没有原生 cwd/创建 seam 的宿主仍使用随包兼容提供者或明确拒绝；`host-patches/` 与 startup cwd 设置保留为旧宿主路径，不构成保留 execute 的理由。
 
 本节收窄 2026-10-06 的执行包装、2026-10-09 的插件 cwd 派发默认用法和 2026-10-13 的 `mattpocock_delegate.worktree` 默认派发用法；强绑定 lane 仍由 delegate 写 binding，T/S、票与裁决、工作树绑定/观测、历史与通知语义不变。
@@ -144,7 +144,7 @@ create_worktree（原生；父代理先准备好树）
 
 ### 4.3 执行事实、binding 与观察
 
-- 执行事实：从 `agent/created`、child header、`subagent/end` 记录 `native-observed` 事实；失败/取消/结局继续按宿主公开词表。
+- 执行事实（C 阶段目标；0.7.0 未实现）：从 `agent/created`、child header、`subagent/end` 记录 `native-observed` 事实；失败/取消/结局继续按宿主公开词表。
 - 工作树事实：继续观测成功的原生 `create_worktree`（创建者、checkout、分支/基线、创建者活动性）。
 - 强绑定：由 delegate 的 `registerIntent → confirm` 写入；binding 带 task/ticketIds/actual child/cwd，是 ticket↔tree 的权威来源。
 - 原生路径的关联：C 阶段可扩展读取时关联（native child 初始 cwd + `create_worktree` 观测），但必须标为 `observed`/`inferred`，**不得静默写成 delegate 风格的强 binding**。
