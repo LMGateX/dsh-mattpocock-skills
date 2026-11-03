@@ -1,6 +1,6 @@
 # PTC 嵌套调用下的钩子与派发语义
 
-> 2026-11-03 决策，0.7.0 已实施：普通无绑定 lane 的派发使用宿主原生工具；需要 ticket↔worktree 强绑定时用 `mattpocock_delegate` 的绑定式创建；`mattpocock_execute` 已从模型面移除。本文第 3 节中的 execute 包装描述保留为 0.6.0 历史；当前路径是 native `subagent`/`subagent_fork`/`send_message` 直接派发 + 生命周期观察，以及 delegate 的强绑定创建。C（原生观察读取时关联/账本补齐）仍待后续。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 决策，0.7.0 已实施：普通无绑定 lane 的派发使用宿主原生工具；需要 ticket↔worktree 强绑定时用 `mattpocock_delegate` 的绑定式创建；`mattpocock_execute` 已从模型面移除。本文第 3 节中的 execute 包装描述保留为 0.6.0 历史；当前路径是 native `subagent`/`subagent_fork`/`send_message` 直接派发 + 生命周期观察。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成。0.8.0 起 delegate 功能保留但默认不注册，只有 profile 显式 `delegate: true` 才作为可选强绑定入口启用。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 DSH 的 PTC（programmatic tool calling）模式允许模型在一次 `run_code` 里串联大量工具调用。
 本插件的状态注入与派发观测是否会被这种包装方式影响，结论与依据如下。

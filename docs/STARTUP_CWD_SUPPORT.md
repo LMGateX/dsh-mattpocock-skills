@@ -2,7 +2,7 @@
 
 This feature controls only whether the plugin may request an **explicit initial cwd for a newly created continuable child**. It is not the plugin master switch, worktree binding policy, permission approval, or a switch for ordinary native subagents, continuations, sends, history, or T/S instruments.
 
-> 2026-11-03 设计更新：当前宿主的原生 `subagent` 已带 `cwd`；普通无绑定 lane 的派发不再经过本插件的 cwd 请求；`mattpocock_delegate` 的强绑定创建在当前宿主也优先使用原生 cwd seam。本设置与随包兼容提供者只服务没有原生 seam 的旧宿主。`mattpocock_execute` 已在 0.7.0 移除；普通派发用原生 `subagent({cwd})`/`subagent_fork`。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 设计更新：当前宿主的原生 `subagent` 已带 `cwd`；普通无绑定 lane 的派发不再经过本插件的 cwd 请求；`mattpocock_delegate` 的强绑定创建（0.8.0 起默认不注册，仅显式 `delegate: true` 时可用）在当前宿主也优先使用原生 cwd seam。本设置与随包兼容提供者只服务没有原生 seam 的旧宿主。`mattpocock_execute` 已在 0.7.0 移除；普通派发用原生 `subagent({cwd})`/`subagent_fork`。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 The initial desired value is `{ startupCwdEnabled: false }`. A settings save is an operator action, not a model tool.
 

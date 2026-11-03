@@ -15,7 +15,7 @@
 
 - 不恢复 `mattpocock_execute`，不提供通用派发包装。
 - 不新增模型工具或新的派发入口。
-- 不把 native child 自动绑定到 ticket/tree；需要强绑定时仍用 `mattpocock_delegate`。
+- 不把 native child 自动绑定到 ticket/tree；需要强绑定时仍用 opt-in 的 `mattpocock_delegate`（0.8.0 默认不注册）。
 - 不把“初始 cwd 等于某棵树”说成“正在使用”或“独占”；没有目录占用机制。
 - 不解析所有冷会话日志重建历史；C 只记录本轮 runtime 实际收到的原生生命周期事件。旧会话/未观察到的原生 child 保持 unknown。
 - 不把模型文字或业务完成标签当成执行回执。
@@ -111,7 +111,7 @@ readonly nativeChildren: readonly {
 
 ### 2.3 不写强 binding
 
-C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 observation 转成 binding。强 binding 仍然只由 `mattpocock_delegate` 写入。任何读取投影都不得改变 binding 的 `bindingId`、`actualChildSessionId`、`actualCwd` 或业务状态。
+C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 observation 转成 binding。强 binding 仍然只由 opt-in 的 `mattpocock_delegate` 写入（0.8.0 默认不注册，只有显式 `delegate: true` 才启用）。任何读取投影都不得改变 binding 的 `bindingId`、`actualChildSessionId`、`actualCwd` 或业务状态。
 
 ## 3. 对外表面
 

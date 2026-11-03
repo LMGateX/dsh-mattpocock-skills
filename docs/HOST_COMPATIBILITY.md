@@ -168,7 +168,7 @@ rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Rele
 
 该 0.6.0 适配的运行时代码改动只有两个接缝：`src/host.ts` 的 `executeNative`（0.7.0 已删除）和旧子代理回退的结构化类型。Skill 正文、vendor 字节、通道语义、provider 优先级与 `engines.dsh` 声明均未改变。测试夹具侧新增了公开 pipeline 的单调用适配、真实 `SessionProjectionRegistry`、以 `ctx.plugin()` 挂载异步服务，以及 0.2.2 的 official-bundles 读取；这些不改变产品入口。
 
-> 2026-11-03 设计变更，0.7.0 已实施：本表（含上文“受管原生调用”）是 0.6.0 的 execute 包装适配历史；0.7.0 已删除该工具及 `executeManaged`/`executeNative` 路径。普通无绑定派发使用原生 `subagent`/`subagent_fork`/`send_message` + `create_worktree`/`cwd`；`mattpocock_delegate` 保留为强绑定创建，不随 execute 退役。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成，不改变宿主工具面或 Remote 方法。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。
+> 2026-11-03 设计变更，0.7.0 已实施：本表（含上文“受管原生调用”）是 0.6.0 的 execute 包装适配历史；0.7.0 已删除该工具及 `executeManaged`/`executeNative` 路径。普通无绑定派发使用原生 `subagent`/`subagent_fork`/`send_message` + `create_worktree`/`cwd`；`mattpocock_delegate` 保留为强绑定创建，不随 execute 退役，但 0.8.0 起默认不注册，只有显式 `delegate: true` 才启用。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成，不改变宿主工具面或 Remote 方法。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 核对范围与方法
 

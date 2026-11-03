@@ -29,7 +29,7 @@
 
 ### 2.2 两个工具的原始职责与现状
 
-**`mattpocock_delegate`：create + bind，不是通用派发器**
+**`mattpocock_delegate`：opt-in 的 create + bind，不是通用派发器**
 
 原始工具表的描述是“创建 continuable child，可绑定已准备工作树”。它的核心不是“替模型调用 subagent”，而是：
 
@@ -86,7 +86,7 @@
 | 工具/入口 | 处置 | 理由 | 替代 |
 |---|---|---|---|
 | `mattpocock_execute` | **已退役（0.7.0 移除）** | 无 cwd/worktree；lease 仅审计；描述与实现不符；重复派发来源 | 原生 `subagent` / `subagent_fork` / `send_message` |
-| `mattpocock_delegate` | **保留：绑定式创建** | 唯一创建 worktree binding 的入口；持久意图/幂等/创建前 scope/实际 header 核对仍有价值 | 普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`；强绑定 lane 用 delegate |
+| `mattpocock_delegate` | **保留：opt-in 绑定式创建（默认不注册）** | 唯一创建 worktree binding 的入口；持久意图/幂等/创建前 scope/实际 header 核对仍有价值 | 普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`；仅当 profile `delegate: true` 且需要强绑定时用 delegate |
 | `mattpocock_assign` | **保留** | 对真实直接 child 登记票范围；不派发、不写树 | — |
 | `mattpocock_worktree` | **保留** | 读取/更新 binding、观测处置、程序重核对；不创建 binding | 原生 `create_worktree` 继续负责建树 |
 | `mattpocock_record` / `window` / `history` / `controls` / `resource` | **保留** | 业务记录、T 窗口、历史、设置与旧资源只读 | — |
