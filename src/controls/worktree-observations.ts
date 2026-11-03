@@ -86,6 +86,18 @@ export interface WorktreeObservationView extends WorktreeObservationCurrent {
   /** Read-time child associations from native execution facts; observed, never a usage or binding claim. */
   readonly nativeChildren: readonly NativeExecutionChild[]
 }
+export interface WorktreeObservationCurrentRow extends WorktreeObservationCurrent {
+  readonly latest: Omit<WorktreeObservationVersion, 'value'>
+  /** Last observed creation corresponding to the current value, never the later verifier/cleaner. */
+  readonly creation: Omit<WorktreeObservationVersion, 'value' | 'event'> & { readonly event: 'observed' }
+}
+export interface WorktreeObservationsCurrentSnapshot {
+  readonly revision: number
+  /** Includes authored-cleaned rows without retaining any historical bodies. */
+  readonly rows: readonly WorktreeObservationCurrentRow[]
+}
+const currentObservations = new WeakMap<WorktreeObservationsDocument, WorktreeObservationsCurrentSnapshot>()
+const EMPTY_OBSERVATIONS_CURRENT: WorktreeObservationsCurrentSnapshot = Object.freeze({ revision: 0, rows: Object.freeze([]) })
 export interface WorktreeObservationsSnapshot {
   readonly revision: number
   /** Entire retained registry, including author-cleaned rows and their retained versions. */
@@ -110,6 +122,7 @@ export interface WorktreeObservations {
   observe(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, input: WorktreeObservationInput, source: 'program' | 'replay'): Promise<{ readonly recorded: boolean; readonly row: WorktreeObservationRow }>
   check(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, input: WorktreeObservationCheckInput): Promise<WorktreeObservationRow>
   updateBusiness(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, command: WorktreeObservationBusinessUpdate): Promise<WorktreeObservationRow>
+  readCurrent(owner: InstrumentInstance): Promise<WorktreeObservationsCurrentSnapshot>
   query(owner: InstrumentInstance): Promise<WorktreeObservationsSnapshot>
 }
 export type WorktreeObservationsStorage = (ownerSessionId: string) => VersionedStorage<WorktreeObservationsDocument>
@@ -193,15 +206,18 @@ export function parseWorktreeObservationsDocument(value: unknown): WorktreeObser
   const r = record(value, 'worktree observations document', ['schemaVersion', 'revision', 'owner', 'rows'])
   if (r.schemaVersion !== 1) invalid('unknown worktree observations schema')
   const documentRevision = revision(r.revision, 'document revision'), owner = parseOwner(r.owner)
+  const currentRows: WorktreeObservationCurrentRow[] = []
   const rows: WorktreeObservationRow[] = array(r.rows, 'observation rows').map(value => {
     const row = record(value, 'observation row', ['observationId', 'revision', 'value', 'history'])
     const history = array(row.history, 'observation history').map(parseVersion)
     const first = history[0], latest = history.at(-1), parsedValue = parseValue(row.value)
     if (!first || !latest) invalid('observation row requires at least one version')
+    let observed = first
     if (first.event !== 'observed' || first.value.check.state !== 'unverified' || first.value.business.state !== 'open' || first.source === 'agent') invalid('an observation row must start with a program-observed creation')
     if (!equal(latest.value, parsedValue) || latest.revision !== row.revision) invalid('row must match its latest retained version')
     for (let index = 0; index < history.length; index += 1) {
       const event = history[index]!, previous = history[index - 1]
+      if (event.event === 'observed') observed = event
       // Row identity is the creator session plus the checkout path; only a later observed creation
       // may change the call that produced it (the tree was removed and created again).
       if (event.value.creatorSessionId !== first.value.creatorSessionId || event.value.path !== first.value.path) invalid('observation row identity cannot change')
@@ -213,14 +229,22 @@ export function parseWorktreeObservationsDocument(value: unknown): WorktreeObser
       if (previous.value.business.state === 'cleaned' && event.value.business.state !== 'cleaned') invalid('cleaned observations cannot resurrect')
       if (event.source !== 'agent' && !equal(business(event.value), business(previous.value))) invalid('program observations must preserve authored business state')
     }
-    return { observationId: id(row.observationId, 'observationId'), revision: revision(row.revision, 'row revision'), value: parsedValue, history }
+    const observationId = id(row.observationId, 'observationId'), rowRevision = revision(row.revision, 'row revision')
+    // Build once during cold validation, which already walks retained versions. Do not freeze
+    // recursively here: value/author become immutable with the validated source document below.
+    currentRows.push(Object.freeze({ observationId, revision: rowRevision, value: parsedValue, source: observed.source, recordedAt: observed.recordedAt,
+      latest: Object.freeze({ revision: latest.revision, recordedAt: latest.recordedAt, event: latest.event, source: latest.source, author: latest.author }),
+      creation: Object.freeze({ revision: observed.revision, recordedAt: observed.recordedAt, event: 'observed' as const, source: observed.source, author: observed.author }) }))
+    return { observationId, revision: rowRevision, value: parsedValue, history }
   })
   const revisions = rows.flatMap(row => row.history.map(event => event.revision)).sort((a, b) => a - b)
   if (revisions.length !== documentRevision || revisions.some((value, index) => value !== index + 1)) invalid('observation history has a revision gap or duplicate')
   if (new Set(rows.map(row => row.observationId)).size !== rows.length) invalid('duplicate observation identity')
   const calls = rows.flatMap(row => row.history.filter(event => event.event === 'observed').map(event => JSON.stringify([event.value.creatorSessionId, event.value.callId])))
   if (new Set(calls).size !== calls.length) invalid('duplicate observed call identity')
-  return freeze({ schemaVersion: 1, revision: documentRevision, owner, rows })
+  const document = freeze({ schemaVersion: 1 as const, revision: documentRevision, owner, rows })
+  currentObservations.set(document, documentRevision === 0 ? EMPTY_OBSERVATIONS_CURRENT : Object.freeze({ revision: documentRevision, rows: Object.freeze(currentRows) }))
+  return document
 }
 
 /** Trusted program seam, not an authorization module. Runtime MUST authenticate the owner and
@@ -228,7 +252,7 @@ export function parseWorktreeObservationsDocument(value: unknown): WorktreeObser
 export function createWorktreeObservations(storageForOwner: WorktreeObservationsStorage, now: () => number = Date.now): WorktreeObservations {
   async function load(owner: InstrumentInstance): Promise<WorktreeObservationsDocument> {
     const raw = await storageForOwner(owner.ownerSessionId).read()
-    if (raw === undefined) return { schemaVersion: 1, revision: 0, owner, rows: [] }
+    if (raw === undefined) return parseWorktreeObservationsDocument({ schemaVersion: 1, revision: 0, owner, rows: [] })
     const document = memoized(raw, parseWorktreeObservationsDocument)
     if (!equal(document.owner, owner)) throw new ControlsError('association-conflict', 'storage row belongs to another owner instance or workspace')
     return document
@@ -311,6 +335,11 @@ export function createWorktreeObservations(storageForOwner: WorktreeObservations
         if (await storageForOwner(owner.ownerSessionId).compareAndSwap(document.revision, next)) return freeze(nextRow)
       }
       throw new ControlsError('concurrent-update', 'observation registry changed repeatedly; reload before retrying')
+    },
+    async readCurrent(ownerInput) {
+      // Even a current-cache hit must recheck the actual owner/instance/workspace association.
+      const document = await load(parseOwner(ownerInput))
+      return currentObservations.get(document)!
     },
     async query(ownerInput) {
       const document = await load(parseOwner(ownerInput))

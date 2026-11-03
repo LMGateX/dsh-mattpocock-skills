@@ -103,6 +103,31 @@ export interface WorktreeBindingCurrent {
   readonly author: InstrumentAuthor
   readonly recordedAt: number
 }
+/** Immutable current-only row: no retained source versions or duplicate current view. */
+export interface WorktreeBindingCurrentRow extends Omit<WorktreeBindingMaterializedRow, 'history'> {
+  readonly latest: Omit<WorktreeBindingVersion, 'value' | 'command'>
+}
+export interface WorktreeBindingsCurrentSnapshot {
+  readonly revision: number
+  /** Includes cleaned rows; filtering model obligations remains the Adapter's decision. */
+  readonly rows: readonly WorktreeBindingCurrentRow[]
+}
+const currentBindings = new WeakMap<WorktreeBindingsMaterializedDocument, WorktreeBindingsCurrentSnapshot>()
+const EMPTY_BINDINGS_CURRENT: WorktreeBindingsCurrentSnapshot = Object.freeze({ revision: 0, rows: Object.freeze([]) })
+/** Called only with a deeply validated immutable document; shallow freezing here must NOT
+ * recurse through current values or retained histories. Cold parsing/storage validation still may. */
+function indexCurrentBindings(document: WorktreeBindingsMaterializedDocument): WorktreeBindingsMaterializedDocument {
+  if (!currentBindings.has(document)) {
+    const rows = document.rows.map(row => {
+      const latest = row.history.at(-1)!
+      return Object.freeze({ bindingId: row.bindingId, revision: row.revision, value: row.value,
+        creationAuthor: row.creationAuthor, creationDigest: row.creationDigest, identity: row.identity,
+        latest: Object.freeze({ revision: latest.revision, recordedAt: latest.recordedAt, operationId: latest.operationId, source: latest.source, author: latest.author }) })
+    })
+    currentBindings.set(document, document.revision === 0 ? EMPTY_BINDINGS_CURRENT : Object.freeze({ revision: document.revision, rows: Object.freeze(rows) }))
+  }
+  return document
+}
 export interface WorktreeBindingsSnapshot {
   readonly checkpointRev: number
   readonly sourceCoverage: WorktreeBindingsSourceCoverage
@@ -126,6 +151,7 @@ export interface WorktreeBindings {
   updateBusiness(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, command: WorktreeBindingBusinessUpdate): Promise<WorktreeBindingRow>
   confirm(owner: InstrumentInstance, operationId: string, actualHeader: WorktreeBindingHeader, actualAuthor: InstrumentAuthor): Promise<WorktreeBindingRow>
   registerIntent(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, intent: WorktreeBindingIntent): Promise<{ readonly dispatch: boolean; readonly replayed: boolean; readonly row: WorktreeBindingRow }>
+  readCurrent(owner: InstrumentInstance): Promise<WorktreeBindingsCurrentSnapshot>
   query(owner: InstrumentInstance): Promise<WorktreeBindingsSnapshot>
 }
 export type WorktreeBindingsStorage = (ownerSessionId: string) => VersionedStorage<WorktreeBindingsDocument>
@@ -254,8 +280,8 @@ function materialize(document: WorktreeBindingsLegacyDocument): WorktreeBindings
     for (const event of row.history) if (event.command) operations.push({ operationId: event.operationId, kind: 'business', digest: digest(event.command), author: event.author, bindingId: row.bindingId, revision: event.revision })
     return { ...row, creationAuthor: first.author, creationDigest: digest(intentOf(first.value)), identity: identityOf(row.value) }
   })
-  return freeze({ schemaVersion: 2, revision: document.revision, owner: document.owner, checkpointRev: 0, purgedThroughRevision: 0, rows,
-    manifest: document.rows.flatMap(row => row.history.map(event => manifestVersion(row.bindingId, event))).sort((a, b) => a.revision - b.revision), operations: operations.sort((a, b) => a.revision - b.revision) })
+  return indexCurrentBindings(freeze({ schemaVersion: 2, revision: document.revision, owner: document.owner, checkpointRev: 0, purgedThroughRevision: 0, rows,
+    manifest: document.rows.flatMap(row => row.history.map(event => manifestVersion(row.bindingId, event))).sort((a, b) => a.revision - b.revision), operations: operations.sort((a, b) => a.revision - b.revision) }))
 }
 function parseCoverage(value: unknown): WorktreeBindingsSourceCoverage {
   const r = record(value, 'source coverage', ['kind', 'throughRevision', 'removedVersions', 'removed'])
@@ -364,7 +390,7 @@ export function parseWorktreeBindingsDocument(value: unknown): WorktreeBindingsM
   }
   const parsed: WorktreeBindingsMaterializedDocument = { schemaVersion: 2, revision: documentRevision, owner, checkpointRev, purgedThroughRevision, rows, manifest, operations }
   if (checkpointRev !== (cleanups.at(-1)?.revision ?? 0) || !equal(sourceCoverage(parsed), priorCoverage)) invalid('checkpoint/source holes do not match durable cleanup receipts')
-  return freeze(parsed)
+  return indexCurrentBindings(freeze(parsed))
 }
 
 /** Trusted program seam, not an authorization module. Runtime MUST authenticate
@@ -504,6 +530,11 @@ export function createWorktreeBindings(storageForOwner: WorktreeBindingsStorage,
         if (await storageForOwner(owner.ownerSessionId).compareAndSwap(document.revision, next)) return freeze({ dispatch: true, replayed: false, row })
       }
       throw new ControlsError('concurrent-update', 'binding registry changed repeatedly; reload before retrying')
+    },
+    async readCurrent(ownerInput) {
+      // Always reload/check this actual instance before consulting a document-identity cache.
+      const document = await load(parseOwner(ownerInput))
+      return currentBindings.get(document)!
     },
     async query(ownerInput) {
       const document = await load(parseOwner(ownerInput))
