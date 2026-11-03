@@ -185,7 +185,8 @@ export function createModelTools(runtime: RuntimeFacade) {
       if(data.value!==undefined){
         const versions=list(data.history),latest=object(versions.at(-1)),isObservation=data.observationId!==undefined
         const creation=isObservation?object(versions.filter(row=>object(row).event==='observed').at(-1)):latest
-        facts.source=creation.source;facts.appliedRevision=data.revision;facts.replayed=null;facts.replayCoverage='source-does-not-report-replay'
+        // This source returns the current row for replays/no-ops, not an original commit cut.
+        facts.source=creation.source;facts.appliedRevision=null;facts.appliedRevisionCoverage='source-does-not-report-original-commit';facts.replayed=null;facts.replayCoverage='source-does-not-report-replay'
         if(!isObservation){facts.acceptance=value.acceptance;facts.outcome=value.outcome}
         const body={...(isObservation?{observationId:data.observationId}:{bindingId:data.bindingId}),revision:data.revision,value:data.value,source:creation.source,author:creation.author,recordedAt:creation.recordedAt,...(isObservation?{provenance:{source:latest.source,author:latest.author,recordedAt:latest.recordedAt}}:{})}
         facts.detail={tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(modelSource(isObservation?'observation':'worktree-binding',[data.bindingId??data.observationId],String(data.revision),body)))}
@@ -232,6 +233,7 @@ export function createModelTools(runtime: RuntimeFacade) {
     for(const key of ['appliedRevision','replayed','ignored','generation','revision','businessRevision','viewerRevision','phase','domain','derivedHistoryDeleted','derivedOutcome','acknowledgedSuppressionRows','sourceRecordsDeleted','sourceOutcome','nativeConversationDeleted','checkpointAppliedRevision','receiptRecording','notificationRecording','recording','persistence','accepted','creation','binding','assignment','childId','messageId'])if(data[key]!==undefined)facts[key]=data[key]
     for(const key of ['revision','businessRevision','viewerRevision'])if(snapshot[key]!==undefined)facts[key]=snapshot[key]
     Object.assign(facts,mutationOutcome(data))
+    if(name==='mattpocock_worktree'&&data.value!==undefined)Object.assign(facts,{commit:'not-reported',businessRevision:data.revision,businessState:object(object(data.value).business).state,appliedRevision:null,appliedRevisionCoverage:'source-does-not-report-original-commit',replayed:null,replayCoverage:'source-does-not-report-replay'})
     if(data.recovery!==undefined)facts.recovery=previewFields(object(data.recovery),128)
     const operationId=command.operationId??raw.operationId;if(operationId!==undefined)facts.operationId=operationId
     for(const key of ['workflowId','localTicketId','decisionId','bindingId','observationId'])if(command[key]!==undefined)facts[key]=command[key]

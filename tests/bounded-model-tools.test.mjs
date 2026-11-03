@@ -71,6 +71,16 @@ test('a cleaned observation receipt still resolves its real creation provenance 
   assert.equal(page.total,1,'cleaned observations remain explicitly queryable')
   assert.equal(page.rows[0].source,'replay')
   assert.deepEqual(await content(f,page.rows[0].detail.locator),body)
+  assert.equal(receipt.appliedRevision,null)
+  assert.equal(receipt.appliedRevisionCoverage,'source-does-not-report-original-commit')
+  const before=await store.read()
+  const unchanged=value(await f.execute('mattpocock_worktree',{request:{action:'update-observation',command:{operationId:'same-value-no-op',observationId:observed.row.observationId,expectedRevision:receipt.businessRevision,state:'cleaned',notes:'authored cleanup'}}}))
+  assert.equal(unchanged.businessRevision,receipt.businessRevision)
+  assert.equal(unchanged.businessState,'cleaned')
+  assert.equal(unchanged.appliedRevision,null,'a no-op current row is not a new operation commit')
+  assert.equal(unchanged.appliedRevisionCoverage,'source-does-not-report-original-commit')
+  assert.deepEqual(await store.read(),before)
+  assert.deepEqual(await content(f,unchanged.detail.locator),body)
 })
 
 test('same workflow ticket and decision IDs have independent exact-version Unicode content', async t => {
@@ -471,4 +481,92 @@ test('binding update receipts resolve exact current header provenance without em
   assert.deepEqual(await content(f,page.rows[0].detail.locator),selected)
   const denied=await f.execute('mattpocock_record',{request:{action:'detail',locator:receipt.detail.locator}},f.child)
   assert.equal(denied.isError,true)
+})
+
+test('binding cleanup observation changes invalidate record and worktree cursors without changing durable content', async t => {
+  const f=await mountedFixture(t)
+  const second=actualAgent('cursor-child',{parent:'root',managed:true});f.agents.set(second.id,second)
+  const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
+  const module=await import('../src/controls/worktree-bindings.ts')
+  const store=await f.mounted.ports.openUnitStorage('worktrees_'+createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0,48),module.parseWorktreeBindingsDocument)
+  const bindings=module.createWorktreeBindings(()=>store),author={kind:'agent',principalId:'agent:root',sessionId:'root'}
+  const byChild=new Map()
+  for(const child of [f.child,second]){
+    const operationId='binding-'+child.id
+    const intent=await bindings.registerIntent(who.instance,author,{operationId,parentSessionId:'root',plannedChildSessionId:child.id,requestedCwd:'/fixture'})
+    await bindings.confirm(who.instance,operationId,{sessionId:child.id,parentSessionId:'root',cwd:'/fixture'},author)
+    byChild.set(child.id,intent.row.bindingId)
+  }
+  const entries=[['mattpocock_record','worktree-binding'],['mattpocock_worktree','binding']]
+  const firstPages=[]
+  for(const [tool,kind] of entries){
+    const page=value(await f.execute(tool,{request:{action:'read',query:{kind,limit:1}}}))
+    assert.equal(page.total,2);assert.equal(page.shown,1);assert.equal(page.more,true)
+    const stable=value(await f.execute(tool,{request:{action:'read',query:{kind,limit:1,cursor:page.nextCursor}}}))
+    assert.equal(stable.shown,1);assert.equal(stable.more,false)
+    assert.notEqual(stable.rows[0].recordId,page.rows[0].recordId)
+    firstPages.push(page)
+  }
+  const hidden=[f.child.id,second.id].find(id=>id!==firstPages[0].rows[0].actualChildSessionId)
+  const selected=value(await f.execute('mattpocock_worktree',{request:{action:'read',query:{kind:'binding',recordId:byChild.get(hidden)}}})).rows[0]
+  assert.equal(selected.cleanupDue,false)
+  const before=await content(f,selected.detail.locator)
+  const revision=(await store.read()).revision
+  f.agents.delete(hidden)
+  for(let index=0;index<entries.length;index++){
+    const [tool,kind]=entries[index]
+    const stale=await f.execute(tool,{request:{action:'read',query:{kind,limit:1,cursor:firstPages[index].nextCursor}}})
+    assert.equal(stale.isError,true,tool+' must fence changed live cleanup observations')
+    assert.match(stale.error.message,/Current view changed/)
+    // The SDK intentionally serializes only error.message. The registered public tool
+    // throws the structured conflict before that unchanged SDK error projection.
+    const request={action:'read',query:{kind,limit:1,cursor:firstPages[index].nextCursor}}
+    await assert.rejects(f.ctx.tools.get(tool).execute({request},{name:tool,arguments:{request},callId:'cut-'+index,rootCallId:'cut-'+index,token:{},agent:f.root,signal:signal(),concludeTurn(){},deferContext(){}}),error=>error.code==='revision-conflict'&&error.reason==='current-view-changed')
+  }
+  const fresh=value(await f.execute('mattpocock_worktree',{request:{action:'read',query:{kind:'binding',recordId:byChild.get(hidden)}}})).rows[0]
+  assert.equal(fresh.cleanupDue,true)
+  assert.equal(fresh.sourceVersion,selected.sourceVersion,'live cleanup observation is not a durable content revision')
+  assert.deepEqual(await content(f,selected.detail.locator),before)
+  assert.equal((await store.read()).revision,revision,'observing a missing child makes no business write')
+})
+
+test('a replayed binding operation reports current business facts but never invents its original commit revision', async t => {
+  const f=await mountedFixture(t)
+  const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
+  const module=await import('../src/controls/worktree-bindings.ts')
+  const store=await f.mounted.ports.openUnitStorage('worktrees_'+createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0,48),module.parseWorktreeBindingsDocument)
+  const bindings=module.createWorktreeBindings(()=>store),author={kind:'agent',principalId:'agent:root',sessionId:'root'}
+  const initial=await bindings.registerIntent(who.instance,author,{operationId:'receipt-bind',parentSessionId:'root',plannedChildSessionId:'child',requestedCwd:'/fixture'})
+  const confirmed=await bindings.confirm(who.instance,'receipt-bind',{sessionId:'child',parentSessionId:'root',cwd:'/fixture'},author)
+  const a={action:'update',command:{operationId:'update-a',bindingId:initial.row.bindingId,expectedRevision:confirmed.revision,state:'discarded',notes:'first authored disposition'}}
+  const first=value(await f.execute('mattpocock_worktree',{request:a}))
+  assert.equal(first.businessRevision,3)
+  const oldBody=await content(f,first.detail.locator)
+  const second=value(await f.execute('mattpocock_worktree',{request:{action:'update',command:{operationId:'update-b',bindingId:initial.row.bindingId,expectedRevision:first.businessRevision,state:'active',notes:'later authored disposition'}}}))
+  assert.equal(second.businessRevision,4)
+  const before=await store.read()
+  assert.equal(before.operations.find(row=>row.operationId==='update-a').revision,3)
+  const replay=value(await f.execute('mattpocock_worktree',{request:a}))
+  assert.equal(replay.businessRevision,4)
+  assert.equal(replay.businessState,'active')
+  assert.equal(replay.appliedRevision,null,'current revision 4 is not the original update-a commit at revision 3')
+  assert.equal(replay.appliedRevisionCoverage,'source-does-not-report-original-commit')
+  assert.equal(replay.replayed,null)
+  assert.equal(replay.replayCoverage,'source-does-not-report-replay')
+  assert.equal(first.appliedRevision,null,'a source that only returns its current row cannot prove the original commit even on a fresh write')
+  assert.equal(second.appliedRevision,null)
+  assert.equal(replay.acceptance,'accepted');assert.equal(replay.outcome,'confirmed')
+  const current=await content(f,replay.detail.locator)
+  assert.equal(current.revision,4);assert.equal(current.value.business.state,'active');assert.equal(current.value.business.notes,'later authored disposition')
+  assert.notDeepEqual(current,oldBody)
+  assert.deepEqual(await store.read(),before,'retry never rewrites a row, restores old state or creates another dispatch')
+  const stale=await f.execute('mattpocock_record',{request:{action:'detail',locator:first.detail.locator}})
+  assert.equal(stale.isError,true,'an original body locator is not silently rebound to later content')
+  const action=f.runtime.worktreeAction.bind(f.runtime)
+  f.runtime.worktreeAction=async(...args)=>({...await action(...args),diagnostic:1n})
+  const fallback=value(await f.execute('mattpocock_worktree',{request:a}))
+  assert.equal(fallback.projection,'failed');assert.equal(fallback.commit,'not-reported')
+  assert.equal(fallback.businessRevision,4);assert.equal(fallback.businessState,'active')
+  assert.equal(fallback.appliedRevision,null);assert.equal(fallback.appliedRevisionCoverage,'source-does-not-report-original-commit')
+  assert.deepEqual(await store.read(),before)
 })
