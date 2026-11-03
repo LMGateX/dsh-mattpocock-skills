@@ -38,7 +38,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 
 - 新增 [native-executions.ts](<../src/controls/native-executions.ts>) 的严格事实解析/事件 fold/纯投影；owner [runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`，旧文档缺字段按空数组；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入、读取投影、health、history（`kind: native-execution`）与 `nativeChildren`。
 - 不新增模型工具或 Remote 方法；仍为八个固定工具 + 条件 audit（客户端九个 wire key）；`mattpocock_worktree` 描述只补充 `nativeChildren` 是读取时 observed、不是强 binding。
-- 完整根套件 **976 项：773 通过、0 失败、203 skip**（新增 `native-executions` 9、`native-execution-runtime` 7、consumption 1、client 1）；定向模块/运行时/客户端/消费套件均 0 失败。
+- 完整根套件 **977 项：774 通过、0 失败、203 skip**（新增 `native-executions` 9、`native-execution-runtime` 8、consumption 1、client 1）；定向模块/运行时/客户端/消费套件均 0 失败。
 - 精确 clean-source 制品、字节/哈希/成员数、prepack 与 tarball 验证、以及 0.7.1 发布准备边界，统一见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。本阶段未安装本机 DSH/Profile/GUI，未 push、tag、npm publish。
 
 ## 仪器读取后续优化（2026-10-21）

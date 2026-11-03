@@ -6,15 +6,15 @@
     "private": true
   },
   "source": {
-    "commit": "af2cf6fb7534f13e478901db2ef20819212a6bd7",
+    "commit": "b8fe19ef2c9f46c0a5a1b111243accd3bcfc0971",
     "branch": "release/0.7.1-native-observation",
     "clean": true
   },
   "verificationCommit": null,
   "artifact": {
     "name": "lmgatex-dsh-mattpocock-skills-0.7.1.tgz",
-    "bytes": 471835,
-    "sha256": "4351263b0a56f836068df8e0ec6222cb9e377ee56b8bab8c58cfd982e469b9aa",
+    "bytes": 471954,
+    "sha256": "326a4343794609baae07b36108b2096e4cc8a6633d11d127f4caded44ee1ed70",
     "members": 180,
     "fixedFiles": 95,
     "vendorFiles": 85,
@@ -28,8 +28,8 @@
   },
   "validation": {
     "rootTests": {
-      "total": 976,
-      "passed": 773,
+      "total": 977,
+      "passed": 774,
       "failed": 0,
       "cancelled": 0,
       "skipped": 203
@@ -40,8 +40,8 @@
       "failed": 0
     },
     "newNativeExecutionRuntime": {
-      "total": 7,
-      "passed": 7,
+      "total": 8,
+      "passed": 8,
       "failed": 0
     },
     "clientTests": {
@@ -58,6 +58,7 @@
     },
     "exactArchiveVerifier": "passed",
     "prepackVerifier": "passed",
+    "extensionGate": "native execution writes require extensionEnabled; management-off adds/updates nothing and preserves readable rows",
     "buildModules": 76,
     "fixedFiles": 95,
     "vendorFiles": 85,
