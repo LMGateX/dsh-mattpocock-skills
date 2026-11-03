@@ -14,6 +14,7 @@ import { openCompatHostView } from './fixtures/compat-host.mjs'
 // Accepted seam: actual public applyEntryPatches -> Loader.root.update -> Fiber.
 // No SDK writes, profile boot, network, AgentLoop, or model requests.
 // The automatic Loader guard is released 0.2.1-alpha.1 bridge evidence.
+const compatibilitySourceRoot = new URL('../src/compatibility/', import.meta.url).href
 const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for public Loader regression on the 0.2.1-alpha.1 bridge' }
 const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
@@ -45,11 +46,11 @@ if (hostRoot) {
       // Only the explicitly marked pending-native lifecycle fixture substitutes
       // an import. Ordinary canonical proof uses the real ESM resolver unchanged.
       if (observation.stockModuleUrl && specifier === '@deepseek-ai/dsh-subagent' && context.conditions.includes('import')) return { url: observation.stockModuleUrl, shortCircuit: true }
-      if (context.parentURL?.includes('/dsh-mattpocock-skills/src/compatibility/') && specifier === './peer-bindings.js') return { url: new URL('./peer-bindings.ts', context.parentURL).href, shortCircuit: true }
+      if (context.parentURL?.startsWith(compatibilitySourceRoot) && specifier === './peer-bindings.js') return { url: new URL('./peer-bindings.ts', context.parentURL).href, shortCircuit: true }
       return next(specifier, context)
     },
     load(url, context, next) {
-      if (['composition.ts', 'peer-bindings.ts'].some(name => new URL(url).pathname.endsWith('/dsh-mattpocock-skills/src/compatibility/' + name))) return { format: 'module', shortCircuit: true,
+      if (['composition.ts', 'peer-bindings.ts'].some(name => url === new URL(name, compatibilitySourceRoot).href)) return { format: 'module', shortCircuit: true,
         source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText }
       return next(url, context)
     },

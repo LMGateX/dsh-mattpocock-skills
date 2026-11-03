@@ -12,6 +12,7 @@ import { openCompatHostView } from './fixtures/compat-host.mjs'
 // Public Loader.entries/Entry.parent.tree.root.data and real StartupSupport only.
 // Fixture writes and symlink targets belong to scratch; SDK remains read-only.
 // Readiness admits only the released 0.2.1-alpha.1 native image.
+const sourceRoot = new URL('../src/', import.meta.url).href
 const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const options = { skip: !compatRoot && 'set DSH_CONTROLS_COMPAT_HOST_ROOT for readonly 0.2.1-alpha.1 plugin readiness probes' }
 const hostRoot = compatRoot ? await openCompatHostView(compatRoot) : undefined
@@ -24,11 +25,11 @@ if (hostRoot) {
     ...await load('@deepseek-ai/cordis-plugin-include'), ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-subagent') }
   registerHooks({
     resolve(specifier, context, next) {
-      if (context.parentURL?.includes('/dsh-mattpocock-skills/src/') && specifier.startsWith('.') && specifier.endsWith('.js')) specifier = specifier.slice(0, -3) + '.ts'
+      if (context.parentURL?.startsWith(sourceRoot) && specifier.startsWith('.') && specifier.endsWith('.js')) specifier = specifier.slice(0, -3) + '.ts'
       return next(specifier, context)
     },
     load(url, context, next) {
-      if (url.includes('/dsh-mattpocock-skills/src/') && new URL(url).pathname.endsWith('.ts')) return { format: 'module', shortCircuit: true,
+      if (url.startsWith(sourceRoot) && new URL(url).pathname.endsWith('.ts')) return { format: 'module', shortCircuit: true,
         source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText }
       return next(url, context)
     },

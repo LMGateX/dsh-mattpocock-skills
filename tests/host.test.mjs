@@ -10,6 +10,7 @@ import { operatorPeer } from './fixtures/peer.mjs'
 import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
+const sourceRoot = new URL('../src/', import.meta.url).href
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for installed-host mechanical probes' }
 let api, sdk, load
@@ -18,12 +19,12 @@ if (hostRoot) {
   const hostRequire = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
   registerHooks({
     resolve(specifier, context, next) {
-      if (context.parentURL?.includes('/dsh-mattpocock-skills/src/') && specifier.startsWith('.')) specifier = specifier.endsWith('.js') ? specifier.slice(0, -3) + '.ts' : specifier
-      if ((specifier.startsWith('@deepseek-ai/') || specifier === 'zod') && context.parentURL?.includes('/dsh-mattpocock-skills/src/')) return { url: pathToFileURL(hostRequire.resolve(specifier)).href, shortCircuit: true }
+      if (context.parentURL?.startsWith(sourceRoot) && specifier.startsWith('.')) specifier = specifier.endsWith('.js') ? specifier.slice(0, -3) + '.ts' : specifier
+      if ((specifier.startsWith('@deepseek-ai/') || specifier === 'zod') && context.parentURL?.startsWith(sourceRoot)) return { url: pathToFileURL(hostRequire.resolve(specifier)).href, shortCircuit: true }
       return next(specifier, context)
     },
     load(url, context, next) {
-      if (url.includes('/dsh-mattpocock-skills/src/') && url.endsWith('.ts')) return { format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText, shortCircuit: true }
+      if (url.startsWith(sourceRoot) && url.endsWith('.ts')) return { format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText, shortCircuit: true }
       return next(url, context)
     },
   })

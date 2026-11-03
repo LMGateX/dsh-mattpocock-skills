@@ -14,6 +14,7 @@ import { openCompatHostView } from './fixtures/compat-host.mjs'
 
 // Approved seams: mounted Host Remote, HostPorts and read-only Node startup adapter.
 // Actual public DomainFacility; no live profile, GUI, AgentLoop, or model runs.
+const sourceRoot = new URL('../src/', import.meta.url).href
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const compatRoot = process.env.DSH_CONTROLS_COMPAT_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for native Host startup probes' }
@@ -29,12 +30,12 @@ if (apiRoot) {
   const require = createRequire(pathToFileURL(join(apiRoot, 'package.json')))
   registerHooks({
     resolve(specifier, context, next) {
-      if (context.parentURL?.includes('/dsh-mattpocock-skills/src/') && specifier.startsWith('.')) specifier = specifier.endsWith('.js') ? specifier.slice(0, -3) + '.ts' : specifier
-      if ((specifier.startsWith('@deepseek-ai/') || specifier === 'zod') && context.parentURL?.includes('/dsh-mattpocock-skills/src/')) return { url: pathToFileURL(require.resolve(specifier)).href, shortCircuit: true }
+      if (context.parentURL?.startsWith(sourceRoot) && specifier.startsWith('.')) specifier = specifier.endsWith('.js') ? specifier.slice(0, -3) + '.ts' : specifier
+      if ((specifier.startsWith('@deepseek-ai/') || specifier === 'zod') && context.parentURL?.startsWith(sourceRoot)) return { url: pathToFileURL(require.resolve(specifier)).href, shortCircuit: true }
       return next(specifier, context)
     },
     load(url, context, next) {
-      if (url.includes('/dsh-mattpocock-skills/src/') && new URL(url).pathname.endsWith('.ts')) return { format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText, shortCircuit: true }
+      if (url.startsWith(sourceRoot) && new URL(url).pathname.endsWith('.ts')) return { format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText, shortCircuit: true }
       return next(url, context)
     },
   })
@@ -326,13 +327,14 @@ test('a real child launched at an incompatible SDK bin retains its version but r
   await writeFile(entry,     "import { registerHooks } from 'node:module'\n" +
     "import { readFileSync } from 'node:fs'\n" +
     "import ts from " + JSON.stringify(tsUrl) + "\n" +
+    "const sourceRoot = " + JSON.stringify(sourceRoot) + "\n" +
     "registerHooks({\n" +
     "  resolve(specifier, context, next) {\n" +
-    "    if (context.parentURL?.includes('/dsh-mattpocock-skills/src/') && specifier.startsWith('.') && specifier.endsWith('.js')) specifier = specifier.slice(0, -3) + '.ts'\n" +
+    "    if (context.parentURL?.startsWith(sourceRoot) && specifier.startsWith('.') && specifier.endsWith('.js')) specifier = specifier.slice(0, -3) + '.ts'\n" +
     "    return next(specifier, context)\n" +
     "  },\n" +
     "  load(url, context, next) {\n" +
-    "    if (url.includes('/dsh-mattpocock-skills/src/') && new URL(url).pathname.endsWith('.ts')) return { format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText, shortCircuit: true }\n" +
+    "    if (url.startsWith(sourceRoot) && new URL(url).pathname.endsWith('.ts')) return { format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText, shortCircuit: true }\n" +
     "    return next(url, context)\n" +
     "  },\n" +
     "})\n" +
