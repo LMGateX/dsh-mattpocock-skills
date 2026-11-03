@@ -165,6 +165,15 @@ export type HostEvent = ({
 };
 /** The core is supplied by the package composition, not fabricated by this adapter. */
 export interface RuntimeFacade {
+    /** Plugin-only read permit: callback must perform only model reads. Holds permission ordering through encoding. */
+    withModelRead?<T>(caller: HostCaller, sessionId: string, signal: AbortSignal, effect: () => Promise<T>): Promise<T>;
+    /** Small model-only side-effect diagnostics attached by result identity; Remote results stay complete and unchanged. */
+    modelMutationOutcome?(result: unknown): {
+        readonly historyCapture: {
+            readonly status: 'recorded' | 'failed';
+            readonly diagnostic: string | null;
+        };
+    } | null;
     /** Required production model-only reads. Missing capability is an explicit error, never full-read fallback. */
     readModelIdentity?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<import('./model-tools.js').ModelIdentity>;
     readModelCurrent?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<import('./model-tools.js').ModelCurrent>;

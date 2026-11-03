@@ -189,24 +189,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         schemaVersion: 2;
         kind: import("./controls/model-output.js").ModelKind;
     }))>;
-    detail: (caller: HostCaller, request: Record<string, unknown>, signal: AbortSignal) => Promise<{
-        coverage?: {} | null;
-        schemaVersion: 2;
-        kind: "content";
-        locator: string;
-        sourceVersion: string | number;
-        contentHash: string;
-        totalBytes: number;
-        offset: number;
-        nextOffset: number;
-        done: boolean;
-        data: string;
-        instanceId: string;
-        workspaceId: string;
-        callerSessionId: string;
-        principal: string;
-        scopeFingerprint: string;
-    }>;
+    detail: (caller: HostCaller, request: Record<string, unknown>, signal: AbortSignal) => Promise<Record<string, unknown>>;
     worktrees: (caller: HostCaller, rawQuery: unknown, signal: AbortSignal) => Promise<({
         instance: InstrumentInstance;
         sessionId: string;
