@@ -69,7 +69,7 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 
 首轮固定基线/候选的独立 Standards 与 Spec 复审曾拦下五项缺陷，现已修复并有实际回归：current-only worktree 改走 immutable current index；正文解析/协作编码/最终 DTO 与权限复核位于同一 FIFO，过期 async-local permit 关闭；native 当前集合不继承 64 行展示上限，65 项可全部分页及直接定位；实时 cursor 包含 lane/nativeChildren/绑定依赖；capture outcome 以实际结果身份关联，提交修订不因 capture 失败消失，后续健康恢复不覆盖本次失败回执。worktree current 的合成长尾为 binding **22 旧版本 / full 2,413,414 B → current 848 B**、observation **62 旧版本 / 270,935 B → 795 B**，各 300 次热读复用同一 immutable current 对象；冷解析/验证仍可随历史增长。
 
-固定最终 SHA 的双轴复核仍是发布前硬门禁，尚不以这些测试提前宣称通过。fresh vendor 验证为 **85 文件 / 296,048 B**、beta/stable 各 **27** Skills、root SHA-256 **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**。纯字节压缩通过不替代语义、制品与发布验证。
+固定候选 0fde053 的第二轮复核：**Standards 接受该 SHA 的源码（0 个 blocker、1 个非强制重复选择逻辑 heuristic）；Spec 仍拒绝（2 个新 P2）**。原五项问题已关闭，但绑定集合的 cleanupDue 实时依赖未进入 cursor cut，以及工作树回执将 current row revision 错称原操作 appliedRevision，均被独立实际复现；正在隔离修复并补真正模型入口回归。新修复候选须再次完整回归和双轴固定 SHA 签收，不能以字节门禁或 Standards 通过替代 Spec；正式制品/发布继续关闭。fresh vendor 验证为 **85 文件 / 296,048 B**、beta/stable 各 **27** Skills、root SHA-256 **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**。纯字节压缩通过不替代语义、制品与发布验证。
 
 正式 clean-source prepack、唯一 accepted archive、同归档 PluginManager、远端 push/tag/Release 与下载复验均**未完成**。未为本机安装插件，未修改当前 Profile/SDK、重启服务或清理旧 spill，也未 npm publish。内存 source fixture / 公开 SDK 管线证据不等于真实 LLM/PTC 执行器、GUI、物理资源、磁盘 spill、Node heap 泄漏或 O(1) 冷读取证明。
 
