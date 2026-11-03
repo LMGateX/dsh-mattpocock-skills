@@ -130,6 +130,10 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
     async readPolicy(caller) { calls.push(caller); return { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } },
     async savePolicy(caller, intent, expectedRevision) { calls.push(caller); return { ...intent, revision: expectedRevision + 1 } },
     async readSession(caller, sessionId) { calls.push(caller); return { sessionId, capabilities: api.HOST_CAPABILITIES } },
+    // Explicit current-only Host facade fixture. Production has its own actual-runtime seam tests.
+    async readModelIdentity(caller, sessionId) { return { caller, sessionId, instance: { instrumentInstanceId: 'I', ownerSessionId: 'owner', controlWorkspaceId: 'W' }, scope: { kind: 'coordinator' } } },
+    async readModelCurrent(caller, sessionId) { return { ...await this.readModelIdentity(caller, sessionId), policy: { configurationRevision: 0 }, revisions: {}, records: null, windows: null, nativeCount: null, collections: {} } },
+    async readModelSource(caller, sessionId, selector) { const current = await this.readSession(caller, sessionId); return { identity: await this.readModelIdentity(caller, sessionId), source: { ...selector, sourceVersion: '0', value: current.policy ?? { extensionEnabled: true, workspaceEnabled: true } } } },
     async applyInstrument(caller, sessionId, command) { return { sessionId, author: caller, command } },
     async applyTicketWindow(caller, sessionId, command) { return { sessionId, command } },
     async resourceAction(caller, sessionId, request) { return { sessionId, request } },
@@ -618,7 +622,11 @@ test('audit tool is absent by default, appears only with enabled config and retu
   assert.equal(audited.isError, false)
   assert.equal(audited.value.coverage.persistence, 'memory-only')
   assert.equal(audited.value.summary.productWrites, 2)
-  assert.deepEqual(audited.value.summary.productFiles, ['src/a.ts', 'src/b.ts'])
+  assert.equal(audited.value.schemaVersion, 2)
+  assert.equal(audited.value.kind, 'current')
+  assert.deepEqual(audited.value.summary.productFiles.rows.map(row => row.text), ['src/a.ts', 'src/b.ts'])
+  assert.equal(audited.value.summary.productFiles.total, 2)
+  assert.equal(audited.value.summary.productFiles.more, false)
   assert.match(audited.value.note, /no model call/i)
   await f.invoke('saveSupervisionConfig', { intent: { defaults: { enabled: false }, workspaceOverrides: {} }, expectedRevision: 0 })
   assert.equal(f.ctx.tools.get('mattpocock_audit'), undefined)
