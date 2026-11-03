@@ -3,12 +3,16 @@
 > **Status:** 2026-11-03 设计增量；**0.7.1 已实施、完成机械验证并发布**（tag `v0.7.1` -> `770b0e7`，制品源 `b8fe19e`；未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。** 0.8.0 只将 delegate 默认关闭（opt-in），C 事实/关联语义不变。
 > 公开资料边界：只记录公开事件、合成测试与聚合结果；不发布原始会话、Profile 或本机路径。
 
-## 0. 目标与非目标
+## 2026-11-04 修订：事实边界已固定，尚未实施
+
+**后续实施以 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 为准。** 下方保留 0.7.1 的字段形状、事件映射和历史机械验收，不代表真实初始目录已经证明：`initialCwd` 实际取自 header，应按 headerCwd 语义兼容读取，不能据路径相等派生实际初始目录/强绑定。`created-tree` 的创建者事实不得依赖 header 非空。dispose 后已发布 end 应使用已验证 owner/session/run 身份处理；重复/跨 run/缺 runId 不得覆盖新运行，不能关联时进入既有 health。旧 history/binding 不重写、不升级证据；管理有意关闭不记观察失败。详见新页第 3、5、8 节及 [实施计划](<IMPLEMENTATION_PLAN.md>)，本次不改代码或已发布验证数字。
+
+## 0. 历史 C 阶段目标与非目标
 
 **目标**：
 
 1. 普通原生 `subagent` / `subagent_fork` 创建的子会话有可查询的 `native-observed` 执行事实，不再只有 live S 和原生 outcome item。
-2. 读取时可以从 child header 初始 cwd + 已观测的 `create_worktree` 行关联出“这个 native child 可能在哪棵树里”，并明确标成 `observed`；不得写成 delegate 风格的强 binding。
+2. 历史实现从 child header cwd + `create_worktree` 生成 observed 路径关联；2026-11-04 已确认该来源不能证明实际初始目录，后续须收窄为 header 来源或取消无证关联，不能继续称“实际初始目录已关联”。
 3. 保留现有 S、nativeStops、owner 通知、assignment、worktree binding/observation 与 history 行为；这些事实之间不互相冒充。
 
 **非目标**：
@@ -20,7 +24,7 @@
 - 不解析所有冷会话日志重建历史；C 只记录本轮 runtime 实际收到的原生生命周期事件。旧会话/未观察到的原生 child 保持 unknown。
 - 不把模型文字或业务完成标签当成执行回执。
 
-## 1. 事实来源与记录位置
+## 1. 历史实现：事实来源与记录位置
 
 原生事件已经在 Host 的 `agent/created`、`agent/status`、`agent/disposed`、`subagent/start`、`subagent/end` 上进入 runtime；C 只消费这些事件，不新增轮询。
 
@@ -42,7 +46,7 @@ interface NativeExecutionFact {
   readonly instrumentInstanceId: string
   readonly provider: string | null      // subagent/start 提供的 provider
   readonly runId: string | null         // 最近一次 host runId
-  readonly initialCwd: string | null    // 首次可读 child header.cwd；不推断
+  readonly initialCwd: string | null    // 历史字段：首次 child header.cwd，不证明实际初始目录
   readonly state: 'created' | 'running' | 'ended' | 'disposed'
   readonly outcome: string | null       // host stopReason；unknown 保持 null
   readonly observed: string             // 最近一条事实来源，如 'subagent/end: completed'
@@ -72,7 +76,7 @@ interface NativeExecutionFact {
 
 同一 child 的重复事件必须幂等：候选行与现有行等价时不产生新的 document revision；不把重复 `subagent/start` 当成第二个 child，也不重复发通知。
 
-## 2. 读取时投影
+## 2. 历史实现：读取时投影（目录语义须按顶部修订收窄）
 
 ### 2.1 NativeExecutionView
 
@@ -131,7 +135,7 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 - 记录上限：document 保留每个 child 一行；snapshot 最多 64 行。child 的完整历史由 history 查询，不在当前注入里无限增长。
 - 没有新存储 domain、没有新模型工具、没有新 Remote 方法；若后续需要，另立设计。
 
-## 5. 验收
+## 5. 历史 C 阶段验收（不代替 2026-11-04 增量）
 
 1. `agent/created` + `subagent/start` + `subagent/end` 产生一行 `nativeExecutions`；`activity` 随 live Agent 变化，`outcome` 来自宿主 stopReason。
 2. 重复事件/热重载不产生第二行、不重复通知；没有 end 的 disposed 保持 `outcome: null`。

@@ -4,7 +4,25 @@
 
 This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is intentionally phased so provenance and package behavior are testable before the plugin is enabled in the owner's active Web profile.
 
-> **Historical record.** Every phase below describes the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
+> **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
+
+## 仪器事实边界与恢复（2026-11-04；设计固定，实现均未开始）
+
+用户认可只读复核结论，本轮仅固定 [DESIGN](<DESIGN.md>) 与 [事实边界详细设计](<INSTRUMENT_FACT_BOUNDARIES.md>)；不做运行时代码、迁移、构建/制品或部署。本计划不指定新版本号，不改变已发布测试计数/哈希，不授权 push/Release、安装、Profile/SDK 修改或服务重启。后续源码实施另行安排，下面所有实现/验收项都仍待开始。
+
+| 切片与状态 | 内容与既有 seam | 完成门禁 |
+|---|---|---|
+| A 文档固定（完成；仅文档） | 权威决策、详细设计、术语及相关契约同步；历史实现与待实施要求分开 | 无行为已生效的越级声明；链接/空白检查；独立只读一致性复核；改动仅文档 |
+| B 目录事实与兼容（未开始） | [native-executions](<../src/controls/native-executions.ts>)、[runtime-state](<../src/controls/runtime-state.ts>)、[runtime](<../src/runtime.ts>)、历史/当前投影：明确 headerCwd，停用无证的实际初始目录关联，保留 creator 事实和旧数据来源 | 详细设计 F1-F3；header=父目录的真实形态；字段冲突不任选/不 reset；无新的 cwd 解释器；不重写旧历史/binding |
+| C 生命周期覆盖（未开始） | [Host](<../src/host.ts>) 与 runtime 复用已认证 session/owner/run 归属，迟到 end 不依赖 live registry；缺口入既有 health | L1-L3；dispose/end 两种顺序、重复/跨 run/无 runId；新 run 不受旧 end 影响；不改变 S/nativeStops/通知或有意关闭门控 |
+| D 部分成功与恢复（未开始） | delegate 原有 journal/结果/查询分开报告创建、binding、assignment；同 operationId 只回读/回放；已有工具恢复已有 child | P1-P3；有票 confirm 失败、assign 提交不确定、显式补授权与撤权；零重复创建/再发任务/隐式授权；reconcile 不伪报票范围修复 |
+| E 来源与最小指导（未开始） | [worktree-observations](<../src/controls/worktree-observations.ts>)、[消费](<../src/controls/consumption.ts>)、[客户端](<../src/client.ts>)：两种 lane inferred、清理 authored；默认工具/只读/管理 OFF 条件指导 | S1/C1；默认 7 + 条件 audit，opt-in delegate 不变；只读无需建树；按字段标来源，不新增工具/Remote/domain |
+| F stale 减负（未开始） | 复用现有消费 identity、visibility oracle、刷新 gate 与提交 frontier，合并同事实/同原因重复旧正文 | C2-C3；上下文重建、不可证可见性、撤权、OFF、新待办与恢复 current；对照脚本完整旧正文减少，未知与义务不消失 |
+| G 集成验收（未开始） | 完整矩阵、严格类型/闭合构建、全套测试、独立 Standards/Spec 复核；公开 seam 无模型探针与 fixture 分开记证据等级 | native+assign 单 child、send 单消息、PTC、T/S、owner 隔离、历史/源清理/旧 binding 回归；另获交付授权时才验证精确制品，不以源码代安装/GUI |
+
+本轮文档校验：13 个 Markdown 文档的 205 个本地链接引用均可定位，空白检查通过；独立只读一致性复核未提出待修项。仅完成 A，不运行实现/构建/测试/迁移或制品验收，不改旧发布结果。
+
+**顺序与停止条件：** B 先固定新旧目录含义，再统一客户端/消费的来源呈现；C、D 保持各自效果与现有权限 seam，不借共享 runtime 把修复扩成重构；E 的条件指导先于 F 的交付去重。每个切片先补对应反例，再完成最小改动和回归；遇到必须新增宿主证明 seam、模型工具、Remote 或 domain 的需要时先返回设计决策，不能实现中默增。G 通过前不得写“事实语义已修复/整体完成”。
 
 ## 仪器工具卡折叠与可读性（2026-11-01，v0.6.0 已发布）
 
@@ -28,7 +46,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 |---|---|---|
 | A 设计与文档（完成） | DESIGN 新节；本计划；NATIVE_DISPATCH_FIRST；CONTROLS、HOST_INTEGRATION、PTC_HOOK_SEMANTICS、ADAPTER_SCOPE、STARTUP_CWD_SUPPORT、WORKTREE_BINDINGS/OBSERVATION、CONTINUABLE_WORKSPACES、CONSUMPTION、INSTRUMENT_TOOL_CARDS、README 的状态说明 | 文档间无“已移除/已生效”的越级声明；delegate 的强 binding 创建入口职责写清 |
 | B 移除 execute（完成） | 不再注册 `mattpocock_execute`；删除 `executeManaged` 与 `executeNative` 包装路径及未使用的嵌套派发 helper/types；更新模型契约、consumption 注入句、client `OWN_TOOL_NAMES`/摘要/工具卡与工具计数；原生 `send_message` 的 `additionalContexts`/`concludeTurn` 由宿主处理 | 工具面断言（无 execute，固定 8 + 条件 audit，客户端 9 key）；native `subagent`+`mattpocock_assign` 单 child 回归；native send 不重复；PTC 嵌套；完整根套件 0 失败 |
-| C 原生观察补齐（完成，0.7.1） | 从 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 记 `native-observed` 执行事实；从原生 child 初始 cwd + `create_worktree` 做读取时观察关联（worktree=observed，lane=inferred），工作树观测行派生 `nativeChildren`；保持 S/结局/通知；不写强 binding、不替换 delegate、不新增工具/Remote。详细见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) | 观察事实来源正确；无重复派发；无新模型工具；关联不冒充强 binding；binding 读写/历史回归；完整根套件 0 失败 |
+| C 原生观察补齐（历史实现完成，0.7.1；实际初始目录证明未成立，见 2026-11-04 增量） | 从 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 记 `native-observed` 执行事实；从原生 child 初始 cwd + `create_worktree` 做读取时观察关联（worktree=observed，lane=inferred），工作树观测行派生 `nativeChildren`；保持 S/结局/通知；不写强 binding、不替换 delegate、不新增工具/Remote。详细见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) | 观察事实来源正确；无重复派发；无新模型工具；关联不冒充强 binding；binding 读写/历史回归；完整根套件 0 失败 |
 | D delegate 定位与验收（完成） | 默认指导改 native-first；delegate 明确为 binding-first creation（只在需要 ticket↔tree 强绑定或持久意图/幂等时使用）；更新 Host 模型描述、CONTROLS、WORKTREE_BINDINGS/OBSERVATION 与工具卡；方案 A 保留 delegate，不在本轮退役 | 文档/描述一致；普通 lane 不会被引导去用 delegate；强绑定成功/失败/取消/acceptance 语义不变；prepared worktree + workflow/ticket binding/assign 回归 |
 | E 验证与发布（源码、制品与发布完成；本机安装未授权） | 严格构建、生成物一致、包清单、根套件、模型契约、PTC、无凭据装载；补 delegate 强绑定与 native 无绑定回归；VERIFICATION 追加记录；已 push `main`、tag `v0.7.0` 并创建 GitHub Release；本机安装另行决定 | 不把源码/内存 fixture 当发行包或当前 GUI；不改历史验证数字；强 binding 可核验；clean-source prepack 与精确 tarball 通过 |
 | F delegate 默认禁用（0.8.0） | 插件 Config 增加 `delegate`（默认 false）；`mountHost` 仅在显式 opt-in 时注册 `mattpocock_delegate`；保留实现、历史 binding 与客户端历史卡片；更新 DESIGN/NATIVE/CONTROLS/README/验证说明 | 默认模型面 7 + 条件 audit；opt-in 后 8 + audit；native + assign 单 child 回归不变；无新增工具/Remote/存储域；完整套件 0 失败 |

@@ -5,6 +5,10 @@
 
 > 2026-11-03 C 阶段（0.7.1 已完成）：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联。观测行新增 `nativeChildren`（`created-tree` / `initial-cwd`，均标 `observed`），runtime 快照新增 `nativeExecutions` 与 `worktree`/`lane` 读取投影（worktree 标 `observed`，lane 标 `inferred`）。这只是读取时关联，不写 delegate 风格的强 binding，也不替代 delegate；delegate 仍是唯一强绑定写入口，但 0.8.0 默认不注册，只有显式 `delegate: true` 才启用；`mattpocock_execute` 已在 0.7.0 移除，C 不新增模型工具或 Remote 方法。详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
+## 2026-11-04 后续修订（已认可，未实施）
+
+[事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 是目录声明/来源标签的最新契约：header cwd 不是实际初始目录；两类 lane 都应标 inferred，cleaned/notes 是 authored；created-tree 只依赖创建者事实、不依赖 cwd 证明。0.7.1 的 initial-cwd/worktree 路径投影属于下方历史实现，不能继续当作实际初始目录证明。此次只固定文档，不改记录、不改历史、不新增工具/Remote/domain。
+
 ## 0. 目标与非目标
 
 **目标**：把“某会话用宿主原生 `create_worktree` 建出的树”登记为可核验、可去重、可提示处置的记录，防止废弃工作树堆积（Rust 等语言的 target／依赖目录尤其昂贵）。
@@ -45,7 +49,7 @@
 - `tools/post-execute` 签名 `(exec: ToolExecution, result: Readonly<ToolExecutionResult>, next)`；`ToolExecution` 带 `callId/rootCallId/name/arguments/agent/parent`，PTC 子调度带 `parent` token 且共享 turn:step（dsh-tools 类型）。
 - `create_worktree` 成功返回规范化 checkout：`{ path, branch, baseCommit, repositoryRoot }`，并把**调用者**会话切进 `path`；树建在 `<repositoryRoot>/.agents/worktrees/<branch>`（宿主 worktree bundle README）。
 - 持久事件：`tool/call {turn,step,callId,name,arguments}` 与 `tool/result {turn,step,message,error?,meta?}` 按 `callId` 配对；PTC 子调用另记 `tool/ptc-dispatch`（含 name／isError／content）。
-- 本机会话存储抽样（**本地证据**）：子会话 header `origin=subagent`、`cwd=<worktree>`、`parentSession=<root>`；即“初始目录即树”是当前原生的实际行为。
+- 历史本地抽样曾读到 header `origin=subagent`、`cwd=<worktree>`、`parentSession=<root>`；不能据此概括当前宿主的实际初始目录。2026-11-04 复核另见父目录 header + 后续工作目录事件的真实形态，因此撤回“初始目录即树是当前原生实际行为”的结论；header 只按其来源解释。
 
 ## 3. 记录模型（新记录 kind：worktree-observation）
 
@@ -58,7 +62,7 @@
   - `absent`（program，后续复核）：树已不存在；
   - `cleaned`（agent，作者声明，可选）：与绑定业务状态同构，只退持续提醒，不删记录。
 - 严格解析拒绝未知字段；历史／摘要／操作账本与 [worktree-bindings](<../src/controls/worktree-bindings.ts>) 同构（manifest + 去重摘要 + 定向旧历史删除）。
-- **与绑定的关系**：独立记录；不改 `WorktreeBindingValue` 的字段语义（`requestedCwd/actualCwd` 仍是创建前意图与不可变 header.cwd），不放松绑定行“必须以创建意图开始”的不变量。有关联时用 `creatorSessionId` 指回 bound child，仅作关联展示。
+- **与绑定的关系**：独立记录，不改 binding 行或“必须以创建意图开始”的不变量。历史 `requestedCwd/actualCwd` 分别来自意图/核对时 header，不据此升级成新的实际初始目录证明；后续证据限度与旧行兼容见最新事实边界契约。用 `creatorSessionId` 指回 lane 只作关联展示。
 
 ## 4. 两阶段：观测 → 核验
 
@@ -104,12 +108,14 @@ DSH 没有“目录被谁占用”的机制：
 
 ### 5.4 票信息按 creator 关联既有 lane 记录
 
+**后续要求（设计已固定，未实施）：** 以下 lane 由 assignment/binding 派生，统一显式标 `source: inferred`；模型、客户端、可查询投影保持一致。整行来自 program 不会让 lane 升格 observed；cleaned/notes 仍是 authored，不证明物理删除。
+
 - 观察记录本身不含票信息；读取时用 `creatorSessionId` 关联两类既有记录取票：运行期分配账本（`assignments`）提供 `workflowId` 与 `ticketIds`，lane 绑定（`plannedChildSessionId`／`actualChildSessionId`）提供 `task` 并在没有分配账本时兜底 `ticketIds`。
 - 绑定行本身**不携带 `workflowId`**（`WorktreeBindingIntent` 只有票、任务与目录），所以两者都缺时如实报告 `lane: null`，不猜一个工作流。
 - 竞态：子代理可能在父的 `confirm` 落库前就建树；因此关联必须同时查 planned 与 actual 两个 id。
 - 原生 subagent／既无 binding 也无 assignment 的会话：票信息如实显示 unknown，可由作者在业务备注里补；本能力不猜测。
 
-### 5.4a 原生执行事实与 nativeChildren（0.7.1 C）
+### 5.4a 历史原生执行事实与 nativeChildren（0.7.1 C；目录语义见顶部修订）
 
 - 原生执行事实来自宿主生命周期事件（`agent/created`、`subagent/start|end`、`agent/disposed`），保存在 owner runtime document 的 `nativeExecutions`；一行对应一个 native child session，`executionId = sessionId`，重跑/热重载更新同一行。
 - `nativeChildren` 是读取时从这些事实派生的只读关联：`created-tree` 表示 observation 的 `creatorSessionId` 就是该 native child（只说明它创建了这棵树，不说明它正在使用）；`initial-cwd` 表示 child 的初始 cwd 与 observation 的 `path` 精确相等且 child 不是创建者（不做前缀、软链或当前 cwd 推断）。

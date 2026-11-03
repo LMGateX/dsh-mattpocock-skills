@@ -68,6 +68,10 @@ purgeHistory(owner, actualAuthor, {
 
 ## 4. 原生接受与保存失败分别报告
 
+### 2026-11-04 待实施补足：三种效果与已有 child 恢复
+
+已接受 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 第 3、4 节；这里只固定后续契约，不声称当前结果已改造。creation acceptance、binding 确认和 assignment 授予分别报告；confirm 失败导致 assign 未调用时明确 not-attempted，调用后无法确认提交则 unknown。相同 operationId 不再创建/隐式授权；原始结果回放和当前恢复状态分开。reconcile 只核对 binding，需要补票范围时对同一真实 child 显式调用 assign，并按当前权限复验。header 无法证明实际初始 cwd 时不补“有效 cwd”、不强行 confirm；省略 worktree 也不能豁免证明。旧 confirmed 行/历史仍兼容读取并标明当时证明范围，不自动降级、不升级证据、不改历史。以下保存失败规则继续适用。
+
 若 nativeCreate 已接受，而 confirm/recordOutcome 持久写抛错，runtime 必须保留原生 childId/acceptance，并报告“创建已接受，绑定记录保存失败/待核对”，**不能报告“未创建”诱发重派**。instrument 的写异常不撤销原生 side effect。
 
 模块仅对 CAS=false 有界重读（最多 32 次）；真实存储异常原样抛出，不自动 fallback Memory、不吞错、不重试 nativeCreate。`VersionedStorage` 要求原子、持久 CAS；发生不确定写后须停止读写并关闭/重开实际 domain/backend handle，再查真实结果。[已有版本化存储](<../src/controls/versioned-storage.ts>)的 domain Adapter 提供 table-wide storage-uncertain latch。换一层 wrapper 不能清 latch。

@@ -1,6 +1,6 @@
 # 协作仪器领域用语
 
-本词表定义 Matt Pocock Skills 可选协作扩展中的任务归属、进度与裁决概念。实现契约见 [工作区控制](<docs/WORKSPACE_WORKFLOW_CONTROLS.md>)与 [session 仪器](<docs/SESSION_INSTRUMENTS.md>)。
+本词表定义 Matt Pocock Skills 可选协作扩展中的任务归属、进度、裁决与事实来源概念。实现契约见 [工作区控制](<docs/WORKSPACE_WORKFLOW_CONTROLS.md>)与 [session 仪器](<docs/SESSION_INSTRUMENTS.md>)。
 
 ## Language
 
@@ -43,19 +43,37 @@ _Avoid_：silent stop、推断的停止原因、把不可观测写成失败
 
 **执行释放（Execution release）**：某次受管执行已由可信程序回执确认结束且释放其执行名额。它不表示票已交付、持久会话已退休或工作树可以删除。
 
-**执行事实（Execution fact）**：某次原生派发/执行的 workflow/ticket/outcome 审计记录，来源是 delegate 的 reservation/lease 或原生生命周期观察。它不记录 cwd，也不等于工作树绑定；ticket↔tree 要看 worktree binding。
-_Avoid_：把 execute 的 lease 当工作树绑定、用 ticketIds 推断树
+**执行事实（Execution fact）**：由宿主发布的子会话创建、运行或结局事实，以及与之分开表达的派发审计信息。它不证明票已交付、实际初始目录或工作树强绑定；附带的目录来源值也不能自动证明上述关系。
+_Avoid_：把派发租约当工作树绑定、用票范围推断目录、把目录头值当实际初始目录
 
 **原生派发（Native dispatch）**：模型直接调用宿主 `subagent` / `subagent_fork` / `send_message` 创建或续聊 child；插件只从生命周期事件观察和记录，不代理、不重派。与“绑定式创建”区分：普通无绑定 lane 走这条路径。
 _Avoid_：插件派发包装、把已移除的 `mattpocock_execute` 当普通派发入口
 
-**绑定式创建（Binding-first creation，旧称托管创建）**：本插件 `mattpocock_delegate` 的强绑定路径：在原生创建前持久化意图，以准备的工作树为初始 cwd 创建 child，核对实际 `child/parent/cwd` header，写入 worktree binding（task/ticketIds），并 assign 票范围。它不是默认派发路径；普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`。
+**绑定式创建（Binding-first creation，旧称托管创建）**：默认关闭、显式选择的创建流程，先保留意图，再请求宿主创建子会话，分别核验工作树关系并登记任务授权。创建已被接受，不表示关系已经确认或授权已经登记。
 _Avoid_：所有 subagent 都必须走 delegate、把 delegate 当调度器、把可选 managed creation 当成 delegate 的全部职责
 
-**工作树绑定（Worktree binding）**：主代理在创建子代理时指定工作树，使其成为该子代理实际使用的初始工作目录，并在同会话续用时保持该关系。binding 行由 `mattpocock_delegate` 创建、`mattpocock_worktree` 读/更新/重核对，带 task/ticketIds/actual child/cwd；它不是提示词里的路径建议，也不包含创建、合并或删除工作树的业务决定。`mattpocock_assign` 只写 child↔ticket 权限，不是树绑定；原生 `create_worktree` observation 不是强 binding。
+**工作树绑定（Worktree binding）**：经可信程序证据确认的子会话与实际初始工作树的关系；一条待核验创建意图不是已确认绑定。它与任务授权、树创建观测、当前目录或目录使用权分别成立，不授予清理权限。
 _Avoid_：手工路径路由、把 assign 当树绑定、把 observation 当强 binding
 
-**工作树仪器（Worktree instrument）**：以实际子代理绑定关系为来源的工作树记录及状态展示，帮助主代理了解哪些树与哪些子代理或任务相关。使用、合并和清理的判断属于 agent 与用户，仪器不另设固定阶段或处置审批。
+**目录头值（Header directory）**：会话创建元数据中记录的目录值，是带明确来源的历史事实。除非宿主契约另有可靠保证，它不证明子会话实际开始执行时的工作目录。
+_Avoid_：有效工作目录、把头值相等当启动目录已核验
+
+**实际初始目录（Effective initial directory）**：宿主使子会话开始执行时实际采用的工作目录。无法取得足以证明它的宿主事实时就是未知，不能用请求意图、目录头值或后来的目录变更代替。
+
+**任务授权（Task assignment）**：主会话对真实子会话登记的工作流与票访问范围。它不是工作树绑定、执行完成或目录使用证明。
+
+**观测事实（Observed fact）**：直接取自可信宿主事件或程序核验的事实，含义受该来源能证明的范围约束。
+_Avoid_：由事实推导出的关系、作者自报结果
+
+**关联推断（Inferred association）**：在读取时由若干已有事实或授权推导出的关联，不升级为新的强绑定或权限。
+
+**作者声明（Authored report）**：有明确作者的业务或处置报告，不冒充宿主执行回执、物理清理证明或程序观测。
+
+**部分成功（Partial success）**：复合操作中的一些效果已获确认，而另一些尚未执行、失败或不可确认。后续恢复只能针对未完成部分，不能把整体失败等同于所有效果都未发生。
+
+**观测覆盖缺口（Observation coverage gap）**：仪器不能可靠归属、关联或保存某类宿主事实的范围。它表示未知或不完整，不表示业务失败、执行不存在或使用量为零。
+
+**工作树仪器（Worktree instrument）**：区分来源地提供工作树创建、绑定关系、关联推断与处置报告的记录和展示，帮助主会话了解树与子会话或任务的关系。使用、合并和清理的判断属于 agent 与用户，仪器不证明目录占用，也不另设处置审批。
 
 **持久绑定记录（Durable binding record）**：跨进程重启保留的子代理与工作树关联信息，不依赖当前活跃 Agent、浏览器页面或内存缓存。恢复记录不等于恢复执行，也不保证目录仍存在或先前状态仍新鲜。
 

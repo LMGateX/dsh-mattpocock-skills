@@ -3,6 +3,10 @@
 > **Status:** 所有者 2026-11-03 认可方案 A（普通 lane native-first，强绑定 lane 用 delegate）。B/D/E 已在 0.7.0 源码线实施：模型面不再注册 `mattpocock_execute`，普通派发为原生 `subagent`/`subagent_fork`/`send_message`；C（原生观察的读取时关联/账本补齐）已在 0.7.1 源码线实施：owner runtime 文档保存 native-observed 执行事实，读取时给出 activity、observed worktree 与 inferred lane，并为工作树观测派生 `nativeChildren`；不新增模型工具、Remote 方法或强绑定写入口。0.8.0 起 delegate 功能保留但**默认不注册**，只有 profile 显式 `delegate: true` 才作为可选第八项启用。详细规格见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>)，结果见 [VERIFICATION.md](<VERIFICATION.md>)。0.7.0 制品已构建、精确验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；制品源提交 `d2dd86e`）；0.7.1 也已完成验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.1)，tag `v0.7.1` 指向 docs 验证提交 `770b0e7`；制品源提交 `b8fe19e`）；0.8.0 已完成验证并发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.8.0)，tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`；制品源提交 `dfe0322`）。本机 DSH/Profile 仍未安装。
 > 公开资料边界：本页只记录设计与公开代码事实；本地实测以聚合计数出现，不发布原始会话、日志、路径或用户内容。
 
+## 2026-11-04 后续契约（设计固定，未实施）
+
+[事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 收窄本文 C 阶段的目录声明并补足恢复：header cwd 只证明目录头值，不证明实际初始目录，不能仅据相等生成该语义关联；创建、binding、assignment 独立报告；已接受/不确定的 delegate 操作不改走 native 重新创建，需要时只向已有 child 显式补 assign；只读 lane 没有建树义务。下方 0.7.x/0.8.0 实施记录与工具默认值保留，不能解读成此增量已经生效。
+
 ## 1. 决策摘要
 
 - **普通无绑定 lane 的派发属于宿主。** 普通 child 由模型直接调用宿主 `subagent` / `subagent_fork` 创建，后续用 `send_message` 续聊；工作树由宿主 `create_worktree` 创建，首次 child cwd 由原生 `subagent` 的 `cwd` 传入。插件不再提供模型可见的通用派发包装。
@@ -101,14 +105,14 @@
 ### 4.1 默认：普通无绑定 lane 用 native-first
 
 ```text
-create_worktree（原生，或已有 Git 工具）
+按任务需要准备工作树（需写隔离时用原生 create_worktree，或已有 Git 工具；只读可省略）
   → subagent({ cwd }) / subagent_fork（原生）
   → mattpocock_assign（有票时；对真实直接 child）
   → send_message（原生，同一 child 续聊）
   → mattpocock_worktree（读取 binding；update-observation 记录树处置；观测看注入快照）
 ```
 
-- 每个 lane 自己建树并在其中工作；父代理可用 `working_directory` 回到项目目录。
+- 只有任务需要写隔离时才准备工作树；只读研究/review 可共享稳定检出，不要求每个 lane 建树。目录进入/离开由宿主 `working_directory` 管理；插件不设置这项业务义务。
 - 省略 `cwd` 时保持原生目录继承。
 - 插件自动观测成功的 `create_worktree` 和 child 生命周期；不要求模型为原生派发补记执行事实。
 - 有票时 `mattpocock_assign` 必须在 child 已存在且 parent/child 身份可核验后调用。

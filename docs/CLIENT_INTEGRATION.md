@@ -27,6 +27,10 @@ Package integration must export ./client with the generated bundle and declarati
 
 The implicit baseline is React/React JSX runtime, React DOM/React DOM client, Cordis, client-store, ui-slots, ui-primitives and ui-dockkit. Do not repeat these in dsh.client.external. This client requests React and the public baseline ui-primitives at runtime; it does not require muse, esbuild, tsdown or a monorepo-private preset. First-party artifact evidence: lazy factory（SDK package-relative locator: `@deepseek-ai/dsh-client-ui-jobs/lib/client.js`） and factory return（SDK package-relative locator: `@deepseek-ai/dsh-client-ui-jobs/lib/client.js`）. Context7 was supplementary documentation; installed source governs the baseline.
 
+## Accepted follow-up (2026-11-04; not implemented)
+
+The [fact-boundary contract](<INSTRUMENT_FACT_BOUNDARIES.md>) governs the next implementation: directory-header values must not be labelled effective initial cwd; both execution and worktree-observation lanes must expose inferred provenance, and cleanup/business reports remain authored. Historical initialCwd/binding cards retain their historical source limits. Delegate partial-success presentation must keep the accepted child and distinguish creation, binding and assignment instead of inviting another creation. This entry fixes design only; it neither changes the bundle nor proves that this GUI/profile has updated.
+
 ## Native contributions
 
 | Contribution | Key/identity | Scope and limit |
