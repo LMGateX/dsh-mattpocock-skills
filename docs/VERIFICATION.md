@@ -2,7 +2,7 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-04 状态：0.10.0 隔离源码回归已通过，固定 SHA 复核与发行门禁进行中，尚未发布；0.9.0 是最近已发布版本，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
+> 2026-11-04 状态：0.10.0 隔离源码回归与固定 SHA 双轴复审已通过，精确制品与发行门禁进行中，尚未发布；0.9.0 是最近已发布版本，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
 ## 0.9.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 
@@ -49,7 +49,7 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 - **模型与接口面**：默认 7 固定 + 条件 audit，delegate 仅 opt-in 第八项；Remote 16；客户端 9 wire key；没有新增模型工具、Remote 方法、存储域或强绑定写入口。
 - 完整记录见 [dist/verification-0.9.0.json](<../dist/verification-0.9.0.json>)。
 
-## 0.10.0 插件模型工具输出减负（2026-11-04，隔离源码回归通过；未发布/未安装）
+## 0.10.0 插件模型工具输出减负（2026-11-04，隔离源码/双轴通过；精确制品验收中，未发布/未安装）
 
 范围与门禁以 [详细设计](<BOUNDED_TOOL_OUTPUTS.md>) 和 [阶段计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>) 为准。已实施插件 output Module、current-only 业务读取及 Host 模型 Adapter；内部完整读取/Remote、历史保留和业务 CAS 不以新 DTO 替换。以下是**已运行的源码证据，不是最终验收**，不沿用 0.9.0 或其他历史版本计数。
 
@@ -63,15 +63,15 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 
 ### 完整源码回归与待完成门禁
 
-最终集成源码根套件（88 个文件；精确归档管理器文件后置）为 **1066 项：1060 pass、0 fail、6 skip、0 cancelled**。显式使用未修改的规范 SDK **0.2.2-alpha.2** 与兼容 SDK **0.2.1-alpha.1**；旧 SDK 公开 native 入口与仓库 pin 相符，22 个所需公开入口只读导入通过。6 个 skip 均为**缺少公共 UI-slots 的 native Client 激活场景**，不能当作通过或当前 GUI 的验证。先前缺源的 3 个可选 Git 场景已用现存只读源、仅允许本地 file transport 的隔离副本启用并通过；其中 source-ingestion 为 **12/12，0 skip**，验证 upstream v1.3.2 commit **d1478fcb140db0b93c0c8df17bcfd311844749d0** 及 85 份 vendor 文件字节与 Git modes，无网络 fetch、原 source/SDK 写或 vendor 重生成。已修正旧 76 产物断言与四个 Host fixture，并让带 query 的 HMR 源代际使用一致的显式 TypeScript 转译；实际 Loader 定向回归 **49/49，0 skip**，未修改生产兼容选择器。
+含验包器窄修复后的最终集成源码根套件（88 个文件；精确归档管理器文件后置）为 **1073 项：1067 pass、0 fail、6 skip、0 cancelled**；前一运行时修复源码 27fd924 的检查点为 1066/1060 pass/6 skip/0 fail，保留为独立历史。显式使用未修改的规范 SDK **0.2.2-alpha.2** 与兼容 SDK **0.2.1-alpha.1**；旧 SDK 公开 native 入口与仓库 pin 相符，22 个所需公开入口只读导入通过。6 个 skip 均为**缺少公共 UI-slots 的 native Client 激活场景**，不能当作通过或当前 GUI 的验证。先前缺源的 3 个可选 Git 场景已用现存只读源、仅允许本地 file transport 的隔离副本启用并通过；其中 source-ingestion 为 **12/12，0 skip**，验证 upstream v1.3.2 commit **d1478fcb140db0b93c0c8df17bcfd311844749d0** 及 85 份 vendor 文件字节与 Git modes，无网络 fetch、原 source/SDK 写或 vendor 重生成。已修正旧 76 产物断言与四个 Host fixture，并让带 query 的 HMR 源代际使用一致的显式 TypeScript 转译；实际 Loader 定向回归 **49/49，0 skip**，未修改生产兼容选择器。
 
 [全工具集成回归](<../tests/bounded-model-tools.test.mjs>) **19/19，0 skip**，覆盖七固定工具、opt-in delegate 与独立 audit 的直接调用及真实 SDK 嵌套流水线，逐项 typed value 与 compact render 相同、parent/root 保留、64 KiB/8 KiB 限额；policy 36 个 workspace/defaults 完整重建、跨 caller/同标识不同种类的 Unicode 正文、window ignored/generation/replay、已提交/已接受效果的 projection fallback、capture 故障回执和 binding/observation 真实正文 roundtrip 均在实际模型入口验证。不是私有 formatter 自测或真实 LLM/PTC 执行器运行。
 
 首轮固定基线/候选的独立 Standards 与 Spec 复审曾拦下五项缺陷，现已修复并有实际回归：current-only worktree 改走 immutable current index；正文解析/协作编码/最终 DTO 与权限复核位于同一 FIFO，过期 async-local permit 关闭；native 当前集合不继承 64 行展示上限，65 项可全部分页及直接定位；实时 cursor 包含 lane/nativeChildren/绑定依赖；capture outcome 以实际结果身份关联，提交修订不因 capture 失败消失，后续健康恢复不覆盖本次失败回执。worktree current 的合成长尾为 binding **22 旧版本 / full 2,413,414 B → current 848 B**、observation **62 旧版本 / 270,935 B → 795 B**，各 300 次热读复用同一 immutable current 对象；冷解析/验证仍可随历史增长。
 
-固定候选 0fde053 的第二轮复核：**Standards 接受该 SHA 的源码（0 个 blocker、1 个非强制重复选择逻辑 heuristic）；Spec 仍拒绝（2 个新 P2）**。原五项问题已关闭，但绑定集合的 cleanupDue 实时依赖未进入 cursor cut，以及工作树回执将 current row revision 错称原操作 appliedRevision，均被独立实际复现；后续最小修复已完成真实 RED→GREEN 并进入上述完整回归：binding cut 绑定已计算的 key/cleanupDue 投影，双入口旧 cursor 在 child 消失后冲突，而无业务写、稳定续页和 durable body/hash 保持原义；worktree 回执及 projection fallback 的 appliedRevision=null 且原操作水位 coverage 不可得，保留当前 businessRevision/state，不把 update-a→update-b→重放 a 的 current revision 当旧 a 的原提交，也不再次写入。observation fresh/no-op 同样不伪造原提交。这个新修复候选的双轴固定 SHA 签收仍待，不能以测试或旧 Standards 通过替代新 Spec；正式制品/发布继续关闭。fresh vendor 验证为 **85 文件 / 296,048 B**、beta/stable 各 **27** Skills、root SHA-256 **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**。纯字节压缩通过不替代语义、制品与发布验证。
+固定候选 0fde053 的第二轮复核：**Standards 接受该 SHA 的源码（0 个 blocker、1 个非强制重复选择逻辑 heuristic）；Spec 仍拒绝（2 个新 P2）**。原五项问题已关闭，但绑定集合的 cleanupDue 实时依赖未进入 cursor cut，以及工作树回执将 current row revision 错称原操作 appliedRevision，均被独立实际复现；后续最小修复已完成真实 RED→GREEN 并进入上述完整回归：binding cut 绑定已计算的 key/cleanupDue 投影，双入口旧 cursor 在 child 消失后冲突，而无业务写、稳定续页和 durable body/hash 保持原义；worktree 回执及 projection fallback 的 appliedRevision=null 且原操作水位 coverage 不可得，保留当前 businessRevision/state，不把 update-a→update-b→重放 a 的 current revision 当旧 a 的原提交，也不再次写入。observation fresh/no-op 同样不伪造原提交。修复后的固定 clean-source **27fd924d474628eae30e79a9606976314f53ccf1** 已获得两位独立 reviewer 签收：**Standards：0 blocker、1 个非强制重复选择逻辑 heuristic；Spec：0 未闭合 finding，六项 Spec finding 全部关闭**。Spec 又独立只读重跑模型工具/历史/恢复/规模、model-output、instruments-current、worktree-current 七组 **55/55，0 fail/skip/cancel**，含全部 19 个真实模型工具测试和 600 次规模观测。Standards 不替代 Spec，源码签收也不替代精确包、远端发布或 GUI；正式制品正在发行 lane 独立验收，远端写仍待主代理收到全部制品 GREEN 后明确放行。fresh vendor 验证为 **85 文件 / 296,048 B**、beta/stable 各 **27** Skills、root SHA-256 **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**。纯字节压缩通过不替代语义、制品与发布验证。
 
-正式 clean-source prepack、唯一 accepted archive、同归档 PluginManager、远端 push/tag/Release 与下载复验均**未完成**。未为本机安装插件，未修改当前 Profile/SDK、重启服务或清理旧 spill，也未 npm publish。内存 source fixture / 公开 SDK 管线证据不等于真实 LLM/PTC 执行器、GUI、物理资源、磁盘 spill、Node heap 泄漏或 O(1) 冷读取证明。
+发行 lane 在 clean-source **27fd924** 独立重跑源码 **1066/1060 pass/6 skip/0 fail**、严格构建、40 源模块与 80 lib 路径逐项清单和 prepack 均通过（80 build、99 fixed + 85 vendor = 184）。但首个正式候选 **500,162 B / SHA-256 53bfd050d64f95f19045bd3ecb94d89057cdfde57e2df29e81a1476469f8d7f2** 被 strict tarball 门禁拒绝，**不是 accepted archive，也未发布**：清单实际 10,481 B，验包器单边删 LF 后期待 10,480 B。只读逐项诊断确认 184 个成员的字节、类型和模式与源码完全一致；npm 11.13.0 保留原清单末尾 LF，没有重排 JSON 或丢 packageManager。旧候选与四个身份文件均封存只读且身份未变，不修补、不换文件冒称原制品通过。最小两文件验包修复已完成真实 RED→GREEN 并集成：真实 source 工厂→成员校验先命中 10480/10481；仅修长度后，公共 runTarball 的 source 保 LF 再命中解包正文 RED；最终两种合法形式均通过、同长度恶意正文仍拒绝。精确反馈 **9/9，0 skip**，包 artifact/scaffold/controls 三组 **29/29，0 skip**；主代理与发行 lane 分别完整重跑上列 **1073/1067 pass/6 skip/0 fail**。只有 root manifest 的两个经源码验证的长度和两种精确正文可接受；其他文件即便伪给 sourceSize 也不允许 +1，额外 LF/CRLF、内部换行、重排/minify、字段或 packageManager 变化仍拒绝。legacy canonical helper、所有路径/类型/模式/身份/清单规则保持，runtime/lib/Host/Remote/package/version/vendor 未改变。包含该修复的新固定源码仍待双轴签收，随后才能在独立目录产生新候选；不沿用旧 source identity。精确包 PluginManager 全矩阵尚未启动，远端 push/tag/Release 与下载复验仍**未完成**。未为本机安装插件，未修改当前 Profile/SDK、重启服务或清理旧 spill，也未 npm publish。内存 source fixture / 公开 SDK 管线证据不等于真实 LLM/PTC 执行器、GUI、物理资源、磁盘 spill、Node heap 泄漏或 O(1) 冷读取证明。
 
 早先设计文档检查为 218 个本地链接目标、0 缺失；那是文档阶段结果，不充作修复验收。原始日志、机器路径与会话/业务标识只留在忽略目录，不作为公开发行资产。
 

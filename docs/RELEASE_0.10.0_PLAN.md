@@ -34,7 +34,7 @@
 ## 4. 一次 accepted archive 与精确验证（全部待执行）
 
 1. 保持 `S` 清洁，运行 `node scripts/verify-package.mjs --prepack`，保存 source clean/commit、pnpm pin、独立 scratch-build 字节比对、vendor 与最终成员结果。
-2. 在仓库之外创建新的 mode-0700 制品目录。只构建一次 accepted archive；沿用已核验工具链的 `npm pack --ignore-scripts --pack-destination <artifact-dir>` 路径，记录 npm 与 GNU tar 版本。不得使用会删除 `packageManager` 等字段的 packer 结果来放宽 verifier。
+2. 在仓库之外创建新的 mode-0700 制品目录。正式候选只有经过精确门禁后才称 accepted；最终只有一个 accepted archive 贯穿验收、上传与下载。失败候选原样封存并明确记录，新源码必须重新固定 SHA、回归与双轴审查后在新目录构建新候选，不能修包或重打冒充原制品。沿用已核验工具链的 `npm pack --ignore-scripts --pack-destination <artifact-dir>` 路径，记录 npm 与 GNU tar 版本。不得使用会删除 `packageManager` 等字段的 packer 结果来放宽 verifier。
 3. 立即写下列五项资产并核对；全部设为只读：
 
    | 资产 | 内容 |
@@ -45,7 +45,7 @@
    | `lmgatex-dsh-mattpocock-skills-0.10.0.tgz.source-commit` | 完整 clean-source SHA `S` |
    | `lmgatex-dsh-mattpocock-skills-0.10.0.tgz.pnpm-version` | 实际 `11.8.0` |
 
-4. 在仍为 `S` 的清洁源码树调用现有 `--tarball` 模式，提供上述四个 identity-file 参数；验证摘要、字节、所有路径/类型/模式、源与解包字节、导出目标、vendor、禁止成员及独立生成物。只允许打包 manifest 末尾一个 LF 的既有归一化；任何其他差异停下，不改包修补或重建冒充同一制品。
+4. 在仍为 `S` 的清洁源码树调用现有 `--tarball` 模式，提供上述四个 identity-file 参数；验证摘要、字节、所有路径/类型/模式、源与解包字节、导出目标、vendor、禁止成员及独立生成物。只允许 manifest 与源码字节完全相同，或恰好去源码末尾一个 LF（源码本身仍须恰好一个 LF）；不是强制删除 LF，也不允许 JSON 重排、字段增删或其他字节变化。其余成员不变。任何超出该范围的差异停下，不修补包或重建冒充同一制品。
 5. 后续全部精确包测试通过 `DSH_CONTROLS_TARBALL` 和 `DSH_CONTROLS_TARBALL_SHA256` 接受该只读原件的校验私有副本，验证前后 identity/hash 不变。不以测试内默认 `pnpm pack` 的源码 fixture 代替 accepted archive。
 6. [plugin-manager compatibility 测试](<../tests/plugin-manager-compatibility.test.mjs>) 的 before hook 还会打两个 synthetic upgrade 包；它们不是 accepted archive，须单独记作 fixture。没有 SDK 根的本轮准备测试会全部 skip，不构成 PluginManager 通过。
 7. 公开记录只保存脱敏计数、工具链、源 SHA 与精确包 identity；原始日志/会话/机器路径留在隔离目录，不作为公开 Release 资产。主代理追加本版验证，不改历史版本数字。

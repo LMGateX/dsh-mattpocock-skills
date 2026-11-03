@@ -24,7 +24,7 @@ This document is the authoritative implementation contract. A later implementati
 - **默认指导和消费减负有条件。** 只读 lane 不承担建树义务，未注册 delegate 不进默认指导；管理 OFF 不抹义务也不继续命令新增受管行为。stale 正文只在来源/权限/版本及真实可见性可确认不变时去重；新义务、撤权、策略切换、上下文重建与恢复 current 必须正确传递。
 - **真实宿主形态优先验收。** 补父 header cwd + 后续工作目录事件、有票部分成功、dispose 后 end/跨 run、旧数据与撤权/可见性回归。0.9.0 已由源码与测试覆盖并与精确制品核对；旧机械测试通过仍不单独证明新契约，源码/制品通过也不等于已安装或当前 GUI 已更新。
 
-## 插件模型工具输出减负（2026-11-04，研究认可；设计固定，待实施）
+## 插件模型工具输出减负（2026-11-04，设计固定；源码与制品分阶段验收）
 
 详细契约唯一入口为 [BOUNDED_TOOL_OUTPUTS.md](<BOUNDED_TOOL_OUTPUTS.md>)。本次优先处理本插件的全快照/历史重复返回：模型工具 execute 在返回 typed value 前生成有界当前视图或小回执；长正文经既有 record 工具新增的只读 detail action 按原领域授权、精确版本分段读取。默认读/详情总 envelope 上限 64 KiB，写回执/插件错误 8 KiB；覆盖 record、window、assign、worktree 及其余插件工具，包括独立注册的 audit，杜绝其他返回路径重新输出底层共享文档。
 
@@ -32,7 +32,7 @@ This document is the authoritative implementation contract. A later implementati
 - **接口分层。** 模型结果使用 schemaVersion 2，明确迁移旧 snapshot 访问；内部完整结果、Remote、客户端完整编辑、通知/历史捕获、权限/CAS 与模型消费水位保持原语义。当前读不能先造全历史再裁剪；正文不会隐藏在 meta/errors 中。不提供无界 full 逃逸。
 - **保留真实义务。** 当前状态/回执保留 scope、适用修订、generation/ignored、partial/unknown、来源及续读定位。每页/片/重试复核当前权限；assigned 不因 detail 获得 owner 历史权限。policy 分页不是完整 save intent。
 - **范围收窄。** 仅在本次独立输出工作中收窄 2026-11-01 工具卡“不改变模型输出”的限制；旧卡片/宿主公开字段与历史交付记录不改写。2026-10-21 UI summary 不等于模型当前仪器，也不是本次修复已完成的证明。
-- **交付授权与状态（2026-11-04 更新）。** 所有者已授权由 subagents 在隔离环境实施、验收、push、tag 与 GitHub Release；目标版本 0.10.0，继承已发布 0.9.0 的事实边界修复。当前进入实施，结果按实际门禁回填；发布前不得冒称通过。**不为本机安装**，不改当前 Profile/SDK、不清理存量 spill、不重启服务，npm publication 也不在授权内。
+- **交付授权与状态（2026-11-04 更新）。** 所有者已授权由 subagents 在隔离环境实施、验收、push、tag 与 GitHub Release；目标版本 0.10.0，继承已发布 0.9.0 的事实边界修复。源码已实施并在固定 clean-source SHA 27fd924d474628eae30e79a9606976314f53ccf1 通过双宿主源码回归与 Standards/Spec 双轴复审；正式制品和发布结果继续按实际门禁回填，不能从源码通过推断发行包或 GUI 已生效。**不为本机安装**，不改当前 Profile/SDK、不清理存量 spill、不重启服务，npm publication 也不在授权内。
 
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 
