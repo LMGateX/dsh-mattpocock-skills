@@ -2,7 +2,53 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-03 状态：方案 A 已实施于 0.7.0 源码线（普通无绑定 lane native-first；`mattpocock_execute` 已移除；`mattpocock_delegate` 保留为强绑定创建），C（原生观察读取时关联/账本补齐）仍待后续。本页 0.6.0 及更早记录的是历史制品；0.7.0 的精确制品验证见下方专节。0.7.0 已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；验收制品仍由源码提交 `d2dd86e` 构建），但未安装到本机 DSH/Profile；不能把源码或内存 fixture 当成已安装/已激活。
+> 2026-11-03 状态：方案 A 的 B/D/E 已实施于 0.7.0 源码线并发布；C（原生观察读取时关联/账本补齐）已在 0.7.1 源码线完成并做精确制品验证，但**未推送、未打标签、未创建 Release、未 npm 发布、未安装本机 DSH/Profile/GUI**。本页 0.6.0/0.7.0 记录是历史制品；0.7.1 的精确制品验证见下方专节，0.7.0 的精确记录保持原样。
+
+## 0.7.1 制品验收（2026-11-03，隔离工作树；未发布/未安装）
+
+本版完成方案 A 的 C 阶段：owner runtime document 增加 `nativeExecutions`（一行一个 native child session，严格解析、旧文档缺字段按空数组），从 `agent/created`、`subagent/start|end`、`agent/disposed` 幂等写入；快照仅向 coordinator 返回最近 64 行，附带读取时 `activity`、`observed` worktree 与 `inferred` lane；工作树观测行增加读取时 `nativeChildren`（`created-tree` / `initial-cwd`，均 `observed`）。不新增模型工具、Remote 方法、存储域或强绑定写入口；`mattpocock_delegate` 仍是唯一强绑定创建者，S/nativeStops/owner 通知保持。
+
+源码提交：`af2cf6fb7534f13e478901db2ef20819212a6bd7`（分支 `release/0.7.1-native-observation`，基于 `196cbfe`）。工作树是 `/home/dev/dev/isolated/0.7.1-native-observation/dsh-mattpocock-skills`；验证未修改主检出、其他工作树或 vendor。
+
+### 构建、测试与包门禁
+
+依次执行并通过：
+
+1. `pnpm install --frozen-lockfile --ignore-scripts`（pnpm 11.8.0）
+2. `pnpm exec tsc -p tsconfig.json`
+3. `chmod 755 lib/compatibility/cli.js`
+4. `pnpm exec tsc -p tsconfig.client.json --noEmit`
+5. `node scripts/build-client.mjs --out lib/client.js --declaration`：**278,167 B**，8 个浏览器安全私有模块，外部请求仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React
+6. `DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs`：**976 项：773 通过、0 失败、203 skip**
+7. `node scripts/verify-vendor.mjs`：beta/stable 各 27 Skills；vendor **85 文件、296,048 bytes**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`
+8. 清洁源码提交上 `node scripts/verify-package.mjs --prepack`：**95 固定 + 85 vendor = 180** 个打包文件，构建 **76** 个 JS/DTS 产物
+
+新增/定向套件：`native-executions` 模块 **9/9**；`native-execution-runtime` **7/7**（含重复事件/热重载不增行、disposed 无 end、精确 cwd 关联、nativeChildren、delegate inferred lane、coordinator-only、S/nativeStops/通知回归、工具/Remote 数量不变）；`client.test.mjs` **39/39**（含窗口与观测面板展示）；`consumption.test.mjs` **24/24**（含 native-executions 类别、协议行与历史和 locator）。203 skip 仍是环境门禁/native host fixture，不是插件加载失败。
+
+### 精确制品
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.7.1.tgz` 保存在 `/tmp/dsh-0.7.1-artifact/`：**471,835 bytes**，sha256 `4351263b0a56f836068df8e0ec6222cb9e377ee56b8bab8c58cfd982e469b9aa`，**180 成员**（95 固定 + 85 vendor），源码提交 `af2cf6f`，pnpm 11.8.0，GNU tar 1.35。身份记录为只读；制品在验证后未再改动。
+
+精确验证命令：
+
+```text
+node scripts/verify-package.mjs --tarball /tmp/dsh-0.7.1-artifact/lmgatex-dsh-mattpocock-skills-0.7.1.tgz \
+  --sha256-file /tmp/dsh-0.7.1-artifact/lmgatex-dsh-mattpocock-skills-0.7.1.tgz.sha256 \
+  --size-file /tmp/dsh-0.7.1-artifact/lmgatex-dsh-mattpocock-skills-0.7.1.tgz.size \
+  --source-commit-file /tmp/dsh-0.7.1-artifact/lmgatex-dsh-mattpocock-skills-0.7.1.tgz.source-commit \
+  --pnpm-version-file /tmp/dsh-0.7.1-artifact/lmgatex-dsh-mattpocock-skills-0.7.1.tgz.pnpm-version
+```
+
+结果：source clean=true、commit 匹配、sha256/bytes/180 成员/模式/导出目标与 vendor 全部通过。`--prepack` 另行确认提交的 `lib/` 与同源码构建逐字节一致。
+
+### 边界
+
+- **没有安装**：未执行任何 DSH install、Profile 编辑、服务重启、GUI 变更或本机插件激活。
+- **没有发布**：未 push、未打 tag、未创建 Release、未 npm publish；0.7.1 制品只存在于上述隔离目录。
+- **C 已完成且不改变既有路径**：观察写失败只产生 health/unknown，不影响 native 事件、S、nativeStops、通知或工作树 binding；没有 `registerIntent/confirm` 或 `worktrees_*` 写入，binding 行数/字段不变。
+- 工具面仍是 **8 固定 + 条件 `mattpocock_audit`**（客户端 9 个 wire key），Remote 仍是 16 个方法；`mattpocock_worktree` 描述只补充读取时 `nativeChildren` 的 observed 语义。
+
+完整记录见 `dist/verification-0.7.1.json`。
 
 ## 0.7.0 制品验收（2026-11-03）
 

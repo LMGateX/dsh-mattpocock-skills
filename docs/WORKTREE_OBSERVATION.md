@@ -185,7 +185,7 @@ DSH 没有“目录被谁占用”的机制：
 
 实施后仍未定型（不阻塞本轮，也不属于本轮范围）：通知去重键的最终形态（当前沿用 `native-stop:<itemId>` 的既有行）、观察记录与绑定在客户端合并展示的更细呈现、以及出现规模问题后的上限／历史分页策略。持有人登记已按决策 6 取消，不再是待办。
 
-## 11. 实施记录（2026-10-13，隔离工作树内完成，未安装）
+## 10. 实施记录（2026-10-13，隔离工作树内完成，未安装）
 
 **环境与边界**：全部改动发生在独立 Git 工作树（分支 `worktree-observation`，目录名保持 `dsh-mattpocock-skills` 以满足既有测试的路径夹具），**未**执行 `pnpm install`、**未**打包进 `<DSH_HOME>/profiles/*`、**未**写入 `<DSH_HOME>/artifacts`；pnpm 只以 `pnpm exec tsc`／临时目录内的 `pnpm pack` 参与验证，主检出目录未被修改。
 
@@ -212,6 +212,12 @@ DSH 没有“目录被谁占用”的机制：
 
 **未做**：安装／热重载本机 Profile、发布／推送／打标签、`mattpocock_history` 观察 kind 与源清理域、cwd 事件兜底、冷会话回放枚举。
 
+## 11. 与既有文档的关系
+
+- [DESIGN.md](<DESIGN.md>)：新增决策节（2026-10-13）；源码已按该决策实施，仍标注为未安装。
+- [WORKTREE_BINDINGS.md](<WORKTREE_BINDINGS.md>)：绑定记录语义不变，观察记录为其兄弟记录。
+- [WORKTREE_ISOLATION.md](<WORKTREE_ISOLATION.md>)：流程建议由“父先建树”修订为“lane 自建树 + 观测登记”；研究结论（Git 元数据访问、依赖准备等前提）不变。
+
 ## 12. C 阶段实施记录（0.7.1，隔离工作树内完成，未安装）
 
 **范围**：普通 native `subagent`/`subagent_fork` child 的 `native-observed` 执行事实，以及 child 初始 cwd/创建者与 `create_worktree` observation 的读取时关联；不写强 binding、不新增工具/Remote/存储域、不改变 S/nativeStops/通知。
@@ -219,9 +225,3 @@ DSH 没有“目录被谁占用”的机制：
 **改动**：新增 [native-executions.ts](<../src/controls/native-executions.ts>)（事实/view 类型、严格 parse、事件幂等 fold、activity/lane/worktree/nativeChildren 纯投影）；[runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`（旧文档缺字段按空数组）；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入事实、快照投影、health、history capture（`kind: native-execution`）、`nativeChildren`；consumption/client 增加类别、协议行与只读展示；package 固定清单精确 +2（`lib/controls/native-executions.js`、`lib/types/controls/native-executions.d.ts`），当前 **95 固定 + 85 vendor = 180**。
 
 **验证**：完整根套件 **976 项：773 通过、0 失败、203 skip**；`native-executions` 模块 9／9，`native-execution-runtime` 7／7，client 定向 39／39（含 native execution / nativeChildren 呈现），consumption 24／24。clean-source 制品、精确 tarball 与计数见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。未安装本机 DSH/Profile/GUI，未推送/打标签/npm 发布。
-
-## 10. 与既有文档的关系
-
-- [DESIGN.md](<DESIGN.md>)：新增决策节（2026-10-13）；源码已按该决策实施，仍标注为未安装。
-- [WORKTREE_BINDINGS.md](<WORKTREE_BINDINGS.md>)：绑定记录语义不变，观察记录为其兄弟记录。
-- [WORKTREE_ISOLATION.md](<WORKTREE_ISOLATION.md>)：流程建议由“父先建树”修订为“lane 自建树 + 观测登记”；研究结论（Git 元数据访问、依赖准备等前提）不变。

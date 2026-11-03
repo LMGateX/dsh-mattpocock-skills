@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.7.1",
+    "private": true
+  },
+  "source": {
+    "commit": "af2cf6fb7534f13e478901db2ef20819212a6bd7",
+    "branch": "release/0.7.1-native-observation",
+    "clean": true
+  },
+  "verificationCommit": null,
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.7.1.tgz",
+    "bytes": 471835,
+    "sha256": "4351263b0a56f836068df8e0ec6222cb9e377ee56b8bab8c58cfd982e469b9aa",
+    "members": 180,
+    "fixedFiles": 95,
+    "vendorFiles": 85,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "tar": "GNU tar 1.35"
+  },
+  "validation": {
+    "rootTests": {
+      "total": 976,
+      "passed": 773,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 203
+    },
+    "newNativeExecutions": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0
+    },
+    "newNativeExecutionRuntime": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0
+    },
+    "clientTests": {
+      "total": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "consumptionTests": {
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    "exactArchiveVerifier": "passed",
+    "prepackVerifier": "passed",
+    "buildModules": 76,
+    "fixedFiles": 95,
+    "vendorFiles": 85,
+    "packedFiles": 180,
+    "vendorBytes": 296048,
+    "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "clientBytes": 278167,
+    "clientExternals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "modelTools": 8,
+    "conditionalAuditTools": 1,
+    "remoteMethods": 16,
+    "notRun": [
+      "dual-root suite",
+      "no-host-root suite",
+      "isolated headless install/mount",
+      "real-model trial",
+      "graphical-browser/GUI acceptance",
+      "local DSH/Profile install",
+      "push/tag/release/npm publish"
+    ],
+    "modelInvoked": false,
+    "installedOnHost": false,
+    "guiTested": false
+  },
+  "boundaries": {
+    "noPush": true,
+    "noTag": true,
+    "noRelease": true,
+    "noNpmPublish": true,
+    "noLocalInstall": true,
+    "noStrongBindingWriterAdded": true,
+    "noNewModelTool": true,
+    "noNewRemoteMethod": true,
+    "noNewStorageDomain": true
+  }
+}
