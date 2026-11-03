@@ -80,6 +80,6 @@ node scripts/verify-vendor.mjs
 node scripts/update-source.mjs --source ../mattpocock-skills-fork --check
 ```
 
-Phase 3 filesystem hardening is verified on Linux/Node 24; hosts without safe no-follow file opens fail closed, and broader platform compatibility remains a later gate. The current 0.7.1 Phase C test/build counts and exact clean-source artifact identity are recorded in [verification](docs/VERIFICATION.md); they do not install or activate this plugin locally.
+Phase 3 filesystem hardening is verified on Linux/Node 24; hosts without safe no-follow file opens fail closed, and broader platform compatibility remains a later gate. The current 0.8.0 test/build counts and exact clean-source artifact identity are recorded in [verification](docs/VERIFICATION.md); they do not install or activate this plugin locally.
 
 The project is not published to npmjs. Ownership of the `@lmgatex` npm scope will be confirmed separately before any npm publication.

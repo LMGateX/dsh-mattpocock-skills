@@ -35,6 +35,13 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C 已在 0.7.1 完成，观察关联与执行事实均为读取/运行事实，不是新派发路径或强绑定。0.8.0 追加 F：delegate 默认不注册，只有 `delegate: true` 才保留可选绑定式创建。`tests/model-contract.test.mjs` 现已断言默认无 `mattpocock_execute`、默认七项 + 条件 audit，以及 opt-in 后的第八项 delegate。旧 execute 测试已改写为 native/assign/delegate 回归，不能把旧测试通过当成新工具面已验收。D 不授权自动启用 delegate；若未来要删除实现，必须先有等价强绑定设计并单独更新 DESIGN。
 
+### 0.8.0 delegate 默认禁用（2026-11-04，隔离工作树内完成；已发布；未安装）
+
+- [index.ts](<../src/index.ts>) 的 Config 增加 `delegate` 布尔项（默认 false），并把显式值传给 [host.ts](<../src/host.ts>)；Host 仅在 `options.delegate === true` 且 runtime 提供 delegate 时注册 `mattpocock_delegate`。实现、runtime、历史 binding 与客户端卡片均保留。
+- 默认模型面为 7 固定 + 条件 audit；显式 opt-in 后为 8 固定 + 条件 audit。客户端仍 9 个 `OWN_TOOL_NAMES` wire key，仅用于 opt-in/历史呈现。
+- 完整根套件 **978 项：775 通过、0 失败、203 skip**（新增 config/model-contract 覆盖并更新 scaffold/plugin-manager 版本断言）；`model-contract` 6/6、client 39/39、consumption 24/24、native-executions 9/9、native-execution-runtime 8/8。
+- 精确 clean-source 制品 **468,578 bytes**，sha256 `d87b0aef6c354d2ddb2653c1122fc338bb13f4c586f4b724236be91b867bd311`，180 成员，源码提交 `dfe0322`；详见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.8.0 节。未安装本机 DSH/Profile/GUI，未 npm publish。
+
 ### 0.7.1 C 实施与验证（2026-11-03，隔离工作树内完成；已发布；未安装）
 
 - 新增 [native-executions.ts](<../src/controls/native-executions.ts>) 的严格事实解析/事件 fold/纯投影；owner [runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`，旧文档缺字段按空数组；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入、读取投影、health、history（`kind: native-execution`）与 `nativeChildren`。

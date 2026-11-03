@@ -2,7 +2,51 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-03 状态：方案 A 的 B/D/E 已实施于 0.7.0 源码线并发布；C（原生观察读取时关联/账本补齐）已在 0.7.1 源码线完成、精确制品验证并发布。0.7.1 的 tag `v0.7.1` 指向 docs 验证提交 `770b0e7`，验收 tarball 的源提交仍是 `b8fe19e`。未 npm 发布、未安装本机 DSH/Profile/GUI。本页 0.6.0/0.7.0 记录是历史制品；0.7.1 的精确制品验证见下方专节，0.7.0 的精确记录保持原样。
+> 2026-11-04 状态：0.8.0 将 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；默认模型面为 7 固定 + 条件 audit。0.8.0 的测试/构建计数与精确 clean-source 制品见下方专节。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样；未 npm 发布、未安装本机 DSH/Profile/GUI。
+
+## 0.8.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
+
+本版把 `mattpocock_delegate` 从默认模型面移出，但保留实现：插件 Config 新增 `delegate`，默认 `false`；只有显式 `delegate: true` 才注册该工具。默认模型面为 **7 个固定工具 + 条件 `mattpocock_audit`**；opt-in 后为 8 个固定工具 + 条件 audit。客户端仍声明 9 个 wire key，用于 opt-in delegate 与历史卡片，不把它冒充默认注册。没有新增模型工具、Remote 方法、存储域或强绑定写入口；native `subagent`/`subagent_fork`/`send_message` + `mattpocock_assign` 路径不变。
+
+源码提交：`dfe03220f70249f983bb5bb957677b35303ab349`（分支 `release-0.8.0-delegate-opt-in`，基于 `2cfa692`）。工作树是 `/home/dev/dev/isolated/0.8.0-delegate-opt-in/dsh-mattpocock-skills`；验证在独立的 detached clean-source 工作树 `/home/dev/dev/isolated/0.8.0-verify/dsh-mattpocock-skills` 中重新构建并运行，未修改主检出、其他工作树或 vendor。
+
+### 构建、测试与包门禁
+
+依次执行并通过：
+
+1. `pnpm install --frozen-lockfile --ignore-scripts`（pnpm 11.8.0）
+2. `pnpm exec tsc -p tsconfig.json`
+3. `chmod 755 lib/compatibility/cli.js`
+4. `pnpm exec tsc -p tsconfig.client.json --noEmit`
+5. `node scripts/build-client.mjs --out lib/client.js --declaration`：**278,167 B**，8 个浏览器安全私有模块，外部请求仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React
+6. `DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs`：**978 项：775 通过、0 失败、203 skip**
+7. `node scripts/verify-vendor.mjs`：beta/stable 各 27 Skills；vendor **85 文件、296,048 bytes**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`
+8. 清洁源码提交上 `node scripts/verify-package.mjs --prepack`：**95 固定 + 85 vendor = 180** 个打包文件，构建 **76** 个 JS/DTS 产物
+
+定向套件：`model-contract` **6/6**（默认 7 项且无 delegate；`delegate: true` 后注册；原 description/拒绝回归）；`client.test.mjs` **39/39**；`consumption.test.mjs` **24/24**；`native-executions` **9/9**；`native-execution-runtime` **8/8**。203 skip 仍是环境门禁/native host fixture，不是插件加载失败。
+
+### 精确制品
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.8.0.tgz` 保存在 `/tmp/dsh-0.8.0-artifact/`：**468,578 bytes**，sha256 `d87b0aef6c354d2ddb2653c1122fc338bb13f4c586f4b724236be91b867bd311`，**180 成员**（95 固定 + 85 vendor），源码提交 `dfe0322`，pnpm 11.8.0，npm 11.13.0，GNU tar 1.35。打包使用 `npm pack`；`package.json` 仍保留 `packageManager`，并按本仓库 verifier 的既有规则仅去掉打包成员末尾一个 LF（源码仍保留恰好一个 LF），未改变其余成员、模式或导出。
+
+精确验证命令：
+
+```text
+node scripts/verify-package.mjs --tarball /tmp/dsh-0.8.0-artifact/lmgatex-dsh-mattpocock-skills-0.8.0.tgz \
+  --sha256-file /tmp/dsh-0.8.0-artifact/lmgatex-dsh-mattpocock-skills-0.8.0.tgz.sha256 \
+  --size-file /tmp/dsh-0.8.0-artifact/lmgatex-dsh-mattpocock-skills-0.8.0.tgz.size \
+  --source-commit-file /tmp/dsh-0.8.0-artifact/lmgatex-dsh-mattpocock-skills-0.8.0.tgz.source-commit \
+  --pnpm-version-file /tmp/dsh-0.8.0-artifact/lmgatex-dsh-mattpocock-skills-0.8.0.tgz.pnpm-version
+```
+
+结果：source clean=true、commit 匹配、sha256/bytes/180 成员/模式/导出目标与 vendor 全部通过。`--prepack` 另行确认提交的 `lib/` 与同源码构建逐字节一致。
+
+### 边界
+
+- **没有安装**：未执行任何 DSH install、Profile 编辑、服务重启、GUI 变更或本机插件激活。
+- **未 npm 发布、未本机安装**：tag `v0.8.0` 与 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.8.0) 将随本验证记录发布；未 npm publish，未执行 DSH install、Profile 编辑、服务重启或 GUI 变更。
+- **默认模型面**：7 固定 + 条件 audit；delegate 只在显式 `delegate: true` 时注册。客户端 9 个 wire key 仅保留呈现能力；Remote 仍是 16 个方法。
+- 完整记录见 `dist/verification-0.8.0.json`。
 
 ## 0.7.1 制品验收（2026-11-03，隔离工作树；已发布/未安装）
 

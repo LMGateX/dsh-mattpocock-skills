@@ -73,6 +73,6 @@ node scripts/verify-vendor.mjs
 node scripts/update-source.mjs --source ../mattpocock-skills-fork --check
 ```
 
-Phase 3 的文件系统加固已在 Linux/Node 24 上验证；不支持安全 no-follow 文件打开的主机会采用失败关闭策略，更广泛的平台兼容性仍需后续门禁验证。当前 0.7.1 C 阶段的测试/构建计数与精确 clean-source 制品身份见[验证摘要](<docs/VERIFICATION.md>)；它们不安装或启用本机插件。
+Phase 3 的文件系统加固已在 Linux/Node 24 上验证；不支持安全 no-follow 文件打开的主机会采用失败关闭策略，更广泛的平台兼容性仍需后续门禁验证。当前 0.8.0 的测试/构建计数与精确 clean-source 制品身份见[验证摘要](<docs/VERIFICATION.md>)；它们不安装或启用本机插件。
 
 当前不发布到 npmjs。`@lmgatex` npm Scope 的所有权将在未来决定 npm 发布前单独确认。
