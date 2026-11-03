@@ -237,7 +237,7 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, del
     const runtimePorts = futureNativeActivityKnown ? { ...ports,
       async nativeActivity() { return { known: true, reason: null, liveAgents: [...agents.values()] } },
     } : ports
-    runtime = await createRuntime(runtimePorts); runtimeCreated?.(runtime); return runtime
+    runtime = await createRuntime(runtimePorts); runtimeCreated?.(runtime, runtimePorts); return runtime
   } })
   // The mounted host is the native side here too: a created child becomes a live
   // session the native activity query can see, and disposal removes it.
