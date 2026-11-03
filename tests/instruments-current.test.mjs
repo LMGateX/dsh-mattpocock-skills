@@ -199,3 +199,81 @@ test('the same current remains small with a 42 MB legacy projection and 300 unch
   assert(totalBytes < 300 * 8192)
   t.diagnostic(JSON.stringify({ legacyBytes, currentBytes, repeatedReads: 300, totalBytes }))
 })
+
+test('current bodies preserve long multilingual and escaped text exactly for the bounded model adapter', async () => {
+  const f = await ready()
+  const body = "汉🙂\n\t\"\\".repeat(6000)
+  assert(body.length <= 65536)
+  await f.apply('put-decision', { decisionId: 'long', value: { ...decision, context: body, result: body } })
+  const current = await f.instruments.readCurrent('A', 'A')
+  assert.equal(current.decisions[0].value.context, body)
+  assert.equal(current.decisions[0].value.result, body)
+  assert(Buffer.byteLength(JSON.stringify(current)) > 65536, 'this internal interface preserves legal current bodies; only the model DTO is budgeted')
+  assert.deepEqual(current.summary, (await f.read()).summary)
+  assertNoHistory(current)
+})
+
+test('hot current index does not bypass source checks, uncertain storage or a fresh handle recovery', async () => {
+  const values = new Map()
+  let loseReceipt = false, gets = 0
+  const table = { get(key) { gets++; return values.get(key) }, async put(key, next) { values.set(key, next) },
+    async update(key, transform) {
+      const next = transform(values.get(key)); values.set(key, next)
+      if (loseReceipt) throw new Error('committed but receipt lost')
+      return next
+    } }
+  const storage = createDomainInstrumentStorage(table)
+  const f = await ready({ storage })
+  await f.apply('put-decision', { decisionId: 'D', value: decision })
+  const first = await f.instruments.readCurrent('A', 'A')
+  assert.equal(first.summary.pendingDecisionCount, 1)
+  const before = gets
+  for (let i = 0; i < 3; i++) assert.equal((await f.instruments.readCurrent('A', 'A')).summary.pendingDecisionCount, 1)
+  assert.equal(gets - before, 3)
+  loseReceipt = true
+  await assert.rejects(f.apply('put-decision', { decisionId: 'D', value: { ...decision, pending: false } }), /receipt lost/)
+  await assert.rejects(f.instruments.readCurrent('A', 'A'), { code: 'storage-uncertain' })
+  const reopened = new SessionInstruments(f.controls, createDomainInstrumentStorage({ ...table }), f.authority)
+  const committed = await reopened.readCurrent('A', 'A')
+  assert.equal(committed.revision, 3)
+  assert.equal(committed.summary.pendingDecisionCount, 0)
+})
+
+test('current reads reject corruption, association mismatch, forged authors and aborted reads rather than returning empty facts', async () => {
+  const { MemoryInstrumentStorage } = await import('../src/controls/instrument-storage.ts')
+  const backing = new MemoryInstrumentStorage()
+  let failure, replacement, onRead
+  const storage = { async read(instanceId) {
+    onRead?.()
+    if (failure) throw failure
+    return replacement ?? backing.read(instanceId)
+  }, compareAndSwap: (...args) => backing.compareAndSwap(...args) }
+  const f = await ready({ storage })
+  await f.apply('put-decision', { decisionId: 'D', value: decision })
+  const valid = await f.instruments.readCurrent('A', 'A')
+  failure = new Error('source unavailable')
+  await assert.rejects(f.instruments.readCurrent('A', 'A'), error => error === failure)
+  failure = undefined
+  const source = await backing.read(valid.instance.instrumentInstanceId)
+  replacement = structuredClone(source)
+  replacement.events[1].command.expectedRevision = 0
+  await assert.rejects(f.instruments.readCurrent('A', 'A'), { code: 'invalid-state' })
+  replacement = { ...source, ownerSessionId: 'B' }
+  await assert.rejects(f.instruments.readCurrent('A', 'A'), { code: 'association-conflict' })
+  replacement = undefined
+  const forged = new SessionInstruments(f.controls, storage, { async resolveAccess() {
+    return { author: { kind: 'agent', principalId: 'B', sessionId: 'B' }, scope: { kind: 'coordinator' } }
+  } })
+  await assert.rejects(forged.readCurrent('A', 'A'), { code: 'access-denied' })
+  const pre = new AbortController()
+  pre.abort(new Error('pre-aborted'))
+  let reads = 0
+  onRead = () => reads++
+  await assert.rejects(f.instruments.readCurrent('A', 'A', pre.signal), /pre-aborted/)
+  assert.equal(reads, 0)
+  const during = new AbortController()
+  onRead = () => during.abort(new Error('aborted during source read'))
+  await assert.rejects(f.instruments.readCurrent('A', 'A', during.signal), /aborted during source read/)
+  onRead = undefined
+  assert.deepEqual(await f.instruments.readCurrent('A', 'A'), valid)
+})
