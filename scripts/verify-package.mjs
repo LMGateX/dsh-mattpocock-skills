@@ -323,6 +323,12 @@ export function expectedPackedFileBytes(path, sourceBytes) {
   return sourceBytes.subarray(0, sourceBytes.length - 1)
 }
 
+export function matchesPackedFileBytes(path, sourceBytes, packedBytes) {
+  const canonical = expectedPackedFileBytes(path, sourceBytes)
+  assert(Buffer.isBuffer(packedBytes), 'packed file bytes must be a Buffer')
+  return canonical.equals(packedBytes) || (path === 'package.json' && sourceBytes.equals(packedBytes))
+}
+
 const EXPECTED_LOCALE_META = Object.freeze(Object.fromEntries(Object.entries({
   "locale/en.json": {
     "title": "Matt Pocock Skills and Optional Collaboration Controls",
@@ -466,7 +472,10 @@ export function validateTarMembers(members, expectedMembers) {
     const expected = expectedMembers.get(path)
     assert(expected, 'unexpected tar member ' + path)
     assert(member.type === expected.type, 'tar member type differs for ' + path + ': expected ' + expected.type + ', got ' + member.type)
-    assert(Number.isSafeInteger(member.size) && member.size === expected.size, 'tar member size differs for ' + path + ': expected ' + expected.size + ', got ' + member.size)
+    // Only the root manifest may preserve the source LF instead of the canonical packer form.
+    const sourceManifestSize = path === 'package/package.json' && expected.sourceSize === expected.size + 1
+      && member.size === expected.sourceSize
+    assert(Number.isSafeInteger(member.size) && (member.size === expected.size || sourceManifestSize), 'tar member size differs for ' + path + ': expected ' + expected.size + ', got ' + member.size)
     if (member.type === 'file') {
       assert(Number.isInteger(member.mode), 'tar member mode is missing for ' + path)
       assert(member.mode === expected.mode, 'tar member mode differs for ' + path + ': expected ' + modeString(expected.mode) + ', got ' + modeString(member.mode))
@@ -645,7 +654,10 @@ export async function expectedTarMembers(root, inventory) {
     const absolute = join(root, ...path.split('/'))
     const [info, sourceBytes] = await Promise.all([lstat(absolute), readFile(absolute)])
     assert(info.isFile() && !info.isSymbolicLink(), 'fixed package path must be a regular file: ' + path)
-    expected.set('package/' + path, { type: 'file', mode: canonicalFileMode(info.mode), size: expectedPackedFileBytes(path, sourceBytes).length })
+    expected.set('package/' + path, {
+      type: 'file', mode: canonicalFileMode(info.mode), size: expectedPackedFileBytes(path, sourceBytes).length,
+      ...(path === 'package.json' ? { sourceSize: sourceBytes.length } : {}),
+    })
   }
   for (const entry of inventory.entries) {
     assert(entry && typeof entry === 'object', 'vendor inventory entry must be an object')
@@ -784,7 +796,7 @@ async function compareFixedExtractedFiles(sourceRoot, extractedRoot) {
     ])
     assert(sourceInfo.isFile() && extractedInfo.isFile() && !extractedInfo.isSymbolicLink(), 'fixed packed path is not a regular file: ' + path)
     assert(canonicalFileMode(sourceInfo.mode) === canonicalFileMode(extractedInfo.mode), 'extracted mode differs from source for ' + path)
-    assert(expectedPackedFileBytes(path, sourceBytes).equals(extractedBytes), 'extracted bytes differ from expected packed source for ' + path)
+    assert(matchesPackedFileBytes(path, sourceBytes, extractedBytes), 'extracted bytes differ from expected packed source for ' + path)
   }
 }
 
