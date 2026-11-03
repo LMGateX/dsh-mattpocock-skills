@@ -1,6 +1,6 @@
 # 原生派发优先与绑定式创建
 
-> **Status:** 所有者 2026-11-03 认可方案 A（普通 lane native-first，强绑定 lane 用 delegate）。B/D/E 已在 0.7.0 源码线实施：模型面不再注册 `mattpocock_execute`，普通派发为原生 `subagent`/`subagent_fork`/`send_message`，delegate 为绑定式创建。C（原生观察的读取时关联/账本补齐）明确留待后续，本轮没有新增存储或账本。0.7.0 制品已构建并精确验证，并已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；制品源提交 `d2dd86e`），但未安装到本机 DSH/Profile；完整结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+> **Status:** 所有者 2026-11-03 认可方案 A（普通 lane native-first，强绑定 lane 用 delegate）。B/D/E 已在 0.7.0 源码线实施：模型面不再注册 `mattpocock_execute`，普通派发为原生 `subagent`/`subagent_fork`/`send_message`，delegate 为绑定式创建。C（原生观察的读取时关联/账本补齐）设计已接受，0.7.1 实施中；详细规格见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>)。0.7.0 制品已构建并精确验证，并已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；制品源提交 `d2dd86e`），但未安装到本机 DSH/Profile；完整结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 > 公开资料边界：本页只记录设计与公开代码事实；本地实测以聚合计数出现，不发布原始会话、日志、路径或用户内容。
 
 ## 1. 决策摘要
@@ -157,7 +157,7 @@ create_worktree（原生；父代理先准备好树）
 |---|---|---|
 | A 设计与文档 | 本页；DESIGN 新节；IMPLEMENTATION_PLAN 阶段表；CONTROLS/HOST_INTEGRATION/PTC/ADAPTER/STARTUP/WORKTREE/OBSERVATION/CONTINUABLE/CONSUMPTION/TOOL_CARDS/README 的状态说明 | A 当时文档间无“已移除/已生效”的越级声明，并明示当时仍注册 execute；B/D/E 完成后再按 0.7.0 实际工具面更新当前描述 |
 | B 移除 execute（已完成） | 不再注册工具；删除 `executeManaged` 与 `executeNative` 包装路径；更新模型契约、consumption 注入句、client `OWN_TOOL_NAMES`/摘要/工具卡与工具计数；确认原生 `send_message` 的 `additionalContexts`/`concludeTurn` 由宿主处理 | 工具面断言；native `subagent`+`mattpocock_assign` 单 child 回归；native send 不重复；PTC 嵌套；完整根套件 |
-| C 原生观察补齐（待后续，本轮未实施） | `native-observed` 执行事实；原生 child 初始 cwd + `create_worktree` 的**读取时关联**；保持 S/结局/通知；不新增模型工具，不替换 delegate 的强 binding | 观察事实来源正确；无重复派发；无新模型工具；关联标明 observed/inferred；binding 读写/历史回归 |
+| C 原生观察补齐（设计已接受；0.7.1 实施中） | `native-observed` 执行事实；原生 child 初始 cwd + `create_worktree` 的**读取时关联**；保持 S/结局/通知；不新增模型工具，不替换 delegate 的强 binding。详细见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) | 观察事实来源正确；无重复派发；无新模型工具；关联标明 observed/inferred；binding 读写/历史回归 |
 | D delegate 定位与验收（已完成） | 默认指导改 native-first；delegate 明确为 binding-first creation；更新 Host 模型描述、CONTROLS、WORKTREE_BINDINGS/OBSERVATION 与工具卡；保留 delegate，不在本轮退役 | 文档/描述一致；普通 lane 不会被引导去用 delegate；强绑定成功/失败/取消/acceptance 语义不变 |
 | E 验证与发布（发布完成；本机安装未授权） | 严格构建、生成物一致、包清单、根套件、模型契约、PTC、无凭据装载；VERIFICATION 追加记录；已 push `main`、tag `v0.7.0` 并创建 GitHub Release；本机安装另行决定 | 不把源码/内存 fixture 当发行包或当前 GUI；不改历史验证数字 |
 

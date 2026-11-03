@@ -3,7 +3,7 @@
 > 状态：**源码已实施（2026-10-13），隔离工作树内机械验收通过；未安装到本机 DSH/Profile，也未发布**。本轮实现只覆盖原生 `create_worktree` 事件观测，实施范围、覆盖边界与门禁结果见第 11 节。
 > 公开资料边界：本文引用的本机会话存储抽样与 SDK 安装产物仅作本地核对，不随公开仓库分发，也不充当公共原始证明；公开证据范围见[公开验证说明](<VERIFICATION.md>)。
 
-> 2026-11-03 后续方向：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联，方便 native-first 路径显示 lane；这只是 observed/inferred 关联，不写 delegate 风格的强 binding，也不替代 delegate。delegate 保留为强绑定写入口；`mattpocock_execute` 已在 0.7.0 移除。C 的读取时关联仍待后续，不新增模型工具。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 后续方向：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联，方便 native-first 路径显示 lane；这只是 observed/inferred 关联，不写 delegate 风格的强 binding，也不替代 delegate。delegate 保留为强绑定写入口；`mattpocock_execute` 已在 0.7.0 移除。C 的设计已接受、0.7.1 实施中，不新增模型工具；详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 ## 0. 目标与非目标
 
