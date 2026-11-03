@@ -50,6 +50,8 @@ function authorityFixture() {
   const grants = { async read() { return grant }, async compareAndSwap(expected, next) { if ((grant?.revision ?? 0) !== expected) return false; grant = next; return true } }
   return { ctx, owner, child, fork, agents, storage, grants, setSaved(value) { saved = value }, get observed() { return observed }, get released() { return released } }
 }
+const modelIdentity = (caller, sessionId) => ({ caller, sessionId, instance: { instrumentInstanceId: 'I', ownerSessionId: 'owner', controlWorkspaceId: 'W' }, scope: { kind: 'coordinator' } })
+const modelCurrent = (caller, sessionId) => ({ ...modelIdentity(caller, sessionId), policy: {}, revisions: {}, records: null, windows: null, nativeCount: null, collections: { 'worktree-binding': { rows: [], version: '0', coverage: 'current' }, 'worktree-observation': { rows: [], version: '0', coverage: 'current' } } })
 async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map()) {
   const ctx = new sdk.Context(), f = authorityFixture()
   const operator = operatorPeer(ctx)
@@ -79,6 +81,10 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
     async readPolicy(caller) { calls.push(caller); return { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } },
     async savePolicy(caller, intent, expectedRevision) { calls.push(caller); return { ...intent, revision: expectedRevision + 1 } },
     async readSession(caller, sessionId) { calls.push(caller); return { sessionId, capabilities: api.HOST_CAPABILITIES } },
+    // Required explicit model-only capability; no production full-read fallback.
+    async readModelIdentity(caller, sessionId) { return modelIdentity(caller, sessionId) },
+    async readModelCurrent(caller, sessionId) { return modelCurrent(caller, sessionId) },
+    async readModelSource(caller, sessionId) { return { identity: modelIdentity(caller, sessionId), source: null } },
     async applyInstrument(caller, sessionId, command) { return { sessionId, author: caller, command } },
     async applyTicketWindow(caller, sessionId, command) { return { sessionId, command } },
     async resourceAction(caller, sessionId, request) { return { sessionId, request } },
@@ -321,9 +327,11 @@ test('continuable creation port uses only public native start, exact parent and 
 })
 test('worktree registered tool routes the actual session and cannot fabricate program attribution', options, async t => {
   const calls = []
-  const f = await assembly(t, { async worktreeAction(caller, sessionId, request) { calls.push({ caller, sessionId, request }); return { sessionId, request } } })
+  const f = await assembly(t, { async worktreeAction() { throw new Error('model current must not call the full registry reader') }, async readModelCurrent(caller, sessionId) { calls.push({ caller, sessionId }); return modelCurrent(caller, sessionId) } })
   const result = await execute(f, 'mattpocock_worktree', { action: 'read' })
   assert.equal(result.isError, false)
+  assert.equal(result.value.schemaVersion, 2)
+  assert.equal(result.value.collections.binding.total, 0)
   assert.equal(calls[0].caller.principalId, 'agent:owner')
   assert.equal(calls[0].sessionId, 'owner')
   assert.equal((await execute(f, 'mattpocock_worktree', { action: 'read' }, { ...f.owner })).isError, true)
@@ -349,7 +357,7 @@ test('legacy native SDK rejects explicit cwd before creating anything while omis
 
 test('deprecated resource tool and old UI service are read-only before reaching runtime', options, async t => {
   const requests = []
-  const f = await assembly(t, { async resourceAction(_, __, request) { requests.push(request); return { request } } })
+  const f = await assembly(t, { async resourceAction(_, __, request) { requests.push(request); return { resourceId: request.resourceId, status: 'retained', actualCanRetire: { allowed: false, checkedAt: 1, ledgerRevision: 1, reasons: ['unknown physical state'], facts: null } } } })
   assert.equal((await execute(f, 'mattpocock_resource', { action: 'read', resourceId: 'R' })).isError, false)
   const borrow = await execute(f, 'mattpocock_resource', { action: 'borrow', path: '/prepared/tree' })
   assert.equal(borrow.isError, true)
@@ -396,7 +404,7 @@ test('worktree service routes strict operator input and rejects unavailable old 
 
 test('history registered tool exposes all retained-history actions without caller or receipt forgery', options, async t => {
   const calls = []
-  const f = await assembly(t, { async historyAction(caller, sessionId, request) { calls.push({ caller, sessionId, request }); return { action: request.action } } })
+  const f = await assembly(t, { async historyAction(caller, sessionId, request) { calls.push({ caller, sessionId, request }); return { action: request.action, revision: 0, rows: [], missingHistoryIds: request.historyIds ?? [], nextCursor: null, cut: 0, total: 0, coverage: { sources: [], purged: false, notRecorded: true }, notRecorded: true } } })
   const requests = [
     { action: 'query', query: { kind: 'worktree', recordId: 'R', limit: 2 } },
     { action: 'detail', historyIds: ['H'] },

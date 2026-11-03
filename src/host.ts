@@ -934,6 +934,10 @@ export type HostEvent = (
 
 /** The core is supplied by the package composition, not fabricated by this adapter. */
 export interface RuntimeFacade {
+  /** Plugin-only read permit: callback must perform only model reads. Holds permission ordering through encoding. */
+  withModelRead?<T>(caller: HostCaller, sessionId: string, signal: AbortSignal, effect: () => Promise<T>): Promise<T>
+  /** Small model-only side-effect diagnostics attached by result identity; Remote results stay complete and unchanged. */
+  modelMutationOutcome?(result: unknown): { readonly historyCapture: { readonly status: 'recorded' | 'failed'; readonly diagnostic: string | null } } | null
   /** Required production model-only reads. Missing capability is an explicit error, never full-read fallback. */
   readModelIdentity?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<import('./model-tools.js').ModelIdentity>
   readModelCurrent?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<import('./model-tools.js').ModelCurrent>
@@ -1824,16 +1828,16 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const summary = supervisionLedger.summary(view.instance.ownerSessionId, {
         deliverableRoots: settings.deliverableRoots, supportRoots: settings.supportRoots, excludeGlobs: settings.excludeGlobs,
       }, Date.now())
-      let episodes: readonly SupervisionEpisode[] = []
+      let episodes: readonly SupervisionEpisode[] = [], episodeRevision: number | null = null, episodeCoverage = 'not-recorded'
       try {
         const raw = await (await openSupervisionState(view.instance.ownerSessionId)).read()
-        if (raw !== undefined) episodes = parseSupervisionDocument(raw).episodes.slice(-20)
-      } catch { /* a corrupt episode document must not hide the live ledger */ }
+        if (raw !== undefined) { const retained = parseSupervisionDocument(raw); episodes = retained.episodes; episodeRevision = retained.revision; episodeCoverage = 'current' }
+      } catch { episodeCoverage = 'unknown' /* A corrupt episode source must not hide the live ledger or claim an empty known set. */ }
       return {
         action: 'read', status: 'ok', generatedAt: new Date().toISOString(),
         coverage: { ownerSessionId: view.instance.ownerSessionId, workspaceId: view.instance.controlWorkspaceId,
-          persistence: 'memory-only', events: summary.events, sessions: summary.sessions, dropped: summary.dropped },
-        summary, episodes,
+          persistence: 'memory-only', events: summary.events, sessions: summary.sessions, dropped: summary.dropped, episodes: { status: episodeCoverage, retained: episodeCoverage === 'unknown' ? null : episodes.length } },
+        summary, episodes, episodeRevision,
         note: 'Memory-only observation from this host process; no model call, ticket mutation, T/S release or automatic delivery.',
       }
     }

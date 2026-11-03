@@ -102,11 +102,14 @@ export function createModelTools(runtime: RuntimeFacade) {
     const scopeDetail=ownAssignment?.source===null||ownAssignment===null?{}:{scopeDetail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(view),contentSource(ownAssignment.source))}}
     return modelEnvelope('current',identityFields(view),{...scopeDetail,revisions:view.revisions,policy:{configurationRevision:policy.configurationRevision,workspaceVerified:policy.workspaceVerified,extensionEnabled:policy.extensionEnabled,workspaceEnabled:policy.workspaceEnabled,features:policy.features,windows:policy.windows,detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(view),contentSource(effective))}},records:view.records,windows:view.windows,nativeCount:view.nativeCount,collections})
   }
-  const auditSources=(data:unknown):ModelRow[]=>list(object(data).episodes).map((entry,index)=>{const row=object(entry),id=String(row.episodeId??index);return {...modelSource('audit',[id],sourceVersion(row),row),recordId:id,durable:true,preview:{episodeId:id,observed:row.observed,possibleIssue:row.possibleIssue,severity:row.severity,verdict:row.verdict}}})
+  const auditSources=(data:unknown):ModelRow[]=>list(object(data).episodes).map((entry,index)=>{const row=object(entry),id=String(row.episodeId??index);return {...modelSource('audit',[id],sourceVersion([object(data).episodeRevision??null,id,row.at]),row),recordId:id,durable:true,preview:{episodeId:id,observed:row.observed,possibleIssue:row.possibleIssue,severity:row.severity,verdict:row.verdict}}})
   const detail=async(caller:HostCaller,request:Record<string,unknown>,signal:AbortSignal)=>{
     record(request,'content detail',['action','locator','offset']);if(typeof request.locator!=='string')throw new ControlsError('invalid-input','detail requires locator')
+    const locator=request.locator
+    if(!runtime.withModelRead)throw new ControlsError('feature-disabled','permission-ordered content read capability unavailable; full fallback is not supported')
+    return runtime.withModelRead(caller,caller.sessionId!,signal,async()=>{
     const who=await identity(caller,signal),bound=binding(who)
-    return output.readContent(bound,{locator:request.locator,...(request.offset===undefined?{}:{offset:request.offset as number})},async selector=>{
+    return finish(await output.readContent(bound,{locator,...(request.offset===undefined?{}:{offset:request.offset as number})},async selector=>{
       // Source selection and the second identity check share the runtime permission FIFO.
       if(selector.domain==='audit'){
         if(!auditReader)throw new ModelOutputError('unavailable','Audit observation is unavailable')
@@ -117,7 +120,8 @@ export function createModelTools(runtime: RuntimeFacade) {
       const result=await runtime.readModelSource!(caller,caller.sessionId!,selector,signal)
       if(canonicalJson(binding(result.identity))!==canonicalJson(bound))throw new ModelOutputError('revision-conflict','Current source scope changed','current-view-changed')
       return result.source===null?null:contentSource(result.source)
-    },signal)
+    },signal),'mattpocock_record',request)
+    })
   }
   const worktrees=async(caller:HostCaller,rawQuery:unknown,signal:AbortSignal)=>{
     const view=await runtime.readModelCurrent!(caller,caller.sessionId!,signal)
@@ -128,7 +132,7 @@ export function createModelTools(runtime: RuntimeFacade) {
   }
   const policy=(who:ModelIdentity,raw:Record<string,unknown>,result:unknown)=>{
     const data=object(result),revision=data.revision
-    if(raw.action==='save')return modelReceipt(identityFields(who),{action:'save',revision,configurationRevision:revision})
+    if(raw.action==='save')return modelReceipt(identityFields(who),{action:'save',revision,configurationRevision:revision,...mutationOutcome(result)})
     const sources:Record<string,ModelCollection>={defaults:{rows:[{...modelSource('policy',['defaults'],String(revision),data.defaults),recordId:'defaults',durable:true,preview:{name:'defaults'}}],version:String(revision),coverage:'current'},workspace:{rows:Object.entries(object(data.workspaceOverrides)).map(([key,value])=>({...modelSource('policy',['workspace',key],String(revision),value),recordId:key,durable:true,preview:{workspaceId:key}})),version:String(revision),coverage:'current'}}
     const q=parseQuery(raw.query,['defaults','workspace'])
     const extra={revision,extensionEnabled:data.extensionEnabled,completeIntent:false,reconstruction:{revision,steps:'Read all defaults and workspace pages and their record.detail content at this revision before constructing a complete save intent; restart if revision changes.'}}
@@ -156,13 +160,19 @@ export function createModelTools(runtime: RuntimeFacade) {
       return modelEnvelope(raw.action==='query'?'page':'detail',identityFields(who),{revision:data.revision,coverage:data.coverage,notRecorded:data.notRecorded,sourceRevisions:data.sourceRevisions,sourceRefresh:previewFields(object(data.sourceRefresh)),rows:emitted.map(row=>row.value),shown:emitted.length,...(raw.action==='query'?{cut:data.cut,total:data.total,more:more||data.nextCursor!==null,nextCursor:cursor}:{missingHistoryIds:data.missingHistoryIds,remainingHistoryIds:list(raw.historyIds).filter(id=>!emittedIds.has(id)&&!list(data.missingHistoryIds).includes(id))})})
     }})
   }
+  const mutationOutcome=(result:unknown)=>{const outcome=runtime.modelMutationOutcome?.(result);return outcome?{historyCapture:{status:outcome.historyCapture.status,diagnostic:outcome.historyCapture.diagnostic===null?null:previewText(outcome.historyCapture.diagnostic,384).text}}:{}}
   function receipt(name:string,who:ModelIdentity,raw:Record<string,unknown>,data:Record<string,unknown>) {
     const command=object(raw.command),snapshot=object(data.snapshot),action=raw.action??name.replace('mattpocock_','')
     const operationId=command.operationId??raw.operationId
     const target={workflowId:command.workflowId??raw.workflowId,localTicketId:command.localTicketId??raw.localTicketId,decisionId:command.decisionId,bindingId:command.bindingId??data.bindingId,observationId:command.observationId??data.observationId}
-    const facts:Record<string,unknown>={action,...(operationId===undefined?{}:{operationId}),...Object.fromEntries(Object.entries(target).filter(([,value])=>value!==undefined))}
-    for(const key of ['appliedRevision','replayed','ignored','generation','revision','businessRevision','viewerRevision','phase','domain','scope','derivedHistoryDeleted','derivedOutcome','acknowledgedSuppressionRows','sourceRecordsDeleted','sourceOutcome','nativeConversationDeleted','checkpointAppliedRevision','receiptRecording','removedVersions','checkpointRev','checkpointRevision','compactedThroughRevision','notificationRecording','recording','persistence','accepted','creation','binding','assignment','childId','messageId','recovery'])if(data[key]!==undefined)facts[key]=data[key]
+    const facts:Record<string,unknown>={action,...(operationId===undefined?{}:{operationId}),...Object.fromEntries(Object.entries(target).filter(([,value])=>value!==undefined)),...mutationOutcome(data)}
+    for(const key of ['appliedRevision','replayed','ignored','generation','revision','businessRevision','viewerRevision','phase','domain','derivedHistoryDeleted','derivedOutcome','acknowledgedSuppressionRows','sourceRecordsDeleted','sourceOutcome','nativeConversationDeleted','checkpointAppliedRevision','receiptRecording','removedVersions','checkpointRev','checkpointRevision','compactedThroughRevision','notificationRecording','recording','persistence','accepted','creation','binding','assignment','childId','messageId','recovery'])if(data[key]!==undefined)facts[key]=data[key]
     for(const key of ['revision','businessRevision','viewerRevision'])if(snapshot[key]!==undefined)facts[key]=snapshot[key]
+    if(data.scope!==undefined)facts.sourceScope=data.scope
+    if(name==='mattpocock_record')facts.read={tool:'mattpocock_record',action:'read',query:{kind:command.action==='put-workflow'?'workflow':command.action==='put-ticket'?'ticket':'decision',workflowId:command.workflowId,recordId:command.action==='put-workflow'?command.workflowId:JSON.stringify([command.workflowId,command.localTicketId??command.decisionId])}}
+    if(name==='mattpocock_window')facts.read={tool:'mattpocock_record',action:'read',query:{kind:'window-ticket',workflowId:raw.workflowId,recordId:JSON.stringify([raw.workflowId,raw.localTicketId])}}
+    if(name==='mattpocock_history')facts.read={tool:'mattpocock_history',action:'query',query:{limit:20}}
+    if(name==='mattpocock_delegate')facts.read={tool:'mattpocock_worktree',action:'read',query:{kind:'binding',limit:20}}
     if(name==='mattpocock_assign'){
       const assignment=list(data.assignments).map(object).find(row=>row.sessionId===raw.sessionId&&row.parentSessionId===who.sessionId&&row.instrumentInstanceId===who.instance.instrumentInstanceId)
       delete facts.revision // Shared runtime document revision is not this assignment's commit identity.
@@ -172,10 +182,19 @@ export function createModelTools(runtime: RuntimeFacade) {
     if(name==='mattpocock_worktree'){
       const value=object(data.value)
       facts.businessRevision=data.revision;facts.businessState=object(value.business).state
-      if(data.value!==undefined){const versions=list(data.history),latest=object(versions.at(-1));facts.source=latest.source;facts.acceptance=value.acceptance;facts.outcome=value.outcome;facts.detail={tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(modelSource(data.observationId===undefined?'worktree-binding':'observation',[data.bindingId??data.observationId],String(data.revision),{...(data.bindingId===undefined?{observationId:data.observationId}:{bindingId:data.bindingId}),revision:data.revision,value:data.value,source:latest.source,author:latest.author,recordedAt:latest.recordedAt})))}}
+      if(data.value!==undefined){
+        const versions=list(data.history),latest=object(versions.at(-1)),isObservation=data.observationId!==undefined
+        const creation=isObservation?object(versions.filter(row=>object(row).event==='observed').at(-1)):latest
+        facts.source=creation.source;facts.appliedRevision=data.revision;facts.replayed=null;facts.replayCoverage='source-does-not-report-replay'
+        if(!isObservation){facts.acceptance=value.acceptance;facts.outcome=value.outcome}
+        const body={...(isObservation?{observationId:data.observationId}:{bindingId:data.bindingId}),revision:data.revision,value:data.value,source:creation.source,author:creation.author,recordedAt:creation.recordedAt,...(isObservation?{provenance:{source:latest.source,author:latest.author,recordedAt:latest.recordedAt}}:{})}
+        facts.detail={tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(modelSource(isObservation?'observation':'worktree-binding',[data.bindingId??data.observationId],String(data.revision),body)))}
+      }
     }
     const diagnostics=Object.fromEntries(['diagnostic','error','sourceCoverage','coverage','operation'].filter(key=>data[key]!==undefined).map(key=>[key,typeof data[key]==='string'?previewText(String(data[key]),384):{preview:previewText(canonicalJson(data[key]),384)}]))
-    return modelReceipt(identityFields(who),facts,diagnostics,{...facts,recovery:facts.recovery===undefined?undefined:previewFields(object(facts.recovery))})
+    const {detail:_detail,read:_read,historyCapture,...required}=facts
+    const minimal={...required,...(historyCapture===undefined?{}:{historyCapture:{status:object(historyCapture).status,diagnosticOmitted:true}})}
+    return modelReceipt(identityFields(who),facts,diagnostics,minimal)
   }
   const project=async(name:string,who:ModelIdentity,raw:Record<string,unknown>,result:unknown,signal:AbortSignal):Promise<unknown>=>{
     const data=object(result)
@@ -212,6 +231,7 @@ export function createModelTools(runtime: RuntimeFacade) {
     const facts:Record<string,unknown>={action:raw.action??name.replace('mattpocock_',''),projection:'failed',effect:'action-returned',commit:data.accepted===null||data.phase==='partial'||data.sourceOutcome==='failed-or-uncertain'||data.persistence==='failed'?'unknown':data.appliedRevision!==undefined||data.revision!==undefined?'confirmed':'not-reported',diagnostic:previewText(error instanceof Error?error.message:'Model projection unavailable',192).text}
     for(const key of ['appliedRevision','replayed','ignored','generation','revision','businessRevision','viewerRevision','phase','domain','derivedHistoryDeleted','derivedOutcome','acknowledgedSuppressionRows','sourceRecordsDeleted','sourceOutcome','nativeConversationDeleted','checkpointAppliedRevision','receiptRecording','notificationRecording','recording','persistence','accepted','creation','binding','assignment','childId','messageId'])if(data[key]!==undefined)facts[key]=data[key]
     for(const key of ['revision','businessRevision','viewerRevision'])if(snapshot[key]!==undefined)facts[key]=snapshot[key]
+    Object.assign(facts,mutationOutcome(data))
     if(data.recovery!==undefined)facts.recovery=previewFields(object(data.recovery),128)
     const operationId=command.operationId??raw.operationId;if(operationId!==undefined)facts.operationId=operationId
     for(const key of ['workflowId','localTicketId','decisionId','bindingId','observationId'])if(command[key]!==undefined)facts[key]=command[key]

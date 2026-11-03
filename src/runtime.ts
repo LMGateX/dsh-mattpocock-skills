@@ -31,9 +31,9 @@ import { array, ControlsError, freeze, id, increment, isPreCommitRejection, reco
 import { RefreshGate } from './controls/refresh-gate.js'
 import { resolvePolicy } from './controls/policy.js'
 import { createWorktreeBindings, parseWorktreeBindingsDocument } from './controls/worktree-bindings.js'
-import type { WorktreeBindingsDocument, WorktreeBindingBusinessUpdate, WorktreeBindingRow, WorktreeBindingsCompact, WorktreeBindingsPurgeHistory } from './controls/worktree-bindings.js'
+import type { WorktreeBindingsDocument, WorktreeBindingBusinessUpdate, WorktreeBindingRow, WorktreeBindingsCompact, WorktreeBindingsPurgeHistory, WorktreeBindingCurrentRow } from './controls/worktree-bindings.js'
 import { createWorktreeObservations, parseWorktreeObservationsDocument } from './controls/worktree-observations.js'
-import type { WorktreeObservationBusinessUpdate, WorktreeObservationCheckInput, WorktreeObservationInput, WorktreeObservationRow, WorktreeObservationView, WorktreeObservationsDocument } from './controls/worktree-observations.js'
+import type { WorktreeObservationBusinessUpdate, WorktreeObservationCheckInput, WorktreeObservationInput, WorktreeObservationRow, WorktreeObservationView, WorktreeObservationsDocument, WorktreeObservationCurrentRow } from './controls/worktree-observations.js'
 import { SessionHistory, parseHistoryDocument } from './controls/history.js'
 import type { HistoryDocument, HistoryObservation, HistoryAction, HistoryQuery } from './controls/history.js'
 
@@ -125,6 +125,9 @@ function scanObservedCreations(events:readonly {readonly type:string;readonly da
 export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number }
 export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
   const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects()
+  // Only model read methods may re-enter an active read permit. Mutation/capture queues stay unchanged.
+  const modelReadContext=new AsyncLocalStorage<{open:boolean}>()
+  const modelReadOrder=<T>(effect:()=>Promise<T>):Promise<T>=>modelReadContext.getStore()?.open===true?effect():queue.run(effect)
   const refresh=new RefreshGate(2_000), project=new RefreshGate(2_000)
   // The polling path (client readSession) rebuilds the whole projection and appends another
   // history observation per call — measured 68 readSession/s and 40-50 captures/s on an
@@ -160,6 +163,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return new SessionHistory(view.instance,await store)
   }
   const historyFailures=new Map<string,string>()
+  const modelMutationOutcomes=new WeakMap<object,{readonly historyCapture:{readonly status:'recorded'|'failed';readonly diagnostic:string|null}}>()
   // Capture is a projection side effect; without these marks every rebuild re-derived every
   // observation and re-ran the dedupe index even when no source document had moved. The marks
   // are advanced only after a successful capture (or when there was nothing to capture), so a
@@ -184,7 +188,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // History capture is a side effect of reading the projection, not a change of it: the
   // fingerprint is computed after the capture, so invalidating here would rebuild on every
   // read and never converge. Only real document mutations touch the gate.
-  const captureSafely=async(view:SessionControlsView,effect:()=>Promise<void>)=>{try{await effect();historyFailures.delete(view.instance.instrumentInstanceId)}catch(error){historyFailures.set(view.instance.instrumentInstanceId,String(error).slice(0,1024))}}
+  const captureSafely=async(view:SessionControlsView,effect:()=>Promise<void>):Promise<{readonly status:'recorded'|'failed';readonly diagnostic:string|null}>=>{try{await effect();historyFailures.delete(view.instance.instrumentInstanceId);return {status:'recorded',diagnostic:null}}catch(error){const diagnostic=String(error).slice(0,1024);historyFailures.set(view.instance.instrumentInstanceId,diagnostic);return {status:'failed',diagnostic}}}
   const captureCurrent=async(view:SessionControlsView,items:readonly {kind:string;recordId:string;version:number;snapshot:unknown;domain:string;author?:HostCaller}[])=>{
     if(items.length===0)return
     const history=await historyFor(view),store=await historyStores.get(view.instance.instrumentInstanceId)!,raw=await store.read(),prior=raw===undefined?[]:memoized(raw,parseHistoryDocument).rows
@@ -277,10 +281,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         // shared storage document acquired a new revision.
         const viewsByInstance=new Map<string,SessionControlsView>()
         for(const view of cachedSessions.values())if(!viewsByInstance.has(view.instance.instrumentInstanceId))viewsByInstance.set(view.instance.instrumentInstanceId,view)
+        let captureOutcome:{readonly status:'recorded'|'failed';readonly diagnostic:string|null}|null=null
         for(const owner of owners){
           const view=viewsByInstance.get(owner)
-          if(view)await captureSafely(view,()=>captureRuntime(view,next))
+          if(view){const outcome=await captureSafely(view,()=>captureRuntime(view,next));if(captureOutcome===null||outcome.status==='failed')captureOutcome=outcome}
         }
+        if(captureOutcome!==null)modelMutationOutcomes.set(next,{historyCapture:captureOutcome})
         return next
       }
     }
@@ -500,17 +506,17 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     ...records.decisions.map(row=>({...modelSource('records',['decision',row.workflowId,row.decisionId],String(row.revision)+':'+records.viewerRevision,row),recordId:JSON.stringify([row.workflowId,row.decisionId]),workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,decisionId:row.decisionId,revision:row.revision,question:row.value.question,status:row.value.status,pending:row.value.pending,awaitingImplementation:row.value.awaitingImplementation,view:row.view}})),
     ...records.summary.statusCounts.map(value=>({...modelSource('records',['status-count',value.workflowId,value.axisKey],records.revision,value),recordId:JSON.stringify([value.workflowId,value.axisKey]),workflowId:value.workflowId,durable:true,preview:{...value}})),
   ]
-  const bindingSource=(row:WorktreeBindingRow):ModelRow=>{
-    const last=row.history.at(-1)!
+  const bindingSource=(row:WorktreeBindingCurrentRow):ModelRow=>{
+    const last=row.latest
     const value={bindingId:row.bindingId,revision:row.revision,value:row.value,source:last.source,author:last.author,recordedAt:last.recordedAt}
-    return {...modelSource('worktree-binding',[row.bindingId],row.revision,value),recordId:row.bindingId,durable:true,preview:{bindingId:row.bindingId,revision:row.revision,source:last.source,businessState:row.value.business.state,acceptance:row.value.acceptance,outcome:row.value.outcome,actualChildSessionId:row.value.actualChildSessionId,requestedCwd:row.value.requestedCwd,actualCwd:row.value.actualCwd,cleanupDue:row.value.business.state!=='cleaned'&&row.value.actualChildSessionId!==null&&ports.liveAgent(row.value.actualChildSessionId)===undefined}}
+    return {...modelSource('worktree-binding',[row.bindingId],row.revision,value),recordId:row.bindingId,durable:true,preview:{bindingId:row.bindingId,operationId:row.value.operationId,parentSessionId:row.value.parentSessionId,plannedChildSessionId:row.value.plannedChildSessionId,revision:row.revision,source:last.source,businessState:row.value.business.state,acceptance:row.value.acceptance,outcome:row.value.outcome,actualChildSessionId:row.value.actualChildSessionId,requestedCwd:row.value.requestedCwd,actualCwd:row.value.actualCwd,cleanupDue:row.value.business.state!=='cleaned'&&row.value.actualChildSessionId!==null&&ports.liveAgent(row.value.actualChildSessionId)===undefined}}
   }
-  const observationSource=(row:WorktreeObservationRow):ModelRow=>{
-    const last=row.history.at(-1)!,observed=row.history.filter(event=>event.event==='observed').at(-1)!
+  const observationSource=(row:WorktreeObservationCurrentRow):ModelRow=>{
+    const last=row.latest,observed=row.creation
     const value={observationId:row.observationId,revision:row.revision,value:row.value,source:observed.source,author:observed.author,recordedAt:observed.recordedAt,provenance:{source:last.source,author:last.author,recordedAt:last.recordedAt}}
     return {...modelSource('observation',[row.observationId],row.revision,value),recordId:row.observationId,durable:true,preview:{observationId:row.observationId,revision:row.revision,source:observed.source,creatorSessionId:row.value.creatorSessionId,path:row.value.path,branch:row.value.branch,businessState:row.value.business.state,businessSource:'authored',checkState:row.value.check.state}}
   }
-  const modelCurrent=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<ModelCurrent>=>queue.run(async()=>{
+  const modelCurrent=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<ModelCurrent>=>modelReadOrder(async()=>{
     const {identity:who,view}=await modelIdentity(caller,sessionId,signal)
     const collections:Record<string,ModelCollection>={}
     const health:{scope:string;status:string;reason:string|null}[]=[]
@@ -527,16 +533,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     add('window-execution',windowView?.executions.map(row=>({...modelSource('windows',['execution',row.executionId],windowView!.revision,row),recordId:row.executionId,durable:true,preview:{...row}}))??[],windowView?.revision??null,windowView===null?'unknown':'current')
     const runtime=await load(),coordinator=who.scope.kind==='coordinator'
     for(const kind of ['worktree-binding','worktree-observation','resource','native-execution'])if(!coordinator){add(kind,[],null,'restricted');health.push({scope:kind,status:'restricted',reason:'coordinator registry is not assigned-child task data'})}
-    let bindingRows:readonly WorktreeBindingRow[]=[],observationRows:readonly WorktreeObservationRow[]=[]
+    let bindingRows:readonly WorktreeBindingCurrentRow[]=[],observationRows:readonly WorktreeObservationCurrentRow[]=[]
     if(coordinator){
-      try{const registry=await(await openWorktrees(view)).query(view.instance);bindingRows=registry.rows;add('worktree-binding',bindingRows.map(bindingSource),registry.revision)}catch(error){signal.throwIfAborted();add('worktree-binding',[],null,'unknown',String(error))}
-      try{const registry=await(await openObservations(view)).query(view.instance);observationRows=registry.rows;add('worktree-observation',observationRows.map(row=>{
+      try{const registry=await(await openWorktrees(view)).readCurrent(view.instance);bindingRows=registry.rows;add('worktree-binding',bindingRows.map(bindingSource),registry.revision)}catch(error){signal.throwIfAborted();add('worktree-binding',[],null,'unknown',String(error))}
+      try{const registry=await(await openObservations(view)).readCurrent(view.instance);observationRows=registry.rows;add('worktree-observation',observationRows.map(row=>{
         const source=observationSource(row),agent=ports.liveAgent(row.value.creatorSessionId),assignment=runtime.assignments.find(item=>item.sessionId===row.value.creatorSessionId&&item.instrumentInstanceId===view.instance.instrumentInstanceId),binding=bindingRows.find(item=>item.value.plannedChildSessionId===row.value.creatorSessionId||item.value.actualChildSessionId===row.value.creatorSessionId)
         return {...source,preview:{...source.preview,creatorActivity:agent===undefined?'gone':(agent as unknown as {status?:string}).status==='running'?'running':'idle',lane:assignment===undefined&&binding===undefined?null:{workflowId:assignment?.workflowId??null,ticketIds:assignment?.ticketIds??binding?.value.ticketIds??[],task:binding?.value.task??null,source:'inferred'},nativeChildren:nativeChildrenForObservation(row.value.creatorSessionId,runtime.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId))}}
-      }),[registry.revision,ports.liveAgents().map(agent=>[agent.id,(agent as unknown as {status?:string}).status]),runtime.assignments])}catch(error){signal.throwIfAborted();add('worktree-observation',[],null,'unknown',String(error))}
+      }),[registry.revision,runtime.revision,bindingRows.map(row=>[row.bindingId,row.revision]),observationRows.map(row=>[row.value.creatorSessionId,(ports.liveAgent(row.value.creatorSessionId) as unknown as {status?:string}|undefined)?.status??'gone'])])}catch(error){signal.throwIfAborted();add('worktree-observation',[],null,'unknown',String(error))}
       try{const raw=await ports.resourceStorage.read(),data=raw===undefined?null:memoized(raw,parseResourceDocument);add('resource',data?.resources.filter(row=>row.ownerInstanceId===view.instance.instrumentInstanceId).map(row=>({...modelSource('resource',[row.resourceId],data.revision,row),recordId:row.resourceId,durable:true,preview:{resourceId:row.resourceId,status:row.status,identity:row.identity,business:row.business,ledgerRevision:data.revision,physicalCoverage:'not-checked-current-overview'}}))??[],data?.revision??0)}catch(error){signal.throwIfAborted();add('resource',[],null,'unknown',String(error))}
-      const facts=latestNativeExecutions(runtime.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId))
-      add('native-execution',facts.map(fact=>{const assignment=runtime.assignments.find(row=>row.sessionId===fact.sessionId),binding=bindingRows.find(row=>row.value.plannedChildSessionId===fact.sessionId||row.value.actualChildSessionId===fact.sessionId),value=projectNativeExecution(fact,assignment,binding?.value,ports.liveAgent(fact.sessionId) as unknown as {readonly status?:string}|undefined);return {...modelSource('native-execution',[fact.sessionId],sourceVersion(value),value),recordId:fact.sessionId,durable:false,preview:{...value}}}),[facts,ports.liveAgents().map(agent=>[agent.id,(agent as unknown as {status?:string}).status])])
+      // The durable collection already has one current fact per child; the injection/UI cap is not a model query limit.
+      const facts=runtime.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId)
+      const nativeRows=facts.map(fact=>{const assignment=runtime.assignments.find(row=>row.sessionId===fact.sessionId),binding=bindingRows.find(row=>row.value.plannedChildSessionId===fact.sessionId||row.value.actualChildSessionId===fact.sessionId),value=projectNativeExecution(fact,assignment,binding?.value,ports.liveAgent(fact.sessionId) as unknown as {readonly status?:string}|undefined);return {...modelSource('native-execution',[fact.sessionId],sourceVersion([runtime.revision,binding?.revision??null,value.activity,fact.recordedAt]),value),recordId:fact.sessionId,durable:false,preview:{...value}}})
+      add('native-execution',nativeRows,nativeRows.map(row=>[row.key,row.sourceVersion]))
     }
     const releases=records===null||windowView===null?[]:pendingReleaseFor(records as unknown as NonNullable<RuntimeSnapshot['records']>,windowView)
     add('pending-release',releases.map(row=>({...modelSource('pending-release',[row.workflowId,row.localTicketId],sourceVersion([records?.revision,windowView?.revision]),row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:false,preview:{...row}})),[records?.revision,windowView?.revision],records===null||windowView===null?'unknown':'current')
@@ -559,7 +567,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     signal.throwIfAborted()
     return {...who,policy:view.policy,revisions:{configuration:view.policy.configurationRevision,records:records?.revision??null,business:records?.businessRevision??null,viewer:records?.viewerRevision??null,windows:windowView?.revision??null},records:records===null?null:{revision:records.revision,businessRevision:records.businessRevision,viewerRevision:records.viewerRevision,summary:{...records.summary,statusCounts:undefined}},windows:windowView===null?null:{revision:windowView.revision,configurationRevision:windowView.configurationRevision,status:windowView.status,reason:windowView.reason,runtimeKnowledge:windowView.runtimeKnowledge,T:windowView.T,S:windowView.S},nativeCount:windowView?.nativeBaseline??null,collections}
   })
-  const modelReadSource=async(caller:HostCaller,sessionId:string,selector:{domain:string;key:string},signal:AbortSignal)=>queue.run(async()=>{
+  const modelReadSource=async(caller:HostCaller,sessionId:string,selector:{domain:string;key:string},signal:AbortSignal)=>modelReadOrder(async()=>{
     const {identity:who,view}=await modelIdentity(caller,sessionId,signal),domain=selector.domain,key=selector.key
     let source:ModelSource|null=null
     if(domain==='records')source=recordSources(await instruments.readCurrent(caller.principalId,sessionId,signal)).find(row=>row.key===key)??null
@@ -582,8 +590,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     }else if(['worktree-binding','observation','resource','history'].includes(domain)){
       if(who.scope.kind!=='coordinator')denied('source requires actual owner coordinator')
-      if(domain==='worktree-binding')source=(await(await openWorktrees(view)).query(view.instance)).rows.map(bindingSource).find(row=>row.key===key)??null
-      else if(domain==='observation')source=(await(await openObservations(view)).query(view.instance)).rows.map(observationSource).find(row=>row.key===key)??null
+      if(domain==='worktree-binding')source=(await(await openWorktrees(view)).readCurrent(view.instance)).rows.map(bindingSource).find(row=>row.key===key)??null
+      else if(domain==='observation')source=(await(await openObservations(view)).readCurrent(view.instance)).rows.map(observationSource).find(row=>row.key===key)??null
       else if(domain==='resource'){
         const raw=await ports.resourceStorage.read(),data=raw===undefined?null:memoized(raw,parseResourceDocument),row=data?.resources.find(row=>row.ownerInstanceId===who.instance.instrumentInstanceId&&sourceKey(domain,row.resourceId)===key)
         if(row)source=modelSource(domain,[row.resourceId],data!.revision,row)
@@ -1096,12 +1104,25 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         try{const saved=await controls.savePolicy(caller.principalId,intent,expectedRevision);if(savedPolicy.revision!==saved.revision)touchState();savedPolicy=saved
           for(const [sid,view]of cachedSessions){let verified=false;try{verified=await ports.authority.verifyWorkspace(view.instance.controlWorkspaceId)}catch{/* Preserve committed policy while reporting unverified workspace. */}
             const next={...view,policy:resolvePolicy(saved,view.instance.controlWorkspaceId,verified)};cachedSessions.set(sid,next);nativeWindows.set(sid,next.policy.extensionEnabled&&next.policy.features.windows.requested)}
-          for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values())await captureSafely(view,async()=>{await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]);marksFor(view.instance.instrumentInstanceId).configuration=saved.revision})
+          let captureFailed=false
+          for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values()){const outcome=await captureSafely(view,async()=>{await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]);marksFor(view.instance.instrumentInstanceId).configuration=saved.revision});captureFailed ||= outcome.status==='failed'}
+          modelMutationOutcomes.set(saved,{historyCapture:{status:captureFailed?'failed':'recorded',diagnostic:captureFailed?'configuration history capture unavailable for one or more current instances':null}})
           return saved
         }finally{transitioning=null}})
     },
     setDelegateRegistered(registered){if(delegateRegistered===registered)return;delegateRegistered=registered;touchState()},
-    async readModelIdentity(caller,sessionId,signal){return queue.run(async()=>(await modelIdentity(caller,id(sessionId,'sessionId'),signal)).identity)},
+    modelMutationOutcome(result){return result!==null&&typeof result==='object'?modelMutationOutcomes.get(result)??null:null},
+    async withModelRead(caller,sessionId,signal,effect){return queue.run(async()=>{
+      const permit={open:true}
+      try{return await modelReadContext.run(permit,async()=>{
+        const before=(await modelIdentity(caller,id(sessionId,'sessionId'),signal)).identity
+        const result=await effect()
+        const after=(await modelIdentity(caller,sessionId,signal)).identity
+        if(canonical(before)!==canonical(after))throw new ControlsError('revision-conflict','current-view-changed: current source identity or scope changed')
+        signal.throwIfAborted();return result
+      })}finally{permit.open=false}
+    })},
+    async readModelIdentity(caller,sessionId,signal){return modelReadOrder(async()=>(await modelIdentity(caller,id(sessionId,'sessionId'),signal)).identity)},
     async readModelCurrent(caller,sessionId,signal){return modelCurrent(caller,id(sessionId,'sessionId'),signal)},
     async readModelSource(caller,sessionId,selector,signal){return modelReadSource(caller,id(sessionId,'sessionId'),selector,signal)},
     async readSession(caller,sessionId,signal){return snapshot(caller,id(sessionId,'sessionId'),signal)},
@@ -1116,8 +1137,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const notificationId=createHash('sha256').update(JSON.stringify([view.instance.instrumentInstanceId,command.operationId])).digest('hex')
           try{await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:applied.snapshot.businessRevision,authorPrincipalId:caller.principalId,state:'pending',messageId:null}]})}catch(error){notificationFailure=String(error).slice(0,1024)}
         }
-        await captureSafely(view,()=>captureBusiness(view,applied.snapshot))
-        return notificationFailure===null?applied:{...applied,notificationRecording:'failed',diagnostic:notificationFailure}
+        const historyCapture=await captureSafely(view,()=>captureBusiness(view,applied.snapshot))
+        const completed=notificationFailure===null?applied:{...applied,notificationRecording:'failed',diagnostic:notificationFailure}
+        modelMutationOutcomes.set(completed,{historyCapture})
+        return completed
       })
       if(command.action!=='set-decision-view')scheduleNotification(view.instance.ownerSessionId)
       return result
@@ -1133,7 +1156,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const owner=cachedSessions.get(ownerSessionId);if(owner)consumptionProgram.trackCommit(owner.instance.instrumentInstanceId,commit)
       await commit
     },
-    async applyTicketWindow(caller,sessionId,command:TicketWindowCommand,signal){const view=await identity(caller,sessionId,signal);return track(view.instance.instrumentInstanceId,async()=>{signal.throwIfAborted();await check(caller,sessionId,signal);if(command.action!=='release')await requireRegisteredTicket(caller,sessionId,command.workflowId,command.localTicketId);const result=await windows.apply(caller.principalId,sessionId,command);await captureSafely(view,()=>captureOthers(view,caller));return result})},
+    async applyTicketWindow(caller,sessionId,command:TicketWindowCommand,signal){const view=await identity(caller,sessionId,signal);return track(view.instance.instrumentInstanceId,async()=>{signal.throwIfAborted();await check(caller,sessionId,signal);if(command.action!=='release')await requireRegisteredTicket(caller,sessionId,command.workflowId,command.localTicketId);const result=await windows.apply(caller.principalId,sessionId,command);const historyCapture=await captureSafely(view,()=>captureOthers(view,caller));modelMutationOutcomes.set(result,{historyCapture});return result})},
     async resourceAction(caller,sessionId,input:ResourceAction,signal){
       const request=parseResourceAction(input),view=await identity(caller,sessionId,signal)
       return track(view.instance.instrumentInstanceId,async()=>{
