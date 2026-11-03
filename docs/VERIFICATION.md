@@ -23,7 +23,7 @@
 7. `node scripts/verify-vendor.mjs`：beta/stable 各 27 Skills；vendor **85 文件、296,048 bytes**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`
 8. 清洁源码提交上 `node scripts/verify-package.mjs --prepack`：**95 固定 + 85 vendor = 180** 个打包文件，构建 **76** 个 JS/DTS 产物
 
-新增/定向套件：`native-executions` 模块 **9/9**；`native-execution-runtime` **8/8**（含重复事件/热重载不增行、disposed 无 end、精确 cwd 关联、nativeChildren、delegate inferred lane、coordinator-only、S/nativeStops/通知回归、工具/Remote 数量不变，以及管理关闭不新增/更新且已有行可读、重新启用后恢复写入）；`client.test.mjs` **39/39**（含窗口与观测面板展示）；`consumption.test.mjs` **24/24**（含 native-executions 类别、协议行与历史和 locator）。203 skip 仍是环境门禁/native host fixture，不是插件加载失败。
+新增/定向套件：`native-executions` 模块 **9/9**；`native-execution-runtime` **8/8**（含重复事件/热重载不增行、disposed 无 end、精确 cwd 关联、nativeChildren、delegate inferred lane、coordinator-only、S/nativeStops/通知回归、工具/Remote 数量不变，以及管理关闭时新增写入被抑制、已有行可读、重新启用后恢复；独立探针另行确认关闭期间的更新边也不写入，该边未单独列入这 8 个测试）；`client.test.mjs` **39/39**（含窗口与观测面板展示）；`consumption.test.mjs` **24/24**（含 native-executions 类别、协议行与 locator）；native-execution history capture 由 `native-execution-runtime` 覆盖。203 skip 仍是环境门禁/native host fixture，不是插件加载失败。
 
 ### 精确制品
 

@@ -107,6 +107,7 @@ readonly nativeChildren: readonly {
 - `created-tree`：observation 的 `creatorSessionId` 是该 native child；这只说明它创建了树，不等于它“正在使用”。
 - 只从上面两条事实派生；不读取 cwd 历史、不监听 `cd`、不把 assignment 当成目录使用。
 - 空数组表示没有可观测关联，不是“没有人使用”。
+- 创建者自身的 `initialCwd` 不可读（`null`）时不派生 `created-tree` 关联；observation 行仍保留 `creatorSessionId`，不能用猜测补一个路径。
 
 ### 2.3 不写强 binding
 
