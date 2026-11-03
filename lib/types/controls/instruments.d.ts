@@ -1,7 +1,7 @@
 import type { WorkspaceControls } from './index.js';
 import type { InstrumentInstance } from './state.js';
 import type { InstrumentStorage } from './instrument-storage.js';
-import type { InstrumentAuthor, InstrumentCommand, InstrumentEvent, WorkflowRecord, TicketRecord, DecisionRecord, DecisionViewValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage } from './instrument-state.js';
+import type { InstrumentAuthor, InstrumentCommand, InstrumentEvent, WorkflowRecord, TicketRecord, DecisionRecord, DecisionViewValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, Change } from './instrument-state.js';
 export type InstrumentScope = {
     readonly kind: 'coordinator';
 } | {
@@ -62,6 +62,27 @@ export interface InstrumentSnapshot {
         readonly awaitingImplementationCount: number;
     };
 }
+/** Metadata of the latest business version, not a retained history entry. */
+export type InstrumentCurrentProvenance = Pick<Change<unknown>, 'author' | 'recordedAt' | 'references'>;
+export type InstrumentCurrentWorkflow = Omit<WorkflowRecord, 'history'> & {
+    readonly provenance: InstrumentCurrentProvenance;
+};
+export type InstrumentCurrentTicket = Omit<TicketRecord, 'history'> & {
+    readonly provenance: InstrumentCurrentProvenance;
+};
+export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & {
+    readonly creator: InstrumentAuthor;
+    readonly provenance: InstrumentCurrentProvenance;
+    readonly view: DecisionViewValue;
+};
+/** Authorized current bodies for model projection/detail; never contains histories or changes.
+ * Bodies are intentionally complete here: the model adapter owns its byte budget and locators.
+ */
+export interface InstrumentCurrentSnapshot extends Omit<InstrumentSnapshot, 'workflows' | 'tickets' | 'decisions' | 'changes' | 'historyCoverage'> {
+    readonly workflows: readonly InstrumentCurrentWorkflow[];
+    readonly tickets: readonly InstrumentCurrentTicket[];
+    readonly decisions: readonly InstrumentCurrentDecision[];
+}
 /** Current authorized badge facts; no retained versions, changes or decision bodies. */
 export interface InstrumentSummary {
     readonly instance: InstrumentInstance;
@@ -93,6 +114,7 @@ export declare class SessionInstruments {
     private readonly now;
     constructor(controls: WorkspaceControls, storage: InstrumentStorage, authority: InstrumentAuthority, now?: () => number);
     read(principal: string, sessionId: string, filter?: InstrumentFilter): Promise<InstrumentSnapshot>;
+    readCurrent(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentCurrentSnapshot>;
     readSummary(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentSummary>;
     apply(principal: string, sessionId: string, input: InstrumentCommand): Promise<InstrumentApplyResult>;
     compact(principal: string, sessionId: string, input: InstrumentCompactInput, signal?: AbortSignal): Promise<InstrumentCleanupResult>;

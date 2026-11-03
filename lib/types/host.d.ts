@@ -165,6 +165,16 @@ export type HostEvent = ({
 };
 /** The core is supplied by the package composition, not fabricated by this adapter. */
 export interface RuntimeFacade {
+    /** Required production model-only reads. Missing capability is an explicit error, never full-read fallback. */
+    readModelIdentity?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<import('./model-tools.js').ModelIdentity>;
+    readModelCurrent?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<import('./model-tools.js').ModelCurrent>;
+    readModelSource?(caller: HostCaller, sessionId: string, selector: {
+        readonly domain: string;
+        readonly key: string;
+    }, signal: AbortSignal): Promise<{
+        readonly identity: import('./model-tools.js').ModelIdentity;
+        readonly source: import('./model-tools.js').ModelSource | null;
+    }>;
     readPolicy(caller: HostCaller, signal: AbortSignal): Promise<PolicySnapshot>;
     savePolicy(caller: HostCaller, intent: PolicyIntent, expectedRevision: number, signal: AbortSignal): Promise<PolicySnapshot>;
     readSession(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<unknown>;
