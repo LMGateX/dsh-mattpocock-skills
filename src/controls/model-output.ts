@@ -269,10 +269,11 @@ export function createModelOutput(options: { secret?: Uint8Array; mountEpoch?: s
       signal?.throwIfAborted()
       if (source === null) throw new ModelOutputError('unavailable', 'Selected source is unavailable in current authorized coverage')
       validSource(source)
-      const { bytes, contentHash } = await selectedContent(source.value, signal)
-      if (source.domain !== selector.domain || source.key !== selector.key || digest(source.sourceVersion) !== selector.version || contentHash !== selector.hash) {
+      if (source.domain !== selector.domain || source.key !== selector.key || digest(source.sourceVersion) !== selector.version) {
         throw new ModelOutputError('revision-conflict', 'Selected content changed; reopen its current view before reading', 'content-version-changed')
       }
+      const { bytes, contentHash } = await selectedContent(source.value, signal)
+      if (contentHash !== selector.hash) throw new ModelOutputError('revision-conflict', 'Selected content changed; reopen its current view before reading', 'content-version-changed')
       const totalBytes = bytes.length
       const offset = request.offset ?? 0
       if (!Number.isSafeInteger(offset) || offset < 0 || offset > totalBytes || (offset < totalBytes && (bytes[offset]! & 0xc0) === 0x80)) {

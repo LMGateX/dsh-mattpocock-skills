@@ -165,6 +165,14 @@ test('large selected content encoding yields to cancellation rather than finishi
   }, controller.signal), error => error === reason)
 })
 
+test('source version fences reject before attempting to encode replacement content', async () => {
+  const model = output.createModelOutput()
+  const source = selected()
+  const locator = model.locator(binding, source)
+  // New content must not replace an old selected version, even if it cannot be encoded.
+  await assert.rejects(model.readContent(binding, { locator }, () => ({ ...source, sourceVersion: 4, value: { unsupported: Infinity } })), { code: 'revision-conflict', reason: 'content-version-changed' })
+})
+
 test('final budget edges cannot be relaxed above the fixed read or receipt maximum', () => {
   const base = output.jsonBytes(output.modelEnvelope('current', {}, { data: '' }))
   assert.equal(output.jsonBytes(output.modelEnvelope('current', {}, { data: 'x'.repeat(65536 - base) })), 65536)
@@ -180,6 +188,48 @@ test('final budget edges cannot be relaxed above the fixed read or receipt maxim
   assert.equal(receipt.committed, true)
   assert.equal(receipt.replayed, true)
   assert.equal(receipt.ignored, false)
+  assert.ok(output.jsonBytes(receipt) <= 8192)
+})
+
+test('legal long escaped identifiers fit opaque selectors and preserve content progress', async () => {
+  const model = output.createModelOutput()
+  const longId = '\u0000'.repeat(256)
+  const longBinding = Object.fromEntries(Object.keys(binding).map(key => [key, longId]))
+  const source = { ...selected({ note: '😀'.repeat(20000) }), key: longId, sourceVersion: longId }
+  const locator = model.locator(longBinding, source)
+  assert.ok(Buffer.byteLength(locator) <= 4096)
+  const page = await model.readContent(longBinding, { locator }, () => source)
+  assert.equal(page.instanceId, longId)
+  assert.equal(page.sourceVersion, longId)
+  assert.ok(page.nextOffset > 0)
+  assert.ok(output.jsonBytes(page) <= 65536)
+  const cursor = model.pageCursor(longBinding, { kind: longId }, longId, longId)
+  assert.ok(Buffer.byteLength(cursor) <= 4096)
+  assert.equal(model.readPageCursor(longBinding, { kind: longId }, longId, cursor), longId)
+})
+
+test('empty selected values and surrogate pairs crossing encoder chunks reconstruct exactly', async () => {
+  const model = output.createModelOutput()
+  for (const value of [null, '', [], {}, { text: 'x'.repeat(16383) + '😀' + '\ud800' + '\udc00' + '\ud800' }, [undefined, false, 0]]) {
+    const source = selected(value)
+    const page = await model.readContent(binding, { locator: model.locator(binding, source) }, () => source)
+    assert.equal(page.data, output.canonicalJson(value))
+    assert.equal(page.data, JSON.stringify(value))
+    assert.equal(page.totalBytes, Buffer.byteLength(JSON.stringify(value)))
+    assert.equal(page.contentHash, createHash('sha256').update(JSON.stringify(value)).digest('hex'))
+    assert.equal(page.done, true)
+  }
+})
+
+test('receipt optional overflow uses domain supplied minimal commit facts, never relabeling the mutation as failed', () => {
+  const minimal = { operationId: 'operation', committed: null, outcome: 'storage-uncertain', ignored: true, generation: 8, replayed: false }
+  const receipt = output.modelReceipt({ instanceId: 'a' }, { ...minimal, targetDetails: 'x'.repeat(10000) }, {}, minimal)
+  assert.equal(receipt.committed, null)
+  assert.equal(receipt.outcome, 'storage-uncertain')
+  assert.equal(receipt.ignored, true)
+  assert.equal(receipt.generation, 8)
+  assert.equal(receipt.projected, true)
+  assert.equal('targetDetails' in receipt, false)
   assert.ok(output.jsonBytes(receipt) <= 8192)
 })
 
