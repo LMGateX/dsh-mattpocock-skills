@@ -188,6 +188,33 @@ records/windows 使用显式 targets，worktrees 使用 bindingIds；均保留�
 
 0.8.0 默认工具面是七项（controls、record、window、resource、assign、history、worktree）+ 条件 `mattpocock_audit`；`mattpocock_delegate` 是显式 `delegate: true` 的可选第八项。客户端仍声明九个 wire key，供 opt-in delegate 与历史卡片；历史 0.6.0 发行版的九个固定工具（含 `mattpocock_execute`）记录保留为历史。C 已实施但不新增工具/Remote 方法；强绑定写入口仍只有 delegate。
 
+## 6.1. 0.10.0 模型结果迁移（候选实施中）
+
+本节对应[有界工具输出设计](<docs/BOUNDED_TOOL_OUTPUTS.md>)；验收/发布状态以[验证摘要](<docs/VERIFICATION.md>)为准，不代表本机已经升级。
+
+所有插件模型结果显式标 schemaVersion:2。读取、分页、正文片段与 audit 的最终 UTF-8 JSON 不超过 65,536 bytes；写回执和插件诊断不超过 8,192 bytes。限制发生在 typed execute 返回前，包含 envelope 和 JSON 转义，不是只截短工具卡。没有 full 回退参数；内部核心与 Remote 的完整结果不变。旧 PTC 使用 result.snapshot 的代码须按[迁移说明](<MIGRATION.md>)改读当前视图/写回执，不静默兼容。
+
+- record read 是完整的**当前恢复发现入口**：包含真实修订、授权范围、业务义务计数、T/S/unknown 和各类 shown/total/more/coverage/query。集合先给计数和 query 而非整张表；rows 空而 more=true 不表示没有待办。按返回 query 分页可找流程、票、裁决、状态计数、窗口票/执行、失败结局、待释放占位、工作树、资源、执行关联与能力/health。hidden、OFF 或新 focus 不抹掉已有义务；restricted/unknown 不是空数据。
+- 写操作返回 receipt，不再附整份 snapshot。appliedRevision 是原操作生效时的修订，不一定是当前修订；下一次业务命令用 businessRevision，viewer 命令用 viewerRevision，源清理仍用其对应源 CAS。保留 replayed、window generation/ignored 以及 delegate 的分项事实；partial/unknown 不当成功，不因输出精简而再次创建 child。
+- 正文被省略时返回 record detail locator。它只定位某一来源、权限和版本，不是授权。每一片重新检查真实调用者与源；跨 owner/fork、撤权或 scope 变化不可续读。源更改、清理、移出 coverage 或插件重新挂载后重新获取定位符，不混接旧片。
+- content.data 是所选对象的 canonical JSON **文本片段**。先解析外层工具结果，再按 offset/nextOffset 顺序连接 data；这些位置是 UTF-8 bytes，不是 JavaScript 字符索引。以 done、totalBytes 和 contentHash 核验完整性，再解析拼接后的 JSON。末尾重读返回空片段和 done=true。
+- current 分页可能因实时 S/Agent/来源变化而明确 revision-conflict；重开第一页，不用 generatedAt 或 Git checkedAt 假造稳定正文。历史 query 的 cut 冻结行集合，不能阻止显式 purge；detail 的 remainingHistoryIds 是预算递延，missingHistoryIds 才是真正缺失。
+- controls read 标 completeIntent:false。只有具备原策略权限的调用者，读齐同 revision 的 defaults/workspace 页及其正文后，才能构造既有全量 replacement intent；只把显示页回填会误删未见配置。audit 继续声明 memory-only、缺口与 unobservable；resource 实时物理检查与保留的登记值分开，不把登记当磁盘证明。
+
+当前决策页示例（取续页时复制实际 nextCursor，保持筛选）：
+
+~~~json
+{"request":{"action":"read","query":{"kind":"decision","limit":20}}}
+~~~
+
+按该页实际定位符读正文：
+
+~~~json
+{"request":{"action":"detail","locator":"上一页实际返回的 locator","offset":0}}
+~~~
+
+本次只在隔离源码/制品环境交付。**没有为本机 DSH/Profile 安装，没有改共享 SDK、重启运行服务、回收既有 spill 或 npm 发布。** 输出放大得到处理不等于已证明/消除了全部 Node 匿名内存问题，也不会自动删除已有宿主工具日志。
+
 ## 7. 通知与工程部署
 
 用户或获授子代理提交业务更新后，先保存待通知记录，在线主会话接收独立来源通知；不等待发送方结束，不为通知擅自恢复冷主会话。收件箱接收不等于持久消费，确认匹配消息追加及原生 flush 后才记技术消费；重试可能重复。技术消费不清除 pending/awaiting，也不证明模型已落实业务。
