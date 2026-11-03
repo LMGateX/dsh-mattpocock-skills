@@ -21,6 +21,8 @@ Shutdown removes listener/tool/descriptor contributions, cancels mount lifetime,
 
 ## Remote and model surface
 
+> **2026-11-04，待实施设计：** [插件模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 将模型 execute 的 typed value 改为有界当前 DTO/receipt，新增既有 record 的只读 detail action；覆盖 audit 独立注册。该设计不改变 Remote/内部完整返回、原身份/授权/通知与消费次序，不依赖 DSH 补丁。本页下述已实现接口与旧输出仍是当前源码行为，不能把设计当已部署。
+
 Operator listWorkspaces also returns copied native workspace.sessionIds for same-page Session navigation. The shared row type permits omission for older fixtures, but the actual Host supplies it. The SDK field is a synchronous readonly, header-validated ordered projection (installed dsh-workspace/lib/types/types.d.ts:72–80). It is navigation, never delegation or ACL; listing does not observe/resume cold Sessions or create instrument instances.
 
 The namespace is mattpocockControls. Methods: readPolicy(); savePolicy(intent, expectedRevision); listWorkspaces(); readSession(sessionId, signal?); applyInstrument(sessionId, command); applyTicketWindow(sessionId, command); resourceAction(sessionId, request); grantPolicy(sessionId, enabled, expectedRevision).

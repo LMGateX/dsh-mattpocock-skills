@@ -2,6 +2,8 @@
 
 2026-10-06。按用户认可实施的持久历史模块；实现为[历史核心](<../src/controls/history.ts>)，组合入口为[运行协调](<../src/runtime.ts>)，测试覆盖[历史公开接口](<../tests/history.test.mjs>)。本轮已从第一阶段「只整理历史副本」扩展到三个源域的显式 checkpoint 与定向旧历史删除，见第 8 节。SessionHistory 自身仍只管理历史副本；源清理由各自源码模块及 runtime 组合完成，不把副本 purge 冒称源删除。本契约优先于[旧事件记录契约](<INSTRUMENT_RECORDS.md>)中尚无整理入口的阶段描述；业务判断与磁盘树处置仍由 agent/用户决定。
 
+> **2026-11-04，后续模型输出设计：** [有界工具输出](<BOUNDED_TOOL_OUTPUTS.md>) 保持本核心/Remote/存储不变，在模型 Adapter 增加最终字节预算。现有 query 的 100 条、detail 的 20 个 ID 不构成字节上限；Adapter 须以实际交付末行续页，区分递延与 missing，并经 record detail 分段取授权正文。history 仍仅向实际 owner coordinator 开放，不因通用正文入口向 assigned 扩权。此方案待实施，不修改本页原实现/测试状态。
+
 ## 1. 小 interface 与可信组合
 
 ~~~ts

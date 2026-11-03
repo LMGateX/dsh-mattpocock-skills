@@ -1,5 +1,7 @@
 # Parent 实际消费：InstrumentConsumption
 
+> **2026-11-04，设计固定、待实施：** [插件模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 只投影模型工具的 typed result，不以 UI summary 替代本模块，不削弱 preStep/postExecute durable frontier 或通知/历史捕获。新的 record detail resolver 自身只读，不把取片段当消费提交；现有 hook 仍独立运行。
+
 ## 范围与状态
 
 [纯 TypeScript 核心](<../src/controls/consumption.ts>)把**最新持久事实用于 parent 本次输入**，不是可选 dashboard。它接收可信宿主身份及快照读取函数，返回独立仪器消息的正文与 freshness；Host adapter 创建真正的 UserMessage 并接入实际 awaited pre-step / 合法工具返回消费路径。

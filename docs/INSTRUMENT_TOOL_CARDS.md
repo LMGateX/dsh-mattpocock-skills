@@ -2,6 +2,8 @@
 
 > **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成，2026-11-03 [v0.7.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0) 发布。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。0.7.0 源码线已移除 `mattpocock_execute`；0.8.0 默认是七个固定工具 + 条件 `mattpocock_audit`，`mattpocock_delegate` 仅显式 opt-in。本页保留设计与 0.6.0 实施记录。当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
+> **后续独立工作（2026-11-04，设计固定、待实施）：** [模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 会在本插件 execute 返回前改变模型 DTO；本页“不改变 Host 输出”的条款限定于原 UI 卡片工作，不阻止该已固定的独立设计。历史卡片继续读取原公开字段/旧 JSON；本页的原发布及测试记录不作新方案验收。
+
 ## 1. 目标与范围
 
 0.6.0 发行版有九个固定工具（0.7.0 已移除 `mattpocock_execute`；0.8.0 默认七个固定 + 条件 `mattpocock_audit`，delegate 为 opt-in 第八项；客户端共九个 wire key）。这些工具注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：

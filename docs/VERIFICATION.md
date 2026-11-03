@@ -49,6 +49,14 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 - **模型与接口面**：默认 7 固定 + 条件 audit，delegate 仅 opt-in 第八项；Remote 16；客户端 9 wire key；没有新增模型工具、Remote 方法、存储域或强绑定写入口。
 - 完整记录见 [dist/verification-0.9.0.json](<../dist/verification-0.9.0.json>)。
 
+## 插件模型工具输出减负：文档固定（2026-11-04，尚未实施）
+
+已完成只读研究及 [设计](<BOUNDED_TOOL_OUTPUTS.md>)/[阶段计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>) 固定，范围是本插件模型工具的有界返回与受权按需正文，不是 DSH spill/GC/PTC 补丁。原始本机/会话证据留在忽略目录，公开文档只含脱敏结论及仓库来源。
+
+本条仅记录文档交付：运行代码、生成物、版本、Profile、SDK、现存 spill 均未修改，未重启服务；未执行新方案的源码回归、字节/性能测试或精确包验收，未发布/安装。下方 0.8.0 及历史版本数字不能计作本方案结果。后续实现须按详细设计新增独立验收记录。
+
+文档门禁：独立只读规格审查已完成，补齐 record 的 T/S、nativeStops、pendingRelease/树/health 恢复读取与实时分页路径；12 份关联文档（含本地证据索引）分页读取后检查 **218 个本地链接目标，0 缺失、0 行尾空白**，阶段计划的显式 anchor 存在；新公开设计未含本机绝对路径或原 session/业务标识。Git diff 空白检查通过，本地研究索引由现有 ignore 规则排除。以上是文档检查，不是修复测试。
+
 ## 0.8.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 
 本版把 `mattpocock_delegate` 从默认模型面移出，但保留实现：插件 Config 新增 `delegate`，默认 `false`；只有显式 `delegate: true` 才注册该工具。默认模型面为 **7 个固定工具 + 条件 `mattpocock_audit`**；opt-in 后为 8 个固定工具 + 条件 audit。客户端仍声明 9 个 wire key，用于 opt-in delegate 与历史卡片，不把它冒充默认注册。没有新增模型工具、Remote 方法、存储域或强绑定写入口；native `subagent`/`subagent_fork`/`send_message` + `mattpocock_assign` 路径不变。

@@ -1,5 +1,7 @@
 # Bounded UI summaries and observation scheduling
 
+> **Separate accepted design, not yet implemented (2026-11-04):** [Bounded model-tool outputs](<BOUNDED_TOOL_OUTPUTS.md>) fixes plugin-owned typed results before they reach Host logging/spill. This UI summary seam is not a complete model read and must not replace obligations, source facts or the consumption durability frontier. Neither design requires unrelated DSH patches.
+
 ## Accepted scope
 
 The follow-up optimization separates mounted list decorations and display-policy gates from full instrument detail. It changes repository source and isolated mechanical tests only; it does not install a package, modify a running SDK/Profile, restart a service, rewrite vendored Skills, change channels/provider precedence, delete business history or replace model consumption.
