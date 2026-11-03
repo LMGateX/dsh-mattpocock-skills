@@ -50,7 +50,11 @@ if (hostRoot) {
       return next(specifier, context)
     },
     load(url, context, next) {
-      if (['composition.ts', 'peer-bindings.ts'].some(name => url === new URL(name, compatibilitySourceRoot).href)) return { format: 'module', shortCircuit: true,
+      // HMR generations keep a query; use the same explicit transpiler as the
+      // initial source import, not Node's whitespace-preserving type stripper.
+      const sourceUrl = new URL(url)
+      sourceUrl.search = ''; sourceUrl.hash = ''
+      if (['composition.ts', 'peer-bindings.ts'].some(name => sourceUrl.href === new URL(name, compatibilitySourceRoot).href)) return { format: 'module', shortCircuit: true,
         source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText }
       return next(url, context)
     },
