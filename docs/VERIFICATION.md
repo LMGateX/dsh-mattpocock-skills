@@ -2,7 +2,7 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-04 状态：0.9.0 是当前源码线；事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
+> 2026-11-04 状态：0.10.0 正在隔离集成与复审，尚未最终验收或发布；0.9.0 是最近已发布版本，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
 ## 0.9.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 
@@ -49,13 +49,27 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 - **模型与接口面**：默认 7 固定 + 条件 audit，delegate 仅 opt-in 第八项；Remote 16；客户端 9 wire key；没有新增模型工具、Remote 方法、存储域或强绑定写入口。
 - 完整记录见 [dist/verification-0.9.0.json](<../dist/verification-0.9.0.json>)。
 
-## 插件模型工具输出减负：文档固定（2026-11-04，尚未实施）
+## 0.10.0 插件模型工具输出减负（2026-11-04，隔离集成中；未发布/未安装）
 
-已完成只读研究及 [设计](<BOUNDED_TOOL_OUTPUTS.md>)/[阶段计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>) 固定，范围是本插件模型工具的有界返回与受权按需正文，不是 DSH spill/GC/PTC 补丁。原始本机/会话证据留在忽略目录，公开文档只含脱敏结论及仓库来源。
+范围与门禁以 [详细设计](<BOUNDED_TOOL_OUTPUTS.md>) 和 [阶段计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>) 为准。已实施插件 output Module、current-only 业务读取及 Host 模型 Adapter；内部完整读取/Remote、历史保留和业务 CAS 不以新 DTO 替换。以下是**已运行的源码证据，不是最终验收**，不沿用 0.9.0 或其他历史版本计数。
 
-本条仅记录文档交付：运行代码、生成物、版本、Profile、SDK、现存 spill 均未修改，未重启服务；未执行新方案的源码回归、字节/性能测试或精确包验收，未发布/安装。下方 0.8.0 及历史版本数字不能计作本方案结果。后续实现须按详细设计新增独立验收记录。
+### 已观察到的有界结果
 
-文档门禁：独立只读规格审查已完成，补齐 record 的 T/S、nativeStops、pendingRelease/树/health 恢复读取与实时分页路径；12 份关联文档（含本地证据索引）分页读取后检查 **218 个本地链接目标，0 缺失、0 行尾空白**，阶段计划的显式 anchor 存在；新公开设计未含本机绝对路径或原 session/业务标识。Git diff 空白检查通过，本地研究索引由现有 ignore 规则排除。以上是文档检查，不是修复测试。
+- [大历史回归](<../tests/bounded-output-scale.test.mjs>) 在合法、非持久 MemoryInstrumentStorage 中递增 CAS 构造 200 个旧版本：旧 Host 的真实 typed 结果 **44,119,587 B**，超出 65,536 B；当前相同业务状态的新 model 结果 **5,764 B**，小历史版本 **5,756 B**，只相差 8 B。完整内部读取仍为 44,119,587 B，没有删除历史。
+- 同一测试实际运行 **300 次直接 typed execute + 300 次 SDK registry/pipeline**（不是合计 300），每通道最大 5,764 B、累计 **1,729,200 B**，合计 **600 次 / 3,458,400 B**；其中 10 次真实外层工具嵌套 record，公开 pre-execute 观察到正确 parent token 与 rootCallId，逐次 typed DTO 与实际 render JSON 相同。
+- [历史模型回归](<../tests/bounded-model-history.test.mjs>) 构造 100 个带转义标识/大文本的真实 decision 历史行：第一页 **58 行 / 65,298 B**，两页完整恢复 100 行且无重漏；20 个大详情返回 20 个 stub、**22,779 B**，正文片段重建后与内部保留行的 canonical JSON/hash 相同；purge 后旧 locator 不复活正文，当前 100 项义务保留，assigned child 仍不能读取 coordinator history。
+- [仅凭 record 恢复](<../tests/bounded-model-recovery.test.mjs>) **8/8 通过，0 skip**：不运行 preStep、不消费自动上下文，覆盖已知 T/S 与未知正数下界、pendingRelease 续页而不释放、hidden/OFF/focus 不丢义务、程序 native-stop、未物理验证的 worktree 观测，以及全关联票/creator/撤权边界。生产 postExecute hook 仍运行，不冒称没有生命周期代码参与。
+- Host 严格构建、Client noEmit 与闭合构建已通过；Client **278,881 B / 8 个私有模块**，仅 React 与公共 UI primitives 外部请求。实际 scratch build 为 **80 个 JS/DTS**；[构建/包清单烟雾](<../tests/controls-package.test.mjs>)、[artifact 清单](<../tests/package-artifact.test.mjs>)、[scaffold](<../tests/scaffold.test.mjs>) 加大历史回归合跑 **23/23 通过，0 skip**。development 包烟雾不是冻结的 accepted archive。
+
+### 尚未放行的门禁
+
+首轮集成源码根套件（精确归档管理器门禁暂后置）为 **1009 项：811 pass、5 fail、193 skip、0 cancelled**。一个失败是遗漏的旧 76 产物断言（实际 80，已修正并定向转绿），其余四个是旧 Host fixture 尚未提供新的只读 facade / 仍断言旧模型 DTO，正在迁移。193 skip 主要涉及缺兼容 SDK 根或 UI-slots 的环境门禁；已找到未修改的完整兼容 SDK，双根最终重跑尚待执行，不能以 skip 当覆盖。
+
+首轮固定基线/候选的独立 Standards 与 Spec 双轴复审**尚未通过**，发现 current-only worktree 路径仍遍历历史、正文异步编码离开权限 FIFO、native 当前集合继承展示上限、实时游标漏依赖、提交后 capture 故障未进入回执。修复、实际交错/长尾回归和固定最终 SHA 复核仍是发布前硬门禁。纯字节压缩通过不替代这些语义要求。
+
+正式 clean-source prepack、唯一 accepted archive、同归档 PluginManager、远端 push/tag/Release 与下载复验均**未完成**。未为本机安装插件，未修改当前 Profile/SDK、重启服务或清理旧 spill，也未 npm publish。内存 source fixture / 公开 SDK 管线证据不等于真实 LLM/PTC 执行器、GUI、物理资源、磁盘 spill、Node heap 泄漏或 O(1) 冷读取证明。
+
+早先设计文档检查为 218 个本地链接目标、0 缺失；那是文档阶段结果，不充作修复验收。原始日志、机器路径与会话/业务标识只留在忽略目录，不作为公开发行资产。
 
 ## 0.8.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 

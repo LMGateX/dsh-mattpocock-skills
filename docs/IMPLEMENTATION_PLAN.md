@@ -28,17 +28,17 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 <a id="bounded-tool-outputs"></a>
 
-## 插件模型工具输出减负（2026-11-04，设计固定；待实施）
+## 插件模型工具输出减负（2026-11-04，已实施；集成复审与修复中）
 
-接受范围与唯一详细契约见 [DESIGN](<DESIGN.md>) 和 [BOUNDED_TOOL_OUTPUTS](<BOUNDED_TOOL_OUTPUTS.md>)。先在本插件模型工具 Adapter 处理放大，不以任何 DSH spill/GC/PTC 改动或外部清理补丁为依赖。A 已完成，B/C/D 在隔离工作树并行实施，E/F/G 尚待实际验收与发布；目标版本 0.10.0。所有者已授权 push/tag/GitHub Release，暂不为本机安装。本段不复用旧版本测试计数作为新方案验收。
+接受范围与唯一详细契约见 [DESIGN](<DESIGN.md>) 和 [BOUNDED_TOOL_OUTPUTS](<BOUNDED_TOOL_OUTPUTS.md>)。先在本插件模型工具 Adapter 处理放大，不以任何 DSH spill/GC/PTC 改动或外部清理补丁为依赖。A/B 已完成；C/D 已集成首版并修复独立复审发现，E 正在完成语义长尾与双宿主回归，F 的源码清单/生成物已初步验证但正式制品仍待，G 未发布；目标版本 0.10.0。所有者已授权 push/tag/GitHub Release，暂不为本机安装。本段不复用旧版本测试计数作为新方案验收。
 
 | 阶段 | 工作与交付 | 完成门禁 |
 |---|---|---|
 | A 研究与设计（完成） | 本地原始证据、公开脱敏来源、输出面清单、预算/分页/detail/授权/迁移、本文阶段与文档索引 | 不混淆 tmpfs 与堆泄漏；默认小返回/小回执；无宿主补丁依赖；文档链接/范围/状态校验 |
-| B 旧路径反馈与 Module（待实施） | 合成多百版本、大 result 与约 42 MB 旧投影；从真实 model execute 返回和 render 建超预算 RED；建立插件 model-output Module/严格 DTO/UTF-8 装箱 | RED 命中原放大模式；64 KiB 当前/正文、8 KiB 回执/错误含全部转义；不先序列化全历史再截短；生产不回退 full |
-| C current 与受权正文（待实施） | record 当前仪器恢复读（含 T/S、nativeStops、pendingRelease/树/health）及 current-only 源读取/索引、分类分页；既有 record 增 detail，按允许 domain 解析 source/version/offset；history query/detail 字节装箱/locator | 稳定分页不漏重；码点/字节/hash 重建；current 变化、purge、重挂载和撤权诚实失效；detail 自身无 capture/CAS/通知副作用 |
-| D mutation 与同类堵漏（待实施） | record/window/assign/worktree 小回执；controls/resource/history/delegate/audit 全工具面有界输出；保留内部完整结果/Remote | 实际成功写不因输出预算伪报失败；window ignored/generation；assign 无其他 owner 状态；policy 部分页不可回填；audit 独立注册也覆盖 |
-| E 契约/兼容与机械验收（待实施） | 工具描述、schemaVersion 2、PTC 示例、旧工具卡、新 DTO 测试；300 次重复读；权限/故障/多语言/长 metadata/双版本回归 | 真实 typed value/render 均受限；内部通知、captureBusiness、FIFO 撤权、preStep/postExecute frontier 不退化；严格构建与完整根套件 0 失败，skip 明示 |
+| B 旧路径反馈与 Module（已实施，真实 RED→GREEN） | 合成多百版本、大 result 与约 42 MB 旧投影；从真实 model execute 返回和 render 建超预算 RED；建立插件 model-output Module/严格 DTO/UTF-8 装箱 | RED 命中原放大模式；64 KiB 当前/正文、8 KiB 回执/错误含全部转义；不先序列化全历史再截短；生产不回退 full |
+| C current 与受权正文（已实施，复审修复中） | record 当前仪器恢复读（含 T/S、nativeStops、pendingRelease/树/health）及 current-only 源读取/索引、分类分页；既有 record 增 detail，按允许 domain 解析 source/version/offset；history query/detail 字节装箱/locator | 稳定分页不漏重；码点/字节/hash 重建；current 变化、purge、重挂载和撤权诚实失效；detail 自身无 capture/CAS/通知副作用 |
+| D mutation 与同类堵漏（已实施，诊断/全工具面验收中） | record/window/assign/worktree 小回执；controls/resource/history/delegate/audit 全工具面有界输出；保留内部完整结果/Remote | 实际成功写不因输出预算伪报失败；window ignored/generation；assign 无其他 owner 状态；policy 部分页不可回填；audit 独立注册也覆盖 |
+| E 契约/兼容与机械验收（进行中，首轮复审未放行） | 工具描述、schemaVersion 2、PTC 示例、旧工具卡、新 DTO 测试；300 次重复读；权限/故障/多语言/长 metadata/双版本回归 | 真实 typed value/render 均受限；内部通知、captureBusiness、FIFO 撤权、preStep/postExecute frontier 不退化；严格构建与完整根套件 0 失败，skip 明示 |
 | F 生成物与精确包（待实施） | 同步 lib/声明/私有 Module allowlist；clean-source prepack、一次 pack、精确 tarball 验证；VERIFICATION 追加实际结果 | source/lib/包字节一致；未打本次补丁的受支持宿主公开契约通过；不把内存 fixture 当 GUI/部署，不改旧版本验收数字 |
 | G push / tag / GitHub Release（已授权，待实施） | 所有者已授权隔离环境中完成实施与发布；新版本目标 0.10.0，不覆盖既有版本；远端 refs/下载摘要核对 | 不 npm publish、不为本机安装，不改当前 Profile/SDK、不清理或重启；真实 GUI 现场安装另行决定 |
 
