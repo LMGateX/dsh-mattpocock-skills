@@ -48,6 +48,20 @@ function snapshot() {
     resources: [], capabilities: [{ key: 'native-admission', status: 'unsupported', reason: 'native seam absent' }], health: [],
   }
 }
+function nativeExecution(over = {}) {
+  return { executionId: 'child', sessionId: 'child', parentSessionId: 'parent', instrumentInstanceId: identity.instrumentInstanceId,
+    provider: 'spawn', runId: 'run-1', headerCwd: '/trees/A', state: 'ended', outcome: 'completed',
+    observed: 'subagent/end: completed', startedAt: 1, endedAt: 2, recordedAt: 2, activity: 'idle',
+    lane: { workflowId: 'flow', ticketIds: ['A'], task: 'Build A', source: 'inferred' }, ...over }
+}
+function worktreeObservation(over = {}) {
+  return { observationId: 'obs-1', revision: 1, source: 'program', recordedAt: 1, creatorActivity: 'idle',
+    lane: { workflowId: 'flow', ticketIds: ['A'], task: null, source: 'inferred' },
+    nativeChildren: [{ sessionId: 'child', headerCwd: '/trees/A', relation: 'created-tree', source: 'observed' }],
+    value: { creatorSessionId: 'child', callId: 'call-1', rootCallId: 'call-1', turn: 1, step: 1, path: '/trees/A',
+      branch: 'worktree-A', baseCommit: 'a'.repeat(40), repositoryRoot: '/repo',
+      check: { state: 'unverified', checkedAt: null, diagnostic: null, facts: null }, business: { state: 'open' } }, ...over }
+}
 function resource() {
   return { resourceId: 'tree-A', controlWorkspaceId: 'workspace', ownerInstanceId: identity.instrumentInstanceId,
     identity: { path: '/controlled/tree-A', ownership: 'owned' }, status: 'retained', business: { status: 'awaiting follow-up' }, businessAuthorId: 'parent-agent',
@@ -95,7 +109,10 @@ test('current records and minimal protocol append independently without touching
   assert.match(result.text, /Skills, user agreements and task documents/)
   assert.match(result.text, /Register pending decisions when you judge them necessary/)
   assert.match(result.text, /mattpocock_record/); assert.match(result.text, /native subagent lifecycle observation/); assert.doesNotMatch(result.text, /mattpocock_execute/); assert.match(result.text, /mattpocock_window/)
-  assert.match(result.text, /strong ticket↔worktree binding entry/); assert.match(result.text, /native tree observation never becomes a strong binding/)
+  assert.match(result.text, /Only prepare a tree with the host's create_worktree when the task requires write isolation; read-only research\/review may share a stable checkout/)
+  assert.match(result.text, /Use the host's working_directory to enter or leave a directory; this instrument does not create or delete trees/)
+  assert.match(result.text, /A worktree observation lane is inferred from assignment\/binding at read time; cleaned\/notes are authored, and created-tree only proves that child created the tree/)
+  assert.doesNotMatch(result.text, /Let each lane create its own tree|mattpocock_delegate|strong ticket↔worktree binding entry/)
   assert.match(result.text, /explicit T reserve\/release\/reacquire/); assert.match(result.text, /T and S are this session's configured limits/)
   assert.match(result.text, /S is the host's live run status/)
   assert.match(result.text, /countKnown false means S\.used is a stated lower bound with the total unknown/)
@@ -116,31 +133,73 @@ test('current records and minimal protocol append independently without touching
   assert.equal(f.feed.cachedText(identity), result.text)
 })
 
-test('native execution facts are a current category with observed/inferred labels and a real history locator', async () => {
+test('native execution facts are a current category with inferred lanes and header cwd source limits', async () => {
   const f = fixture()
   let result = await f.feed.readForConsumption(identity)
   assert.doesNotMatch(result.text, /Native-observed executions/)
-  const row = { executionId: 'child', sessionId: 'child', parentSessionId: 'parent', instrumentInstanceId: identity.instrumentInstanceId,
-    provider: 'spawn', runId: 'run-1', initialCwd: '/trees/A', state: 'ended', outcome: 'completed',
-    observed: 'subagent/end: completed', startedAt: 1, endedAt: 2, recordedAt: 2, activity: 'idle',
-    lane: { workflowId: 'flow', ticketIds: ['A'], task: 'Build A', source: 'inferred' },
-    worktree: { path: '/trees/A', observationId: 'obs-1', source: 'observed' } }
-  f.current.nativeExecutions = [row]
+  f.current.nativeExecutions = [nativeExecution()]
   result = await f.feed.readForConsumption(identity)
   assert.match(result.text, /Native-observed executions: 1 current row\(s\)/)
-  assert.match(result.text, /worktree observed \/trees\/A/)
+  assert.match(result.text, /header cwd \/trees\/A \(source value, not proof of the effective initial directory\)/)
   assert.match(result.text, /lane inferred flow\/A/)
+  assert.match(result.text, /header cwd is a recorded source value, not proof of the effective initial directory/)
+  assert.doesNotMatch(result.text, /worktree observed|exact initial cwd match|worktree=observed|initial cwd match/)
   assert.match(result.text, /not strong bindings or task-completion proof/)
   assert.doesNotMatch(result.text, /completed task|task completed/i)
   const view = JSON.parse(result.text.slice(result.text.indexOf(String.fromCharCode(10, 123)) + 1))
   assert.equal(view.nativeExecutions.total, 1)
   assert.equal(view.nativeExecutions.query.query.kind, 'native-execution')
   assert.equal(view.nativeExecutions.rows[0].outcome, 'completed')
-  assert.equal(view.nativeExecutions.rows[0].worktree.source, 'observed')
+  assert.equal(view.nativeExecutions.rows[0].headerCwd, '/trees/A')
+  assert.equal(view.nativeExecutions.rows[0].worktree, undefined)
   assert.equal(view.nativeExecutions.rows[0].lane.source, 'inferred')
+  f.current.nativeExecutions = [nativeExecution({ headerCwd: null })]
+  result = await f.feed.readForConsumption(identity)
+  assert.doesNotMatch(result.text, /header cwd \/trees\/A/)
+  assert.doesNotMatch(result.text, /header cwd null/)
   f.current.nativeExecutions = []
   result = await f.feed.readForConsumption(identity)
   assert.doesNotMatch(result.text, /Native-observed executions/)
+})
+test('delegate guidance and ticket rejection appear only for trusted delegateRegistered true', async () => {
+  const f = fixture()
+  let result = await f.feed.readForConsumption(identity)
+  assert.doesNotMatch(result.text, /mattpocock_delegate/)
+  assert.match(result.text, /mattpocock_window reserve rejects an unregistered ticket; the rejection names it\./)
+  f.current.delegateRegistered = true
+  result = await f.feed.readForConsumption(identity)
+  assert.match(result.text, /Opt-in mattpocock_delegate is binding-first creation only/)
+  assert.match(result.text, /not the default dispatch path/)
+  assert.match(result.text, /accepted or its result is uncertain, do not create another child/)
+  assert.match(result.text, /keep the existing child/)
+  assert.match(result.text, /explicit mattpocock_assign/)
+  assert.match(result.text, /mattpocock_window reserve rejects an unregistered ticket, and an opted-in mattpocock_delegate does too; the rejection names it\./)
+  f.current.delegateRegistered = false
+  result = await f.feed.readForConsumption(identity)
+  assert.doesNotMatch(result.text, /mattpocock_delegate/)
+})
+test('management OFF keeps recorded facts and source limits but adds no new managed action guidance', async () => {
+  const f = fixture()
+  f.current.nativeExecutions = [nativeExecution()]
+  f.current.worktreeObservations = [worktreeObservation()]
+  f.current.policy.extensionEnabled = false
+  f.current.policy.configurationRevision++
+  const result = await f.feed.readForConsumption(identity)
+  const text = result.text
+  assert.match(text, /Management feature is OFF/)
+  assert.match(text, /Native-observed executions: 1 current row\(s\)/)
+  assert.match(text, /A worktree observation lane is inferred from assignment\/binding at read time; cleaned\/notes are authored, and created-tree only proves that child created the tree/)
+  assert.match(text, /A tree you detached but did not clean up still needs a disposition\./)
+  assert.doesNotMatch(text, /Only prepare a tree with the host's create_worktree/)
+  assert.doesNotMatch(text, /Ordinary lanes use native subagent/)
+  assert.doesNotMatch(text, /Mark an observed tree cleaned/)
+  assert.doesNotMatch(text, /mattpocock_delegate/)
+  const view = JSON.parse(text.slice(text.indexOf(String.fromCharCode(10, 123)) + 1))
+  assert.equal(view.records.tickets.total, 1)
+  assert.equal(view.nativeExecutions.total, 1)
+  assert.equal(view.nativeExecutions.rows[0].headerCwd, '/trees/A')
+  assert.equal(view.worktreeObservations.total, 1)
+  assert.equal(view.worktreeObservations.rows[0].lane.source, 'inferred')
 })
 test('synchronous producer commit fence reads latest durable state without waiting for running child', async () => {
   const f = fixture()
@@ -194,9 +253,9 @@ test('already failed and newly failing commits return unknown then permit latest
   const reading = f.feed.readForConsumption(identity); failing.reject('failure')
   assert.equal((await reading).reason, 'durability-commit-failed')
 })
-test('reader failure keeps the last verified snapshot as explicitly stale text, never as current', async () => {
-  let fail = false
-  const f = fixture({ readSnapshot: async () => { if (fail) throw Error('backend down'); return snapshot() } })
+test('reader failure keeps one stale body, then recovery carries new obligations and current OFF policy', async () => {
+  let fail = false, current = snapshot()
+  const f = fixture({ readSnapshot: async () => { if (fail) throw Error('backend down'); return current } })
   const first = await f.feed.readForConsumption(identity)
   assert.equal(first.freshness, 'current'); assert.equal(f.feed.prepared(identity).fresh, true)
   fail = true
@@ -209,10 +268,29 @@ test('reader failure keeps the last verified snapshot as explicitly stale text, 
   assert.equal(f.feed.cachedText(identity), null, 'stale text is not replayed as verified cache')
   const repeated = await f.feed.readForConsumption(identity)
   assert.equal(repeated.text, result.text, 'repeated failures do not stack stale headers')
+  // A new obligation created while refresh fails is not smuggled into the old stale body.
+  current.records.decisions.push({ workflowId: 'flow', decisionId: 'new-obligation', revision: 1,
+    value: { question: 'New obligation', status: 'awaiting response', pending: true }, history: [], view: { read: false, hidden: false } })
+  const stillStale = await f.feed.readForConsumption(identity)
+  assert.equal(stillStale.text, result.text, 'new facts wait for a successful current read')
+  assert.doesNotMatch(stillStale.text, /new-obligation/)
   fail = false
   const recovered = await f.feed.readForConsumption(identity)
   assert.equal(recovered.freshness, 'current'); assert.notEqual(recovered.text, null)
+  assert.match(recovered.text, /new-obligation/)
   assert.doesNotMatch(recovered.text, /state stale/)
+  // A later stale period reuses the newest verified body, not the old one.
+  fail = true
+  const staleAgain = await f.feed.readForConsumption(identity)
+  assert.match(staleAgain.text, /^Instrument state stale:/)
+  assert.match(staleAgain.text, /new-obligation/)
+  // Management OFF replaces the old protocol on recovery, keeps recorded facts, adds no guidance.
+  fail = false; current.policy.extensionEnabled = false; current.policy.configurationRevision++
+  const off = await f.feed.readForConsumption(identity)
+  assert.equal(off.freshness, 'current')
+  assert.match(off.text, /Management feature is OFF/)
+  assert.doesNotMatch(off.text, /Windows explicitly enabled|Only prepare a tree with the host's create_worktree|Mark an observed tree cleaned/)
+  assert.match(off.text, /new-obligation/)
 })
 test('a change past the briefed array head is detected, not served as unchanged', async () => {
   const f = fixture()
@@ -377,14 +455,22 @@ test('both gates report their own off state in the injected protocol', async () 
   const workspaceText = (await workspaceClosed.feed.readForConsumption(identity)).text
   assert.match(workspaceText, /Management feature is OFF for this workspace/)
   assert.doesNotMatch(workspaceText, /Management feature is OFF: existing records/)
+  assert.doesNotMatch(workspaceText, /Only prepare a tree with the host's create_worktree/)
+  assert.doesNotMatch(workspaceText, /Mark an observed tree cleaned/)
+  assert.match(workspaceText, /worktree observation lane is inferred/)
 
   const globalClosed = fixture()
   globalClosed.current = { ...globalClosed.current, policy: { ...globalClosed.current.policy, extensionEnabled: false, workspaceEnabled: true } }
   const globalText = (await globalClosed.feed.readForConsumption(identity)).text
   assert.match(globalText, /Management feature is OFF: existing records/)
   assert.doesNotMatch(globalText, /OFF for this workspace/)
+  assert.doesNotMatch(globalText, /Only prepare a tree with the host's create_worktree/)
+  assert.doesNotMatch(globalText, /Mark an observed tree cleaned/)
+  assert.match(globalText, /A worktree observation lane is inferred/)
 
   const gateUnknown = fixture()
   const unknownText = (await gateUnknown.feed.readForConsumption(identity)).text
   assert.doesNotMatch(unknownText, /Management feature is OFF/)
+  assert.match(unknownText, /Only prepare a tree with the host's create_worktree when the task requires write isolation/)
+  assert.match(unknownText, /Mark an observed tree cleaned/)
 })

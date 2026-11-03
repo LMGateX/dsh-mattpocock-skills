@@ -634,28 +634,33 @@ test('mounted windows show reference overage and signed gap while countKnown fal
 })
 
 
-test('native execution facts and worktree nativeChildren render observed/inferred labels, never completion or usage claims', async t => {
+test('native execution and created-tree observations show inferred lanes and header cwd limits, never completion or usage claims', async t => {
   const windows = { instance, capability: 'cooperative', status: 'ready', reason: null, runtimeKnowledge: { runtimeId: 'native-one', known: true, reason: null },
     T: { used: 0, capacity: null, available: null, overcommitted: false },
-    S: { used: 1, capacity: null, available: null, overcommitted: false, countKnown: true, byState: { running: 1 } } }
-  const nativeExecutions = [{ executionId: 'child', sessionId: 'child', parentSessionId: 'root', instrumentInstanceId: 'i-one',
-    provider: 'spawn', runId: 'run-1', initialCwd: '/trees/A', state: 'ended', outcome: 'completed',
-    observed: 'subagent/end: completed', startedAt: 1, endedAt: 2, recordedAt: 2, activity: 'idle',
-    lane: { workflowId: 'flow', ticketIds: ['A'], task: null, source: 'inferred' },
-    worktree: { path: '/trees/A', observationId: 'obs-1', source: 'observed' } }]
+    S: { used: 2, capacity: null, available: null, overcommitted: false, countKnown: true, byState: { running: 2 } } }
+  const nativeExecutions = [
+    { executionId: 'child', sessionId: 'child', parentSessionId: 'root', instrumentInstanceId: 'i-one',
+      provider: 'spawn', runId: 'run-1', headerCwd: '/trees/A', state: 'ended', outcome: 'completed',
+      observed: 'subagent/end: completed', startedAt: 1, endedAt: 2, recordedAt: 2, activity: 'idle',
+      lane: { workflowId: 'flow', ticketIds: ['A'], task: null, source: 'inferred' } },
+    { executionId: 'no-header', sessionId: 'no-header', parentSessionId: 'root', instrumentInstanceId: 'i-one',
+      provider: 'spawn', runId: 'run-2', headerCwd: null, state: 'running', outcome: null,
+      observed: 'subagent/start', startedAt: 3, endedAt: null, recordedAt: 3, activity: 'running', lane: null }]
   const projected = client.WindowProjection({ view: snapshot('A', { windows, nativeExecutions }) })
   const text = JSON.stringify(projected)
-  assert.match(text, /原生执行事实 1 行（native-observed；worktree=observed，lane=inferred；不是任务完成证明）/)
-  assert.match(text, /工作树（observed）\/trees\/A/)
+  assert.match(text, /原生执行事实 2 行（native-observed；lane=inferred；header cwd 是来源值，不证明实际初始目录；不是任务完成证明）/)
+  assert.match(text, /header cwd（来源值，不证明实际初始目录）\/trees\/A/)
   assert.match(text, /lane（inferred）flow\/A/)
   assert.match(text, /结局 completed/)
+  assert.doesNotMatch(text, /工作树（observed）|worktree observed|worktree=observed|exact initial cwd match/)
   assert.doesNotMatch(text, /已完成任务/)
 
   const nativeChildren = [
-    { sessionId: 'creator', initialCwd: '/trees/A', relation: 'created-tree', source: 'observed' },
-    { sessionId: 'sibling', initialCwd: '/trees/A', relation: 'initial-cwd', source: 'observed' },
+    { sessionId: 'creator', headerCwd: '/trees/A', relation: 'created-tree', source: 'observed' },
+    { sessionId: 'unknown-header', headerCwd: null, relation: 'created-tree', source: 'observed' },
   ]
-  const observation = { observationId: 'obs-1', revision: 1, source: 'program', recordedAt: 1, creatorActivity: 'idle', lane: null,
+  const observation = { observationId: 'obs-1', revision: 1, source: 'program', recordedAt: 1, creatorActivity: 'idle',
+    lane: { workflowId: 'flow', ticketIds: ['A'], task: null, source: 'inferred' },
     nativeChildren,
     value: { creatorSessionId: 'creator', callId: 'call-1', rootCallId: 'call-1', turn: 1, step: 1, path: '/trees/A',
       branch: 'worktree-A', baseCommit: 'a'.repeat(40), repositoryRoot: '/repo',
@@ -663,15 +668,29 @@ test('native execution facts and worktree nativeChildren render observed/inferre
   const view = snapshot('A', { worktreeObservations: [observation] })
   const panel = client.WorktreeObservationsPanel({ view, remote: null, refresh: async () => {} })
   const panelText = JSON.stringify(panel)
-  assert.match(panelText, /原生子会话关联 2 条（observed）/)
+  assert.match(panelText, /原生子会话关联 2 条（created-tree；observed）/)
+  assert.doesNotMatch(panelText, /初始 cwd|initial-cwd/)
   const editor = client.WorktreeObservationEditor({ sessionId: 'A', row: observation, remote: null, refresh: async () => {} })
   const editorText = JSON.stringify(editor)
-  assert.match(editorText, /原生子会话关联（observed；不是强绑定，也不表示目录正在被使用）/)
+  assert.match(editorText, /原生子会话关联（created-tree；observed；只证明创建，不是强绑定，也不表示目录正在被使用）/)
+  assert.match(editorText, /lane（inferred）flow · 票 A/)
   assert.match(editorText, /创建此树（created-tree）/)
-  assert.match(editorText, /初始 cwd 相同（initial-cwd）/)
-  assert.match(editorText, /creator.*\/trees\/A/)
-  assert.match(editorText, /sibling.*\/trees\/A/)
+  assert.match(editorText, /creator.*header cwd \/trees\/A（来源值，不证明实际初始目录）/)
+  assert.match(editorText, /unknown-header.*header cwd 未知/)
+  assert.doesNotMatch(editorText, /初始 cwd|initial-cwd/)
   assert.doesNotMatch(editorText, /正在被使用。/)
+
+  const empty = { ...observation, observationId: 'obs-empty', lane: null, nativeChildren: [] }
+  const emptyEditor = JSON.stringify(client.WorktreeObservationEditor({ sessionId: 'A', row: empty, remote: null, refresh: async () => {} }))
+  assert.match(emptyEditor, /没有可观测的 created-tree 创建者关联；空关联不等于没人使用该目录。/)
+  assert.doesNotMatch(emptyEditor, /初始 cwd|initial-cwd/)
+
+  const invalidRelation = snapshot('A', { worktreeObservations: [{ ...observation,
+    nativeChildren: [{ sessionId: 'sibling', headerCwd: '/trees/A', relation: 'initial-cwd', source: 'observed' }] }] })
+  assert.match(JSON.stringify(client.WorktreeObservationsPanel({ view: invalidRelation, remote: null, refresh: async () => {} })), /工作树观测未知：原生子会话关联来源未知/)
+  const invalidLane = snapshot('A', { worktreeObservations: [{ ...observation,
+    lane: { workflowId: 'flow', ticketIds: ['A'], task: null, source: 'observed' } }] })
+  assert.match(JSON.stringify(client.WorktreeObservationsPanel({ view: invalidLane, remote: null, refresh: async () => {} })), /工作树观测未知：工作树观测 lane 来源未知/)
 })
 
 test('binding aggregate failure stays unknown in mounted header and late A write cannot refresh or report success under B', async t => {

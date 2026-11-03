@@ -14,8 +14,12 @@ export interface NativeExecutionFact {
   readonly provider: string | null
   /** Host run identity of the latest observed start; cleared by neither end nor disposal. */
   readonly runId: string | null
-  /** First readable child header cwd; immutable after the first observed value. */
-  readonly initialCwd: string | null
+  /**
+   * First readable child header cwd, kept only as a header source value. It does not prove
+   * the child's actual initial directory, current directory or use of any tree; null means no
+   * readable header value, not "no directory". Immutable after the first observed value.
+   */
+  readonly headerCwd: string | null
   readonly state: NativeExecutionState
   /** Host-published stopReason; null unless a `subagent/end` published one. */
   readonly outcome: string | null
@@ -35,22 +39,17 @@ export interface NativeExecutionLane {
   /** Associations resolved from assignment/binding are inferred, never a strong binding. */
   readonly source: 'inferred'
 }
-export interface NativeExecutionWorktree {
-  readonly path: string
-  readonly observationId: string
-  /** Exact initialCwd/path match with a current create_worktree observation. */
-  readonly source: 'observed'
-}
 export interface NativeExecutionView extends NativeExecutionFact {
   readonly activity: NativeExecutionActivity
   readonly lane: NativeExecutionLane | null
-  readonly worktree: NativeExecutionWorktree | null
 }
 /** One read-time association shown on a worktree observation row; never a usage claim. */
 export interface NativeExecutionChild {
   readonly sessionId: string
-  readonly initialCwd: string
-  readonly relation: 'created-tree' | 'initial-cwd'
+  /** The creator's stored header value; null is retained, not treated as a missing row. */
+  readonly headerCwd: string | null
+  /** Only an observed `create_worktree` creator relation; no path-equality relation exists. */
+  readonly relation: 'created-tree'
   readonly source: 'observed'
 }
 
@@ -78,10 +77,21 @@ function optionalRevision(value: unknown, where: string): number | null {
   return value === null ? null : revision(value, where)
 }
 
-/** Strict storage parser; malformed rows are rejected, never silently reset. */
+/**
+ * Strict storage parser; malformed rows are rejected, never silently reset. `initialCwd` is
+ * accepted only as the legacy spelling of the same header value. A row that carries both keys
+ * is accepted only when the values agree; conflicting values are rejected rather than choosing
+ * one silently. Every read result exposes only `headerCwd`, and every new write stores only
+ * `headerCwd`.
+ */
 export function parseNativeExecutionFact(value: unknown): NativeExecutionFact {
   const r = record(value, 'native execution fact', ['executionId', 'sessionId', 'parentSessionId', 'instrumentInstanceId',
-    'provider', 'runId', 'initialCwd', 'state', 'outcome', 'observed', 'startedAt', 'endedAt', 'recordedAt'])
+    'provider', 'runId', 'headerCwd', 'initialCwd', 'state', 'outcome', 'observed', 'startedAt', 'endedAt', 'recordedAt'])
+  const hasHeader = Object.hasOwn(r, 'headerCwd'), hasLegacy = Object.hasOwn(r, 'initialCwd')
+  if (!hasHeader && !hasLegacy) invalid('native execution fact requires headerCwd (legacy initialCwd is accepted only as a read-compatible input)')
+  const headerCwd = hasHeader ? optionalPath(r.headerCwd, 'native headerCwd') : optionalPath(r.initialCwd, 'legacy native initialCwd')
+  if (hasHeader && hasLegacy && headerCwd !== optionalPath(r.initialCwd, 'legacy native initialCwd'))
+    invalid('native execution fact has conflicting headerCwd and legacy initialCwd values')
   const executionId = id(r.executionId, 'native executionId'), sessionId = id(r.sessionId, 'native sessionId')
   if (executionId !== sessionId) invalid('native execution identity must equal its child session')
   if (!STATES.includes(r.state as NativeExecutionState)) invalid('unknown native execution state')
@@ -92,8 +102,8 @@ export function parseNativeExecutionFact(value: unknown): NativeExecutionFact {
   return freeze({ executionId, sessionId, parentSessionId: id(r.parentSessionId, 'native parentSessionId'),
     instrumentInstanceId: id(r.instrumentInstanceId, 'native instrumentInstanceId'),
     provider: optionalText(r.provider, 'native provider'), runId: optionalText(r.runId, 'native runId'),
-    initialCwd: optionalPath(r.initialCwd, 'native initialCwd'), state, outcome,
-    observed: boundedText(r.observed, 'native observed'), startedAt: revision(r.startedAt, 'native startedAt'),
+    headerCwd,
+    state, outcome, observed: boundedText(r.observed, 'native observed'), startedAt: revision(r.startedAt, 'native startedAt'),
     endedAt, recordedAt: revision(r.recordedAt, 'native recordedAt') })
 }
 
@@ -101,19 +111,19 @@ export interface NativeExecutionEventBase {
   readonly sessionId: string
   readonly parentSessionId: string
   readonly instrumentInstanceId: string
-  /** Readable child header cwd, or null when the host supplied none. */
-  readonly initialCwd: string | null
+  /** Readable child header cwd, or null when the host supplied none. Only a header value. */
+  readonly headerCwd: string | null
 }
 export type NativeExecutionEvent =
   | (NativeExecutionEventBase & { readonly kind: 'created'; readonly createdAt: number | null })
   | (NativeExecutionEventBase & { readonly kind: 'start'; readonly provider: string | null; readonly runId: string | null })
-  | (NativeExecutionEventBase & { readonly kind: 'end'; readonly outcome: string })
+  | (NativeExecutionEventBase & { readonly kind: 'end'; readonly outcome: string; readonly runId: string | null })
   | (NativeExecutionEventBase & { readonly kind: 'disposed' })
 
 function sameFact(a: NativeExecutionFact, b: NativeExecutionFact): boolean {
   return a.executionId === b.executionId && a.sessionId === b.sessionId && a.parentSessionId === b.parentSessionId
     && a.instrumentInstanceId === b.instrumentInstanceId && a.provider === b.provider && a.runId === b.runId
-    && a.initialCwd === b.initialCwd && a.state === b.state && a.outcome === b.outcome
+    && a.headerCwd === b.headerCwd && a.state === b.state && a.outcome === b.outcome
     && a.observed === b.observed && a.startedAt === b.startedAt && a.endedAt === b.endedAt
 }
 function committed(existing: NativeExecutionFact | undefined, candidate: NativeExecutionFact, at: number): NativeExecutionFact | null {
@@ -126,40 +136,60 @@ function committed(existing: NativeExecutionFact | undefined, candidate: NativeE
  * Pure event fold for one native child session. Returns null when the event is equivalent to
  * the stored row, so repeated lifecycle edges never add a document revision. `agent/status`
  * has no event here: activity is read from the live Agent and never stored.
+ *
+ * An end edge is fenced by host run identity. When both the stored row and the event name a
+ * run they must agree; when the event omits the run while the row belongs to one, the outcome
+ * cannot be attributed and is rejected instead of guessed from arrival order. A row that never
+ * learned a run id may learn it from the end edge. Repeated end of the same run/outcome is
+ * equivalent and writes no revision.
  */
 export function applyNativeExecutionEvent(existing: NativeExecutionFact | undefined, event: NativeExecutionEvent, at: number): NativeExecutionFact | null {
   const timestamp = revision(at, 'native recordedAt')
   if (existing !== undefined && (existing.parentSessionId !== event.parentSessionId || existing.instrumentInstanceId !== event.instrumentInstanceId))
     throw new ControlsError('association-conflict', 'native execution row belongs to another parent or instrument instance')
-  const initialCwd = existing?.initialCwd ?? event.initialCwd ?? null
+  const headerCwd = existing?.headerCwd ?? event.headerCwd ?? null
   const base: NativeExecutionFact = existing ?? { executionId: event.sessionId, sessionId: event.sessionId,
     parentSessionId: event.parentSessionId, instrumentInstanceId: event.instrumentInstanceId, provider: null, runId: null,
-    initialCwd: null, state: 'created', outcome: null, observed: 'agent/created', startedAt: timestamp, endedAt: null, recordedAt: timestamp }
+    headerCwd: null, state: 'created', outcome: null, observed: 'agent/created', startedAt: timestamp, endedAt: null, recordedAt: timestamp }
   let candidate: NativeExecutionFact
   switch (event.kind) {
     case 'created':
       // A creation edge fills an absent row. On an existing row it may fill the immutable
-      // initial cwd but never rewrites a recorded state: a wake is proven by its start edge.
+      // header cwd but never rewrites a recorded state: a wake is proven by its start edge.
       candidate = existing === undefined
-        ? { ...base, initialCwd, state: 'created', outcome: null, endedAt: null, observed: 'agent/created', startedAt: event.createdAt ?? timestamp }
-        : { ...base, initialCwd }
+        ? { ...base, headerCwd, state: 'created', outcome: null, endedAt: null, observed: 'agent/created', startedAt: event.createdAt ?? timestamp }
+        : { ...base, headerCwd }
       break
     case 'start': {
+      // A new activation with no host run identity cannot be told apart from a duplicate start or
+      // from an older run. Never inherit the previous run id: that would let the old end pass the
+      // run fence and overwrite the new activation. Preserve the current row and report a gap.
+      if (event.runId === null && base.runId !== null) {
+        if (base.state === 'running') return null
+        throw new ControlsError('association-conflict', 'native start has no host run identity while the stored row belongs to a specific run; new activation is not attributable')
+      }
       const newActivation = base.state !== 'running' || base.runId !== event.runId
-      candidate = { ...base, initialCwd, state: 'running', provider: event.provider ?? base.provider,
-        runId: event.runId ?? base.runId, outcome: null, endedAt: null, observed: 'subagent/start',
+      candidate = { ...base, headerCwd, state: 'running', provider: event.provider ?? base.provider,
+        runId: newActivation ? event.runId ?? null : base.runId, outcome: null, endedAt: null, observed: 'subagent/start',
         startedAt: newActivation ? timestamp : base.startedAt }
       break
     }
     case 'end': {
+      const runId = event.runId ?? null
+      if (base.runId !== null && runId !== null && base.runId !== runId)
+        throw new ControlsError('association-conflict', 'native execution end belongs to another host run than the stored row')
+      if (base.runId !== null && runId === null)
+        throw new ControlsError('association-conflict', 'native execution end has no host run identity while the stored row belongs to a specific run; outcome coverage is unknown')
+      if (base.state === 'ended' && base.outcome !== event.outcome)
+        throw new ControlsError('association-conflict', 'native execution already published a different outcome for this run; later end coverage is unknown')
       const observed = 'subagent/end: ' + event.outcome
       const duplicate = base.state === 'ended' && base.outcome === event.outcome && base.observed === observed
-      candidate = { ...base, initialCwd, state: 'ended', outcome: event.outcome,
+      candidate = { ...base, headerCwd, state: 'ended', outcome: event.outcome, runId: base.runId ?? runId,
         endedAt: duplicate ? base.endedAt : timestamp, observed }
       break
     }
     default:
-      candidate = base.state === 'ended' ? { ...base, initialCwd } : { ...base, initialCwd, state: 'disposed', outcome: null, endedAt: null, observed: 'agent/disposed' }
+      candidate = base.state === 'ended' ? { ...base, headerCwd } : { ...base, headerCwd, state: 'disposed', outcome: null, endedAt: null, observed: 'agent/disposed' }
       break
   }
   return committed(existing, candidate, timestamp)
@@ -191,48 +221,24 @@ export function nativeExecutionLane(assignment: NativeExecutionAssignmentSource 
     task: binding?.task ?? null, source: 'inferred' })
 }
 
-export interface NativeExecutionObservationSource {
-  readonly path: string
-  readonly observationId: string
-  readonly recordedAt: number
-}
-/** A worktree association requires an exact initialCwd/path match; no prefix or link inference. */
-export function nativeExecutionWorktree(fact: NativeExecutionFact, observations: readonly NativeExecutionObservationSource[]): NativeExecutionWorktree | null {
-  if (fact.initialCwd === null) return null
-  let latest: NativeExecutionObservationSource | undefined
-  for (const observation of observations) {
-    if (observation.path !== fact.initialCwd) continue
-    if (latest === undefined || observation.recordedAt > latest.recordedAt
-      || observation.recordedAt === latest.recordedAt && observation.observationId > latest.observationId) latest = observation
-  }
-  return latest === undefined ? null : freeze({ path: latest.path, observationId: latest.observationId, source: 'observed' })
-}
-
-export interface NativeExecutionObservationIdentity {
-  readonly path: string
-  readonly creatorSessionId: string
-}
 /**
- * Read-time child association for one observed tree. `created-tree` only says that child
- * created the tree; `initial-cwd` only says the child started in that exact path. Neither
- * claims the directory is in use.
+ * Read-time child association for one observed tree. Only the observed tree creator yields a
+ * `created-tree` row; the creator's header cwd is carried as source data and may be null. No
+ * path-equality relation is produced: a matching header path does not prove the child started
+ * in, or uses, that tree.
  */
-export function nativeChildrenForObservation(observation: NativeExecutionObservationIdentity,
+export function nativeChildrenForObservation(creatorSessionId: string,
   facts: readonly NativeExecutionFact[]): readonly NativeExecutionChild[] {
   const rows: NativeExecutionChild[] = []
   for (const fact of facts) {
-    if (fact.initialCwd === null) continue
-    const relation = fact.sessionId === observation.creatorSessionId ? 'created-tree'
-      : fact.initialCwd === observation.path ? 'initial-cwd' : null
-    if (relation === null) continue
-    rows.push(freeze({ sessionId: fact.sessionId, initialCwd: fact.initialCwd, relation, source: 'observed' }))
+    if (fact.sessionId !== creatorSessionId) continue
+    rows.push(freeze({ sessionId: fact.sessionId, headerCwd: fact.headerCwd, relation: 'created-tree', source: 'observed' }))
   }
   return freeze(rows.sort((a, b) => a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0))
 }
 
 export function projectNativeExecution(fact: NativeExecutionFact, assignment: NativeExecutionAssignmentSource | undefined,
-  binding: NativeExecutionBindingSource | undefined, observations: readonly NativeExecutionObservationSource[],
+  binding: NativeExecutionBindingSource | undefined,
   agent: { readonly status?: string } | undefined): NativeExecutionView {
-  return freeze({ ...fact, activity: nativeExecutionActivity(agent), lane: nativeExecutionLane(assignment, binding),
-    worktree: nativeExecutionWorktree(fact, observations) })
+  return freeze({ ...fact, activity: nativeExecutionActivity(agent), lane: nativeExecutionLane(assignment, binding) })
 }

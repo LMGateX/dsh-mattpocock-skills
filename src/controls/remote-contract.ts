@@ -63,6 +63,8 @@ export interface RuntimeSnapshot {
   readonly nativeStops?: readonly NativeStopRow[]
   /** Latest native-observed execution facts for the owner coordinator; never sibling data for an assigned child. */
   readonly nativeExecutions?: readonly import('./native-executions.js').NativeExecutionView[]
+  /** Trusted Host launch configuration: whether the optional delegate tool was registered. */
+  readonly delegateRegistered?: boolean
   readonly capabilities: readonly { readonly key: string; readonly status: string; readonly reason: string | null }[]
   readonly health: readonly { readonly scope: string; readonly status: string; readonly reason: string | null }[]
 }

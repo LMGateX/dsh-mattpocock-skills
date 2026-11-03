@@ -39,6 +39,7 @@ export interface WorktreeObservationCheck {
 }
 export interface WorktreeObservationValue extends WorktreeObservationInput {
   readonly check: WorktreeObservationCheck
+  /** Authored business state. `cleaned` and notes are author declarations, not proof of physical cleanup. */
   readonly business: { readonly state: 'open' | 'cleaned'; readonly notes?: string }
 }
 export interface WorktreeObservationVersion {
@@ -69,11 +70,13 @@ export interface WorktreeObservationCurrent {
   readonly source: WorktreeObservationVersion['source']
   readonly recordedAt: number
 }
-/** Lane association resolved at read time from durable lane bindings; null when no binding names the creator. */
+/** Lane association inferred at read time from assignment/binding; null when neither names the creator.
+ * It never creates a binding, grants scope or proves directory use. */
 export interface WorktreeObservationLane {
   readonly workflowId: string | null
   readonly ticketIds: readonly string[]
   readonly task: string | null
+  readonly source: 'inferred'
 }
 /** One current row as projected to the model/GUI: durable facts plus read-time live facts. */
 export interface WorktreeObservationView extends WorktreeObservationCurrent {

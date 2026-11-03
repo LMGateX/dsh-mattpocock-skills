@@ -425,10 +425,11 @@ export function nativeStopText(row: NativeStopRow): string {
 /** One native execution row; observed/inferred labels never become completion proof. */
 export function nativeExecutionText(row: NativeExecutionView): string {
   const outcome = row.outcome === null ? '' : ' · 结局 ' + row.outcome
-  const worktree = row.worktree === null ? '' : ' · 工作树（observed）' + row.worktree.path
+  // The header is a recorded source value. It does not prove the effective initial directory.
+  const headerCwd = row.headerCwd === null ? '' : ' · header cwd（来源值，不证明实际初始目录）' + row.headerCwd
   const lane = row.lane === null ? '' : ' · lane（inferred）' + String(row.lane.workflowId ?? '无工作流')
     + (row.lane.ticketIds.length === 0 ? '' : '/' + row.lane.ticketIds.join(','))
-  return row.sessionId + ' · ' + row.state + outcome + ' · 活动 ' + row.activity + worktree + lane
+  return row.sessionId + ' · ' + row.state + outcome + ' · 活动 ' + row.activity + headerCwd + lane
 }
 export function windowSummary(windows: WindowSnapshot | null, health: ClientSessionSnapshot['health'] = []): readonly string[] {
   if (windows === null || health.some(row => row.scope === 'windows' && row.status === 'unknown')) return ['T 未知', 'S 未知']
@@ -463,7 +464,7 @@ export function WindowProjection(props: { readonly view: ClientSessionSnapshot }
     ...(executionHealth?.status === 'unknown' ? [diagnostic('原生执行事实未知：' + (executionHealth.reason ?? '宿主未返回该类别'))] : []),
     ...(executionHealth?.status === 'restricted' ? [diagnostic('原生执行事实受限：' + (executionHealth.reason ?? '仅协调者可读取'))] : []),
     ...(executions.length > 0 ? [h('div', { 'aria-label': '原生执行事实' },
-      diagnostic('原生执行事实 ' + executions.length + ' 行（native-observed；worktree=observed，lane=inferred；不是任务完成证明）'),
+      diagnostic('原生执行事实 ' + executions.length + ' 行（native-observed；lane=inferred；header cwd 是来源值，不证明实际初始目录；不是任务完成证明）'),
       executions.map(row => diagnostic(nativeExecutionText(row))))] : []),
     diagnostic(windowSummary(windows, props.view.health).join(' · ')), pretty(windows))
 }
@@ -720,8 +721,14 @@ function observationRows(view: ClientSessionSnapshot): readonly WorktreeObservat
     if (!Array.isArray(row.nativeChildren)) throw new Error('工作树观测的原生子会话关联未知')
     for (const child of row.nativeChildren) {
       const linked = object(child)
-      nonempty(linked.sessionId); nonempty(linked.initialCwd)
-      if (!['created-tree', 'initial-cwd'].includes(String(linked.relation)) || linked.source !== 'observed') throw new Error('原生子会话关联来源未知')
+      nonempty(linked.sessionId)
+      if (Object.hasOwn(linked, 'initialCwd')) throw new Error('原生子会话关联不再接受初始 cwd 字段')
+      if (linked.headerCwd !== null && (typeof linked.headerCwd !== 'string' || !linked.headerCwd.trim())) throw new Error('原生子会话 header cwd 未知')
+      if (linked.relation !== 'created-tree' || linked.source !== 'observed') throw new Error('原生子会话关联来源未知')
+    }
+    if (row.lane !== null && row.lane !== undefined) {
+      const lane = object(row.lane)
+      if (lane.source !== 'inferred') throw new Error('工作树观测 lane 来源未知')
     }
     if (Object.hasOwn(row, 'history')) throw new Error('当前工作树观测不能夹带完整历史')
     return value
@@ -738,7 +745,7 @@ export function WorktreeObservationsPanel(props: { readonly view: ClientSessionS
   return h('section', { 'aria-label': '工作树观测仪器' }, h('h4', null, '原生建树观测（create_worktree）'),
     diagnostic('只登记经 DSH 工具管线成功执行的原生 create_worktree；创建者活动性是读取时的宿主事实，树是否存在以受权 Git 核验为准。不记录、不推测目录被谁使用，也不创建或删除任何树。'),
     rows === null ? diagnostic('工作树观测数量未知：' + (reason ?? '宿主未返回观测投影')) : h('div', null,
-      diagnostic('当前观测 ' + rows.length + (linked === 0 ? '' : ' · 原生子会话关联 ' + linked + ' 条（observed）') + '（已登记清理的行退出当前视图，记录与历史保留）'),
+      diagnostic('当前观测 ' + rows.length + (linked === 0 ? '' : ' · 原生子会话关联 ' + linked + ' 条（created-tree；observed）') + '（已登记清理的行退出当前视图，记录与历史保留）'),
       rows.map(row => h(WorktreeObservationEditor, { key: props.view.sessionId + ':' + row.observationId, sessionId: props.view.sessionId, row, remote: props.remote, refresh: props.refresh }))))
 }
 export function WorktreeObservationEditor(props: { readonly sessionId: string; readonly row: WorktreeObservationView; readonly remote: ControlsRemote; readonly refresh: () => Promise<void> }): ReactElement {
@@ -775,11 +782,11 @@ export function WorktreeObservationEditor(props: { readonly sessionId: string; r
     diagnostic('创建者 ' + props.row.value.creatorSessionId + '（当前 ' + props.row.creatorActivity + '） · 观测来源 ' + props.row.source + ' · 调用 ' + props.row.value.callId),
     diagnostic('核验时间 ' + (check.checkedAt ?? '尚未核验') + ' · Git 身份 ' + (check.facts === null ? '未知（未留下已证事实）' : check.facts.gitCommonDir + ' · ' + (check.facts.branchRef ?? '无本地分支') + ' @ ' + (check.facts.branchOid ?? '未知'))),
     check.diagnostic === null ? null : diagnostic('核验失败原因（未知即未知）：' + check.diagnostic),
-    props.row.lane === null ? diagnostic('票信息未知：该创建者没有可核对的 lane 绑定。') : diagnostic('lane ' + (props.row.lane.workflowId ?? '无工作流') + ' · 票 ' + (props.row.lane.ticketIds.join(', ') || '无') + (props.row.lane.task === null ? '' : ' · ' + props.row.lane.task)),
-    h('div', { 'aria-label': '原生子会话关联' }, diagnostic('原生子会话关联（observed；不是强绑定，也不表示目录正在被使用）'),
-      props.row.nativeChildren.length === 0 ? diagnostic('没有可观测的创建者或初始 cwd 关联；空关联不等于没人使用该目录。')
-        : props.row.nativeChildren.map(child => diagnostic(child.sessionId + ' · '
-          + (child.relation === 'created-tree' ? '创建此树（created-tree）' : '初始 cwd 相同（initial-cwd）') + ' · ' + child.initialCwd))),
+    props.row.lane === null ? diagnostic('票信息未知：该创建者没有可核对的 lane 绑定。') : diagnostic('lane（inferred）' + (props.row.lane.workflowId ?? '无工作流') + ' · 票 ' + (props.row.lane.ticketIds.join(', ') || '无') + (props.row.lane.task === null ? '' : ' · ' + props.row.lane.task)),
+    h('div', { 'aria-label': '原生子会话关联' }, diagnostic('原生子会话关联（created-tree；observed；只证明创建，不是强绑定，也不表示目录正在被使用）'),
+      props.row.nativeChildren.length === 0 ? diagnostic('没有可观测的 created-tree 创建者关联；空关联不等于没人使用该目录。')
+        : props.row.nativeChildren.map(child => diagnostic(child.sessionId + ' · 创建此树（created-tree） · header cwd '
+          + (child.headerCwd === null ? '未知' : child.headerCwd + '（来源值，不证明实际初始目录）')))),
     h('label', null, '业务状态 ', h('select', { disabled: busy, value: state, onChange: (event: ChangeEvent<HTMLSelectElement>) => { const next = event.target.value; if (next === 'open' || next === 'cleaned') setState(next) } },
       h('option', { value: 'open' }, '未处理'), h('option', { value: 'cleaned' }, '登记已处理'))),
     h('label', null, '业务说明 ', h('textarea', { disabled: busy, value: notes, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setNotes(event.target.value) })),

@@ -2,9 +2,9 @@
 
 ## 当前提供什么
 
-协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.8.0：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实与读取时 observed/inferred 关联，以及 Host/Client 接口均已实现。0.8.0 的默认模型面是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。C 阶段没有新增模型工具或 Remote 方法。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
+协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.9.0：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.9.0 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
 
-> **2026-11-04 已知限制与后续设计：** 当前 `initialCwd` 来自 header，不足以证明实际初始目录；C 账本已交付不代表这项证明成立。delegate 的 `recording: failed` 也不意味着 child 没有创建，或票范围已经授予。迟到 end 的执行账本覆盖、两类 lane 来源标签和条件注入仍待后续修复。已认可的 [事实边界与恢复设计](<docs/INSTRUMENT_FACT_BOUNDARIES.md>) 只完成文档固定，未改当前源码、制品或安装。
+> **2026-11-04 事实边界（0.9.0 源码实施）：** `headerCwd` 只是 child header 的来源值，不证明实际初始目录、当前目录或目录使用。已接受/不确定的 delegate 操作必须保留已有 child，不应改用 native 重建；必要时对同一真实 child 显式 `mattpocock_assign`。`recording: failed` 不再单独表示“没有创建”，而要与 `creation`/`binding`/`assignment` 分项读取。迟到 end 使用已保存的 owner/session/run 事实处理，旧 run 不会覆盖新 run；无法归属时在既有 health 明示覆盖缺口。详见[事实边界与恢复设计](<docs/INSTRUMENT_FACT_BOUNDARIES.md>)。
 
 **业务判断由 agent 按 Skills、用户约定和任务文档作出。** 仪器记录进度、待办、真实绑定和执行事实，不另设统一完成标准、容量审批或工作树处置审批。主代理自己用已授权的 Git/Shell 工具准备、合并和清理工作树。
 
@@ -12,7 +12,7 @@
 |---|---|---|
 | 设置与会话仪器 | 全局默认、工作区覆盖、owner 归属、受授票范围、原生客户端入口 | 管理默认关闭；保存设置不等于安装启用 |
 | T/S | 占用、参考值、超额、统计覆盖程度；T 与 S 独立，S 的在跑数是宿主的实时运行状态（live Agent.status，idle 常驻不计），读取为内存投影，并按 `S.depth` 给出 direct/deeper/unknown 深度结构 | S 枚举不完整或成员资格不可读时是明示下界（总数未知）；超限或未知不拒绝派发，不另要求批准；被计为 running 的 run 无 end 消失时按子代理自身日志的公开词表产生 item（不可读时明示 unobservable）并唤醒主代理 |
-| 绑定式创建（delegate，opt-in） | 创建前技术授权、持久意图、原生 continuable 创建、实际 header 核对、worktree binding 与票范围 assign；普通无绑定 lane 改由宿主原生 `subagent`/`subagent_fork` 创建 | 默认不注册；只有 profile 显式 `delegate: true` 才启用。只在需要 ticket↔tree 强绑定或持久意图/幂等时使用；header 不能证明实际 cwd 时保持 accepted-unknown；已接受/不确定的操作不要另建 child，先核对返回的已有 child，必要时对它显式 assign。native + assign 是今后普通新 lane 的默认路径 |
+| 绑定式创建（delegate，opt-in） | 创建前技术授权、持久意图、原生 continuable 创建、header 来源核对、worktree binding 与票范围 assignment；结果分别报告 creation / binding / assignment。普通无绑定 lane 改由宿主原生 `subagent`/`subagent_fork` 创建 | 默认不注册；只有 profile 显式 `delegate: true` 才启用。只在需要 ticket↔tree 强绑定或持久意图/幂等时使用；header 不证明实际 cwd 时保持 binding unconfirmed/unknown；已接受/不确定的操作不要另建 child，先核对返回的已有 child，必要时对它显式 assign。`mattpocock_worktree reconcile` 只修 binding，不补 assignment。native + assign 是今后普通新 lane 的默认路径 |
 | 续聊 | 原生 send_message 继续同一个 child、历史和目录 | 后续消息不是重新创建，不用它改绑旧 child 的 cwd |
 | 工作树状态 | active / discarded / cleaned 的实际作者报告，与程序绑定事实分别保存 | discarded 未清理仍提醒；cleaned 退出当前视图，保留历史 |
 | 当前注入 | 新鲜读取、按类别有界摘要、待办计数、查询定位、变更去重 | 摘要不是全部正文，unknown 不是 0 |
@@ -48,7 +48,7 @@
 
 ## 2. 准备工作树，再创建与续聊
 
-> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})`，插件只观察/登记。`mattpocock_delegate` 保留功能，但 0.8.0 起**默认不注册**；只有 profile 显式设置 `delegate: true` 时才作为绑定式创建入口启用。0.7.0 已移除 `mattpocock_execute`；C（原生观察读取时关联/账本补齐）于 0.7.1 完成：原生生命周期事实写入 owner runtime 文档，读取时给出 activity、observed worktree 与 inferred lane，并只对 coordinator 返回。本机 DSH 的 child `header.cwd` 是父目录，不能证明实际初始 cwd 时 delegate 保持 accepted-unknown，不要把它当作 confirmed binding。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)与[验证](<docs/VERIFICATION.md>)。
+> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”；2026-11-04 的 0.9.0 进一步收窄目录事实并补齐恢复：普通无绑定 lane 用宿主原生创建，插件只观察/登记；`mattpocock_delegate` 仍默认不注册。原生生命周期事实写入 owner runtime 文档，读取时给出 activity 与 inferred lane，并只对 coordinator 返回；dispose 后到达的已发布 end 使用已有 owner/run 事实处理。`headerCwd` 不证明实际初始 cwd，也不再产生 initial-cwd 工作树关联。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)、[事实边界](<docs/INSTRUMENT_FACT_BOUNDARIES.md>)与[验证](<docs/VERIFICATION.md>)。
 
 **默认路径（native-first，普通无绑定 lane）**
 
@@ -62,7 +62,7 @@
 
 **强绑定路径（可选，默认不注册；只有 profile 设置 `delegate: true` 时才可用）**
 
-1. 先准备/创建树，再调用 `mattpocock_delegate`，传 `worktree`、`workflowId`、`ticketIds`、`operationId`。它在创建前持久化意图，以该树为初始 cwd 创建 child，核对实际 `child/parent/cwd` header，创建 binding（task/ticketIds）并 assign 票范围。
+1. 先准备/创建树，再调用 `mattpocock_delegate`，传 `worktree`、`workflowId`、`ticketIds`、`operationId`。它在创建前持久化意图，以该树为请求初始 cwd 创建 child，核对实际 `child/parent/cwd` header（只作为来源值），创建 binding（task/ticketIds）并尝试 assignment。creation 被接受不等于 binding 或 assignment 已完成。
 2. 读取返回的 acceptance、actualChildSessionId、actualCwd、bindingId 与登记状态。持久意图不是已绑定证明；只有实际 header 核对后才报告 confirmed。
 3. 省略 `worktree` 时仍会记录继承 cwd 的 binding，但它不是某棵专用树的强绑定；若 lane 之后自己用 `create_worktree` 建树，那棵树只进 observation，不会自动改写这条 binding。
 

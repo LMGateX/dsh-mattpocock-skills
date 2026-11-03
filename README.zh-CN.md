@@ -49,9 +49,9 @@
 
 ## 可选协作控制
 
-可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.8.0 默认挂载七项固定工具 + 条件 `mattpocock_audit`；`mattpocock_delegate` 是仅由插件配置 `delegate: true` 启用的可选第八项（`mattpocock_execute` 已移除）。客户端仍声明九个 wire key，以呈现 opt-in delegate 与历史卡片；第三方设置/常驻摘要/右侧详情在宿主服务存在时提供。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
+可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.9.0 默认挂载七项固定工具 + 条件 `mattpocock_audit`；`mattpocock_delegate` 是仅由插件配置 `delegate: true` 启用的可选第八项（`mattpocock_execute` 已移除）。客户端仍声明九个 wire key，以呈现 opt-in delegate 与历史卡片；第三方设置/常驻摘要/右侧详情在宿主服务存在时提供。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
 
-**设计更新（2026-11-03；0.7.x 原生优先，0.8.0 delegate opt-in）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察。`mattpocock_delegate` 保留绑定式创建实现，但**默认不注册**，只有 profile 显式 `delegate: true` 才启用；启用后仍执行持久意图、实际 header 核对、创建 binding 并 assign 票范围。`mattpocock_execute` 已移除，不再有 execute 路径。C 实施持久 `native-observed` 执行事实及读取时 observed/inferred 工作树关联；不新增模型工具、Remote 方法或强绑定写入口。安装/激活仍走独立门禁，本轮未安装本机 DSH/Profile/GUI；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
+**设计更新（2026-11-04；0.9.0 事实边界）。** 原生派发仍是普通无绑定 lane 的默认路径；只在任务需要写隔离时准备工作树，只读研究/review 可共享稳定检出。`mattpocock_delegate` 保留绑定式创建，但**默认不注册**，只有 profile 显式 `delegate: true` 才启用；结果分别报告 creation、binding、assignment，已接受或不确定的操作不得再创建第二个 child。原 `initialCwd` 执行事实改为来源明确的 `headerCwd`，不证明实际初始目录；旧 `initialCwd` 行兼容读取。迟到 end 不依赖 live Agent，按 run 身份防跨 run 覆盖；不再生成 header 路径相等的 initial-cwd 关联。`mattpocock_execute` 仍已移除，不新增模型工具、Remote 方法或存储域。安装/激活仍走独立门禁，本轮未安装本机 DSH/Profile/GUI；详见[事实边界设计](docs/INSTRUMENT_FACT_BOUNDARIES.md)与[验证](docs/VERIFICATION.md)。
 
 T/S 超限或观测未知不拒绝合法原生委派，不新增业务审批。Git 工作树由 agent 自行创建、合并和删除；已清理树退出持续注入，废弃未清理仍提示，历史不默认过期。
 
@@ -73,6 +73,6 @@ node scripts/verify-vendor.mjs
 node scripts/update-source.mjs --source ../mattpocock-skills-fork --check
 ```
 
-Phase 3 的文件系统加固已在 Linux/Node 24 上验证；不支持安全 no-follow 文件打开的主机会采用失败关闭策略，更广泛的平台兼容性仍需后续门禁验证。当前 0.8.0 的测试/构建计数与精确 clean-source 制品身份见[验证摘要](<docs/VERIFICATION.md>)；它们不安装或启用本机插件。
+Phase 3 的文件系统加固已在 Linux/Node 24 上验证；不支持安全 no-follow 文件打开的主机会采用失败关闭策略，更广泛的平台兼容性仍需后续门禁验证。当前 0.9.0 的测试/构建计数与精确 clean-source 制品身份见[验证摘要](<docs/VERIFICATION.md>)；它们不安装或启用本机插件。
 
 当前不发布到 npmjs。`@lmgatex` npm Scope 的所有权将在未来决定 npm 发布前单独确认。

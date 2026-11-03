@@ -41,6 +41,27 @@ function parseDelegationJournal(input:unknown):DelegationJournal {
   const d=record(input,'delegation journal',['revision','rows'])
   return freeze({revision:revision(d.revision,'delegation revision'),rows:array(d.rows,'delegations').map(value=>{const r=record(value,'delegation',['operationId','parentSessionId','fingerprint','childId','result']);return {operationId:id(r.operationId,'operationId'),parentSessionId:id(r.parentSessionId,'parent'),fingerprint:id(r.fingerprint,'fingerprint'),childId:id(r.childId,'childId'),result:r.result===null?null:parseHostJson(r.result)}})})
 }
+type DelegationBinding = 'confirmed' | 'unconfirmed' | 'unknown'
+type DelegationAssignment = 'granted' | 'not-attempted' | 'failed' | 'unknown'
+interface DelegationRecovery { readonly binding: DelegationBinding; readonly assignment: DelegationAssignment }
+/** A rejected write may have committed; only this code means the effect is unknown rather than failed. */
+function storageUncertain(error: unknown): boolean {
+  return error !== null && typeof error === 'object' && (error as { readonly code?: unknown }).code === 'storage-uncertain'
+}
+/** Current verifiable binding. Only an accepted creation with a confirmed actual header is
+ * confirmed; an explicit rejection is unconfirmed; pending/accepted-unknown rows stay unknown. */
+function delegationBinding(row: WorktreeBindingRow | undefined): DelegationBinding {
+  if (row === undefined) return 'unknown'
+  if (row.value.acceptance === 'accepted' && row.value.outcome === 'confirmed') return 'confirmed'
+  if (row.value.acceptance === 'rejected') return 'unconfirmed'
+  return 'unknown'
+}
+/** Current assignment for the same child and the exact requested workflow/ticket scope. */
+function delegationAssignment(row: TaskAssignment | undefined, instanceId: string, workflowId: string | null, ticketIds: readonly string[]): DelegationAssignment {
+  if (row === undefined) return 'unknown'
+  return row.instrumentInstanceId === instanceId && row.workflowId === workflowId
+    && row.ticketIds.length === ticketIds.length && ticketIds.every(ticket => row.ticketIds.includes(ticket)) ? 'granted' : 'failed'
+}
 interface SourceCleanupJournal {readonly revision:number;readonly rows:readonly {readonly operationId:string;readonly fingerprint:string;readonly historyIds:readonly string[];readonly derivedDone:boolean;readonly result:HostJson|null}[]}
 function parseSourceCleanupJournal(value:unknown):SourceCleanupJournal {
   const d=record(value,'source cleanup journal',['revision','rows'])
@@ -115,6 +136,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
   const cachedSessions=new Map<string,SessionControlsView>(), nativeWindows=new Map<string,boolean>()
+  // Trusted launch configuration, not a cwd capability inference: the Host tells the runtime
+  // whether the optional delegate tool was actually registered.
+  let delegateRegistered=false
   const exactExecutions=new WeakMap<Agent,Dispatch>(), initialized=new Set<string>(), readmitted=new Set<string>()
   // A continuable child is disposed between runs and re-created when it is woken, so the same child
   // session can run several times under one dispatch. Managed executions are therefore indexed by child
@@ -503,9 +527,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const agent=ports.liveAgent(row.value.creatorSessionId)
           const assignment=assignments.find(item=>item.sessionId===row.value.creatorSessionId)
           const binding=bindingRows.find(item=>item.value.plannedChildSessionId===row.value.creatorSessionId||item.value.actualChildSessionId===row.value.creatorSessionId)
-          const lane=assignment===undefined&&binding===undefined?null:{workflowId:assignment?.workflowId??null,ticketIds:assignment?.ticketIds??binding?.value.ticketIds??[],task:binding?.value.task??null}
+          const lane=assignment===undefined&&binding===undefined?null:{workflowId:assignment?.workflowId??null,ticketIds:assignment?.ticketIds??binding?.value.ticketIds??[],task:binding?.value.task??null,source:'inferred' as const}
           return {...row,creatorActivity:agent===undefined?'gone':(agent as unknown as {status?:string}).status==='running'?'running':'idle',lane,
-            nativeChildren:nativeChildrenForObservation({path:row.value.path,creatorSessionId:row.value.creatorSessionId},ownerFacts)}
+            nativeChildren:nativeChildrenForObservation(row.value.creatorSessionId,ownerFacts)}
         })
         // Only sessions that actually recorded a failure are visited: the previous scan built an
         // array over every cached Session on each rebuild even when there was nothing to report.
@@ -520,11 +544,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     let nativeExecutions:NonNullable<RuntimeSnapshot['nativeExecutions']>=[]
     if(permission.kind==='coordinator'){
       const ownerFacts=runtimeDocument.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId)
-      const observationSources=worktreeObservations.map(row=>({path:row.value.path,observationId:row.observationId,recordedAt:row.recordedAt}))
       nativeExecutions=latestNativeExecutions(ownerFacts).map(fact=>{
         const assignment=runtimeDocument.assignments.find(row=>row.sessionId===fact.sessionId)
         const binding=bindingRows.find(row=>row.value.plannedChildSessionId===fact.sessionId||row.value.actualChildSessionId===fact.sessionId)
-        return projectNativeExecution(fact,assignment,binding?.value,observationSources,ports.liveAgent(fact.sessionId) as unknown as {readonly status?:string}|undefined)
+        return projectNativeExecution(fact,assignment,binding?.value,ports.liveAgent(fact.sessionId) as unknown as {readonly status?:string}|undefined)
       })
       const failure=[...nativeExecutionFailures].find(([sessionId,row])=>row.owner===view.instance.instrumentInstanceId
         ||row.owner===null&&cachedSessions.get(sessionId)?.instance.instrumentInstanceId===view.instance.instrumentInstanceId)
@@ -567,7 +590,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     signal.throwIfAborted()
     const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId)
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...runtimeDocument.assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
+    const value=freeze({sessionId,caller,delegateRegistered,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
@@ -611,6 +634,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const observationLifetime=new AbortController()
   const observationFailures=new Map<string,string>(),failedObservationSessions=new Set<string>()
   const observationReplays=new Set<string>()
+  // Durable owner index for a session whose retained view is gone (for example after disposal).
+  // It is not policy evidence; it only attributes a coverage gap to the right coordinator.
+  const nativeExecutionOwners=new Map<string,string>()
   const markObservationFailure=(view:SessionControlsView,error:unknown):void=>{
     const key=view.instance.instrumentInstanceId,reason=String(error).slice(0,1024)
     if(observationFailures.get(key)!==reason){observationFailures.set(key,reason);touchState(view.instance.instrumentInstanceId)}
@@ -621,8 +647,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // native event, S, nativeStops and the owner-notification path.
   interface NativeExecutionFailure { readonly owner: string | null; readonly reason: string }
   const nativeExecutionFailures=new Map<string,NativeExecutionFailure>()
-  const markNativeExecutionFailure=(sessionId:string,error:unknown):void=>{
-    const owner=cachedSessions.get(sessionId)?.instance.instrumentInstanceId??null,reason=String(error).slice(0,1024)
+  /** Attribute a coverage gap to an already proved owner when the event itself lacks one;
+   * an unknown owner stays unattributed rather than appearing on another owner's health row. */
+  const markNativeExecutionFailure=(sessionId:string,error:unknown,ownerInstance?:string|null):void=>{
+    const owner=ownerInstance===undefined?(cachedSessions.get(sessionId)?.instance.instrumentInstanceId??null):ownerInstance
+    const reason=String(error).slice(0,1024)
     const prior=nativeExecutionFailures.get(sessionId)
     if(prior?.owner===owner&&prior.reason===reason)return
     nativeExecutionFailures.set(sessionId,{owner,reason})
@@ -634,7 +663,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     nativeExecutionFailures.delete(sessionId)
     if(prior.owner===null)touchState();else touchState(prior.owner)
   }
-  const nativeExecutionInitialCwd=(agent:Agent):string|null=>{
+  /** First readable child header cwd. This is only the header source value: it does not
+   * prove the child's actual initial/current directory or any tree use. */
+  const nativeExecutionHeaderCwd=(agent:Agent):string|null=>{
     const cwd=agent.session.header.cwd
     return typeof cwd==='string'&&isAbsolute(cwd)&&normalize(cwd)===cwd&&!/[\u0000-\u001f\u007f]/u.test(cwd)?cwd:null
   }
@@ -660,16 +691,17 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(header.id!==agent.id||header.origin!=='subagent')return null
     const parent=header.parentSession
     if(typeof parent!=='string'||parent.length===0)return null
-    const base={sessionId:String(agent.id),parentSessionId:parent,instrumentInstanceId:view.instance.instrumentInstanceId,initialCwd:nativeExecutionInitialCwd(agent)}
+    const base={sessionId:String(agent.id),parentSessionId:parent,instrumentInstanceId:view.instance.instrumentInstanceId,headerCwd:nativeExecutionHeaderCwd(agent)}
     if(kind==='created')return {...base,kind,createdAt:typeof header.createdAt==='number'&&Number.isSafeInteger(header.createdAt)&&header.createdAt>=0?header.createdAt:null}
     if(kind==='start')return {...base,kind,provider:typeof edge.provider==='string'?edge.provider:null,runId:typeof edge.runId==='string'?edge.runId:null}
-    if(kind==='end')return typeof edge.stopReason==='string'?{...base,kind,outcome:edge.stopReason}:null
+    if(kind==='end')return typeof edge.stopReason==='string'?{...base,kind,outcome:edge.stopReason,runId:typeof edge.runId==='string'?edge.runId:null}:null
     return {...base,kind}
   }
   const recordNativeExecution=async(view:SessionControlsView,event:NativeExecutionEvent):Promise<void>=>{
     // C writes follow the same optional-extension gate as worktree observations. Existing rows
     // remain readable; management-off adds or updates nothing and is not an observation failure.
     if(!view.policy.extensionEnabled)return
+    nativeExecutionOwners.set(event.sessionId,view.instance.instrumentInstanceId)
     try{
       await update(old=>{
         const current=old.nativeExecutions.find(row=>row.executionId===event.sessionId)
@@ -678,7 +710,46 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         return {...old,nativeExecutions:current===undefined?[...old.nativeExecutions,next]:old.nativeExecutions.map(row=>row.executionId===next.executionId?next:row)}
       })
       clearNativeExecutionFailure(event.sessionId)
-    }catch(error){markNativeExecutionFailure(event.sessionId,error)}
+    }catch(error){markNativeExecutionFailure(event.sessionId,error,view.instance.instrumentInstanceId)}
+  }
+  const nativeExecutionViewForInstance=(instanceId:string):SessionControlsView|undefined=>{
+    for(const view of cachedSessions.values())if(view.instance.instrumentInstanceId===instanceId)return view
+    return undefined
+  }
+  /**
+   * A published `subagent/end` can arrive after its Agent was disposed, so the host event carries
+   * no `actualAgent`. The durable owner row plus a retained SessionControlsView are enough to
+   * record that same run; no row is created, no cold log is read and S/nativeStops/notifications
+   * are untouched. Missing evidence or a run/owner conflict becomes an explicit native-executions
+   * coverage gap for the row's owner, never a guessed outcome or another owner's health row.
+   */
+  const recordLateNativeExecutionEnd=async(event:Extract<HostEvent,{kind:'subagent-end'}>):Promise<void>=>{
+    const sessionId=event.sessionId
+    // Management off intentionally records nothing; it is not an observation failure.
+    if(!savedPolicy.extensionEnabled)return
+    const retained=cachedSessions.get(sessionId)
+    if(retained!==undefined&&!retained.policy.extensionEnabled)return
+    try{
+      const document=await load()
+      const row=document.nativeExecutions.find(execution=>execution.executionId===sessionId)
+      if(row===undefined){
+        markNativeExecutionFailure(sessionId,new ControlsError('association-conflict','native end has no durable execution row; outcome coverage is unknown'),retained?.instance.instrumentInstanceId??nativeExecutionOwners.get(sessionId)??null)
+        return
+      }
+      if(retained!==undefined&&retained.instance.instrumentInstanceId!==row.instrumentInstanceId){
+        markNativeExecutionFailure(sessionId,new ControlsError('association-conflict','native end row and retained session view disagree on the owner instrument instance'),row.instrumentInstanceId)
+        return
+      }
+      const view=nativeExecutionViewForInstance(row.instrumentInstanceId)
+      if(view===undefined){
+        markNativeExecutionFailure(sessionId,new ControlsError('unknown-session','native end owner view is unavailable; outcome coverage is unknown'),row.instrumentInstanceId)
+        return
+      }
+      // Management off intentionally records nothing and is not an observation failure.
+      if(!view.policy.extensionEnabled)return
+      await recordNativeExecution(view,{kind:'end',sessionId:row.sessionId,parentSessionId:row.parentSessionId,
+        instrumentInstanceId:row.instrumentInstanceId,headerCwd:row.headerCwd,outcome:event.stopReason,runId:event.runId??null})
+    }catch(error){markNativeExecutionFailure(sessionId,error,cachedSessions.get(sessionId)?.instance.instrumentInstanceId??nativeExecutionOwners.get(sessionId)??null)}
   }
   const recordNativeExecutionEdge=async(agent:Agent,kind:'created'|'start'|'end'|'disposed',edge:NativeExecutionEdge={}):Promise<void>=>{
     const sessionId=String(agent.id)
@@ -920,6 +991,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           return saved
         }finally{transitioning=null}})
     },
+    setDelegateRegistered(registered){if(delegateRegistered===registered)return;delegateRegistered=registered;touchState()},
     async readSession(caller,sessionId,signal){return snapshot(caller,id(sessionId,'sessionId'),signal)},
     async readSummaries(caller,request,signal){return summaries(caller,request,signal)},
     async applyInstrument(caller,sessionId,command:InstrumentCommand,signal){
@@ -1019,14 +1091,24 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // C: native lifecycle edges update the same owner row. Only local actual agents are
       // accepted; a status edge has no document write (read-time activity covers it).
       const nativeAgent=event.actualAgent
+      // A disposed event has no run id. If the same session already has a different live Agent,
+      // this is the old Agent's late disposal and must not clear the new run or its cached view.
+      const disposedIsCurrent=event.kind!=='agent-disposed'||nativeAgent===undefined
+        ||ports.liveAgent(nativeAgent.id)===undefined||ports.liveAgent(nativeAgent.id)===nativeAgent
+      if(event.kind==='agent-disposed'&&nativeAgent!==undefined&&!disposedIsCurrent)
+        markNativeExecutionFailure(nativeAgent.id,new ControlsError('association-conflict','agent disposed event belongs to an earlier Agent; the current run remains live'))
+      // A published local end survives Agent disposal; without a live Agent the durable row
+      // identifies the same run, and anything less is reported instead of silently dropping the
+      // outcome. Non-local ends were never this instrument's execution fact.
+      if(event.kind==='subagent-end'&&event.local&&nativeAgent===undefined){await recordLateNativeExecutionEnd(event);return}
       if(nativeAgent!==undefined&&nativeAgent.session.header.origin==='subagent'&&typeof nativeAgent.session.header.parentSession==='string'){
         if(event.kind==='subagent-start')await recordNativeExecutionEdge(nativeAgent,'start',{provider:event.provider,runId:event.runId})
         else if(event.kind==='subagent-end')await recordNativeExecutionEdge(nativeAgent,'end',{provider:event.provider,runId:event.runId,stopReason:event.stopReason})
-        else if(event.kind==='agent-disposed')await recordNativeExecutionEdge(nativeAgent,'disposed')
+        else if(event.kind==='agent-disposed'&&disposedIsCurrent)await recordNativeExecutionEdge(nativeAgent,'disposed')
       }
       // A disposed session never prepares again: drop its baseline so the retained Agent, its
       // Session log and the injected message are not kept alive for the process lifetime.
-      if(event.kind==='agent-disposed'&&event.actualAgent){
+      if(event.kind==='agent-disposed'&&event.actualAgent&&disposedIsCurrent){
         // A disposed Session never prepares again: drop its cached view and per-session failure
         // index so a long-lived runtime does not retain every child it ever observed.
         const id=event.actualAgent.id
@@ -1223,14 +1305,31 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         return {row,replayed:false}
       })
       const saveResult=async(result:HostJson)=>queue.run(async()=>{const old=parseDelegationJournal(await journal.read());if(!await journal.compareAndSwap(old.revision,{revision:increment(old.revision),rows:old.rows.map(row=>row.operationId===operationId?{...row,result}:row)}))throw new ControlsError('concurrent-update','delegation outcome changed')})
+      // Current verifiable state is reported separately from the original result. Replay only reads;
+      // it never creates, grants or rewrites history. An unreadable recovery is null, not a failure.
+      const recoveryFor=async(childId:string):Promise<DelegationRecovery|null>=>{
+        try{
+          const bindingRow=(await (await openWorktrees(view)).query(view.instance)).rows.find(row=>row.value.operationId===operationId)
+          const assignmentRow=(await load()).assignments.find(row=>row.sessionId===childId)
+          return freeze({binding:delegationBinding(bindingRow),assignment:delegationAssignment(assignmentRow,view.instance.instrumentInstanceId,workflowId,ticketIds)})
+        }catch{return null}
+      }
       if(intent.replayed){
-        if(intent.row.result!==null)return {...record(intent.row.result,'delegation result'),replayed:true}
-        const binding=(await (await openWorktrees(view)).query(view.instance)).rows.find(row=>row.value.operationId===operationId)
-        return {accepted:binding?.value.acceptance==='accepted'?true:null,childId:intent.row.childId,replayed:true,recording:'unknown'}
+        if(intent.row.result!==null){
+          // Legacy results lack the effect fields: only a recorded result proves the binding and
+          // grant; a failed/unknown recording is never upgraded by inference. Current readable
+          // state belongs in recovery, never in the original result.
+          const saved=record(intent.row.result,'delegation result'),recorded=saved.recording==='recorded'
+          const childId=typeof saved.childId==='string'?saved.childId:intent.row.childId
+          return parseHostJson({...saved,...(saved.creation===undefined&&saved.accepted===true?{creation:'accepted'}:{}),...(saved.binding===undefined?{binding:recorded?'confirmed':'unknown'}:{}),...(saved.assignment===undefined?{assignment:recorded?'granted':'unknown'}:{}),replayed:true,recovery:await recoveryFor(childId)})
+        }
+        let accepted:boolean|null=null
+        try{if((await (await openWorktrees(view)).query(view.instance)).rows.some(row=>row.value.operationId===operationId&&row.value.acceptance==='accepted'))accepted=true}catch{/* An unreadable binding leaves acceptance unknown; nothing is dispatched. */}
+        return parseHostJson({accepted,childId:intent.row.childId,replayed:true,recording:'unknown',...(accepted===true?{creation:'accepted'}:{}),binding:'unknown',assignment:'unknown',recovery:await recoveryFor(intent.row.childId)})
       }
       await checkGrant()
       const registry=await openWorktrees(view)
-      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd??null,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})}));if(!registered.dispatch)return {accepted:registered.row.value.acceptance==='accepted',childId:intent.row.childId,replayed:true,recording:registered.row.value.outcome}}
+      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd??null,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})}));if(!registered.dispatch)return parseHostJson({accepted:registered.row.value.acceptance==='accepted'?true:null,childId:intent.row.childId,replayed:true,recording:'unknown',...(registered.row.value.acceptance==='accepted'?{creation:'accepted'}:{}),binding:delegationBinding(registered.row),assignment:'unknown',recovery:await recoveryFor(intent.row.childId)})}
       await checkGrant()
       let dispatch:Dispatch|null=null
       if(view.policy.extensionEnabled&&view.policy.features.windows.requested){
@@ -1245,18 +1344,37 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       catch(error){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:exec.signal.aborted?'cancelled':'failed',diagnostic:String(error)},caller))}catch{/* Preserve native failure and no replay dispatch. */}if(dispatch)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(dispatch!.token,'unknown'))}catch{}throw error}
       finally{if(dispatch)dispatch.accepting=false}
       if(dispatch&&dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(dispatch!.token,'unknown'))}catch{}
+      // The receipt already proved native acceptance: every later metadata failure keeps the
+      // child identity and reports which effect actually happened. No post-acceptance path creates
+      // again or grants implicitly.
+      let binding:DelegationBinding='unknown',assignment:DelegationAssignment='not-attempted'
       try{
-        if(receipt.childId!==intent.row.childId)throw new ControlsError('association-conflict','native child differs from planned identity')
-        if(registry&&(!ports.flushSession||!await ports.flushSession(receipt.childId,exec.signal)))throw new ControlsError('storage-uncertain','accepted child native header checkpoint unavailable')
-        const facts=await ports.sessionFacts(receipt.childId,exec.signal)
-        if(facts.header.origin!=='subagent'||facts.header.parentSession!==caller.sessionId)throw new ControlsError('association-conflict','native parent differs from actual caller')
-        if(registry&&typeof facts.header.cwd!=='string')throw new ControlsError('association-conflict','native child cwd is unavailable')
-        if(registry)await queue.run(()=>registry.confirm(view.instance,operationId,{sessionId:facts.header.id,parentSessionId:facts.header.parentSession!,cwd:facts.header.cwd!},caller))
-        await facade.assign!(caller,{sessionId:receipt.childId,workflowId,ticketIds},exec.signal)
-      }catch(error){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'accepted',outcome:'accepted-unknown',diagnostic:String(error)},caller))}catch{}const failed=parseHostJson({accepted:true,childId:receipt.childId,messageId:receipt.messageId,recording:'failed',diagnostic:String(error)});try{await saveResult(failed)}catch{}return failed}
-      const result=parseHostJson({accepted:true,childId:receipt.childId,messageId:receipt.messageId,replayed:false,recording:'recorded'})
+        if(receipt.childId!==intent.row.childId){binding='unconfirmed';throw new ControlsError('association-conflict','native child differs from planned identity')}
+        try{if(registry&&(!ports.flushSession||!await ports.flushSession(receipt.childId,exec.signal)))throw new ControlsError('storage-uncertain','accepted child native header checkpoint unavailable')}
+        catch(error){binding='unknown';throw error}
+        const facts=await (async()=>{try{return await ports.sessionFacts(receipt.childId,exec.signal)}catch(error){binding=error instanceof ControlsError&&error.code==='unknown-session'?'unconfirmed':'unknown';throw error}})()
+        if(facts.header.origin!=='subagent'||facts.header.parentSession!==caller.sessionId){binding='unconfirmed';throw new ControlsError('association-conflict','native parent differs from actual caller')}
+        if(registry&&typeof facts.header.cwd!=='string'){binding='unconfirmed';throw new ControlsError('association-conflict','native child cwd is unavailable')}
+        if(registry){
+          try{await queue.run(()=>registry.confirm(view.instance,operationId,{sessionId:facts.header.id,parentSessionId:facts.header.parentSession!,cwd:facts.header.cwd!},caller))}
+          catch(error){binding=storageUncertain(error)?'unknown':'unconfirmed';throw error}
+        }
+        binding='confirmed'
+        // Assignment is a separate effect after a confirmed binding: a submission failure neither
+        // rolls the binding back nor changes the accepted child identity.
+        try{await facade.assign!(caller,{sessionId:receipt.childId,workflowId,ticketIds},exec.signal)}
+        catch(error){assignment=storageUncertain(error)?'unknown':'failed';throw error}
+        assignment='granted'
+      }catch(error){
+        if(registry&&binding!=='confirmed')try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'accepted',outcome:'accepted-unknown',diagnostic:String(error)},caller))}catch{/* Preserve the accepted child identity and the failed effect. */}
+        const failed=parseHostJson({accepted:true,childId:receipt.childId,messageId:receipt.messageId,replayed:false,recording:'failed',creation:'accepted',binding,assignment,diagnostic:String(error)})
+        try{await saveResult(failed)}
+        catch{return parseHostJson({...record(failed,'delegation result'),persistence:'failed'})}
+        return failed
+      }
+      const result=parseHostJson({accepted:true,childId:receipt.childId,messageId:receipt.messageId,replayed:false,recording:'recorded',creation:'accepted',binding:'confirmed',assignment:'granted'})
       try{await saveResult(result)}
-      catch(error){return {accepted:true,childId:receipt.childId,messageId:receipt.messageId,recording:'failed',diagnostic:String(error)}}
+      catch(error){return parseHostJson({...record(result,'delegation result'),recording:'failed',persistence:'failed',diagnostic:String(error)})}
       return result
     },
     async assign(caller,input,signal){

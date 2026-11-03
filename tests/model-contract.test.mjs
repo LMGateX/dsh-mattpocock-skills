@@ -57,8 +57,27 @@ test('delegate is described as binding-first creation, not a general dispatcher'
   assert.match(description, /actual child\/parent\/cwd header/)
   assert.match(description, /operationId/)
   assert.match(description, /ticketIds/)
+  assert.match(description, /does not prove where the child actually started/, 'the header is a source value, not proof of the actual initial directory')
+  assert.match(description, /not a completed binding or assignment/, 'native acceptance is not binding or assignment completion')
+  assert.match(description, /use that existing child/, 'an accepted or uncertain creation reuses its existing child')
+  assert.match(description, /never create it again/, 'metadata failure is never a reason for a second creation')
+  assert.match(description, /grant it explicitly to the same child with mattpocock_assign/, 'a missing or failed grant is completed explicitly, not reparsed as creation')
+  assert.doesNotMatch(description, /child starts there/, 'the absolute directory claim is removed')
   assert.doesNotMatch(description, /Preferred flow/)
   assert.doesNotMatch(description, /let the lane create its own tree/)
+})
+
+test('the runtime snapshot reports trusted delegate registration instead of inferring it from cwd capability', async t => {
+  const off = await mountedFixture(t)
+  assert.equal(off.ctx.tools.get('mattpocock_delegate'), undefined)
+  const offSnapshot = await off.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(offSnapshot.delegateRegistered, false)
+  const opted = await mountedFixture(t, { delegate: true })
+  assert.ok(opted.ctx.tools.get('mattpocock_delegate'))
+  const optedSnapshot = await opted.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(optedSnapshot.delegateRegistered, true, 'registration comes from the trusted Host option')
+  assert.ok(optedSnapshot.capabilities.some(row => row.key === 'nativeInitialChildCwd'),
+    'the cwd capability remains a separate report, never the source of the delegate flag')
 })
 
 test('an assignment grant accepts an omitted workflowId and omitted ticketIds', async t => {

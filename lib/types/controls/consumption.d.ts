@@ -36,7 +36,9 @@ export interface ConsumptionSnapshot {
     } | null;
     /** Open terminal-outcome items the main agent must handle; never a count source. */
     readonly nativeStops?: readonly NativeStopRow[];
-    /** Latest native-observed execution facts; observed/inferred associations are never completion claims. */
+    /** Trusted Host configuration fact; only true makes the opt-in delegate a current entry. Never inferred. */
+    readonly delegateRegistered?: boolean;
+    /** Latest native-observed execution facts; inferred associations are never completion claims. */
     readonly nativeExecutions?: readonly NativeExecutionView[];
     /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
     readonly worktreeBindings?: readonly (WorktreeBindingCurrent & {

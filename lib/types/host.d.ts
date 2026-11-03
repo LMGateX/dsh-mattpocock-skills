@@ -175,6 +175,8 @@ export interface RuntimeFacade {
     historyAction?(caller: HostCaller, sessionId: string, input: HostJson, signal: AbortSignal): Promise<unknown>;
     worktreeAction?(caller: HostCaller, sessionId: string, input: HostJson, signal: AbortSignal): Promise<unknown>;
     delegate?(caller: HostCaller, input: HostJson, exec: ToolRunContext): Promise<unknown>;
+    /** Trusted launch configuration for the model-facing guidance; the runtime stores no cwd inference. */
+    setDelegateRegistered?(registered: boolean): void;
     created(caller: HostCaller, signal: AbortSignal, actualAgent: Agent): Promise<void>;
     observe(event: HostEvent): Promise<void>;
     /** Admitted-step consumption; must return freshly owned, attributed messages. `stepKey` identifies

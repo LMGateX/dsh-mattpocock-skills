@@ -396,6 +396,18 @@ test('native event program callback registers its receipt fence synchronously be
   assert.equal(registered, true, 'not deferred into a later Promise.then')
   release()
 })
+test('a local subagent/end after registry loss is still delivered without a fabricated Agent', options, async t => {
+  const f = await assembly(t)
+  // The published end survives the registry entry; the Host must forward the run identity and
+  // let the runtime use durable facts instead of inventing an actual Agent.
+  f.ctx.agents.get = () => undefined
+  let seen
+  f.runtime.observe = event => { seen = event; return Promise.resolve() }
+  f.ctx.emit('subagent/end', { id: 'child', runId: 'epoch-late', provider: 'spawn', local: true, stopReason: 'completed' })
+  assert.equal(seen.kind, 'subagent-end')
+  assert.equal(seen.runId, 'epoch-late')
+  assert.equal(Object.hasOwn(seen, 'actualAgent'), false)
+})
 test('instrument tool rejects forged principal fields at both outer and business argument envelopes', options, async t => {
   const f = await assembly(t)
   for (const args of [{ request: { action: 'read' }, principal: 'user:operator' }, { request: { action: 'read', sessionId: 'another-root' } }]) {

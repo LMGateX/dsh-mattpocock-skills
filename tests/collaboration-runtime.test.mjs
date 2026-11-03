@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
-import {fixture,mountedFixture,caller,signal,actualAgent,policy,workflow,ticket} from './fixtures/runtime-host.mjs'
+import {core,fixture,mountedFixture,caller,signal,actualAgent,policy,workflow,ticket} from './fixtures/runtime-host.mjs'
 
 function installCreation(f,{supported=true}={}) {
  const calls=[]
@@ -28,11 +28,188 @@ test('RuntimeFacade native-created assignment never widens a parent grant revoke
   await f.runtime.created(caller(receipt.childId),signal(),f.agents.get(receipt.childId))
   return receipt
  }
- const result=await f.runtime.delegate(caller('old-child'),{description:'Build A',prompt:'Implement',workflowId:'flow',ticketIds:['A']},f.exec('old-child'))
+ const request={description:'Build A',prompt:'Implement',workflowId:'flow',ticketIds:['A']},exec=f.exec('old-child')
+ const result=await f.runtime.delegate(caller('old-child'),request,exec)
  assert.equal(result.accepted,true)
+ assert.equal(result.creation,'accepted')
+ assert.equal(result.binding,'confirmed')
+ assert.equal(result.assignment,'failed','the revoked parent grant makes the explicit assignment fail')
  assert.equal(result.recording,'failed')
+ assert.equal(result.childId,calls[0].childId)
  assert.equal(calls.length,1)
  assert.deepEqual((await f.read(result.childId)).records.scope,{kind:'assigned',workflowId:null,ticketIds:[]})
+ // Replay is not a new grant: restore the parent scope so this exact operation can be replayed,
+ // and verify that replay itself never dispatches.
+ await f.assign('old-child','flow',['A'])
+ const replay=await f.runtime.delegate(caller('old-child'),request,exec)
+ assert.equal(replay.replayed,true)
+ assert.equal(replay.childId,result.childId)
+ assert.equal(replay.assignment,'failed','the original failed grant is not rewritten as granted')
+ assert.equal(calls.length,1,'replay never creates a second child')
+})
+
+test('a confirm mismatch keeps the accepted child, leaves assignment not attempted, and recovers through an explicit grant',async t=>{
+ const f=await fixture(t,{initialPolicy:policy()}),calls=installCreation(f)
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
+ // The native child header cwd differs from the requested worktree, so confirm rejects the binding.
+ f.ports.createContinuable=async(exec,request)=>{
+  calls.push(request)
+  const child=actualAgent(request.childId,{parent:exec.agent.id,managed:true,cwd:'/different-worktree'})
+  f.agents.set(child.id,child)
+  return {childId:child.id,messageId:'native-'+child.id}
+ }
+ let assignCalls=0
+ const assign=f.runtime.assign
+ f.runtime.assign=async(...args)=>{assignCalls+=1;return assign(...args)}
+ const request={description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'confirm-mismatch',workflowId:'flow',ticketIds:['A']},exec=f.exec('root')
+ const result=await f.runtime.delegate(caller('root'),request,exec)
+ assert.equal(result.accepted,true)
+ assert.equal(result.creation,'accepted')
+ assert.equal(result.binding,'unconfirmed')
+ assert.equal(result.assignment,'not-attempted','confirm failure never calls assign')
+ assert.equal(result.recording,'failed')
+ assert.equal(result.childId,calls[0].childId)
+ assert.equal(calls.length,1)
+ assert.equal(assignCalls,0)
+ const assignmentFor=async()=>{const doc=await f.units.get('runtime_bindings').read();return doc?.assignments.find(row=>row.sessionId===result.childId)}
+ assert.equal(await assignmentFor(),undefined,'the child gained no ticket scope')
+ // A ticket scope is added explicitly to the existing child, never by creating another child.
+ await f.runtime.assign(caller('root'),{sessionId:result.childId,workflowId:'flow',ticketIds:['A']},signal())
+ assert.equal(assignCalls,1)
+ const granted=await assignmentFor()
+ assert.equal(granted.workflowId,'flow')
+ assert.deepEqual(granted.ticketIds,['A'])
+ const replay=await f.runtime.delegate(caller('root'),request,exec)
+ assert.equal(replay.replayed,true)
+ assert.equal(replay.childId,result.childId)
+ assert.equal(replay.binding,'unconfirmed','the original failed confirm is not rewritten')
+ assert.equal(replay.assignment,'not-attempted','no implicit grant is recorded in the original result')
+ assert.equal(replay.recovery.binding,'unknown')
+ assert.equal(replay.recovery.assignment,'granted','current state is verified from the existing assignment')
+ assert.equal(calls.length,1,'replay never creates a second child')
+ assert.equal(assignCalls,1,'replay never grants implicitly')
+})
+
+test('a native child identity mismatch keeps the receipt child and never assigns',async t=>{
+ const f=await fixture(t,{initialPolicy:policy()}),calls=installCreation(f)
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
+ let actualChildId
+ f.ports.createContinuable=async(exec,request)=>{
+  calls.push(request)
+  const child=actualAgent('receipt-'+request.childId,{parent:exec.agent.id,managed:true,cwd:request.cwd??exec.agent.session.header.cwd})
+  actualChildId=child.id
+  f.agents.set(child.id,child)
+  return {childId:child.id,messageId:'native-'+child.id}
+ }
+ let assignCalls=0
+ const assign=f.runtime.assign
+ f.runtime.assign=async(...args)=>{assignCalls+=1;return assign(...args)}
+ const result=await f.runtime.delegate(caller('root'),{description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'identity-mismatch',workflowId:'flow',ticketIds:['A']},f.exec())
+ assert.equal(result.accepted,true)
+ assert.equal(result.creation,'accepted')
+ assert.equal(result.childId,actualChildId,'the receipt child identity is preserved')
+ assert.notEqual(result.childId,calls[0].childId,'the native receipt differs from the planned identity')
+ assert.equal(result.binding,'unconfirmed')
+ assert.equal(result.assignment,'not-attempted')
+ assert.equal(calls.length,1)
+ assert.equal(assignCalls,0)
+})
+
+test('an uncertain assignment keeps the confirmed binding and child identity and replay never re-assigns',async t=>{
+ const f=await fixture(t,{initialPolicy:policy()}),calls=installCreation(f)
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
+ let assignCalls=0
+ f.runtime.assign=async()=>{assignCalls+=1;throw new core.ControlsError('storage-uncertain','assignment commit outcome is unknown')}
+ const request={description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'assign-uncertain',workflowId:'flow',ticketIds:['A']},exec=f.exec('root')
+ const result=await f.runtime.delegate(caller('root'),request,exec)
+ assert.equal(result.accepted,true)
+ assert.equal(result.childId,calls[0].childId)
+ assert.equal(result.creation,'accepted')
+ assert.equal(result.binding,'confirmed')
+ assert.equal(result.assignment,'unknown','a storage-uncertain submission is unknown, not failed')
+ assert.equal(result.recording,'failed')
+ assert.equal(calls.length,1)
+ assert.equal(assignCalls,1)
+ const binding=(await f.runtime.worktreeAction(caller('root'),'root',{action:'read'},signal())).rows[0]
+ assert.equal(binding.value.outcome,'confirmed','an uncertain assignment does not downgrade the confirmed binding')
+ assert.equal(binding.value.diagnostic,null)
+ f.runtime.assign=async()=>{assignCalls+=1;throw new Error('replay must not assign')}
+ const replay=await f.runtime.delegate(caller('root'),request,exec)
+ assert.equal(replay.replayed,true)
+ assert.equal(replay.childId,result.childId)
+ assert.equal(replay.binding,'confirmed')
+ assert.equal(replay.assignment,'unknown')
+ assert.equal(replay.recovery.assignment,'unknown')
+ assert.equal(calls.length,1,'replay never creates a second child')
+ assert.equal(assignCalls,1,'replay never re-attempts assignment')
+})
+
+test('replaying a legacy failed result reports conservative effects and never dispatches or grants',async t=>{
+ const f=await fixture(t,{initialPolicy:policy()}),calls=installCreation(f)
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
+ f.ports.flushSession=async()=>false
+ const request={description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'legacy-failed',workflowId:'flow',ticketIds:['A']},exec=f.exec('root')
+ const first=await f.runtime.delegate(caller('root'),request,exec)
+ assert.equal(first.accepted,true)
+ assert.equal(first.binding,'unknown')
+ assert.equal(calls.length,1)
+ // Replace the durable result with the legacy shape that predates the effect fields.
+ const journalName=[...f.units.keys()].find(name=>name.startsWith('delegation_'))
+ const journal=f.units.get(journalName),raw=await journal.read()
+ const legacy={...raw,revision:raw.revision+1,rows:raw.rows.map(row=>({...row,result:{accepted:true,childId:row.childId,messageId:'legacy-'+row.childId,recording:'failed',diagnostic:'legacy failure'}}))}
+ assert.equal(await journal.compareAndSwap(raw.revision,legacy),true)
+ let assignCalls=0
+ const assign=f.runtime.assign
+ f.runtime.assign=async(...args)=>{assignCalls+=1;return assign(...args)}
+ const replay=await f.runtime.delegate(caller('root'),request,exec)
+ assert.equal(replay.replayed,true)
+ assert.equal(replay.childId,first.childId)
+ assert.equal(replay.creation,'accepted','a legacy accepted=true keeps native acceptance')
+ assert.equal(replay.binding,'unknown','a legacy failure is never guessed into a confirmed binding')
+ assert.equal(replay.assignment,'unknown','a legacy failure is never guessed into a grant')
+ assert.equal(replay.recovery.assignment,'unknown')
+ assert.equal(calls.length,1,'replay never creates a child')
+ assert.equal(assignCalls,0,'replay never grants implicitly')
+ f.runtime.assign=assign
+})
+
+test('a result journal write failure preserves actual effects and marks only persistence failed',async t=>{
+ const f=await fixture(t,{initialPolicy:policy()}),calls=installCreation(f)
+ await f.apply('put-workflow',{value:workflow})
+ await f.apply('put-ticket',{localTicketId:'A',value:ticket()})
+ const open=f.ports.openUnitStorage.bind(f.ports),patched=new WeakSet()
+ f.ports.openUnitStorage=async(name,parse)=>{
+  const store=await open(name,parse)
+  if(name.startsWith('delegation_')&&!patched.has(store)){
+   patched.add(store)
+   const cas=store.compareAndSwap.bind(store)
+   let writes=0
+   store.compareAndSwap=async(...args)=>{writes+=1;if(writes>1)throw new core.ControlsError('storage-uncertain','delegation result write outcome unknown');return cas(...args)}
+  }
+  return store
+ }
+ const request={description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'result-write-failed',workflowId:'flow',ticketIds:['A']}
+ const result=await f.runtime.delegate(caller('root'),request,f.exec())
+ assert.equal(result.accepted,true)
+ assert.equal(result.creation,'accepted')
+ assert.equal(result.binding,'confirmed','the actual header confirmation is preserved')
+ assert.equal(result.assignment,'granted','the actual assignment is preserved even when the result write fails')
+ assert.equal(result.recording,'failed')
+ assert.equal(result.persistence,'failed')
+ assert.equal(result.childId,calls[0].childId)
+ assert.equal(calls.length,1)
+ const replay=await f.runtime.delegate(caller('root'),request,f.exec())
+ assert.equal(replay.replayed,true)
+ assert.equal(replay.accepted,true,'the durable binding still proves native acceptance')
+ assert.equal(replay.childId,result.childId)
+ assert.equal(replay.recording,'unknown')
+ assert.equal(replay.recovery.binding,'confirmed')
+ assert.equal(replay.recovery.assignment,'granted')
+ assert.equal(calls.length,1,'the crash-window replay never creates another child')
 })
 
 test('mounted native public history and worktree tools use the RuntimeFacade with authenticated caller scope',async t=>{
