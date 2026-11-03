@@ -10,7 +10,7 @@
     "branch": "release-0.8.0-delegate-opt-in",
     "clean": true
   },
-  "verificationCommit": null,
+  "verificationCommit": "3fa1d04c645814967c0bf062262cc8b0b2ea2c1f",
   "artifact": {
     "name": "lmgatex-dsh-mattpocock-skills-0.8.0.tgz",
     "bytes": 468578,
@@ -109,10 +109,10 @@
   },
   "release": {
     "tag": "v0.8.0",
-    "tagCommit": null,
+    "tagCommit": "3fa1d04c645814967c0bf062262cc8b0b2ea2c1f",
     "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.8.0",
     "sourceCommit": "dfe03220f70249f983bb5bb957677b35303ab349",
-    "verificationCommit": null,
+    "verificationCommit": "3fa1d04c645814967c0bf062262cc8b0b2ea2c1f",
     "assets": [
       "lmgatex-dsh-mattpocock-skills-0.8.0.tgz",
       "lmgatex-dsh-mattpocock-skills-0.8.0.tgz.sha256",

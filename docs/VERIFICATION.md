@@ -2,7 +2,7 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-04 状态：0.8.0 将 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；默认模型面为 7 固定 + 条件 audit。0.8.0 的测试/构建计数与精确 clean-source 制品见下方专节。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样；未 npm 发布、未安装本机 DSH/Profile/GUI。
+> 2026-11-04 状态：0.8.0 将 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；默认模型面为 7 固定 + 条件 audit。0.8.0 的测试/构建计数与精确 clean-source 制品见下方专节；tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样；未 npm 发布、未安装本机 DSH/Profile/GUI。
 
 ## 0.8.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 
@@ -44,7 +44,7 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.8.0-artifact/lmgatex-dsh-ma
 ### 边界
 
 - **没有安装**：未执行任何 DSH install、Profile 编辑、服务重启、GUI 变更或本机插件激活。
-- **未 npm 发布、未本机安装**：tag `v0.8.0` 与 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.8.0) 将随本验证记录发布；未 npm publish，未执行 DSH install、Profile 编辑、服务重启或 GUI 变更。
+- **未 npm 发布、未本机安装**：已 push `main` 与 tag `v0.8.0`（指向 docs 验证提交 `3fa1d04`），并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.8.0)；未 npm publish，未执行 DSH install、Profile 编辑、服务重启或 GUI 变更。
 - **默认模型面**：7 固定 + 条件 audit；delegate 只在显式 `delegate: true` 时注册。客户端 9 个 wire key 仅保留呈现能力；Remote 仍是 16 个方法。
 - 完整记录见 `dist/verification-0.8.0.json`。
 
