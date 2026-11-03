@@ -1,6 +1,6 @@
 # 插件模型工具输出减负：有界当前视图、小回执与按需正文
 
-> **状态：0.10.0 隔离实施中，尚未验收/发布。** 2026-11-04 所有者认可研究与插件内处理范围，随后授权 subagents 在隔离环境实施、验收、push/tag/GitHub Release；暂不为本机安装。研究与设计已固定，后续结果只按实际门禁登记，不提前宣称通过或当前 GUI 生效。权威决策见 [DESIGN](<DESIGN.md>)，执行阶段见 [实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)。
+> **状态：0.10.0 已隔离实施并通过源码回归；固定 SHA 复核和发行门禁仍在进行，未安装本机。** 2026-11-04 所有者认可研究与插件内处理范围，随后授权 subagents 在隔离环境实施、验收、push/tag/GitHub Release；暂不为本机安装。研究与设计已固定，后续结果只按实际门禁登记，不提前宣称通过或当前 GUI 生效。权威决策见 [DESIGN](<DESIGN.md>)，执行阶段见 [实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)。
 
 ## 1. 结论与责任范围
 

@@ -4,7 +4,7 @@
 
 ## 当前提供什么
 
-协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.9.0：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.9.0 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
+协作仪器是不可变 Skills 分发之外的可选扩展。当前源码版本为 0.10.0：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.10.0 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
 
 > **2026-11-04 事实边界（0.9.0 源码实施）：** `headerCwd` 只是 child header 的来源值，不证明实际初始目录、当前目录或目录使用。已接受/不确定的 delegate 操作必须保留已有 child，不应改用 native 重建；必要时对同一真实 child 显式 `mattpocock_assign`。`recording: failed` 不再单独表示“没有创建”，而要与 `creation`/`binding`/`assignment` 分项读取。迟到 end 使用已保存的 owner/session/run 事实处理，旧 run 不会覆盖新 run；无法归属时在既有 health 明示覆盖缺口。详见[事实边界与恢复设计](<docs/INSTRUMENT_FACT_BOUNDARIES.md>)。
 
@@ -188,11 +188,11 @@ records/windows 使用显式 targets，worktrees 使用 bindingIds；均保留�
 
 0.8.0 默认工具面是七项（controls、record、window、resource、assign、history、worktree）+ 条件 `mattpocock_audit`；`mattpocock_delegate` 是显式 `delegate: true` 的可选第八项。客户端仍声明九个 wire key，供 opt-in delegate 与历史卡片；历史 0.6.0 发行版的九个固定工具（含 `mattpocock_execute`）记录保留为历史。C 已实施但不新增工具/Remote 方法；强绑定写入口仍只有 delegate。
 
-## 6.1. 0.10.0 模型结果迁移（候选实施中）
+## 6.1. 0.10.0 模型结果迁移
 
 本节对应[有界工具输出设计](<docs/BOUNDED_TOOL_OUTPUTS.md>)；验收/发布状态以[验证摘要](<docs/VERIFICATION.md>)为准，不代表本机已经升级。
 
-所有插件模型结果显式标 schemaVersion:2。读取、分页、正文片段与 audit 的最终 UTF-8 JSON 不超过 65,536 bytes；写回执和插件诊断不超过 8,192 bytes。限制发生在 typed execute 返回前，包含 envelope 和 JSON 转义，不是只截短工具卡。没有 full 回退参数；内部核心与 Remote 的完整结果不变。旧 PTC 使用 result.snapshot 的代码须按[迁移说明](<MIGRATION.md>)改读当前视图/写回执，不静默兼容。
+成功的插件模型 DTO 显式标 schemaVersion:2；错误保留原 SDK 错误协议，并限制插件诊断。读取、分页、正文片段与 audit 的最终 UTF-8 JSON 不超过 65,536 bytes；写回执和插件诊断不超过 8,192 bytes。限制发生在 typed execute 返回前，包含 envelope 和 JSON 转义，不是只截短工具卡。没有 full 回退参数；内部核心与 Remote 的完整结果不变。旧 PTC 使用 result.snapshot 的代码须按[迁移说明](<MIGRATION.md>)改读当前视图/写回执，不静默兼容。
 
 - record read 是完整的**当前恢复发现入口**：包含真实修订、授权范围、业务义务计数、T/S/unknown 和各类 shown/total/more/coverage/query。集合先给计数和 query 而非整张表；rows 空而 more=true 不表示没有待办。按返回 query 分页可找流程、票、裁决、状态计数、窗口票/执行、失败结局、待释放占位、工作树、资源、执行关联与能力/health。hidden、OFF 或新 focus 不抹掉已有义务；restricted/unknown 不是空数据。
 - 写操作返回 receipt，不再附整份 snapshot。appliedRevision 是原操作生效时的修订，不一定是当前修订；下一次业务命令用 businessRevision，viewer 命令用 viewerRevision，源清理仍用其对应源 CAS。保留 replayed、window generation/ignored 以及 delegate 的分项事实；partial/unknown 不当成功，不因输出精简而再次创建 child。

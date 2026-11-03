@@ -47,9 +47,9 @@
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
-## 插件内工具输出减负（0.10.0 候选）
+## 插件内工具输出减负（0.10.0）
 
-目前在隔离工作树实施。[有界输出设计](<docs/BOUNDED_TOOL_OUTPUTS.md>) 将插件模型工具的全快照改为当前视图、小写回执及逐次授权、按版本分段的正文；在 typed execute 返回前处理，不给 DSH spill/GC/PTC 打补丁，不删历史、不为本机安装或重启。新 schema 的用法见[迁移说明](<MIGRATION.md>)，实际完成状态见[验证摘要](<docs/VERIFICATION.md>)。
+隔离实现遵循[有界输出设计](<docs/BOUNDED_TOOL_OUTPUTS.md>) 将插件模型工具的全快照改为当前视图、小写回执及逐次授权、按版本分段的正文；在 typed execute 返回前处理，不给 DSH spill/GC/PTC 打补丁，不删历史、不为本机安装或重启。新 schema 的用法见[迁移说明](<MIGRATION.md>)，实际完成状态见[验证摘要](<docs/VERIFICATION.md>)。
 
 ## 可选协作控制
 
