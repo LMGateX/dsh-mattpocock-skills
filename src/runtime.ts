@@ -18,6 +18,8 @@ import { createResourceModule, ResourceError } from './controls/resources.js'
 import { concreteGitAdapter, probeWorktree } from './controls/git-worktrees.js'
 import { INITIAL_RUNTIME_DOCUMENT, parseRuntimeDocument } from './controls/runtime-state.js'
 import type { RuntimeDocument, RuntimeStorage, TaskAssignment } from './controls/runtime-state.js'
+import { applyNativeExecutionEvent, latestNativeExecutions, nativeChildrenForObservation, projectNativeExecution } from './controls/native-executions.js'
+import type { NativeExecutionEvent } from './controls/native-executions.js'
 import { parseHostJson, parseResourceAction, parseSessionSummaryRequest, SUMMARY_RESPONSE_LIMIT } from './controls/remote-contract.js'
 import type { HostCaller, HostJson, ResourceAction, RuntimeSnapshot, SessionSummary, SessionSummaryRequest, SessionSummaryResult, SessionSummaryBatch } from './controls/remote-contract.js'
 import type { InstrumentAuthor, InstrumentCommand, InstrumentCompactInput, InstrumentPurgeHistoryInput } from './controls/instrument-state.js'
@@ -177,7 +179,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(marks.runtime===doc.revision)return
     await captureCurrent(view,[...doc.assignments.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'assignment',recordId:row.sessionId,version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.bindings.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'execution-binding',recordId:JSON.stringify([row.executionId,row.generation]),version:doc.revision,snapshot:row,domain:'runtime'})),
-      ...doc.notifications.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'notification',recordId:row.notificationId,version:doc.revision,snapshot:row,domain:'runtime'}))])
+      ...doc.notifications.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'notification',recordId:row.notificationId,version:doc.revision,snapshot:row,domain:'runtime'})),
+      ...doc.nativeExecutions.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'native-execution',recordId:row.executionId,version:doc.revision,snapshot:row,domain:'runtime'}))])
     marks.runtime=doc.revision
   }
   const windowCaptureRevisions=new Map<string,number>()
@@ -240,8 +243,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         // change() retains immutable rows it did not alter. Diff row identity before parsing
         // (which detaches all rows) so owner-local notifications/assignments do not dirty
         // every other instance. Removed rows invalidate their former owner too.
-        const before=new Set([...old.assignments,...old.bindings,...old.notifications])
-        const after=new Set([...candidate.assignments,...candidate.bindings,...candidate.notifications])
+        const before=new Set([...old.assignments,...old.bindings,...old.notifications,...old.nativeExecutions])
+        const after=new Set([...candidate.assignments,...candidate.bindings,...candidate.notifications,...candidate.nativeExecutions])
         const owners=new Set([...before,...after].filter(row=>!before.has(row)||!after.has(row)).map(row=>row.instrumentInstanceId))
         for(const owner of owners)touchState(owner)
         // Capture only affected owner facts, never rebuild other owners merely because this
@@ -472,6 +475,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const projection=projectionCache.get(projectionBase)
     if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId))return projection.value
     const health: {scope:string;status:string;reason:string|null}[]=[]
+    const runtimeDocument=await load()
     let records:RuntimeSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
     try{records=await instruments.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
     try{windowView=await windows.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
@@ -490,14 +494,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         // this read. Run it once per instance off the read path, and invalidate the projection
         // only when it recovers facts so completed or empty replay cannot dirty a hot read.
         void replayWorktreeObservations(view).catch(()=>undefined)
-        const registry=await (await openObservations(view)).query(view.instance),assignments=(await load()).assignments
+        const registry=await (await openObservations(view)).query(view.instance),assignments=runtimeDocument.assignments
         observationRows=registry.rows
+        // Child facts belong to this owner instance only; nativeChildren is a read-time observed
+        // association, never a strong binding and never a directory-usage claim.
+        const ownerFacts=runtimeDocument.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId)
         worktreeObservations=registry.current.map(row=>{
           const agent=ports.liveAgent(row.value.creatorSessionId)
           const assignment=assignments.find(item=>item.sessionId===row.value.creatorSessionId)
           const binding=bindingRows.find(item=>item.value.plannedChildSessionId===row.value.creatorSessionId||item.value.actualChildSessionId===row.value.creatorSessionId)
           const lane=assignment===undefined&&binding===undefined?null:{workflowId:assignment?.workflowId??null,ticketIds:assignment?.ticketIds??binding?.value.ticketIds??[],task:binding?.value.task??null}
-          return {...row,creatorActivity:agent===undefined?'gone':(agent as unknown as {status?:string}).status==='running'?'running':'idle',lane}
+          return {...row,creatorActivity:agent===undefined?'gone':(agent as unknown as {status?:string}).status==='running'?'running':'idle',lane,
+            nativeChildren:nativeChildrenForObservation({path:row.value.path,creatorSessionId:row.value.creatorSessionId},ownerFacts)}
         })
         // Only sessions that actually recorded a failure are visited: the previous scan built an
         // array over every cached Session on each rebuild even when there was nothing to report.
@@ -507,9 +515,24 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(failure!==undefined)health.push({scope:'worktree-observations',status:'unknown',reason:failure})
       }else health.push({scope:'worktree-observations',status:'restricted',reason:'coordinator registry is not assigned-child task data'})
     }catch(error){signal.throwIfAborted();health.push({scope:'worktree-observations',status:'unknown',reason:String(error)})}
+    // Native execution facts are owner-coordinator data. An assigned child gets one restricted
+    // health row, never sibling facts; a recorded write failure is surfaced, never hidden.
+    let nativeExecutions:NonNullable<RuntimeSnapshot['nativeExecutions']>=[]
+    if(permission.kind==='coordinator'){
+      const ownerFacts=runtimeDocument.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId)
+      const observationSources=worktreeObservations.map(row=>({path:row.value.path,observationId:row.observationId,recordedAt:row.recordedAt}))
+      nativeExecutions=latestNativeExecutions(ownerFacts).map(fact=>{
+        const assignment=runtimeDocument.assignments.find(row=>row.sessionId===fact.sessionId)
+        const binding=bindingRows.find(row=>row.value.plannedChildSessionId===fact.sessionId||row.value.actualChildSessionId===fact.sessionId)
+        return projectNativeExecution(fact,assignment,binding?.value,observationSources,ports.liveAgent(fact.sessionId) as unknown as {readonly status?:string}|undefined)
+      })
+      const failure=[...nativeExecutionFailures].find(([sessionId,row])=>row.owner===view.instance.instrumentInstanceId
+        ||row.owner===null&&cachedSessions.get(sessionId)?.instance.instrumentInstanceId===view.instance.instrumentInstanceId)
+      if(failure!==undefined)health.push({scope:'native-executions',status:'unknown',reason:failure[1].reason})
+    }else health.push({scope:'native-executions',status:'restricted',reason:'coordinator registry is not assigned-child task data'})
     const observedByCreator=new Map<string,{readonly path:string;readonly branch:string;readonly businessState:'open'|'cleaned'}[]>()
     for(const row of observationRows){const list=observedByCreator.get(row.value.creatorSessionId)??[];list.push({path:row.value.path,branch:row.value.branch,businessState:row.value.business.state});observedByCreator.set(row.value.creatorSessionId,list)}
-    try{const notifications=(await load()).notifications.filter(n=>n.instrumentInstanceId===view.instance.instrumentInstanceId);const pending=notifications.filter(n=>n.state==='pending').length,accepted=notifications.filter(n=>n.state==='accepted').length
+    try{const notifications=runtimeDocument.notifications.filter(n=>n.instrumentInstanceId===view.instance.instrumentInstanceId);const pending=notifications.filter(n=>n.state==='pending').length,accepted=notifications.filter(n=>n.state==='accepted').length
       health.push({scope:'notifications',status:pending>0?'pending':accepted>0?'accepted':'current',reason:pending>0||accepted>0?'pending='+pending+', accepted-not-consumed='+accepted:null})
     }catch(error){signal.throwIfAborted();health.push({scope:'notifications',status:'unknown',reason:String(error).slice(0,1024)})}
     await captureSafely(view,async()=>{await captureBusiness(view,records);await captureOthers(view,caller)})
@@ -526,7 +549,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(windowView!==null){
       const raw=ports.nativeSubagentStops?.(view.instance.ownerSessionId)??[]
       if(raw.length>0){
-        const doc=await load()
+        const doc=runtimeDocument
         nativeStops=raw.map(stop=>{
           const managed=managedExecutions.get(stop.sessionId)
           const binding=doc.bindings.find(row=>row.sessionId===stop.sessionId&&!row.released)
@@ -542,9 +565,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       health.push({scope:'native-count',status:'current',reason:nativeCount.reestablished?'re-established after runtime '+String(nativeCount.previousRuntimeId):null})
     }
     signal.throwIfAborted()
-    const runtimeDocument=await load(),assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId)
+    const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId)
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...runtimeDocument.assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(nativeCount===undefined?{}:{nativeCount}),
+    const value=freeze({sessionId,caller,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
@@ -593,6 +616,76 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(observationFailures.get(key)!==reason){observationFailures.set(key,reason);touchState(view.instance.instrumentInstanceId)}
   }
   const programAuthor:InstrumentAuthor={kind:'user',principalId:ports.operatorPrincipal,sessionId:null}
+  // C: native-observed execution facts live in the existing owner runtime document. They are
+  // program facts, never strong bindings, and every observation failure stays isolated from the
+  // native event, S, nativeStops and the owner-notification path.
+  interface NativeExecutionFailure { readonly owner: string | null; readonly reason: string }
+  const nativeExecutionFailures=new Map<string,NativeExecutionFailure>()
+  const markNativeExecutionFailure=(sessionId:string,error:unknown):void=>{
+    const owner=cachedSessions.get(sessionId)?.instance.instrumentInstanceId??null,reason=String(error).slice(0,1024)
+    const prior=nativeExecutionFailures.get(sessionId)
+    if(prior?.owner===owner&&prior.reason===reason)return
+    nativeExecutionFailures.set(sessionId,{owner,reason})
+    if(owner===null)touchState();else touchState(owner)
+  }
+  const clearNativeExecutionFailure=(sessionId:string):void=>{
+    const prior=nativeExecutionFailures.get(sessionId)
+    if(prior===undefined)return
+    nativeExecutionFailures.delete(sessionId)
+    if(prior.owner===null)touchState();else touchState(prior.owner)
+  }
+  const nativeExecutionInitialCwd=(agent:Agent):string|null=>{
+    const cwd=agent.session.header.cwd
+    return typeof cwd==='string'&&isAbsolute(cwd)&&normalize(cwd)===cwd&&!/[\u0000-\u001f\u007f]/u.test(cwd)?cwd:null
+  }
+  /** Resolve the owner instrument instance from this runtime's retained session associations,
+   * then from the live parent chain, then from the durable association. A missing view is an
+   * observation failure, never a native-event failure. */
+  const nativeExecutionViewFor=async(agent:Agent):Promise<SessionControlsView|undefined>=>{
+    const sessionId=String(agent.id),direct=cachedSessions.get(sessionId)
+    if(direct!==undefined)return direct
+    const visited=new Set<string>()
+    let cursor=agent.session.header.parentSession
+    while(cursor!==undefined&&!visited.has(cursor)&&visited.size<128){
+      visited.add(cursor)
+      const retained=cachedSessions.get(cursor)
+      if(retained!==undefined)return retained
+      cursor=ports.liveAgent(cursor)?.session.header.parentSession
+    }
+    try{return await controls.readSession(ports.operatorPrincipal,sessionId)}catch{return undefined}
+  }
+  interface NativeExecutionEdge { readonly createdAt?:number|null; readonly provider?:string|null; readonly runId?:string|null; readonly stopReason?:string }
+  const nativeExecutionEvent=(agent:Agent,view:SessionControlsView,kind:'created'|'start'|'end'|'disposed',edge:NativeExecutionEdge={}):NativeExecutionEvent|null=>{
+    const header=agent.session.header
+    if(header.id!==agent.id||header.origin!=='subagent')return null
+    const parent=header.parentSession
+    if(typeof parent!=='string'||parent.length===0)return null
+    const base={sessionId:String(agent.id),parentSessionId:parent,instrumentInstanceId:view.instance.instrumentInstanceId,initialCwd:nativeExecutionInitialCwd(agent)}
+    if(kind==='created')return {...base,kind,createdAt:typeof header.createdAt==='number'&&Number.isSafeInteger(header.createdAt)&&header.createdAt>=0?header.createdAt:null}
+    if(kind==='start')return {...base,kind,provider:typeof edge.provider==='string'?edge.provider:null,runId:typeof edge.runId==='string'?edge.runId:null}
+    if(kind==='end')return typeof edge.stopReason==='string'?{...base,kind,outcome:edge.stopReason}:null
+    return {...base,kind}
+  }
+  const recordNativeExecution=async(view:SessionControlsView,event:NativeExecutionEvent):Promise<void>=>{
+    try{
+      await update(old=>{
+        const current=old.nativeExecutions.find(row=>row.executionId===event.sessionId)
+        const next=applyNativeExecutionEvent(current,event,Date.now())
+        if(next===null)return old
+        return {...old,nativeExecutions:current===undefined?[...old.nativeExecutions,next]:old.nativeExecutions.map(row=>row.executionId===next.executionId?next:row)}
+      })
+      clearNativeExecutionFailure(event.sessionId)
+    }catch(error){markNativeExecutionFailure(event.sessionId,error)}
+  }
+  const recordNativeExecutionEdge=async(agent:Agent,kind:'created'|'start'|'end'|'disposed',edge:NativeExecutionEdge={}):Promise<void>=>{
+    const sessionId=String(agent.id)
+    try{
+      const view=await nativeExecutionViewFor(agent)
+      if(view===undefined){markNativeExecutionFailure(sessionId,new ControlsError('unknown-session','native execution owner association is unavailable'));return}
+      const event=nativeExecutionEvent(agent,view,kind,edge)
+      if(event!==null)await recordNativeExecution(view,event)
+    }catch(error){markNativeExecutionFailure(sessionId,error)}
+  }
   const creationFromValue=(value:unknown):{readonly path:string;readonly branch:string;readonly baseCommit:string;readonly repositoryRoot:string}|null=>{
     if(value===null||typeof value!=='object'||Array.isArray(value))return null
     const raw=value as Record<string,unknown>
@@ -907,7 +1000,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           if(view&&!knowledgeIsCurrent(view,false,'unmanaged-or-late-native-creation'))await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))
         }
       }
-      try{const view=await identity(caller,caller.sessionId!,signal);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
+      try{const view=await identity(caller,caller.sessionId!,signal);const createdEvent=nativeExecutionEvent(actualAgent,view,'created');if(createdEvent!==null)await recordNativeExecution(view,createdEvent);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
       catch(error){signal.throwIfAborted();if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
       }catch(error){
         signal.throwIfAborted()
@@ -920,6 +1013,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // A terminal-outcome item reported by the native counter is actionable, not a log line:
       // it takes the existing owner-notification path before any ledger bookkeeping.
       if(event.kind==='native-stop'){await reportNativeStop(event);return}
+      // C: native lifecycle edges update the same owner row. Only local actual agents are
+      // accepted; a status edge has no document write (read-time activity covers it).
+      const nativeAgent=event.actualAgent
+      if(nativeAgent!==undefined&&nativeAgent.session.header.origin==='subagent'&&typeof nativeAgent.session.header.parentSession==='string'){
+        if(event.kind==='subagent-start')await recordNativeExecutionEdge(nativeAgent,'start',{provider:event.provider,runId:event.runId})
+        else if(event.kind==='subagent-end')await recordNativeExecutionEdge(nativeAgent,'end',{provider:event.provider,runId:event.runId,stopReason:event.stopReason})
+        else if(event.kind==='agent-disposed')await recordNativeExecutionEdge(nativeAgent,'disposed')
+      }
       // A disposed session never prepares again: drop its baseline so the retained Agent, its
       // Session log and the injected message are not kept alive for the process lifetime.
       if(event.kind==='agent-disposed'&&event.actualAgent){

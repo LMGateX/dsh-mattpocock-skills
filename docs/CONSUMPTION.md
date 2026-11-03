@@ -36,6 +36,8 @@ interface ConsumptionSnapshot {
   readonly records: InstrumentSnapshot | null
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
+  /** Latest native-observed execution facts; present for the owner coordinator only. */
+  readonly nativeExecutions?: readonly NativeExecutionView[]
   readonly capabilities: readonly { readonly key: string; readonly status: string; readonly reason: string | null }[]
   readonly health: readonly { readonly scope: string; readonly status: string; readonly reason: string | null }[]
 }
@@ -125,8 +127,8 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 1. business records 是作者报告，不是程序 S 回执或物理资源证明；保留当前作者与引用，业务状态名称/定义不折算。
 2. Skills、用户约定与任务文档决定交付、完成、暂停、取消、reopen 和提问；模型认为必要时登记待裁决，没有统一审批 gate。
 3. windows **显式 configured** 时才注入 T reserve/release/reacquire 引导。T 与程序 S 独立；S 的 used 是宿主的实时运行状态（live `Agent.status`，idle 常驻不计；成员资格只在成员变更节点刷新），宿主枚举不完整时明示为下界；被计为 running 的 run 无 end 消失时，只读该 child 自身日志按公开词表产生 `nativeStops` item（`error` 附已发布 diagnostic、`aborted` 附取消原因、无 `turn/end` 时明示 `unobservable`）并唤醒主代理，执行释放只更新审计行；不等待整批；无票 assignment 不造票/不造 T。
-4. 目标上，执行事实来自原生生命周期观察（native-observed）；ticket↔worktree 强绑定仍由 mattpocock_delegate 创建、mattpocock_worktree 读/更新/重核对，child↔ticket assignment 由 mattpocock_assign/delegate 写；mattpocock_execute 已在 0.7.0 移除，注入文本由原生生命周期观察说明执行事实来源，业务登记 mattpocock_record，显式 T 工具 mattpocock_window。列出真实 capabilities，包括 unsupported 与原因；configured 不伪装所有 native 路径均可强制。
-5. binding/lifecycle configured 时提醒退休须依实际身份、引用/租约和授权操作；业务“完成”不能当删除授权。
+4. 执行事实来自原生生命周期观察（native-observed，0.7.1 已实施）：owner coordinator 的当前视图有 `nativeExecutions` 类别（最多 64 行，最新在前），只描述宿主发布的 state/outcome 与读取时 activity；worktree 关联只在初始 cwd 精确匹配当前 `create_worktree` 观测时出现并标 `observed`，lane 从 assignment/binding 读取并标 `inferred`，两者都不是强 binding，也不写成任务完成。行存在时协议正文追加一行原生执行事实说明（含 observed/inferred 标签与 history 查询指针）；没有行时不追加。ticket↔worktree 强绑定仍由 mattpocock_delegate 创建、mattpocock_worktree 读/更新/重核对，child↔ticket assignment 由 mattpocock_assign/delegate 写；mattpocock_execute 已在 0.7.0 移除。列出真实 capabilities，包括 unsupported 与原因；configured 不伪装所有 native 路径均可强制。
+5. binding/lifecycle configured 时提醒退休须依实际身份、引用/租约和授权操作；业务“完成”不能当删除授权。`worktreeObservations[].nativeChildren` 是读取时 observed 关联（`created-tree` / `initial-cwd`），空数组表示没有可观测关联，不是“无人使用”。
 6. feature OFF 的最新快照明确覆盖旧 window/admission 协议；不停止已接受执行、不清记录/资源义务。display OFF 只改显示，不改仪器消费。
 
 固定协议与诊断不夹带开发版本、“candidate/未验证”、模型试验状态等元数据。真实业务文本、任务定义及真实 capability/health reason 仍作为数据保留；Host 必须保证来源正确，不把开发评估备注塞进事实字段。
@@ -141,7 +143,7 @@ Host.makeSnapshotMessage 必须创建独立且由 host/plugin 归属的真正 Us
 - 去重含 businessRevision、configRevision、windowRev、scope、当前登记状态/来源、实际 resources/capabilities/health。忽略 viewerRevision、set-decision-view、hidden/read、read timestamp、纯资源域 ledgerRevision；**读取始终执行**，不凭 watermark 跳过物理观察。
 - Resource factsDigest 与实际 physical facts 一起参与指纹。即使 business/config/window watermark 相同，目录、HEAD、脏文件、canRetire reasons 或 digest 改变也更新正文；甚至 adapter 错误复用 digest 时实际事实变化也不会跳过。指纹为 canonical serialization，不是安全/加密哈希。
 - 新序列消费完成后，迟到旧并发读只给自己的 superseded-read diagnostic，不覆盖新 feature-off/cache，也不被 Host 当作本次快照消息安装（新的读取拥有状态与 gate）。Host 应顺序处理自身 pre-step，不靠并发读制造业务流程。
-- 只有真正被采集为 history 的类别在注入正文里附 query locator；capabilities/health 等派生事实不再指向空的 notRecorded 页面。
+- 只有真正被采集为 history 的类别在注入正文里附 query locator；capabilities/health 等派生事实不再指向空的 notRecorded 页面。`nativeExecutions` 的 locator 使用 `kind: "native-execution"` 与 `recordId: executionId`。
 
 ## Source-only 验证
 

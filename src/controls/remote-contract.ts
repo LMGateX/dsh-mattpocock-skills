@@ -61,6 +61,8 @@ export interface RuntimeSnapshot {
   readonly nativeCount?: { readonly reestablished: boolean; readonly runtimeId: string; readonly previousRuntimeId: string | null }
   /** Open terminal-outcome items the main agent must handle; never a count source. */
   readonly nativeStops?: readonly NativeStopRow[]
+  /** Latest native-observed execution facts for the owner coordinator; never sibling data for an assigned child. */
+  readonly nativeExecutions?: readonly import('./native-executions.js').NativeExecutionView[]
   readonly capabilities: readonly { readonly key: string; readonly status: string; readonly reason: string | null }[]
   readonly health: readonly { readonly scope: string; readonly status: string; readonly reason: string | null }[]
 }

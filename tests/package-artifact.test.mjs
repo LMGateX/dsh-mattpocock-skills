@@ -47,9 +47,9 @@ function validMembers() {
   ]
 }
 
-test('0.7.0 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.7.0' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.7.0')
+test('0.7.1 package policy admits exactly four metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.7.1' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.7.1')
   assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
     'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
   ])
@@ -59,7 +59,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.7.0',
+    version: '0.7.1',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
@@ -106,14 +106,14 @@ test('locale metadata verification rejects unknown structure and changed public 
   ]) assert.throws(() => validatePackageLocale('locale/worktree-bridge/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 93 fixed files, 85 vendor files and 74 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 93)
-  assert.equal(EXPECTED_PACKED_FILES, 178)
-  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 74)
+test('exact package inventory contains 95 fixed files, 85 vendor files and 76 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 95)
+  assert.equal(EXPECTED_PACKED_FILES, 180)
+  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 76)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 178)
+  assert.equal(members.size, 180)
   for (const path of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
 })
 

@@ -1,5 +1,6 @@
 import type { ExecutionToken } from './windows.js';
 import type { VersionedStorage } from './versioned-storage.js';
+import type { NativeExecutionFact } from './native-executions.js';
 /** Host-produced task permissions and exact execution associations; never model receipts. */
 export interface TaskAssignment {
     readonly sessionId: string;
@@ -29,6 +30,8 @@ export interface RuntimeDocument {
     readonly assignments: readonly TaskAssignment[];
     readonly bindings: readonly ExecutionBinding[];
     readonly notifications: readonly OwnerNotification[];
+    /** Native-observed lifecycle facts, one row per native child session; never a strong binding. */
+    readonly nativeExecutions: readonly NativeExecutionFact[];
 }
 export type RuntimeStorage = VersionedStorage<RuntimeDocument>;
 export declare const INITIAL_RUNTIME_DOCUMENT: RuntimeDocument;

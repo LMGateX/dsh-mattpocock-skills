@@ -1,6 +1,6 @@
 # 原生执行事实与读取时关联（C 阶段）
 
-> **Status:** 2026-11-03 设计增量，实施目标为 0.7.1。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具，不写强 binding，不替换 delegate，不改变 S/结局/通知。**
+> **Status:** 2026-11-03 设计增量；**0.7.1 已实施并完成机械验证**（隔离工作树，未安装本机 DSH/Profile/GUI）。它补齐方案 A 的 C 阶段：从宿主原生生命周期事件记录 `native-observed` 执行事实，并在读取时把 native child 与工作树观察关联。**不新增模型工具、Remote 方法或存储域，不写强 binding，不替换 delegate，不改变 S/结局/通知。**
 > 公开资料边界：只记录公开事件、合成测试与聚合结果；不发布原始会话、Profile 或本机路径。
 
 ## 0. 目标与非目标
@@ -118,7 +118,7 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 - `ConsumptionSnapshot.nativeExecutions`：有界当前行；协议文本增加一条原生执行事实说明（只展示 observed/inferred 标签，不写成任务完成）。
 - 客户端窗口投影：在 T/S/outcome 之后显示原生执行事实摘要与行；工作树观测面板显示 `nativeChildren` 关联及标签。
 - `mattpocock_history`：通过现有 runtime capture 记录 `kind: 'native-execution'`、`domain: 'runtime'`、`recordId: executionId`；按 document revision 保留历史。查询走现有 history，不新增模型工具。
-- `docs/CONSUMPTION.md`、`CONTROLS.md`、`WORKTREE_OBSERVATION.md`、`VERIFICATION.md` 更新为 C 已实施（发布后）。
+- `docs/CONSUMPTION.md`、`CONTROLS.md`、`WORKTREE_OBSERVATION.md`、`VERIFICATION.md` 更新为 C 已实施（0.7.1 源码线与制品验证完成；未发布、未安装）。
 
 ## 4. 失败、边界与兼容
 
@@ -137,4 +137,11 @@ C **不调用** `registerIntent/confirm`，不改 `worktrees_*` 文档，不把 
 4. `nativeChildren` 区分 `initial-cwd` 与 `created-tree`；路径不同不关联；不声称目录被使用。
 5. S、nativeStops、owner 通知、worktree binding/observation、history 回归；模型工具面仍是八个固定 + 条件 audit。
 6. 旧 runtime document 可解析；观察失败不改变原生事件结果；coordinator 以外不返回执行事实。
-7. clean-source prepack、精确 tarball、完整测试与独立 verifier 通过；发布仍不安装本机。
+7. clean-source prepack、精确 tarball、完整测试与独立 verifier 通过；本轮不发布、不安装本机。
+
+## 6. 实施记录（0.7.1，2026-11-03，隔离工作树）
+
+- 事实：`RuntimeDocument.nativeExecutions`（一行一个 native child session，`executionId = sessionId`；严格 parse + 唯一性；旧文档缺字段按空数组）；`agent/created`/`subagent/start|end`/`agent/disposed` 幂等 fold，`agent/status` 不写；初始 cwd 不可变；观察失败只进 health，不影响 native 事件、S、nativeStops 或通知。
+- 视图：`RuntimeSnapshot.nativeExecutions` 仅 coordinator，最近 64 行最新在前；`activity` 读取时取 live Agent；`lane` 标 `inferred`；`worktree` 仅精确初始 cwd 匹配当前 observation 时标 `observed`。工作树观测行增加读取时 `nativeChildren`（`created-tree` / `initial-cwd`，`observed`）。
+- 对外：`ConsumptionSnapshot.nativeExecutions` 与 facts 分类；仅在有行时追加协议说明；`mattpocock_history` 通过既有 runtime capture 记录 `kind: native-execution`、`domain: runtime`、`recordId: executionId`、`version: document.revision`。客户端窗口/观测面板只读展示。
+- 边界：没有新模型工具、Remote 方法或存储域；没有 `registerIntent/confirm` 或 `worktrees_*` 写入；binding 字段/行数不变。完整测试计数、客户端/构建产物、clean-source 制品字节与 sha256 见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。

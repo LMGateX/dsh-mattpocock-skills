@@ -1,6 +1,8 @@
 import { array, boolean, ControlsError, freeze, id, record, revision } from './validation.js'
 import type { ExecutionToken } from './windows.js'
 import type { VersionedStorage } from './versioned-storage.js'
+import { parseNativeExecutionFact } from './native-executions.js'
+import type { NativeExecutionFact } from './native-executions.js'
 
 /** Host-produced task permissions and exact execution associations; never model receipts. */
 export interface TaskAssignment {
@@ -21,12 +23,14 @@ export interface RuntimeDocument {
   readonly schemaVersion: 1; readonly revision: number
   readonly assignments: readonly TaskAssignment[]; readonly bindings: readonly ExecutionBinding[]
   readonly notifications:readonly OwnerNotification[]
+  /** Native-observed lifecycle facts, one row per native child session; never a strong binding. */
+  readonly nativeExecutions: readonly NativeExecutionFact[]
 }
 export type RuntimeStorage = VersionedStorage<RuntimeDocument>
-export const INITIAL_RUNTIME_DOCUMENT: RuntimeDocument = freeze({schemaVersion: 1, revision: 0, assignments: [], bindings: [], notifications: []})
+export const INITIAL_RUNTIME_DOCUMENT: RuntimeDocument = freeze({schemaVersion: 1, revision: 0, assignments: [], bindings: [], notifications: [], nativeExecutions: []})
 export function parseRuntimeDocument(value: unknown): RuntimeDocument {
   try {
-    const r = record(value, 'runtime bindings', ['schemaVersion', 'revision', 'assignments', 'bindings', 'notifications'])
+    const r = record(value, 'runtime bindings', ['schemaVersion', 'revision', 'assignments', 'bindings', 'notifications', 'nativeExecutions'])
     if(r.schemaVersion !== 1) throw new ControlsError('invalid-state','unsupported runtime binding schema')
     const assignments = array(r.assignments, 'assignments').map(value => {
       const a = record(value, 'assignment', ['sessionId','parentSessionId','instrumentInstanceId','workflowId','ticketIds'])
@@ -51,6 +55,9 @@ export function parseRuntimeDocument(value: unknown): RuntimeDocument {
       return {notificationId:id(n.notificationId,'notificationId'),instrumentInstanceId:id(n.instrumentInstanceId,'notification instance'),ownerSessionId:id(n.ownerSessionId,'notification owner'),businessRevision:revision(n.businessRevision,'businessRevision'),authorPrincipalId:id(n.authorPrincipalId,'notification author'),state:n.state,messageId}
     })
     if(new Set(notifications.map(n=>n.notificationId)).size!==notifications.length)throw new ControlsError('invalid-state','duplicate notification identity')
-    return freeze({schemaVersion:1,revision:revision(r.revision,'runtime revision'),assignments,bindings,notifications})
+    // Old documents predate the C field: an absent array parses as empty, and no history is invented.
+    const nativeExecutions=array(r.nativeExecutions??[],'nativeExecutions').map(parseNativeExecutionFact)
+    if(new Set(nativeExecutions.map(row=>row.executionId)).size!==nativeExecutions.length)throw new ControlsError('invalid-state','duplicate native execution identity')
+    return freeze({schemaVersion:1,revision:revision(r.revision,'runtime revision'),assignments,bindings,notifications,nativeExecutions})
   } catch(error) { if(error instanceof ControlsError && error.code==='invalid-state') throw error; throw new ControlsError('invalid-state','invalid durable runtime binding document: '+String(error)) }
 }

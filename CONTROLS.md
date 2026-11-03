@@ -2,7 +2,7 @@
 
 ## 当前提供什么
 
-协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.7.0：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理，以及 Host/Client 接口均已实现。0.7.0 的模型面是八个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 只作强绑定创建。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求。
+协作仪器是不可变 Skills 分发之外的可选扩展。当前源码/候选包版本为 0.7.1：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实与读取时 observed/inferred 关联，以及 Host/Client 接口均已实现。0.7.1 的模型面仍是八个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 只作强绑定创建，C 阶段没有新增模型工具或 Remote 方法。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求；本轮未安装本机 DSH/Profile/GUI。
 
 **业务判断由 agent 按 Skills、用户约定和任务文档作出。** 仪器记录进度、待办、真实绑定和执行事实，不另设统一完成标准、容量审批或工作树处置审批。主代理自己用已授权的 Git/Shell 工具准备、合并和清理工作树。
 
@@ -46,7 +46,7 @@
 
 ## 2. 准备工作树，再创建与续聊
 
-> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})`，插件只观察/登记；需要 ticket↔tree 强绑定或需要其持久意图/幂等时用 `mattpocock_delegate` 的绑定式创建。0.7.0 已移除 `mattpocock_execute`，delegate 的模型描述已改为 binding-first creation；C（原生观察读取时关联/账本补齐）仍待后续。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)与[验证](<docs/VERIFICATION.md>)。
+> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})`，插件只观察/登记；需要 ticket↔tree 强绑定或需要其持久意图/幂等时用 `mattpocock_delegate` 的绑定式创建。0.7.0 已移除 `mattpocock_execute`，delegate 的模型描述已改为 binding-first creation；C（原生观察读取时关联/账本补齐）于 0.7.1 完成：原生生命周期事实写入 owner runtime 文档，读取时给出 activity、observed worktree 与 inferred lane，并只对 coordinator 返回。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)与[验证](<docs/VERIFICATION.md>)。
 
 **默认路径（native-first，普通无绑定 lane）**
 
@@ -106,10 +106,13 @@ workflow 自定义进度轴、状态键、含义和互斥/重叠计数。仪器�
 | T | held 的票占位与参考值 | 占位、释放和重新占位记录 |
 | S | 当前实时运行状态、未核对事实、参考值和 countKnown | 历史执行、结束/释放回执与实际来源 |
 | 新工作树关系 | 未 cleaned 的绑定/意图；discarded 未清理仍提醒 | 包括已 cleaned 的保留历史 |
+| 原生执行事实 | 最近 64 行 native-observed（state/outcome/读取时 activity；worktree=observed，lane=inferred） | `mattpocock_history` 的 `kind: native-execution`，按 owner 文档修订保留版本 |
 | 配置、授权与通知 | 当前策略、必要限制、尚待处理的技术计数 | 实际已捕获的历史；旧未记录区间标 snapshot-only/缺口 |
 | 个人已读/隐藏 | 不代替业务待办判断 | 使用个人视图读取，不混入共享 owner 历史 |
 
 自动文本每细类别使用固定机械预算，提供 shown / total / more 和查询定位；长字段标 truncated。预算不限制可创建的票、待办或工作树数量。未列明细仍保留待办计数和 unknown 健康计数，不能把“没展开”读成“没有”。
+
+原生执行事实来自 `agent/created`、`subagent/start`、`subagent/end`、`agent/disposed` 的宿主事件，一行对应一个 native child session（`executionId` 即 `sessionId`），不是每回合一行；重复事件与热重载复用同一行。`activity` 是读取时 live Agent 状态，不持久化；`outcome` 只来自宿主公开的 `stopReason`，没有 end 就是 null。worktree 关联只在 child 初始 cwd 与当前 `create_worktree` 观测路径**精确相等**时出现，标 `observed`；lane 从 assignment/binding 读取，标 `inferred`；两者都不是强 binding、不表示目录被使用，也不是任务完成回执。旧 runtime 文档无该字段时按空数组解析。
 
 实际消费边界读取新鲜状态，只等待相关已登记持久化操作，不等子代理整个运行。pre-step 与 post-execute 只在视图变化时追加新文本，system context 提供短查询指针；不在三条路径反复追加同一全文。历史修订变化不会仅因全局 revision 让无业务变化的当前全文重新注入。退出未来注入不擦除已经写入原生对话历史的旧消息。
 
@@ -173,9 +176,9 @@ records/windows 使用显式 targets，worktrees 使用 bindingIds；均保留�
 
 工具使用真实调用 Agent/session，不接受正文自报 principal、owner、作者或执行回执。策略委托可撤销，子代理不能自授权。源清理由实际 owner coordinator 或认证用户执行；Session 导航和输入的 operationId 都不是授权。原生/preset 隐藏工具时按不可用处理，不绕过。
 
-**ticket↔worktree 看 binding，不看 assignment/execution**：binding 由 delegate 写、worktree 读/更新；assignment 只写 child↔ticket 权限；已移除的 execute 只记 execution fact，不含 cwd/bindingId。
+**ticket↔worktree 看 binding，不看 assignment/execution**：binding 由 delegate 写、worktree 读/更新；assignment 只写 child↔ticket 权限；已移除的 execute 从未包含 cwd/bindingId。0.7.1 的 native-observed execution fact 只回答“这个 native child 最近一次观测到的生命周期”，**不是** binding；读取时工作树/lane 关联已明确标 `observed`/`inferred`。
 
-0.7.0 固定工具面是八项（controls、record、window、resource、assign、history、worktree、delegate）+ 条件 `mattpocock_audit`；客户端共九个 wire key。历史 0.6.0 发行版的九个固定工具（含 `mattpocock_execute`）记录保留为历史；C 阶段仍待后续。
+0.7.1 固定工具面仍是八项（controls、record、window、resource、assign、history、worktree、delegate）+ 条件 `mattpocock_audit`；客户端共九个 wire key。历史 0.6.0 发行版的九个固定工具（含 `mattpocock_execute`）记录保留为历史。C 已实施但不新增工具/Remote 方法；强绑定写入口仍只有 delegate。
 
 ## 7. 通知与工程部署
 

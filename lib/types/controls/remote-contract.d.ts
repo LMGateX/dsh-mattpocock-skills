@@ -85,6 +85,8 @@ export interface RuntimeSnapshot {
     };
     /** Open terminal-outcome items the main agent must handle; never a count source. */
     readonly nativeStops?: readonly NativeStopRow[];
+    /** Latest native-observed execution facts for the owner coordinator; never sibling data for an assigned child. */
+    readonly nativeExecutions?: readonly import('./native-executions.js').NativeExecutionView[];
     readonly capabilities: readonly {
         readonly key: string;
         readonly status: string;

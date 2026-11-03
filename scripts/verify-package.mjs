@@ -56,6 +56,7 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/controls/consumption.js',
   'lib/controls/remote-contract.js',
   'lib/controls/runtime-state.js',
+  'lib/controls/native-executions.js',
   'lib/controls/history.js',
   'lib/controls/worktree-bindings.js',
   'lib/controls/worktree-observations.js',
@@ -68,6 +69,7 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/controls/consumption.d.ts',
   'lib/types/controls/remote-contract.d.ts',
   'lib/types/controls/runtime-state.d.ts',
+  'lib/types/controls/native-executions.d.ts',
   'lib/controls/startup-state.js',
   'lib/controls/startup-support.js',
   'lib/types/controls/startup-state.d.ts',
@@ -154,6 +156,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/controls/consumption.js',
   'lib/controls/remote-contract.js',
   'lib/controls/runtime-state.js',
+  'lib/controls/native-executions.js',
   'lib/controls/history.js',
   'lib/controls/worktree-bindings.js',
   'lib/controls/worktree-observations.js',
@@ -166,6 +169,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/controls/consumption.d.ts',
   'lib/types/controls/remote-contract.d.ts',
   'lib/types/controls/runtime-state.d.ts',
+  'lib/types/controls/native-executions.d.ts',
   'lib/controls/startup-state.js',
   'lib/controls/startup-support.js',
   'lib/types/controls/startup-state.d.ts',
@@ -203,7 +207,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.7.0'
+const EXPECTED_VERSION = '0.7.1'
 // DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
 // peers declared below only when it is absent. The declared range therefore repeats the exact
 // verdict those peers already produce on both host lines, measured with the real
@@ -268,7 +272,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 93
+const EXPECTED_FIXED_PACKED_FILES = 95
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

@@ -49,9 +49,9 @@
 
 ## 可选协作控制
 
-可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.7.0 挂载八项固定工具 + 条件 `mattpocock_audit`（`mattpocock_execute` 已移除；客户端共九个 wire key）及第三方设置/常驻摘要/右侧详情。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
+可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.7.1 挂载八项固定工具 + 条件 `mattpocock_audit`（`mattpocock_execute` 已移除；客户端共九个 wire key）及第三方设置/常驻摘要/右侧详情。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
 
-**设计更新（2026-11-03，已在 0.7.0 源码线实施）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（持久意图、实际 header 核对、创建 binding 并 assign 票范围）；`mattpocock_execute` 已移除，不再有 execute 路径。C（原生观察读取时关联/账本补齐）仍待后续。0.7.0 制品已构建并验证；安装/激活仍走独立门禁；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
+**设计更新（2026-11-03，已在 0.7.0 源码线实施；C 阶段于 0.7.1 完成）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（持久意图、实际 header 核对、创建 binding 并 assign 票范围）；`mattpocock_execute` 已移除，不再有 execute 路径。C（原生观察读取时关联/账本补齐）已在 0.7.1 源码线实施：持久 `native-observed` 执行事实，以及读取时 observed/inferred 工作树关联；不新增模型工具、Remote 方法或强绑定写入口。0.7.1 制品已构建并验证；安装/激活仍走独立门禁，本轮未安装本机 DSH/Profile/GUI；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
 
 T/S 超限或观测未知不拒绝合法原生委派，不新增业务审批。Git 工作树由 agent 自行创建、合并和删除；已清理树退出持续注入，废弃未清理仍提示，历史不默认过期。
 
@@ -73,6 +73,6 @@ node scripts/verify-vendor.mjs
 node scripts/update-source.mjs --source ../mattpocock-skills-fork --check
 ```
 
-Phase 3 的文件系统加固已在 Linux/Node 24 上验证；不支持安全 no-follow 文件打开的主机会采用失败关闭策略，更广泛的平台兼容性仍需后续门禁验证。
+Phase 3 的文件系统加固已在 Linux/Node 24 上验证；不支持安全 no-follow 文件打开的主机会采用失败关闭策略，更广泛的平台兼容性仍需后续门禁验证。当前 0.7.1 C 阶段的测试/构建计数与精确 clean-source 制品身份见[验证摘要](<docs/VERIFICATION.md>)；它们不安装或启用本机插件。
 
 当前不发布到 npmjs。`@lmgatex` npm Scope 的所有权将在未来决定 npm 发布前单独确认。

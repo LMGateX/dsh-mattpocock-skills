@@ -5,6 +5,7 @@ import { parseAuthor } from './instrument-state.js'
 import type { InstrumentAuthor } from './instrument-state.js'
 import type { VersionedStorage } from './versioned-storage.js'
 import { array, boolean, ControlsError, freeze, id, increment, invalid, memoized, record, revision } from './validation.js'
+import type { NativeExecutionChild } from './native-executions.js'
 
 /** One native create_worktree call observed through the tool pipeline. Immutable creation facts. */
 export interface WorktreeObservationInput {
@@ -79,6 +80,8 @@ export interface WorktreeObservationView extends WorktreeObservationCurrent {
   /** Creator session activity right now; never stored, so it cannot go stale. */
   readonly creatorActivity: 'running' | 'idle' | 'gone'
   readonly lane: WorktreeObservationLane | null
+  /** Read-time child associations from native execution facts; observed, never a usage or binding claim. */
+  readonly nativeChildren: readonly NativeExecutionChild[]
 }
 export interface WorktreeObservationsSnapshot {
   readonly revision: number

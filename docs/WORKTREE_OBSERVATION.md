@@ -3,7 +3,7 @@
 > 状态：**源码已实施（2026-10-13），隔离工作树内机械验收通过；未安装到本机 DSH/Profile，也未发布**。本轮实现只覆盖原生 `create_worktree` 事件观测，实施范围、覆盖边界与门禁结果见第 11 节。
 > 公开资料边界：本文引用的本机会话存储抽样与 SDK 安装产物仅作本地核对，不随公开仓库分发，也不充当公共原始证明；公开证据范围见[公开验证说明](<VERIFICATION.md>)。
 
-> 2026-11-03 后续方向：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联，方便 native-first 路径显示 lane；这只是 observed/inferred 关联，不写 delegate 风格的强 binding，也不替代 delegate。delegate 保留为强绑定写入口；`mattpocock_execute` 已在 0.7.0 移除。C 的设计已接受、0.7.1 实施中，不新增模型工具；详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+> 2026-11-03 C 阶段（0.7.1 已完成）：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联。观测行新增 `nativeChildren`（`created-tree` / `initial-cwd`，均标 `observed`），runtime 快照新增 `nativeExecutions` 与 `worktree`/`lane` 读取投影（worktree 标 `observed`，lane 标 `inferred`）。这只是读取时关联，不写 delegate 风格的强 binding，也不替代 delegate；delegate 仍是唯一强绑定写入口；`mattpocock_execute` 已在 0.7.0 移除，C 不新增模型工具或 Remote 方法。详见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
 
 ## 0. 目标与非目标
 
@@ -109,9 +109,16 @@ DSH 没有“目录被谁占用”的机制：
 - 竞态：子代理可能在父的 `confirm` 落库前就建树；因此关联必须同时查 planned 与 actual 两个 id。
 - 原生 subagent／既无 binding 也无 assignment 的会话：票信息如实显示 unknown，可由作者在业务备注里补；本能力不猜测。
 
+### 5.4a 原生执行事实与 nativeChildren（0.7.1 C）
+
+- 原生执行事实来自宿主生命周期事件（`agent/created`、`subagent/start|end`、`agent/disposed`），保存在 owner runtime document 的 `nativeExecutions`；一行对应一个 native child session，`executionId = sessionId`，重跑/热重载更新同一行。
+- `nativeChildren` 是读取时从这些事实派生的只读关联：`created-tree` 表示 observation 的 `creatorSessionId` 就是该 native child（只说明它创建了这棵树，不说明它正在使用）；`initial-cwd` 表示 child 的初始 cwd 与 observation 的 `path` 精确相等且 child 不是创建者（不做前缀、软链或当前 cwd 推断）。
+- 两者都标 `source: 'observed'`，长度为空表示没有可观测关联，不是“无人使用”。读取投影不写 `worktrees_*`、不调用 `registerIntent/confirm`、不改变任何 binding 字段或业务状态。
+- `nativeExecutions[].worktree` 同样只在初始 cwd 精确匹配某条当前 observation 路径时出现，并取该路径最新的一条 observation；路径不同就是 null。
+
 ### 5.5 呈现与通知
 
-- 清单行：创建者（含当前活动性）、票、branch／path、创建时间、是否存在。
+- 清单行：创建者（含当前活动性）、票、branch／path、创建时间、是否存在、nativeChildren 关联与 observed 标签。
 - **创建不唤醒**：观察写入不产生通知，只在下一步上下文里出现。
 - **终局顺带列出**：托管子代理到达终局（宿主 stopReason 词表）时，已有的 main-agent item 顺带列出“该子代理创建的树（路径／分支）”；不新增第二套唤醒类型。
 - 去重沿用现有 durable notification 行（`native-stop` item 的做法），同一树不重复唤醒。
@@ -133,7 +140,8 @@ DSH 没有“目录被谁占用”的机制：
 |---|---|
 | 新文件 `src/controls/worktree-observations.ts` | 严格 parse／事件版本 fold／CAS／query；行身份 =（创建者会话，目录），调用身份 =（创建者会话，callId） |
 | `src/controls/git-worktrees.ts` | 新增只读 `probeWorktree`：存在性、精确 Git 树根、common／git 目录、分支 ref 与当前 OID、路径身份（复用同一受权 runner 与固定 argv 契约） |
-| runtime 存储 | owner 域存储 `worktree_observations_<hash>`（同 [runtime.ts](<../src/runtime.ts#L89-L91>) 模式）、快照字段 `worktreeObservations`、读取时的 `creatorActivity`／`lane`、E4 回放；v1 **不进** history 观察 kind |
+| runtime 存储 | owner 域存储 `worktree_observations_<hash>`（同 [runtime.ts](<../src/runtime.ts#L89-L91>) 模式）、快照字段 `worktreeObservations`、读取时的 `creatorActivity`／`lane`／`nativeChildren`、E4 回放；v1 **不进** history 观察 kind |
+| owner runtime 文档（0.7.1 C） | `nativeExecutions` 事实（一行一个 child session）、严格 parse、事件幂等 fold；不新增存储域、模型工具或 Remote 方法 |
 | runtime 源清理 | **v1 不在范围**：观察只做当前状态 + 内部事件日志，不进 `mattpocock_history` 查询与源清理选择器；将来需要时再决定并入 `worktrees` 域还是新开域 |
 | runtime 事件入口 | `postExecute` 命中成功的 `create_worktree` → 同步 `observed` + 异步 `probeWorktree` 核验；不新增宿主端口、不挂模型工具 |
 | consumption／client | 新分类 `worktreeObservations`（含 `open` 计数）、终局 item 附带 `createdWorktrees`、客户端只读列表 + 作者登记编辑；v1 不扩展源域选择器（[consumption.ts](<../src/controls/consumption.ts>)、[client.ts](<../src/client.ts>)） |
@@ -203,6 +211,14 @@ DSH 没有“目录被谁占用”的机制：
 **门禁结果**（Node 24.17.0，规范根 DSH `0.2.1-alpha.2`）：`DSH_CONTROLS_HOST_ROOT=<DSH_INSTALL> node --test tests/*.test.mjs` → **851 项中 654 通过、0 失败、197 个桥用例按环境门禁 skip**；`scripts/verify-package.mjs --prepack`（清洁提交后）→ scratch tsc 与提交 `lib/` 一致、固定包清单 87 + 85 vendor = 172 通过。
 
 **未做**：安装／热重载本机 Profile、发布／推送／打标签、`mattpocock_history` 观察 kind 与源清理域、cwd 事件兜底、冷会话回放枚举。
+
+## 12. C 阶段实施记录（0.7.1，隔离工作树内完成，未安装）
+
+**范围**：普通 native `subagent`/`subagent_fork` child 的 `native-observed` 执行事实，以及 child 初始 cwd/创建者与 `create_worktree` observation 的读取时关联；不写强 binding、不新增工具/Remote/存储域、不改变 S/nativeStops/通知。
+
+**改动**：新增 [native-executions.ts](<../src/controls/native-executions.ts>)（事实/view 类型、严格 parse、事件幂等 fold、activity/lane/worktree/nativeChildren 纯投影）；[runtime-state.ts](<../src/controls/runtime-state.ts>) 增加 `nativeExecutions`（旧文档缺字段按空数组）；[runtime.ts](<../src/runtime.ts>) 在 `created`/`observe` 写入事实、快照投影、health、history capture（`kind: native-execution`）、`nativeChildren`；consumption/client 增加类别、协议行与只读展示；package 固定清单精确 +2（`lib/controls/native-executions.js`、`lib/types/controls/native-executions.d.ts`），当前 **95 固定 + 85 vendor = 180**。
+
+**验证**：完整根套件 **976 项：773 通过、0 失败、203 skip**；`native-executions` 模块 9／9，`native-execution-runtime` 7／7，client 定向 39／39（含 native execution / nativeChildren 呈现），consumption 24／24。clean-source 制品、精确 tarball 与计数见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.7.1 节。未安装本机 DSH/Profile/GUI，未推送/打标签/npm 发布。
 
 ## 10. 与既有文档的关系
 

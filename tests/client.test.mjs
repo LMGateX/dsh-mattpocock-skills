@@ -633,6 +633,47 @@ test('mounted windows show reference overage and signed gap while countKnown fal
   assert(!JSON.stringify(failed).includes('S 0/3'))
 })
 
+
+test('native execution facts and worktree nativeChildren render observed/inferred labels, never completion or usage claims', async t => {
+  const windows = { instance, capability: 'cooperative', status: 'ready', reason: null, runtimeKnowledge: { runtimeId: 'native-one', known: true, reason: null },
+    T: { used: 0, capacity: null, available: null, overcommitted: false },
+    S: { used: 1, capacity: null, available: null, overcommitted: false, countKnown: true, byState: { running: 1 } } }
+  const nativeExecutions = [{ executionId: 'child', sessionId: 'child', parentSessionId: 'root', instrumentInstanceId: 'i-one',
+    provider: 'spawn', runId: 'run-1', initialCwd: '/trees/A', state: 'ended', outcome: 'completed',
+    observed: 'subagent/end: completed', startedAt: 1, endedAt: 2, recordedAt: 2, activity: 'idle',
+    lane: { workflowId: 'flow', ticketIds: ['A'], task: null, source: 'inferred' },
+    worktree: { path: '/trees/A', observationId: 'obs-1', source: 'observed' } }]
+  const projected = client.WindowProjection({ view: snapshot('A', { windows, nativeExecutions }) })
+  const text = JSON.stringify(projected)
+  assert.match(text, /原生执行事实 1 行（native-observed；worktree=observed，lane=inferred；不是任务完成证明）/)
+  assert.match(text, /工作树（observed）\/trees\/A/)
+  assert.match(text, /lane（inferred）flow\/A/)
+  assert.match(text, /结局 completed/)
+  assert.doesNotMatch(text, /已完成任务/)
+
+  const nativeChildren = [
+    { sessionId: 'creator', initialCwd: '/trees/A', relation: 'created-tree', source: 'observed' },
+    { sessionId: 'sibling', initialCwd: '/trees/A', relation: 'initial-cwd', source: 'observed' },
+  ]
+  const observation = { observationId: 'obs-1', revision: 1, source: 'program', recordedAt: 1, creatorActivity: 'idle', lane: null,
+    nativeChildren,
+    value: { creatorSessionId: 'creator', callId: 'call-1', rootCallId: 'call-1', turn: 1, step: 1, path: '/trees/A',
+      branch: 'worktree-A', baseCommit: 'a'.repeat(40), repositoryRoot: '/repo',
+      check: { state: 'unverified', checkedAt: null, diagnostic: null, facts: null }, business: { state: 'open' } } }
+  const view = snapshot('A', { worktreeObservations: [observation] })
+  const panel = client.WorktreeObservationsPanel({ view, remote: null, refresh: async () => {} })
+  const panelText = JSON.stringify(panel)
+  assert.match(panelText, /原生子会话关联 2 条（observed）/)
+  const editor = client.WorktreeObservationEditor({ sessionId: 'A', row: observation, remote: null, refresh: async () => {} })
+  const editorText = JSON.stringify(editor)
+  assert.match(editorText, /原生子会话关联（observed；不是强绑定，也不表示目录正在被使用）/)
+  assert.match(editorText, /创建此树（created-tree）/)
+  assert.match(editorText, /初始 cwd 相同（initial-cwd）/)
+  assert.match(editorText, /creator.*\/trees\/A/)
+  assert.match(editorText, /sibling.*\/trees\/A/)
+  assert.doesNotMatch(editorText, /正在被使用。/)
+})
+
 test('binding aggregate failure stays unknown in mounted header and late A write cannot refresh or report success under B', async t => {
   const fixture = contextFixture(); let resolveWrite; let refreshes = 0
   fixture.ctx.remote.mattpocockControls.readSession = async id => ok(snapshot(id, { worktreeBindings: [], health: [{ scope: 'worktree-bindings', status: 'unknown', reason: 'registry unavailable' }] }))

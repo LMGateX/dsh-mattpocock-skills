@@ -6,6 +6,7 @@ import type { ResourceView } from './resources.js';
 import type { WorktreeBindingCurrent } from './worktree-bindings.js';
 import type { WorktreeObservationView } from './worktree-observations.js';
 import type { NativeStopRow } from './remote-contract.js';
+import type { NativeExecutionView } from './native-executions.js';
 /** Supplied by authenticated host associations, never parsed from a model/wire command. */
 export interface ConsumptionIdentity {
     readonly principalId: string;
@@ -35,6 +36,8 @@ export interface ConsumptionSnapshot {
     } | null;
     /** Open terminal-outcome items the main agent must handle; never a count source. */
     readonly nativeStops?: readonly NativeStopRow[];
+    /** Latest native-observed execution facts; observed/inferred associations are never completion claims. */
+    readonly nativeExecutions?: readonly NativeExecutionView[];
     /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
     readonly worktreeBindings?: readonly (WorktreeBindingCurrent & {
         readonly cleanupDue?: boolean;

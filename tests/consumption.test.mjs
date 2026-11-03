@@ -115,6 +115,33 @@ test('current records and minimal protocol append independently without touching
   assert.equal(result.snapshot.windows.S.used, 1)
   assert.equal(f.feed.cachedText(identity), result.text)
 })
+
+test('native execution facts are a current category with observed/inferred labels and a real history locator', async () => {
+  const f = fixture()
+  let result = await f.feed.readForConsumption(identity)
+  assert.doesNotMatch(result.text, /Native-observed executions/)
+  const row = { executionId: 'child', sessionId: 'child', parentSessionId: 'parent', instrumentInstanceId: identity.instrumentInstanceId,
+    provider: 'spawn', runId: 'run-1', initialCwd: '/trees/A', state: 'ended', outcome: 'completed',
+    observed: 'subagent/end: completed', startedAt: 1, endedAt: 2, recordedAt: 2, activity: 'idle',
+    lane: { workflowId: 'flow', ticketIds: ['A'], task: 'Build A', source: 'inferred' },
+    worktree: { path: '/trees/A', observationId: 'obs-1', source: 'observed' } }
+  f.current.nativeExecutions = [row]
+  result = await f.feed.readForConsumption(identity)
+  assert.match(result.text, /Native-observed executions: 1 current row\(s\)/)
+  assert.match(result.text, /worktree observed \/trees\/A/)
+  assert.match(result.text, /lane inferred flow\/A/)
+  assert.match(result.text, /not strong bindings or task-completion proof/)
+  assert.doesNotMatch(result.text, /completed task|task completed/i)
+  const view = JSON.parse(result.text.slice(result.text.indexOf(String.fromCharCode(10, 123)) + 1))
+  assert.equal(view.nativeExecutions.total, 1)
+  assert.equal(view.nativeExecutions.query.query.kind, 'native-execution')
+  assert.equal(view.nativeExecutions.rows[0].outcome, 'completed')
+  assert.equal(view.nativeExecutions.rows[0].worktree.source, 'observed')
+  assert.equal(view.nativeExecutions.rows[0].lane.source, 'inferred')
+  f.current.nativeExecutions = []
+  result = await f.feed.readForConsumption(identity)
+  assert.doesNotMatch(result.text, /Native-observed executions/)
+})
 test('synchronous producer commit fence reads latest durable state without waiting for running child', async () => {
   const f = fixture()
   const persistence = deferred()

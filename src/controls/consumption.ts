@@ -6,6 +6,7 @@ import type { ResourceView } from './resources.js'
 import type { WorktreeBindingCurrent } from './worktree-bindings.js'
 import type { WorktreeObservationView } from './worktree-observations.js'
 import type { NativeStopRow } from './remote-contract.js'
+import type { NativeExecutionView } from './native-executions.js'
 
 /** Supplied by authenticated host associations, never parsed from a model/wire command. */
 export interface ConsumptionIdentity {
@@ -27,6 +28,8 @@ export interface ConsumptionSnapshot {
   readonly nativeCount?: { readonly reestablished: boolean; readonly runtimeId: string; readonly previousRuntimeId: string | null } | null
   /** Open terminal-outcome items the main agent must handle; never a count source. */
   readonly nativeStops?: readonly NativeStopRow[]
+  /** Latest native-observed execution facts; observed/inferred associations are never completion claims. */
+  readonly nativeExecutions?: readonly NativeExecutionView[]
   /** Authorized current rows, already filtered by runtime; never the durable registry/history. */
   readonly worktreeBindings?: readonly (WorktreeBindingCurrent & { readonly cleanupDue?: boolean })[]
   /** Observed native creations with read-time creator activity; never a directory-usage claim. */
@@ -108,7 +111,8 @@ interface QueryLocator { readonly [key: string]: unknown }
 // Only these categories are actually captured as history rows; other briefed fields must not
 // advertise a query that would return an empty notRecorded page.
 const RECORDED_HISTORY_KINDS: Readonly<Record<string, string>> = { workflows: 'workflow', tickets: 'ticket', decisions: 'decision',
-  'status-summary': 'workflow', 'ticket-window': 'ticket-window', executions: 'execution', resources: 'resource', worktree: 'worktree' }
+  'status-summary': 'workflow', 'ticket-window': 'ticket-window', executions: 'execution', resources: 'resource', worktree: 'worktree',
+  nativeExecutions: 'native-execution' }
 function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocator | undefined {
   const name = RECORDED_HISTORY_KINDS[kind]
   if (name === undefined) return undefined
@@ -116,7 +120,7 @@ function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocat
   if (row) {
     if (typeof row.bindingId === 'string') recordId = row.bindingId
     else if (typeof row.resourceId === 'string') recordId = row.resourceId
-    else if (typeof row.executionId === 'string') recordId = JSON.stringify([row.executionId, row.generation])
+    else if (typeof row.executionId === 'string') recordId = typeof row.generation === 'number' ? JSON.stringify([row.executionId, row.generation]) : row.executionId
     else if (typeof row.localTicketId === 'string') recordId = JSON.stringify([row.workflowId, row.localTicketId])
     else if (typeof row.decisionId === 'string') recordId = JSON.stringify([row.workflowId, row.decisionId])
     else if (typeof row.workflowId === 'string') recordId = row.workflowId
@@ -217,6 +221,7 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
     })), { kind: 'worktree-observations' }, { open: (snapshot.worktreeObservations ?? []).filter(row => row.value.business.state === 'open').length }),
     nativeCount: snapshot.nativeCount ?? null,
     nativeStops: category(sorted(snapshot.nativeStops ?? [], row => row.sessionId), { kind: 'native-stops' }),
+    nativeExecutions: category(snapshot.nativeExecutions ?? [], { kind: 'nativeExecutions' }),
     capabilities: category(sorted(snapshot.capabilities, row => row.key), { kind: 'capabilities' }),
     health: category(sorted(snapshot.health, row => row.scope), { kind: 'health' }, {
       unknown: snapshot.health.filter(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status)).length }),
@@ -243,6 +248,17 @@ function protocol(snapshot: ConsumptionSnapshot): string {
     'mattpocock_record records business progress and decisions; execution facts come from native subagent lifecycle observation, never from model reports. Capability/health facts below state actual coverage. Display preferences do not erase obligations.',
     'Worktree relationships record the actual child/worktree binding and your authored use and cleanup reports; worktreeObservations record every native create_worktree this instrument observed, with its creator, the creator\'s live activity and the verified Git identity. They never claim who uses a directory. Let each lane create its own tree with the host\'s create_worktree and work inside it; use the host\'s working_directory to enter a tree yourself and cd back to the project directory to leave. A prepared worktree passed to mattpocock_delegate is the strong ticket↔worktree binding entry; a native tree observation never becomes a strong binding. A tree you detached but did not clean up still needs a disposition; mark an observed tree cleaned with mattpocock_worktree update-observation only when you decided it needs no further attention.',
     'This is a bounded current view, not complete history. Each category reports shown/total/more and query locators; truncated fields retain source pointers. Use session history queries for omitted details.']
+  const nativeExecutionRows = snapshot.nativeExecutions ?? []
+  if (nativeExecutionRows.length > 0) {
+    const shown = nativeExecutionRows.slice(0, 8).map(row => row.sessionId + ' ' + row.state
+      + (row.outcome === null ? '' : ' outcome ' + row.outcome) + ' activity ' + row.activity
+      + (row.worktree === null ? '' : ' worktree observed ' + row.worktree.path)
+      + (row.lane === null ? '' : ' lane inferred ' + String(row.lane.workflowId ?? 'ticketless')
+        + (row.lane.ticketIds.length === 0 ? '' : '/' + row.lane.ticketIds.join(','))))
+    lines.push('Native-observed executions: ' + nativeExecutionRows.length + ' current row(s) from the host\'s native lifecycle events'
+      + (nativeExecutionRows.length > shown.length ? ' (showing ' + shown.length + ')' : '') + '. ' + shown.join('; ')
+      + '. Activity is live; a worktree association is observed-only (exact initial cwd match) and a lane association is inferred-only from assignment/binding. They are native execution facts, not strong bindings or task-completion proof; use mattpocock_history query kind "native-execution" for recorded versions.')
+  }
   if (!p.extensionEnabled) lines.push('Management feature is OFF: existing records and execution facts remain.')
   else if (p.workspaceEnabled === false) lines.push('Management feature is OFF for this workspace: existing records and execution facts remain.')
   else if (p.features.windows.status === 'configured') {
