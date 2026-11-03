@@ -14,12 +14,13 @@ import { verifyCommittedArtifacts } from '../scripts/lib/source-ingestion.mjs'
 // runPrepack/runTarball or claim a release-ready source commit/artifact.
 test('scratch TypeScript build matches all current runtime code and declarations', async () => {
   const result = await compareCommittedBuild(repositoryRoot)
-  assert.equal(result.files, 76)
+  assert.equal(result.files, 80)
   assert(result.paths.includes('compatibility/composition.js'))
   assert(result.paths.includes('types/compatibility/composition.d.ts'))
   for (const path of ['host.js', 'runtime.js', 'client.js', 'types/host.d.ts', 'types/runtime.d.ts', 'types/client.d.ts']) assert(result.paths.includes(path))
   assert(result.paths.includes('controls/index.js'))
   assert(result.paths.includes('types/controls/index.d.ts'))
+  for (const path of ['model-tools.js', 'types/model-tools.d.ts', 'controls/model-output.js', 'types/controls/model-output.d.ts']) assert(result.paths.includes(path))
 })
 
 test('development pack has exact closed inventory and a dependency-free controls entry', async () => {
@@ -69,6 +70,13 @@ test('development pack has exact closed inventory and a dependency-free controls
     const instrumentSummary = await instruments.readSummary('user', 'S')
     assert.equal(instrumentSummary.summary.pendingUserDecisionCount, 1)
     assert.equal(instrumentSummary.businessRevision, records.businessRevision)
+    const current = await instruments.readCurrent('user', 'S')
+    assert.equal(current.summary.pendingDecisionCount, 1)
+    assert.equal(current.businessRevision, records.businessRevision)
+    assert.equal(current.decisions[0].value.question, 'Persist this matter')
+    assert.equal(current.decisions[0].history, undefined)
+    assert.equal(current.changes, undefined)
+    assert.ok(records.decisions[0].history.length > 0, 'internal full read contract is preserved')
     assert.equal(JSON.stringify(instrumentSummary).includes('Persist this matter'), false)
     assert.equal(typeof controls.parseSessionSummaryRequest, 'function')
     assert.equal(typeof controls.parseSessionSummaryBatch, 'function')
