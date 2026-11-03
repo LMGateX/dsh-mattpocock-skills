@@ -133,6 +133,15 @@ export interface WorktreeBindingCurrent {
     readonly author: InstrumentAuthor;
     readonly recordedAt: number;
 }
+/** Immutable current-only row: no retained source versions or duplicate current view. */
+export interface WorktreeBindingCurrentRow extends Omit<WorktreeBindingMaterializedRow, 'history'> {
+    readonly latest: Omit<WorktreeBindingVersion, 'value' | 'command'>;
+}
+export interface WorktreeBindingsCurrentSnapshot {
+    readonly revision: number;
+    /** Includes cleaned rows; filtering model obligations remains the Adapter's decision. */
+    readonly rows: readonly WorktreeBindingCurrentRow[];
+}
 export interface WorktreeBindingsSnapshot {
     readonly checkpointRev: number;
     readonly sourceCoverage: WorktreeBindingsSourceCoverage;
@@ -164,6 +173,7 @@ export interface WorktreeBindings {
         readonly replayed: boolean;
         readonly row: WorktreeBindingRow;
     }>;
+    readCurrent(owner: InstrumentInstance): Promise<WorktreeBindingsCurrentSnapshot>;
     query(owner: InstrumentInstance): Promise<WorktreeBindingsSnapshot>;
 }
 export type WorktreeBindingsStorage = (ownerSessionId: string) => VersionedStorage<WorktreeBindingsDocument>;

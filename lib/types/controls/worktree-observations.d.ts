@@ -84,6 +84,18 @@ export interface WorktreeObservationView extends WorktreeObservationCurrent {
     /** Read-time child associations from native execution facts; observed, never a usage or binding claim. */
     readonly nativeChildren: readonly NativeExecutionChild[];
 }
+export interface WorktreeObservationCurrentRow extends WorktreeObservationCurrent {
+    readonly latest: Omit<WorktreeObservationVersion, 'value'>;
+    /** Last observed creation corresponding to the current value, never the later verifier/cleaner. */
+    readonly creation: Omit<WorktreeObservationVersion, 'value' | 'event'> & {
+        readonly event: 'observed';
+    };
+}
+export interface WorktreeObservationsCurrentSnapshot {
+    readonly revision: number;
+    /** Includes authored-cleaned rows without retaining any historical bodies. */
+    readonly rows: readonly WorktreeObservationCurrentRow[];
+}
 export interface WorktreeObservationsSnapshot {
     readonly revision: number;
     /** Entire retained registry, including author-cleaned rows and their retained versions. */
@@ -119,6 +131,7 @@ export interface WorktreeObservations {
     }>;
     check(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, input: WorktreeObservationCheckInput): Promise<WorktreeObservationRow>;
     updateBusiness(owner: InstrumentInstance, actualAuthor: InstrumentAuthor, command: WorktreeObservationBusinessUpdate): Promise<WorktreeObservationRow>;
+    readCurrent(owner: InstrumentInstance): Promise<WorktreeObservationsCurrentSnapshot>;
     query(owner: InstrumentInstance): Promise<WorktreeObservationsSnapshot>;
 }
 export type WorktreeObservationsStorage = (ownerSessionId: string) => VersionedStorage<WorktreeObservationsDocument>;
