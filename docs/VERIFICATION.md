@@ -37,7 +37,17 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.7.0-artifact/lmgatex-dsh-ma
   --source-commit-file /tmp/dsh-0.7.0-artifact/source-commit.txt --pnpm-version-file /tmp/dsh-0.7.0-artifact/pnpm-version.txt
 ```
 
-结果：source clean=true、commit 匹配、sha256/bytes/178 成员/模式/导出目标与解包后 controls smoke 全部通过。
+结果：source clean=true、commit 匹配、sha256/bytes/178 成员/模式/导出目标与 vendor 全部通过。`runTarball` 本身不导入或执行 controls 入口；独立验证另将验收 tarball 解包后的 `lib/controls/index.js` 作为模块导入，确认 `resolvePolicy`、`WorkspaceControls`、`SessionInstruments` 可加载（解包目录没有 `node_modules`），这是独立 smoke，不是 `runTarball` 的内置步骤。
+
+验收 tarball 的独立 controls smoke 命令（在 `/tmp/dsh-0.7.0-smoke`，不影响制品）：
+
+```text
+rm -rf /tmp/dsh-0.7.0-smoke && mkdir -p /tmp/dsh-0.7.0-smoke
+tar --extract --gzip --file /tmp/dsh-0.7.0-artifact/lmgatex-dsh-mattpocock-skills-0.7.0.tgz --directory /tmp/dsh-0.7.0-smoke --no-same-owner --no-same-permissions
+node --input-type=module -e "const m = await import('/tmp/dsh-0.7.0-smoke/package/lib/controls/index.js'); console.log(typeof m.resolvePolicy, typeof m.WorkspaceControls, typeof m.SessionInstruments)"
+```
+
+结果为 `function function function`，解包目录没有 `node_modules`。
 
 过程说明：普通 `pnpm pack --pack-destination /tmp/dsh-0.7.0-artifact` 经 pnpm 11.8.0 manifest obfuscation 会删除 `packageManager`，与提交的 `package.json` 字节不一致，verifier 正确拒绝；随后以 `pnpm pack --skip-manifest-obfuscation --pack-destination /tmp/dsh-0.7.0-artifact` 在同一源码提交重新生成并验证，这也是仓库开发制品测试使用的命令。失败的那次制品未被当作验收制品，验证后的验收制品未再改动。
 

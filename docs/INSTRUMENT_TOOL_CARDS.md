@@ -67,7 +67,7 @@
 | 失败 | `read · failed: <reason>`（错误色） |
 | interrupted | `read · interrupted`（警告色） |
 
-2026-11-03 决策，0.7.0 已移除 `mattpocock_execute`；新会话不再产生该卡片。旧会话/历史记录中的卡片保留只读显示，不因工具移除而删除。`mattpocock_delegate` 保留为强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
+2026-11-03 决策，0.7.0 已移除 `mattpocock_execute`；新会话不再产生该卡片。旧会话/历史记录仍可读取；0.7.0 不再为该工具键注册本插件卡片，原生记录不因工具移除而删除。`mattpocock_delegate` 保留为强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
 
 固定区块标签（输入/输出/错误/原始记录/来源记录）沿用插件现有中文；标题和 action/target 保留英文。
 

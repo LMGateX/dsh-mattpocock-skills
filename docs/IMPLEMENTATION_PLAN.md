@@ -96,7 +96,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成；C 仍待后续，本轮没
 | 阶段 | 内容 | 门禁（机械） |
 |---|---|---|
 | A 接缝核对 | 对拆 0.2.1-rc.3 → 0.2.2-alpha.2 的 24 个相关宿主包；确认 `dsh-skill` 不变，`dsh-tools` 删除单调用 execute，`dsh-subagent` 新增 `sessionProjections` 初始化，`app-boot` 把 `PROFILE_TEMPLATES` 移到 `dsh-official-bundles` | 类型声明编译与真实导出清单核对 |
-| B 受管原生调用 | `src/host.ts` 的 `executeNative` 在具备 `setExecutor` 的 0.2.2 宿主上使用公开 `@deepseek-ai/dsh-tools/pipeline` 的 `prepare → dispatch → complete`；保留 `parent` token、`rootCallId`、policy／guard／post-execute。没有该接缝的旧宿主保留单调用回退 | `tests/host.test.mjs` 的 managed nesting、guard 与 parent token 用例 |
+| B 受管原生调用（0.6.0 历史；0.7.0 已删除） | 0.6.0 的 `src/host.ts` `executeNative` 在具备 `setExecutor` 的 0.2.2 宿主上使用公开 `@deepseek-ai/dsh-tools/pipeline` 的 `prepare → dispatch → complete`；保留 `parent` token、`rootCallId`、policy／guard／post-execute。没有该接缝的旧宿主保留单调用回退。0.7.0 已删除该工具与 `executeNative` 路径；本行仅保留历史核对记录 | `tests/host.test.mjs` 的 0.6.0 managed nesting、guard 与 parent token 历史用例；0.7.0 不再有对应运行路径 |
 | C 旧 seam 类型 | 旧宿主 `startContinuable` 回退改用结构化 `LegacyContinuationFacade`，不依赖 0.2.2 已删除的声明 | 旧宿主类型编译与真实用例 |
 | D 测试夹具 | 新增公开 pipeline 的单调用测试适配；0.2.2 stock 子代理／Agent 服务以 `ctx.plugin()` 或真实 `SessionProjectionRegistry` 进入 ACTIVE；管理器测试从 official-bundles 读取模板 | 目标用例全部 0 失败 |
 | E 回归与装载 | 新宿主与 `0.2.1-rc.3` 分别跑全量根测试；独立 `DSH_HOME` 安装开发包并做 headless 装载；`0.2.1-alpha.1` 隔离跑兼容矩阵 | 两宿主各 **944 项、744 通过、0 失败、200 skip**（隔离工作树无 client slots 时 741／203）；alpha.1 兼容矩阵 **154 项、140 通过、0 失败、14 skip**；headless 装载 27 Skills、11 模型可见，无凭据停在 `MISSING_CREDENTIAL` |
