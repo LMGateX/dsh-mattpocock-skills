@@ -45,7 +45,7 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 
 - **binding 是声明式 header checkpoint**：`binding: confirmed` 只表示显式 header checkpoint 匹配 planned child/parent/requested cwd，不是实际初始/当前目录证明；reconcile 只修 binding，不补 assignment、不证明目录。0.9.0 没有新增实际 cwd 证明 seam。
 - **coverage gap 是证据缺口**：迟到 end 只有在同一 runtime 仍保留 owner view 时才写 outcome；没有任何可信 owner view 时只报 native-executions coverage gap，不扫冷日志、不重试、不猜结果；这不是“已保存”。
-- **已发布但未安装**：已 push `main` 至 `ccaac0d`、tag `v0.9.0`（annotated tag `33558f3` -> `ccaac0d`）并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，上传 tgz、sha256、size、source-commit 与 pnpm-version；未执行 DSH install、Profile 编辑、服务重启或 GUI 变更，未 npm publish。
+- **已发布但未安装**：已 push `main` 与 annotated tag `v0.9.0`（tag 提交 `ccaac0d`，tag 对象 `33558f3`；其后 `main` 仅追加本记录）并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，上传 tgz、sha256、size、source-commit 与 pnpm-version；未执行 DSH install、Profile 编辑、服务重启或 GUI 变更，未 npm publish。
 - **模型与接口面**：默认 7 固定 + 条件 audit，delegate 仅 opt-in 第八项；Remote 16；客户端 9 wire key；没有新增模型工具、Remote 方法、存储域或强绑定写入口。
 - 完整记录见 [dist/verification-0.9.0.json](<../dist/verification-0.9.0.json>)。
 
