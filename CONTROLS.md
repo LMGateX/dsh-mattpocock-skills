@@ -195,7 +195,7 @@ records/windows 使用显式 targets，worktrees 使用 bindingIds；均保留�
 成功的插件模型 DTO 显式标 schemaVersion:2；错误保留原 SDK 错误协议，并限制插件诊断。读取、分页、正文片段与 audit 的最终 UTF-8 JSON 不超过 65,536 bytes；写回执和插件诊断不超过 8,192 bytes。限制发生在 typed execute 返回前，包含 envelope 和 JSON 转义，不是只截短工具卡。没有 full 回退参数；内部核心与 Remote 的完整结果不变。旧 PTC 使用 result.snapshot 的代码须按[迁移说明](<MIGRATION.md>)改读当前视图/写回执，不静默兼容。
 
 - record read 是完整的**当前恢复发现入口**：包含真实修订、授权范围、业务义务计数、T/S/unknown 和各类 shown/total/more/coverage/query。集合先给计数和 query 而非整张表；rows 空而 more=true 不表示没有待办。按返回 query 分页可找流程、票、裁决、状态计数、窗口票/执行、失败结局、待释放占位、工作树、资源、执行关联与能力/health。hidden、OFF 或新 focus 不抹掉已有义务；restricted/unknown 不是空数据。
-- 写操作返回 receipt，不再附整份 snapshot。appliedRevision 是原操作生效时的修订，不一定是当前修订；下一次业务命令用 businessRevision，viewer 命令用 viewerRevision，源清理仍用其对应源 CAS。保留 replayed、window generation/ignored 以及 delegate 的分项事实；partial/unknown 不当成功，不因输出精简而再次创建 child。
+- 写操作返回 receipt，不再附整份 snapshot。appliedRevision 是原操作生效时的修订，不一定是当前修订；下一次业务命令用 businessRevision，viewer 命令用 viewerRevision，源清理仍用其对应源 CAS。工作树源只返回 current row，不报告原操作原子回执时，appliedRevision=null 并说明覆盖不可得，replayed 可为 unknown；businessRevision/businessState 是当前行，不能当作本次请求的原写入、把 null 当 0 或从 current revision 推断旧 operationId 的原提交。保留 window generation/ignored 以及 delegate 的分项事实；partial/unknown 不当成功，不因输出精简而再次创建 child。
 - 正文被省略时返回 record detail locator。它只定位某一来源、权限和版本，不是授权。每一片重新检查真实调用者与源；跨 owner/fork、撤权或 scope 变化不可续读。源更改、清理、移出 coverage 或插件重新挂载后重新获取定位符，不混接旧片。
 - content.data 是所选对象的 canonical JSON **文本片段**。先解析外层工具结果，再按 offset/nextOffset 顺序连接 data；这些位置是 UTF-8 bytes，不是 JavaScript 字符索引。以 done、totalBytes 和 contentHash 核验完整性，再解析拼接后的 JSON。末尾重读返回空片段和 done=true。
 - current 分页可能因实时 S/Agent/来源变化而明确 revision-conflict；重开第一页，不用 generatedAt 或 Git checkedAt 假造稳定正文。历史 query 的 cut 冻结行集合，不能阻止显式 purge；detail 的 remainingHistoryIds 是预算递延，missingHistoryIds 才是真正缺失。
