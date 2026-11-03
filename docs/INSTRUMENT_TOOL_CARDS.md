@@ -1,6 +1,6 @@
 # 仪器工具卡：原生折叠与可读输出
 
-> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。0.7.0 源码线已移除 `mattpocock_execute`，当前为八个固定工具 + 条件 `mattpocock_audit`；本页保留设计与 0.6.0 实施记录。当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+> **Status:** 所有者已认可设计；2026-11-01 源码、测试、客户端构建、clean-source 包验证与 [v0.6.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.6.0) 完成，2026-11-03 [v0.7.0 GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0) 发布。**未安装到本机 DSH/Profile**，未做真实 GUI 验收。0.7.0 源码线已移除 `mattpocock_execute`，当前为八个固定工具 + 条件 `mattpocock_audit`；本页保留设计与 0.6.0 实施记录。当前机械结果见 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md>)，制品与发布结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 1. 目标与范围
 

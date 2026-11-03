@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.7.0",
+    "private": true
+  },
+  "source": {
+    "commit": "d2dd86ee5369b8d8efb4615edd937b27b95a28ab",
+    "clean": true
+  },
+  "verificationCommit": "ea08bdd583a47b114cba602a6224d92590a30b3d",
+  "sourceDistribution": {
+    "tag": "v0.3.1",
+    "commit": "1058f7f3601835b49d55ce3f2f5eac4b3e7266e1"
+  },
+  "upstream": {
+    "release": "v1.3.2",
+    "commit": "d1478fcb140db0b93c0c8df17bcfd311844749d0",
+    "contentSha256": "82092e4b2b0283298a202ab0e1fee777b0fa1526cfedbf6bb30029c914347537"
+  },
+  "archive": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.7.0.tgz",
+    "bytes": 463589,
+    "sha256": "cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1",
+    "primaryPackCount": 1,
+    "manifestPreserved": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3"
+  },
+  "hostRoots": {
+    "canonical": "local canonical DSH install (path elided)"
+  },
+  "validation": {
+    "canonicalHost": "local DSH 0.2.2-alpha.2 install",
+    "rootTests": {
+      "total": 958,
+      "passed": 755,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 203
+    },
+    "clientTests": {
+      "total": 122,
+      "passed": 116,
+      "failed": 0,
+      "skipped": 6
+    },
+    "hostTest": {
+      "total": 37,
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    "exactArchiveVerifier": "passed",
+    "prepackVerifier": "passed",
+    "acceptedTarballControlsSmoke": "passed",
+    "buildModules": 74,
+    "fixedFiles": 93,
+    "vendorFiles": 85,
+    "packedFiles": 178,
+    "vendorBytes": 296048,
+    "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "clientBytes": 275486,
+    "clientExternals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "notRun": [
+      "dual-root suite",
+      "no-host-root suite",
+      "isolated headless install/mount",
+      "real-model trial",
+      "graphical-browser/GUI acceptance",
+      "local DSH/Profile install"
+    ],
+    "modelInvoked": false,
+    "installedOnHost": false,
+    "guiTested": false
+  },
+  "compatibility": {
+    "hostRange": "DSH 0.2.1-alpha.1 through 0.2.2-alpha.* declared; this release was tested against the local canonical 0.2.2-alpha.2 host only. 194 skips require DSH_CONTROLS_COMPAT_HOST_ROOT, 6 require the host ui-slots fixture, and 3 require the distribution source tree; no local Profile install."
+  },
+  "release": {
+    "tag": "v0.7.0",
+    "tagObject": "2083be844ba31f0fe0357686c3ad9ec52459932d",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0",
+    "sourceCommit": "d2dd86ee5369b8d8efb4615edd937b27b95a28ab",
+    "verificationCommit": "ea08bdd583a47b114cba602a6224d92590a30b3d",
+    "assets": [
+      "lmgatex-dsh-mattpocock-skills-0.7.0.tgz",
+      "sha256.txt",
+      "size.txt",
+      "source-commit.txt",
+      "pnpm-version.txt"
+    ]
+  },
+  "review": {
+    "baseline": "v0.6.0",
+    "independentReview": "Independent verifier reproduced all executable gates and the exact artifact identity. It found one docs overclaim (runTarball was said to execute a controls smoke); the record now distinguishes the verifier's member/mode/export/vendor checks from the separately executed accepted-tarball controls import smoke. The verifier confirmed the corrected docs-only commit and returned PASS.",
+    "privacy": "Current tracked docs and release assets contain aggregate counts and public identities only; no raw session, Profile or research records were published."
+  }
+}

@@ -8,7 +8,7 @@
 - **Local checkout:** `<working copy of this repository>`
 - **Public plugin repository:** `https://github.com/LMGateX/dsh-mattpocock-skills`
 - **Private source distribution:** `https://github.com/LMGateX/mattpocock-skills-distribution`
-- **2026-11-03 decision, implemented in the 0.7.0 source line:** native dispatch first for unbound lanes; `mattpocock_execute` removed from the model surface; `mattpocock_delegate` retained as the binding-first creation path. Phase C (native observation correlation/ledger) remains pending. The 0.7.0 artifact is built and verified but not installed, published, tagged or pushed (see the first section below and [VERIFICATION.md](<VERIFICATION.md>)).
+- **2026-11-03 decision, implemented in the 0.7.0 source line:** native dispatch first for unbound lanes; `mattpocock_execute` removed from the model surface; `mattpocock_delegate` retained as the binding-first creation path. Phase C (native observation correlation/ledger) remains pending. The 0.7.0 artifact is built and verified; it was released as [v0.7.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0) with tag `v0.7.0` at docs verification commit `ea08bdd` and artifact source `d2dd86e`, but not installed locally (see the first section below and [VERIFICATION.md](<VERIFICATION.md>)).
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 

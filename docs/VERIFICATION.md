@@ -2,13 +2,13 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-03 状态：方案 A 已实施于 0.7.0 源码线（普通无绑定 lane native-first；`mattpocock_execute` 已移除；`mattpocock_delegate` 保留为强绑定创建），C（原生观察读取时关联/账本补齐）仍待后续。本页 0.6.0 及更早记录的是历史制品；0.7.0 的精确制品验证见下方专节。0.7.0 未安装到本机 DSH/Profile、未发布、未推送、未打标签；不能把源码或内存 fixture 当成已安装/已发布。
+> 2026-11-03 状态：方案 A 已实施于 0.7.0 源码线（普通无绑定 lane native-first；`mattpocock_execute` 已移除；`mattpocock_delegate` 保留为强绑定创建），C（原生观察读取时关联/账本补齐）仍待后续。本页 0.6.0 及更早记录的是历史制品；0.7.0 的精确制品验证见下方专节。0.7.0 已发布（[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)，tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；验收制品仍由源码提交 `d2dd86e` 构建），但未安装到本机 DSH/Profile；不能把源码或内存 fixture 当成已安装/已激活。
 
 ## 0.7.0 制品验收（2026-11-03）
 
 本版从 0.7.0 模型面移除 `mattpocock_execute` 及其 `executeManaged`/`executeNative` 路径，普通无绑定 lane 使用宿主原生 `subagent`/`subagent_fork`/`send_message`；`mattpocock_delegate` 定位为绑定式创建，准备的工作树作为初始 cwd，持久意图、实际 header 核对、binding（task/ticketIds）与 assign 保持。固定模型工具面为 **8 个固定工具 + 条件 `mattpocock_audit`**（客户端 9 个 wire key）。C（原生观察的读取时关联/账本补齐）明确未实施，仍待后续。
 
-源码提交：`d2dd86ee5369b8d8efb4615edd937b27b95a28ab`（分支 `release/0.7.0-native-binding-first`）。验证在隔离工作树内完成，未修改主检出或 DSH Profile。
+源码提交：`d2dd86ee5369b8d8efb4615edd937b27b95a28ab`（分支 `release/0.7.0-native-binding-first`）。验证在隔离工作树内完成，未修改主检出或 DSH Profile。发布记录：tag `v0.7.0` 指向 docs 验证提交 `ea08bdd`；验收 tarball 的源提交仍是 `d2dd86e`。
 
 ### 构建、测试与包门禁
 
@@ -54,8 +54,10 @@ node --input-type=module -e "const m = await import('/tmp/dsh-0.7.0-smoke/packag
 ### 边界
 
 - **没有安装**：未执行任何 DSH install、Profile 编辑、服务重启、GUI 变更或本机插件激活。
-- **没有发布**：未 npm publish、git push、打 tag 或创建 GitHub Release；发布/安装另行决定。
+- **未 npm 发布、未本机安装**：已 push `main` 与 tag `v0.7.0`，并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)；未 npm publish，未执行 DSH install、Profile 编辑、服务重启或 GUI 变更。
 - **C 未完成**：本轮没有新增 native-observation 存储/账本，也没有声称 C 已完成；现有原生生命周期观测、nativeStops、S、工作树观测与 history 行为保持。
+
+完整记录见 `dist/verification-0.7.0.json`；发布页为 [v0.7.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.7.0)。
 
 ## 0.6.0 制品验收（2026-11-01）
 
