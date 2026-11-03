@@ -6,6 +6,8 @@
 > 这是对 [worktree 总研究](<WORKTREE_ISOLATION.md>)的使用场景补充与优先级修正，不是已实现功能或已批准设计。
 > 本文区分上游明文、宿主源码事实与适配建议；没有新增真实模型工作流试验，也没有声称首次工作树绑定已经端到端实现。
 
+> **2026-11-03 状态更新：** 文中第 6 节的“首次 child cwd 宿主提案”已在当前宿主交付（`startActivation` + `SubagentStartRequest.cwd`；见 [DESIGN.md](<DESIGN.md>) 的 2026-10-09 节）。普通无绑定 lane 的设计目标已改为 native-first：原生 `create_worktree` + `subagent({cwd})`；插件的通用 dispatch 包装 `mattpocock_execute` 按设计退役中，`mattpocock_delegate` 保留为强绑定创建（只有需要 ticket↔tree 时使用）。本文保留为历史研究，不把旧提案当当前缺口；详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+
 ## 1. 结论与上一轮修正
 
 **应优先适配“首次绑定工作树＋同一 continuable 会话多轮续用”，而不是只支持 one-shot，也不是先实现每轮动态切换 cwd。**

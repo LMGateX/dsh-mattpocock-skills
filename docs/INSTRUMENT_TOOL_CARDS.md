@@ -4,7 +4,7 @@
 
 ## 1. 目标与范围
 
-当前九个固定工具（另含条件注册的 `mattpocock_audit`，共十个）注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
+当前九个固定工具（2026-11-03 设计退役 `mattpocock_execute` 后目标为八个；迁移期仍按九个实现。另含条件注册的 `mattpocock_audit`，当前共十个、目标九个）注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
 
 - 默认折叠为一行短卡，保留“前面/后面的工具调用”可读性；
 - 展开时显示清晰的输入、输出、错误和原始记录；
@@ -63,9 +63,11 @@
 | `mattpocock_window` reserve | `reserve · W/T` |
 | `mattpocock_history` query kind=ticket | `query · ticket` |
 | `mattpocock_delegate` | `delegate · <description> · spawn` |
-| `mattpocock_execute` nativeTool=subagent | `execute · subagent · W/T` |
+| `mattpocock_execute`（退役中；旧会话只读） | `execute · subagent · W/T` |
 | 失败 | `read · failed: <reason>`（错误色） |
 | interrupted | `read · interrupted`（警告色） |
+
+2026-11-03 设计退役 `mattpocock_execute`；实现后新会话不再产生该卡片。旧会话/历史记录中的卡片保留只读显示，不因工具移除而删除。`mattpocock_delegate` 保留为强绑定创建；普通无绑定 lane 使用原生工具，不因此产生 delegate 卡片。
 
 固定区块标签（输入/输出/错误/原始记录/来源记录）沿用插件现有中文；标题和 action/target 保留英文。
 

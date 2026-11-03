@@ -33,6 +33,10 @@
 
 不实现通用 Shell 解析/安全策略引擎、生产代码 AST 限制器或整个 Agent 执行过程的正确性证明系统作为插件能力。已有 Phase 5 分析器不进入运行时职责。
 
+## 2026-11-03 收窄：派发回宿主
+
+所有者已认可把普通无绑定 lane 派发交还宿主：模型直接用 `create_worktree` + `subagent({cwd})` / `subagent_fork` 创建，用 `send_message` 续聊；按 2026-11-03 设计，本插件不再提供通用 `mattpocock_execute` 派发包装（实现待 B 阶段）。`mattpocock_delegate` 保留为绑定式创建（binding-first creation）：只有需要 ticket↔worktree 强绑定时使用，不是默认调度器，也不是通用派发入口。插件负责观察、记录、强绑定与仪器，不重做宿主的普通子代理调度。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+
 ## 简化后的验证方法
 
 - **插件契约测试**：注册、卸载、channel、调用权限、准确正文、资源路径和包安装。

@@ -2,6 +2,8 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+> 2026-11-03 设计状态：方案 A 已接受（普通无绑定 lane native-first；`mattpocock_execute` 退役；`mattpocock_delegate` 保留为强绑定创建），源码/测试/制品尚未实施。本页 0.6.0 及更早记录的是历史制品；当前发行版仍注册九项固定工具，不能把本设计当成已发布或已验证。
+
 ## 0.6.0 制品验收（2026-11-01）
 
 本版新增仪器工具卡原生呈现：使用 DSH 公开 baseline `ui-primitives` 的 `DisclosureRow`、`CodeBlock`、`JsonBlock` 和 `Button`，默认折叠，展开体上限 360px；标题与 action/target 保留英文 wire 值，原始记录二级折叠。未使用仅 0.2.2 存在的 `headerAccessory`；vendor、Skills provider、Host 运行时、通道语义和 `engines.dsh` 未改。
@@ -378,6 +380,8 @@ node scripts/verify-package.mjs --prepack
 同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.4.30.tgz`（**409239** bytes，sha256 `d1aa9b799f1c6ff788f96eb66a6bc684dbab6c55f929cc8cf6603fac25a5c548`，172 成员，源提交 `901a7ab`）经精确 tarball 验证与同字节矩阵通过：规范宿主 `0.2.1-alpha.2` 下 851 用例 **657 通过／0 失败**（194 个 beta 期桥用例按诊断跳过）、`0.2.1-alpha.4` 下 851 用例 **651 通过／0 失败**（其中 6 条客户端原生激活用例因该安装不再提供 `@deepseek-ai/dsh-client-ui-slots` 而按前置条件跳过）、双宿主 **877／877 全通过且零跳过**、无宿主根 851 中 559 通过／292 跳过／0 失败；同归档矩阵 **28／28**（普通 Node 原生 15＋真实 Plugin Manager 13）。隔离门禁在 **0.2.1-alpha.2、0.2.1-alpha.4 与 0.2.1-alpha.1 三个真实宿主**上各自从私有源码快照安装、headless 挂载，`checkoutTarballReportsByteIdentical` 为 true，未调用模型、未起 Web、未用自定义客户端。完整记录见 `dist/verification-0.4.30.json`。
 
 本版新增**原生建树观测**：经 DSH 工具管线（含 PTC 子调度）成功的原生 `create_worktree` 调用被登记为只追加的事件版本，记录创建者、目录、分支与基线提交，以及读取时的创建者活动性；Git 身份由受权 runner 在 owner 锚点异步核验（存在性、精确树根、common/git 目录、分支 ref 与 OID），缺失记 absent、拒绝记 failed 并附诊断，未知永不冒充成功。受管子代理的终局项列出它创建的树，创建本身不唤醒 owner；`mattpocock_worktree` 新增作者登记 action `update-observation`，`mattpocock_delegate.worktree` 退为可选（lane 自建树并在其中工作）。边界如实记录：只观测经工具管线的 `create_worktree`，`bash git worktree add` 等外部建树不在范围内；日志回放只覆盖仍常驻的受管子会话；插件不自动删除树、分支或记录。
+
+> 2026-11-03 方案 A 更新：本段是当轮实施记录；delegate 的 `worktree` 仍作为强绑定入口保留，普通无绑定 lane 才走 lane 自建树 + observation。见[原生派发设计](<NATIVE_DISPATCH_FIRST.md>)。
 
 本版同时按上游 `dsh-v0.2.1-alpha.4` 的兼容性变更声明 `engines.dsh: "~0.2.1-alpha.1"`：alpha.4 起第三方插件的兼容性**优先按声明判定**，未声明才回退 `@deepseek-ai/dsh*` peer 规则。该范围与既有 peer 判定在两版门禁实现上逐版本实测等价（`0.2.1-alpha.1` 到 `0.2.2-alpha.*` 放行，`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝），因此 alpha.4 上无需任何运行时代码改动；宿主 `PeerScope` 新增的 `principal`／`signal`／`interactions` 只影响宿主侧测试 fixture，产品代码只读取 `peer.id`。范围声明由 `scripts/verify-package.mjs` 与 `tests/scaffold.test.mjs` 固定，语义收窄如实记录：`0.2.2-alpha.*` 虽被预发布语义放进门禁，但没有实际验证，不构成兼容承诺。
 

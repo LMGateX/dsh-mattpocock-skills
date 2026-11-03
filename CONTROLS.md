@@ -46,13 +46,25 @@
 
 ## 2. 准备工作树，再创建与续聊
 
-1. 主代理按任务约定判断是否需要工作树，使用现有 Git/Shell 工具创建或准备目录，并确认当前原生权限允许访问。
-2. 使用 mattpocock_delegate 创建可续聊子代理。指定工作树时传规范化绝对路径；省略工作树保持原生目录继承。配置、模型路由和权限沿用原生父代理规则，不在此接口提升权限或覆写模型路由。
-3. 读取工具返回的 acceptance、actualChildSessionId、actualCwd 与登记状态。持久意图不是已绑定证明；只有核对实际 child/parent/cwd 后才报告 confirmed。
-4. 后续工作通过原生 send_message 继续同 child，不为一次追问另建 child，也不修改它已有的 cwd。
-5. 主代理自己决定合并与清理。尚未清理但放弃使用时登记 discarded；确实完成清理后登记 cleaned，可附说明。cleaned 是实际作者声明，不伪装为宿主物理删除回执。
+> 2026-11-03 已接受“原生派发优先 + 强绑定 delegate”：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})`，插件只观察/登记；需要 ticket↔tree 强绑定或需要其持久意图/幂等时用 `mattpocock_delegate` 的绑定式创建。`mattpocock_execute` 退役中。当前发行版仍可能注册 execute；迁移期不要用它派发。当前发行版的 delegate 模型描述仍可能偏向 lane 自建树；本设计的目标是让 delegate 回到强绑定入口，D 阶段同步描述。详见[设计](<docs/NATIVE_DISPATCH_FIRST.md>)。
 
-工具统一接收 request，例如：
+**默认路径（native-first，普通无绑定 lane）**
+
+1. 主代理按任务约定判断是否需要工作树；每个 lane 用宿主 `create_worktree`（或已有 Git 工具）建树，并确认当前原生权限允许访问。插件会自动观测成功的 `create_worktree`。
+2. 用宿主 `subagent`（或 `subagent_fork`）创建 child，显式传 `cwd`；省略 `cwd` 保持原生继承。配置、模型路由和权限沿用原生父代理规则。
+3. 有票时用 `mattpocock_assign` 对真实直接 child 登记 workflow/ticket；没有票的研究 lane 省略。
+4. 后续用原生 `send_message` 继续同一 child，不为一次追问另建 child，也不修改它已有的 cwd。
+5. 主代理自己决定合并与清理；这条路径只产生 observation + assignment，没有强 binding。观测看注入快照；用 `mattpocock_worktree` 读取 binding，处置树观测时用 `update-observation`。`cleaned` 是作者声明，不是宿主物理删除回执。
+
+**强绑定路径（binding-first，只有需要 ticket↔tree 时）**
+
+1. 先准备/创建树，再调用 `mattpocock_delegate`，传 `worktree`、`workflowId`、`ticketIds`、`operationId`。它在创建前持久化意图，以该树为初始 cwd 创建 child，核对实际 `child/parent/cwd` header，创建 binding（task/ticketIds）并 assign 票范围。
+2. 读取返回的 acceptance、actualChildSessionId、actualCwd、bindingId 与登记状态。持久意图不是已绑定证明；只有实际 header 核对后才报告 confirmed。
+3. 省略 `worktree` 时仍会记录继承 cwd 的 binding，但它不是某棵专用树的强绑定；若 lane 之后自己用 `create_worktree` 建树，那棵树只进 observation，不会自动改写这条 binding。
+
+delegate 的持久意图/幂等也适用于省略 `worktree` 的托管创建；本指南只展开强绑定场景。
+
+delegate 请求示例（强绑定 lane）：
 
 ~~~json
 {
@@ -68,7 +80,10 @@
 }
 ~~~
 
-明确 cwd 的顺序是**可信技术授权 → 持久意图 → 原生副作用 → 持久会话检查与实际绑定核对**。预检查不创建 child，也不是可反复使用的权限令牌；真正创建时再次检查父身份、当前权限与目录。权限不足、目录映射不支持或安装版没有公开初始 cwd 能力时明确返回失败/unsupported；不先写一条仿佛已获授权的创建意图。省略 cwd 的普通派发不因此取得额外前提。
+上述“可信技术授权 → 持久意图 → 原生副作用 → 持久会话检查与实际绑定核对”只适用于 **delegate 的强绑定路径**。预检查不创建 child，也不是可反复使用的权限令牌；真正创建时再次检查父身份、当前权限与目录。权限不足、目录映射不支持或安装版没有公开初始 cwd 能力时明确返回失败/unsupported；不先写一条仿佛已获授权的创建意图。native-first 路径由宿主自己的 `create_worktree`/`subagent({cwd})` 授权与核对负责；省略 cwd 的普通派发保持原生继承。
+
+**ticket↔worktree 的权威记录是 worktree binding**：delegate 创建，`mattpocock_worktree` 读/更新/重核对，`mattpocock_history` 查历史。`mattpocock_assign` 只写 child↔ticket 权限；`mattpocock_execute` 只记 execution fact，不含 cwd/bindingId，不能回答 ticket↔tree。
+
 
 已有绑定读取、状态更新及重核对使用 mattpocock_worktree。更新请求形状：
 
@@ -107,7 +122,7 @@ workflow 自定义进度轴、状态键、含义和互斥/重叠计数。仪器�
 - 被计为 running 的 run 既无 `subagent/end` 也无 idle 转换却消失时，只读该 child 自身日志的最后一个 `turn/end`（或 `subagent/end` 的 stopReason），按公开词表在快照的 `nativeStops` 报告真实结局或明示 `unobservable`（附证据指针），并沿用 notification 通道唤醒主代理；同一失败 turn 以 `itemId=sessionId[:runId]:turn` 与既有 durable notification 行去重，后续 turn 再次失败是新 item，重新观测到 running、start 边或迟到 end 后清除。目录不可读时不宣称任何结局。
 - 超出参考值、参考值调小或宿主统计不全都不增加容量审批，不拒绝原本有效的派发，也不强制取消已有执行。agent 根据任务安排推进规模。
 
-mattpocock_execute 是保留原生权限链的执行事实包装入口，不要求所有工作必须经它派发；程序回执由宿主事件取得，模型不能自报。
+mattpocock_execute 按 2026-11-03 设计退役中：迁移期当前发行版可能仍注册，但不要用它派发；普通 child 用原生 subagent({cwd})/subagent_fork，执行事实由生命周期观察。程序回执仍由宿主事件取得，模型不能自报。
 
 ## 5. 主动历史查询与显式清理
 
@@ -151,13 +166,17 @@ records/windows 使用显式 targets，worktrees 使用 bindingIds；均保留�
 | mattpocock_record | 读取本会话仪器，提交作者的流程/票/裁决记录 |
 | mattpocock_window | T 占位、释放与重新占位 |
 | mattpocock_resource | 旧资源只读检查，写入已关闭 |
-| mattpocock_execute | 保留原生权限链的执行事实包装 |
+| mattpocock_execute | **退役中**：execution fact/lease 包装，不写工作树绑定；当前发行版可能仍注册，迁移期不要调用；下一版移除 |
 | mattpocock_assign | 对真实直接子代理登记受授票范围 |
 | mattpocock_history | 分页历史、详情、当前范围及显式副本/源旧历史整理 |
-| mattpocock_worktree | 读取绑定、登记使用/清理报告、程序重核对 |
-| mattpocock_delegate | 创建 continuable child，可绑定已准备工作树 |
+| mattpocock_worktree | **读取/更新绑定**、观测处置、程序重核对；不创建 binding |
+| mattpocock_delegate | **强绑定创建**：创建 child 并写 worktree binding/task/tickets；仅在需要 ticket↔tree 强绑定、持久意图/幂等/创建前范围检查时使用；普通无绑定 lane 用原生 subagent({cwd}) + assign |
 
 工具使用真实调用 Agent/session，不接受正文自报 principal、owner、作者或执行回执。策略委托可撤销，子代理不能自授权。源清理由实际 owner coordinator 或认证用户执行；Session 导航和输入的 operationId 都不是授权。原生/preset 隐藏工具时按不可用处理，不绕过。
+
+**ticket↔worktree 看 binding，不看 assignment/execution**：binding 由 delegate 写、worktree 读/更新；assignment 只写 child↔ticket 权限；execute 只记 execution fact，不含 cwd/bindingId。
+
+当前发行版固定工具面仍是九项（含 `mattpocock_execute`）；2026-11-03 设计的目标是八个固定工具 + 条件 `mattpocock_audit`。实现完成前以实际注册为准，不要把目标数量当已发布行为。
 
 ## 7. 通知与工程部署
 

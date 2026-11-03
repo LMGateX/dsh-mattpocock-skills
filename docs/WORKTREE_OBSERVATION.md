@@ -3,6 +3,8 @@
 > 状态：**源码已实施（2026-10-13），隔离工作树内机械验收通过；未安装到本机 DSH/Profile，也未发布**。本轮实现只覆盖原生 `create_worktree` 事件观测，实施范围、覆盖边界与门禁结果见第 11 节。
 > 公开资料边界：本文引用的本机会话存储抽样与 SDK 安装产物仅作本地核对，不随公开仓库分发，也不充当公共原始证明；公开证据范围见[公开验证说明](<VERIFICATION.md>)。
 
+> 2026-11-03 后续方向：在现有原生 `create_worktree` 观测之上补 native child 初始 cwd 的读取时关联，方便 native-first 路径显示 lane；这只是 observed/inferred 关联，不写 delegate 风格的强 binding，也不替代 delegate。delegate 保留为强绑定写入口；`mattpocock_execute` 按设计退役中。不新增模型工具。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。
+
 ## 0. 目标与非目标
 
 **目标**：把“某会话用宿主原生 `create_worktree` 建出的树”登记为可核验、可去重、可提示处置的记录，防止废弃工作树堆积（Rust 等语言的 target／依赖目录尤其昂贵）。
@@ -105,7 +107,7 @@ DSH 没有“目录被谁占用”的机制：
 - 观察记录本身不含票信息；读取时用 `creatorSessionId` 关联两类既有记录取票：运行期分配账本（`assignments`）提供 `workflowId` 与 `ticketIds`，lane 绑定（`plannedChildSessionId`／`actualChildSessionId`）提供 `task` 并在没有分配账本时兜底 `ticketIds`。
 - 绑定行本身**不携带 `workflowId`**（`WorktreeBindingIntent` 只有票、任务与目录），所以两者都缺时如实报告 `lane: null`，不猜一个工作流。
 - 竞态：子代理可能在父的 `confirm` 落库前就建树；因此关联必须同时查 planned 与 actual 两个 id。
-- 原生 subagent／无绑定的会话：票信息如实显示 unknown，可由作者在业务备注里补；本能力不猜测。
+- 原生 subagent／既无 binding 也无 assignment 的会话：票信息如实显示 unknown，可由作者在业务备注里补；本能力不猜测。
 
 ### 5.5 呈现与通知
 
@@ -135,7 +137,7 @@ DSH 没有“目录被谁占用”的机制：
 | runtime 源清理 | **v1 不在范围**：观察只做当前状态 + 内部事件日志，不进 `mattpocock_history` 查询与源清理选择器；将来需要时再决定并入 `worktrees` 域还是新开域 |
 | runtime 事件入口 | `postExecute` 命中成功的 `create_worktree` → 同步 `observed` + 异步 `probeWorktree` 核验；不新增宿主端口、不挂模型工具 |
 | consumption／client | 新分类 `worktreeObservations`（含 `open` 计数）、终局 item 附带 `createdWorktrees`、客户端只读列表 + 作者登记编辑；v1 不扩展源域选择器（[consumption.ts](<../src/controls/consumption.ts>)、[client.ts](<../src/client.ts>)） |
-| 文案 | `mattpocock_delegate`／`mattpocock_worktree` 流程说明改为“lane 自建树 + 仪器观测登记；worktree 参数可选”，并新增 `update-observation` action |
+| 文案 | `mattpocock_delegate`／`mattpocock_worktree` 流程说明改为“lane 自建树 + 仪器观测登记；worktree 参数可选”，并新增 `update-observation` action。2026-11-03 方案 A 更新：该文案是当轮实施记录；delegate 的 `worktree` 仍是强绑定入口，普通无绑定 lane 才走“自建树 + 观测” |
 | 测试 | `tests/worktree-observations.test.mjs`（模块）、`tests/worktree-observation-runtime.test.mjs`（管线），见第 8 节 |
 
 ## 8. 验收条件（无模型、机械）

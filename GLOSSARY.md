@@ -43,8 +43,17 @@ _Avoid_：silent stop、推断的停止原因、把不可观测写成失败
 
 **执行释放（Execution release）**：某次受管执行已由可信程序回执确认结束且释放其执行名额。它不表示票已交付、持久会话已退休或工作树可以删除。
 
-**工作树绑定（Worktree binding）**：主代理在创建子代理时指定工作树，使其成为该子代理实际使用的工作目录，并在同会话续用时保持该关系。它不是提示词里的路径建议，也不包含创建、合并或删除工作树的业务决定。
-_Avoid_：手工路径路由、工作树生命周期审批
+**执行事实（Execution fact）**：某次原生派发/执行的 workflow/ticket/outcome 审计记录，来源是 lease 或原生生命周期观察。它不记录 cwd，也不等于工作树绑定；ticket↔tree 要看 worktree binding。
+_Avoid_：把 execute 的 lease 当工作树绑定、用 ticketIds 推断树
+
+**原生派发（Native dispatch）**：模型直接调用宿主 `subagent` / `subagent_fork` / `send_message` 创建或续聊 child；插件只从生命周期事件观察和记录，不代理、不重派。与“绑定式创建”区分：普通无绑定 lane 走这条路径。
+_Avoid_：插件派发包装、把 `mattpocock_execute` 当普通派发入口
+
+**绑定式创建（Binding-first creation，旧称托管创建）**：本插件 `mattpocock_delegate` 的强绑定路径：在原生创建前持久化意图，以准备的工作树为初始 cwd 创建 child，核对实际 `child/parent/cwd` header，写入 worktree binding（task/ticketIds），并 assign 票范围。它不是默认派发路径；普通无绑定 lane 用原生 `subagent({cwd})` + `mattpocock_assign`。
+_Avoid_：所有 subagent 都必须走 delegate、把 delegate 当调度器、把可选 managed creation 当成 delegate 的全部职责
+
+**工作树绑定（Worktree binding）**：主代理在创建子代理时指定工作树，使其成为该子代理实际使用的初始工作目录，并在同会话续用时保持该关系。binding 行由 `mattpocock_delegate` 创建、`mattpocock_worktree` 读/更新/重核对，带 task/ticketIds/actual child/cwd；它不是提示词里的路径建议，也不包含创建、合并或删除工作树的业务决定。`mattpocock_assign` 只写 child↔ticket 权限，不是树绑定；原生 `create_worktree` observation 不是强 binding。
+_Avoid_：手工路径路由、把 assign 当树绑定、把 observation 当强 binding
 
 **工作树仪器（Worktree instrument）**：以实际子代理绑定关系为来源的工作树记录及状态展示，帮助主代理了解哪些树与哪些子代理或任务相关。使用、合并和清理的判断属于 agent 与用户，仪器不另设固定阶段或处置审批。
 

@@ -15,7 +15,7 @@
 ## 1. 范围闸门（已于 2026-10-30 关闭）
 
 - [ADAPTER_SCOPE.md](ADAPTER_SCOPE.md#L5) 明确：“停止扩展通用行为审计器”。侧挂监督虽然只观察、不建议审批门，但它仍然是通用行为审计器。
-- [DESIGN.md](DESIGN.md#L12) 规定：锁定决策的变更需要 owner 明确批准，并在同一提交更新设计文档。
+- [DESIGN.md](DESIGN.md) 规定：锁定决策的变更需要 owner 明确批准，并在同一提交更新设计文档。
 - 已完成：owner 认可范围例外；[DESIGN.md](DESIGN.md) 第 17 节和 [ADAPTER_SCOPE.md](ADAPTER_SCOPE.md) 例外已更新；功能仍为可选、默认关闭、不改变 Skill provider/T/S 语义。
 - 本节保留为历史判断；后续实现仍受 DESIGN/IMPLEMENTATION_PLAN 的独立门禁约束。
 
