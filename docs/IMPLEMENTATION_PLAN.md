@@ -22,7 +22,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## 原生派发优先与 execute 退役（2026-11-03；B/D/E 已完成，C 待后续）
 
-已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面是八个固定工具 + 条件 `mattpocock_audit`（客户端九个 wire key），native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）明确留待后续，本轮没有新增存储或账本。0.7.0 制品已构建并精确验证，但未安装到本机 DSH/Profile、未发布、未推送、未打标签。
+已接受设计见 [DESIGN.md](<DESIGN.md>) 的同名节与 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。方案 A：普通无绑定 lane 用宿主原生派发；`mattpocock_delegate` 保留为强绑定创建（binding-first creation）；`mattpocock_execute` 已从 0.7.0 源码线移除。当前模型面是八个固定工具 + 条件 `mattpocock_audit`（客户端九个 wire key），native `subagent`/`subagent_fork`/`send_message` 与 `create_worktree` 负责普通派发。C（原生观察读取时关联/账本补齐）明确留待后续，本轮没有新增存储或账本。0.7.0 制品已构建并精确验证（463,589 bytes，sha256 `cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1`，178 成员，源提交 `d2dd86e`），但未安装到本机 DSH/Profile、未发布、未推送、未打标签。
 
 | 阶段 | 内容 | 门禁 |
 |---|---|---|

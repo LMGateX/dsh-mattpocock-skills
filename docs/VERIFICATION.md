@@ -2,7 +2,50 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-03 状态：方案 A 已实施于 0.7.0 源码线（普通无绑定 lane native-first；`mattpocock_execute` 已移除；`mattpocock_delegate` 保留为强绑定创建），C（原生观察读取时关联/账本补齐）仍待后续。本页 0.6.0 及更早记录的是历史制品；0.7.0 的精确制品验证记录在本轮独立文档提交追加，不能把源码或内存 fixture 当成已安装/已发布。
+> 2026-11-03 状态：方案 A 已实施于 0.7.0 源码线（普通无绑定 lane native-first；`mattpocock_execute` 已移除；`mattpocock_delegate` 保留为强绑定创建），C（原生观察读取时关联/账本补齐）仍待后续。本页 0.6.0 及更早记录的是历史制品；0.7.0 的精确制品验证见下方专节。0.7.0 未安装到本机 DSH/Profile、未发布、未推送、未打标签；不能把源码或内存 fixture 当成已安装/已发布。
+
+## 0.7.0 制品验收（2026-11-03）
+
+本版从 0.7.0 模型面移除 `mattpocock_execute` 及其 `executeManaged`/`executeNative` 路径，普通无绑定 lane 使用宿主原生 `subagent`/`subagent_fork`/`send_message`；`mattpocock_delegate` 定位为绑定式创建，准备的工作树作为初始 cwd，持久意图、实际 header 核对、binding（task/ticketIds）与 assign 保持。固定模型工具面为 **8 个固定工具 + 条件 `mattpocock_audit`**（客户端 9 个 wire key）。C（原生观察的读取时关联/账本补齐）明确未实施，仍待后续。
+
+源码提交：`d2dd86ee5369b8d8efb4615edd937b27b95a28ab`（分支 `release/0.7.0-native-binding-first`）。验证在隔离工作树内完成，未修改主检出或 DSH Profile。
+
+### 构建、测试与包门禁
+
+依次执行并通过：
+
+1. `pnpm install --frozen-lockfile --ignore-scripts`（pnpm 11.8.0）
+2. `pnpm exec tsc -p tsconfig.json`
+3. `chmod 755 lib/compatibility/cli.js`
+4. `pnpm exec tsc -p tsconfig.client.json --noEmit`
+5. `node scripts/build-client.mjs --out lib/client.js --declaration`：**275,486 B**，8 个浏览器安全私有模块，外部请求仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React
+6. `DSH_CONTROLS_HOST_ROOT=/home/dev/.local/lib/node_modules/@deepseek-ai/dsh node --test tests/*.test.mjs`：**958 项：755 通过、0 失败、203 skip**
+7. `node scripts/verify-vendor.mjs`：beta/stable 各 27 Skills；vendor **85 文件、296,048 bytes**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`
+8. 清洁源码提交上 `node scripts/verify-package.mjs --prepack`：**93 固定 + 85 vendor = 178** 个打包文件，构建 74 个 JS/DTS 产物
+
+定向套件：客户端 **122 项：116 通过、0 失败、6 skip**（native activation/loader 环境门禁）；Host **37/37**。203 skip 全部是环境门禁/native host fixture（包括缺少 `@deepseek-ai/dsh-client-ui-slots` 的 activation 用例），不是插件加载失败。测试覆盖 native `subagent` + `mattpocock_assign` 单 child、native send 不重复、PTC 嵌套原生派发与状态注入、delegate prepared worktree 的 requested/actual cwd + ticketIds binding 与实际 assign、原生路径不写强 binding，以及移除 execute 后的 S/nativeStops/owner 通知。
+
+### 精确制品
+
+同一次 clean-source 构建的 `lmgatex-dsh-mattpocock-skills-0.7.0.tgz` 保存在 `/tmp/dsh-0.7.0-artifact/`：**463,589 bytes**，sha256 `cf4b87d8e1089f7a4437559e22646e15c0f045767e7d47eec2186f31bc0a3ea1`，**178 成员**（93 固定 + 85 vendor），源码提交 `d2dd86e`，pnpm 11.8.0，GNU tar 1.35。身份记录按设计为只读；制品在验证后未再改动。
+
+精确验证命令：
+
+```text
+node scripts/verify-package.mjs --tarball /tmp/dsh-0.7.0-artifact/lmgatex-dsh-mattpocock-skills-0.7.0.tgz \
+  --sha256-file /tmp/dsh-0.7.0-artifact/sha256.txt --size-file /tmp/dsh-0.7.0-artifact/size.txt \
+  --source-commit-file /tmp/dsh-0.7.0-artifact/source-commit.txt --pnpm-version-file /tmp/dsh-0.7.0-artifact/pnpm-version.txt
+```
+
+结果：source clean=true、commit 匹配、sha256/bytes/178 成员/模式/导出目标与解包后 controls smoke 全部通过。
+
+过程说明：普通 `pnpm pack --pack-destination /tmp/dsh-0.7.0-artifact` 经 pnpm 11.8.0 manifest obfuscation 会删除 `packageManager`，与提交的 `package.json` 字节不一致，verifier 正确拒绝；随后以 `pnpm pack --skip-manifest-obfuscation --pack-destination /tmp/dsh-0.7.0-artifact` 在同一源码提交重新生成并验证，这也是仓库开发制品测试使用的命令。失败的那次制品未被当作验收制品，验证后的验收制品未再改动。
+
+### 边界
+
+- **没有安装**：未执行任何 DSH install、Profile 编辑、服务重启、GUI 变更或本机插件激活。
+- **没有发布**：未 npm publish、git push、打 tag 或创建 GitHub Release；发布/安装另行决定。
+- **C 未完成**：本轮没有新增 native-observation 存储/账本，也没有声称 C 已完成；现有原生生命周期观测、nativeStops、S、工作树观测与 history 行为保持。
 
 ## 0.6.0 制品验收（2026-11-01）
 
