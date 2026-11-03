@@ -51,7 +51,7 @@
 
 可选 TypeScript 扩展已实现修订化全局/工作区设置、持久 owner-session 仪器、任务自定义票与裁决、参考 T/S、工作树绑定与创建观测、有界当前注入、分页历史与显式源旧历史清理，以及原生惰性客户端。不可变 Skill provider 保持独立；0.7.0 挂载八项固定工具 + 条件 `mattpocock_audit`（`mattpocock_execute` 已移除；客户端共九个 wire key）及第三方设置/常驻摘要/右侧详情。管理默认关闭，数值参考值未配置，不猜默认。用法见[协作控制说明](<CONTROLS.md>)。
 
-**设计更新（2026-11-03，已在 0.7.0 源码线实施）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（持久意图、实际 header 核对、创建 binding 并 assign 票范围）；`mattpocock_execute` 已移除，不再有 execute 路径。C（原生观察读取时关联/账本补齐）仍待后续。0.7.0 制品已构建并验证，但未安装、未发布；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
+**设计更新（2026-11-03，已在 0.7.0 源码线实施）。** 原生派发优先：普通无绑定 lane 用宿主 `create_worktree` + `subagent({cwd})` 创建并由本插件观察；`mattpocock_delegate` 保留为强绑定创建，只有需要 ticket↔worktree 强绑定时使用（持久意图、实际 header 核对、创建 binding 并 assign 票范围）；`mattpocock_execute` 已移除，不再有 execute 路径。C（原生观察读取时关联/账本补齐）仍待后续。0.7.0 制品已构建并验证；安装/激活仍走独立门禁；详见[原生派发设计](docs/NATIVE_DISPATCH_FIRST.md)与[验证](docs/VERIFICATION.md)。
 
 T/S 超限或观测未知不拒绝合法原生委派，不新增业务审批。Git 工作树由 agent 自行创建、合并和删除；已清理树退出持续注入，废弃未清理仍提示，历史不默认过期。
 
