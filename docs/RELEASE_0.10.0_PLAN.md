@@ -1,6 +1,6 @@
 # 0.10.0 发行准备与精确制品门禁
 
-> 状态：**计划，不是验收结果**。本轮只准备版本、包门禁和交接提交；禁止提前执行 prepack/pack、tag、push 或 Release。须收到主代理明确给出的“集成 GREEN + Standards/Spec 双轴审查通过”的候选 SHA 后，发行 lane 才继续后续阶段。
+> 状态：**阶段 3–4 已在主代理明确放行的 clean-source 8ec081d 完成；阶段 5 尚待远端写入与下载回验**。初始准备停止点及被拒候选记录保留，不作 accepted 证明。S2 源码双轴、prepack、唯一新制品 strict tarball、主代理独立验包与完整矩阵均 GREEN；后续仍须主代理明确授权具体 main 文档提交、source tag 与 Release，不自动安装本机。实际结果见 [VERIFICATION](<VERIFICATION.md>)。
 
 权威范围：[有界模型输出契约](<BOUNDED_TOOL_OUTPUTS.md>)、[设计](<DESIGN.md>)与[实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)；[0.9.0 验收](<VERIFICATION.md>)只作历史基线，不回填本版结果。版本目标 `0.10.0`，继承已发布的 `0.9.0`。
 
@@ -23,7 +23,7 @@
 4. 分开记录实际 JS/DTS 数、固定成员数、vendor 数与总成员数；再次核验两份逐路径 allowlist、实际 lib 与最终 tar 成员一致。
 5. 主代理把最终清单与新增源模块列入双轴审查；清单后改动同样需要重新审查和 GREEN。
 
-## 3. 集成候选门禁（全部待执行）
+## 3. 集成候选门禁（S2 已通过）
 
 - 收到不可变候选 SHA；验证它包含三条实施 lane、版本/清单、指南迁移与修复提交，并以本 lane 的独立树同步它。候选未明确、仍脏、审查有未解决 finding 或必要测试未跑时，不进入制品阶段。
 - 在自己的树安装冻结依赖，严格 Host 编译、CLI 可执行位、客户端 noEmit 与闭合客户端构建；生成物由集成方提交后，重新固定 clean-source SHA `S`。不得把未提交 lib 当可发布源码。
@@ -31,7 +31,7 @@
 - 必须有真实插件工具 execute 的 typed value 和 render 证据：读/详情/audit <= 65,536 bytes，写回执/插件错误 <= 8,192 bytes，覆盖默认七工具、条件 audit 与 opt-in delegate、直接/PTC 路径、300 次读取、授权/版本失效、partial/unknown 与通知/捕获故障。私有 formatter 测试不能代替此项。
 - 在未打本次补丁的受支持宿主公开契约上核验，无宿主/SDK/Profile 修改作为通过前提。源码 fixture、无监听 headless 与实际 GUI 证据分开；本次不验证当前 GUI 生效。
 
-## 4. 一次 accepted archive 与精确验证（全部待执行）
+## 4. 唯一 accepted archive 与精确验证（S2 已通过；被拒候选另记）
 
 1. 保持 `S` 清洁，运行 `node scripts/verify-package.mjs --prepack`，保存 source clean/commit、pnpm pin、独立 scratch-build 字节比对、vendor 与最终成员结果。
 2. 在仓库之外创建新的 mode-0700 制品目录。正式候选只有经过精确门禁后才称 accepted；最终只有一个 accepted archive 贯穿验收、上传与下载。失败候选原样封存并明确记录，新源码必须重新固定 SHA、回归与双轴审查后在新目录构建新候选，不能修包或重打冒充原制品。沿用已核验工具链的 `npm pack --ignore-scripts --pack-destination <artifact-dir>` 路径，记录 npm 与 GNU tar 版本。不得使用会删除 `packageManager` 等字段的 packer 结果来放宽 verifier。

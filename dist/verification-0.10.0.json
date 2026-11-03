@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.10.0",
+    "private": true
+  },
+  "source": {
+    "commit": "8ec081d0375231278e151890aae51434d07bddca",
+    "clean": true,
+    "checkout": "detached isolated artifact producer",
+    "reviewBase": "529319c5b5732d0da2bc4bfb1b753ef526abfa51"
+  },
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.10.0.tgz",
+    "bytes": 500162,
+    "sha256": "53bfd050d64f95f19045bd3ecb94d89057cdfde57e2df29e81a1476469f8d7f2",
+    "members": 184,
+    "fixedFiles": 99,
+    "vendorFiles": 85,
+    "directories": 0,
+    "symlinks": 0,
+    "manifestPreserved": true,
+    "manifestBytes": 10481,
+    "readOnlyOriginals": true,
+    "identityUnchanged": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "npm": "11.13.0",
+    "tar": "GNU tar 1.35"
+  },
+  "review": {
+    "source": "8ec081d0375231278e151890aae51434d07bddca",
+    "standards": {
+      "accepted": true,
+      "blockers": 0,
+      "optionalHeuristics": 1
+    },
+    "spec": {
+      "accepted": true,
+      "openFindings": 0,
+      "previousRuntimeFindingsClosed": 6,
+      "independentVerifierTests": {
+        "total": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "validation": {
+    "sourceTests": {
+      "files": 88,
+      "total": 1073,
+      "passed": 1067,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "exactArchiveTests": {
+      "files": 89,
+      "total": 1086,
+      "passed": 1080,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "pluginManagerTests": {
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "skipReasons": [
+      {
+        "count": 6,
+        "reason": "Native Client activation/browser-loader fixture assembly lacks the public @deepseek-ai/dsh-client-ui-slots package; not GUI acceptance."
+      }
+    ],
+    "sdkVersions": [
+      "0.2.2-alpha.2",
+      "0.2.1-alpha.1"
+    ],
+    "sdkManifestAndNativeBytesUnchanged": true,
+    "legacyNativeEntrySha256": "75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541",
+    "prepackVerifier": "passed",
+    "exactArchiveVerifier": "passed",
+    "independentParentArchiveVerifier": "passed",
+    "sourceModules": 40,
+    "buildFiles": 80,
+    "exportAndEntryTargets": 19,
+    "vendorFiles": 85,
+    "vendorBytes": 296048,
+    "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "channelSkillCounts": {
+      "beta": 27,
+      "stable": 27
+    },
+    "pinnedSourceIngestionTests": {
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "originalSourceUnchanged": true
+    },
+    "clientBytes": 278881,
+    "clientPrivateModules": 8,
+    "clientExternals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "modelToolsTests": {
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "modelOutput": {
+      "schemaVersion": 2,
+      "readBudgetBytes": 65536,
+      "mutationBudgetBytes": 8192
+    },
+    "scale": {
+      "legacyFullBytes": 44119587,
+      "maxBoundedBytes": 5764,
+      "directTypedReads": 300,
+      "sdkRenderedReads": 300,
+      "totalBoundedBytes": 3458400,
+      "independentGenuineNestedSdkCalls": 10
+    },
+    "syntheticUpgradeFixtures": [
+      "0.4.5",
+      "0.4.6"
+    ],
+    "syntheticAndDevelopmentPackagesAreNotAcceptedArchive": true,
+    "modelInvoked": false,
+    "realPtcRunnerInvoked": false,
+    "isolatedHeadlessManagerTested": true,
+    "installedOnHost": false,
+    "guiTested": false
+  },
+  "rejectedCandidate": {
+    "sourceCommit": "27fd924d474628eae30e79a9606976314f53ccf1",
+    "bytes": 500162,
+    "sha256": "53bfd050d64f95f19045bd3ecb94d89057cdfde57e2df29e81a1476469f8d7f2",
+    "reason": "Verifier incorrectly required removing the one final source-manifest LF and rejected an otherwise source-identical npm payload.",
+    "disposition": "sealed unchanged; not retroactively accepted or published",
+    "newCandidatePackedFromReviewedSource": true,
+    "reproduciblePayloadMatches": true
+  },
+  "boundaries": {
+    "noPush": true,
+    "noTag": true,
+    "noRelease": true,
+    "noNpmPublish": true,
+    "noLocalInstall": true,
+    "noSdkOrProfileModification": true,
+    "noServiceRestart": true,
+    "noSpillCleanup": true,
+    "noUnrelatedHostPatch": true,
+    "noNewModelTool": true,
+    "noRemoteMethodChange": true,
+    "delegateDefaultDisabled": true,
+    "noHeapLeakOrConstantColdReadClaim": true
+  },
+  "release": {
+    "status": "pending",
+    "tag": "v0.10.0",
+    "intendedTagCommit": "8ec081d0375231278e151890aae51434d07bddca",
+    "tagObject": null,
+    "tagCommit": null,
+    "url": null,
+    "sourceCommit": "8ec081d0375231278e151890aae51434d07bddca",
+    "assets": [
+      "lmgatex-dsh-mattpocock-skills-0.10.0.tgz",
+      "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.sha256",
+      "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.size",
+      "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.source-commit",
+      "lmgatex-dsh-mattpocock-skills-0.10.0.tgz.pnpm-version"
+    ],
+    "downloadVerified": false
+  }
+}
