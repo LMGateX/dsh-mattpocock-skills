@@ -2,9 +2,9 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-04 状态：0.9.0 是当前源码线；事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，但尚未 push/tag/GitHub Release、未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
+> 2026-11-04 状态：0.9.0 是当前源码线；事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
-## 0.9.0 制品验收（2026-11-04，隔离工作树；已验证，尚未 push/tag/release；未安装）
+## 0.9.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 
 本版实施事实边界与恢复：执行事实以 `headerCwd` 表达 header 来源值（旧 `initialCwd` 单键兼容读取；两键同值归一化、冲突拒绝）；不再由 header 路径相等生成 `initial-cwd`/worktree 关联，`nativeChildren` 只保留 `created-tree`（header 为 null 也保留）；迟到 `subagent/end` 使用 owner/session/run 事实与 `runId` 围栏，旧 run 不覆盖新 run、新 start 缺 `runId` 不继承旧 run、旧 Agent 的 disposed 不清掉新 live run；无 owner view 时只报 native-executions 覆盖缺口，不写 outcome、不扫冷日志、不重试。delegate 结果分开报告 `creation`/`binding`/`assignment`，并另列 `recording`/`persistence`/`recovery`；confirm 失败 assignment=not-attempted，assign 提交不确定=unknown，accepted child 不重建；replay 不隐式 assign，recovery 与旧 result 分开。`delegateRegistered` 仅当可信 Host 配置 `delegate: true` 且 facade 实际提供 delegate 时为 true；消费协议只在 `delegateRegistered === true` 时指示 delegate，OFF 保留事实但不追加受管行动。没有新增模型工具、Remote 方法、存储域或强绑定写入口；默认仍是 7 固定 + 条件 audit（delegate opt-in 第八项）、Remote 16、客户端 9 wire key。
 
@@ -45,9 +45,9 @@ node scripts/verify-package.mjs --tarball /tmp/dsh-0.9.0-artifact/lmgatex-dsh-ma
 
 - **binding 是声明式 header checkpoint**：`binding: confirmed` 只表示显式 header checkpoint 匹配 planned child/parent/requested cwd，不是实际初始/当前目录证明；reconcile 只修 binding，不补 assignment、不证明目录。0.9.0 没有新增实际 cwd 证明 seam。
 - **coverage gap 是证据缺口**：迟到 end 只有在同一 runtime 仍保留 owner view 时才写 outcome；没有任何可信 owner view 时只报 native-executions coverage gap，不扫冷日志、不重试、不猜结果；这不是“已保存”。
-- **未安装、未 npm 发布**：未执行 DSH install、Profile 编辑、服务重启或 GUI 变更；发布待 push/tag/release。
+- **已发布但未安装**：已 push `main` 至 `ccaac0d`、tag `v0.9.0`（annotated tag `33558f3` -> `ccaac0d`）并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，上传 tgz、sha256、size、source-commit 与 pnpm-version；未执行 DSH install、Profile 编辑、服务重启或 GUI 变更，未 npm publish。
 - **模型与接口面**：默认 7 固定 + 条件 audit，delegate 仅 opt-in 第八项；Remote 16；客户端 9 wire key；没有新增模型工具、Remote 方法、存储域或强绑定写入口。
-- 完整记录见 `dist/verification-0.9.0.json`（随后提交）。
+- 完整记录见 [dist/verification-0.9.0.json](<../dist/verification-0.9.0.json>)。
 
 ## 0.8.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 

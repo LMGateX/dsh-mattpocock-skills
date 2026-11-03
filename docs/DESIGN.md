@@ -14,7 +14,7 @@ This document is the authoritative implementation contract. A later implementati
 
 ## 仪器事实边界与恢复（2026-11-04，所有者认可；0.9.0 已实施并验证）
 
-本节是当前权威增量，收窄下方历史 C 阶段的“初始 cwd 已关联/已完成”口径，补足 delegate 部分成功、迟到事件及消费契约。完整设计、兼容规则和验收矩阵见 [INSTRUMENT_FACT_BOUNDARIES.md](<INSTRUMENT_FACT_BOUNDARIES.md>)；实施切片见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>) 的同名节。0.9.0 已在源码实施，并由完整测试与精确制品验证（见 [VERIFICATION.md](<VERIFICATION.md>)）；尚未 push/tag/GitHub Release、未 npm publish、未安装本机 DSH/Profile/GUI。0.7.0/0.7.1/0.8.0 的既有交付记录不回填为本轮验收。
+本节是当前权威增量，收窄下方历史 C 阶段的“初始 cwd 已关联/已完成”口径，补足 delegate 部分成功、迟到事件及消费契约。完整设计、兼容规则和验收矩阵见 [INSTRUMENT_FACT_BOUNDARIES.md](<INSTRUMENT_FACT_BOUNDARIES.md>)；实施切片见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>) 的同名节。0.9.0 已在源码实施，并由完整测试与精确制品验证（见 [VERIFICATION.md](<VERIFICATION.md>)）；已 push `main`、tag `v0.9.0` 并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，未 npm publish、未安装本机 DSH/Profile/GUI。0.7.0/0.7.1/0.8.0 的既有交付记录不回填为本轮验收。
 
 - **native-first 不变。** delegate 默认不注册且保留实现；不恢复 execute，不新增模型工具、Remote 方法、存储 domain、cwd resolver 或调度器。
 - **header 是来源值，不是有效初始 cwd。** C 在 0.8.0 及更早版本保存的 `initialCwd` 实为 child header cwd；0.9.0 起以 `headerCwd` 明确来源。仅 header 路径相等不得产生实际初始目录/强绑定声明；没有宿主证明时保持 unknown。`created-tree` 的创建者事实不依赖 cwd 证明，header 为 null 也保留创建者关联。旧字段、旧 history 与旧 binding 兼容读，不自动升级证据、不静默重写历史。

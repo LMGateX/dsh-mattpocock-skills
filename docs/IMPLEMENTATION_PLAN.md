@@ -8,7 +8,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 ## 仪器事实边界与恢复（2026-11-04；0.9.0 已完成并验证）
 
-用户认可的只读复核结论已在 0.9.0 源码实施并验证：源码提交 `708b277a2bb6699de05c822572057b29b842d0ab`（分支 `release-0.9.0-fact-boundaries`），完整测试、闭合构建和精确制品均通过；尚未 push/tag/GitHub Release、未 npm publish、未安装本机 DSH/Profile/GUI。历史 0.7.0/0.7.1/0.8.0 的测试计数与发布记录不回填。
+用户认可的只读复核结论已在 0.9.0 源码实施并验证：源码提交 `708b277a2bb6699de05c822572057b29b842d0ab`（分支 `release-0.9.0-fact-boundaries`），完整测试、闭合构建和精确制品均通过；已 push `main`、tag `v0.9.0` 并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，未 npm publish、未安装本机 DSH/Profile/GUI。历史 0.7.0/0.7.1/0.8.0 的测试计数与发布记录不回填。
 
 | 切片与状态 | 内容与既有 seam | 完成门禁 |
 |---|---|---|
@@ -20,7 +20,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | F stale 减负（已完成） | 复用现有消费 identity、visibility oracle、刷新 gate 与提交 frontier，合并同事实/同原因重复旧正文 | C2-C3；上下文重建、不可证可见性、撤权、OFF、新待办与恢复 current；对照脚本完整旧正文减少，未知与义务不消失 |
 | G 集成验收（已完成） | 完整矩阵、严格类型/闭合构建、全套测试、独立 Standards/Spec 复核；公开 seam 无模型探针与 fixture 分开记证据等级 | native+assign 单 child、send 单消息、PTC、T/S、owner 隔离、历史/源清理/旧 binding 回归；精确制品已验证，不以源码/制品代安装/GUI |
 
-**0.9.0 结果：** 完整根套件 **997 项：794 通过、0 失败、0 cancelled、203 skip**（203 为缺显式 SDK 根/双根等环境门禁，不是加载失败）；闭合构建 **76 个 JS/DTS**，客户端 bundle **278,881 B**、8 个浏览器安全私有模块、externals 仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React；vendor **85 文件、296,048 B**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`；beta/stable 各 27 Skills；**95 固定 + 85 vendor = 180** 个打包成员。精确 clean-source 制品 **476,121 bytes**，sha256 `756f9d48f448266e80397a736afddda30301991c483d4695cce6528151a9beac`，源码提交 `708b277`；`--prepack` 与精确 `--tarball` verifier 均通过。未安装本机 DSH/Profile/GUI，未 npm publish；发布待 push/tag/release。完整记录见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.9.0 节。
+**0.9.0 结果：** 完整根套件 **997 项：794 通过、0 失败、0 cancelled、203 skip**（203 为缺显式 SDK 根/双根等环境门禁，不是加载失败）；闭合构建 **76 个 JS/DTS**，客户端 bundle **278,881 B**、8 个浏览器安全私有模块、externals 仅 `@deepseek-ai/dsh-client-ui-primitives` 与 React；vendor **85 文件、296,048 B**、root SHA-256 `70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8`；beta/stable 各 27 Skills；**95 固定 + 85 vendor = 180** 个打包成员。精确 clean-source 制品 **476,121 bytes**，sha256 `756f9d48f448266e80397a736afddda30301991c483d4695cce6528151a9beac`，源码提交 `708b277`；`--prepack` 与精确 `--tarball` verifier 均通过。已 push `main`、tag `v0.9.0`（`ccaac0d`）并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未安装本机 DSH/Profile/GUI，未 npm publish。完整记录见 [VERIFICATION.md](<VERIFICATION.md>) 的 0.9.0 节与 [dist/verification-0.9.0.json](<../dist/verification-0.9.0.json>)。
 
 文档阶段记录的 13 个 Markdown 文档、205 个本地链接校验与独立复核作为历史保留；0.9.0 已越过仅文档阶段，完成源码、测试与制品验收。
 

@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.9.0",
+    "private": true
+  },
+  "source": {
+    "commit": "708b277a2bb6699de05c822572057b29b842d0ab",
+    "branch": "release-0.9.0-fact-boundaries",
+    "clean": true
+  },
+  "verificationCommit": "ccaac0d88bd76e12bbacb5253ff536b43c296b69",
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.9.0.tgz",
+    "bytes": 476121,
+    "sha256": "756f9d48f448266e80397a736afddda30301991c483d4695cce6528151a9beac",
+    "members": 180,
+    "fixedFiles": 95,
+    "vendorFiles": 85,
+    "manifestPreserved": true,
+    "manifestBytes": 10339
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "npm": "11.13.0",
+    "typescript": "5.9.3",
+    "tar": "GNU tar 1.35"
+  },
+  "validation": {
+    "rootTests": {
+      "total": 997,
+      "passed": 794,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 203
+    },
+    "modelContractTests": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0
+    },
+    "newNativeExecutions": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0
+    },
+    "newNativeExecutionRuntime": {
+      "total": 16,
+      "passed": 16,
+      "failed": 0
+    },
+    "clientTests": {
+      "total": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "consumptionTests": {
+      "total": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    "collaborationRuntimeTests": {
+      "total": 21,
+      "passed": 21,
+      "failed": 0
+    },
+    "exactArchiveVerifier": "passed",
+    "prepackVerifier": "passed",
+    "delegateDefaultOff": "passed",
+    "delegateOptIn": "passed",
+    "extensionGate": "native execution writes require extensionEnabled; management-off adds/updates nothing and preserves readable rows",
+    "buildModules": 76,
+    "fixedFiles": 95,
+    "vendorFiles": 85,
+    "packedFiles": 180,
+    "vendorBytes": 296048,
+    "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "clientBytes": 278881,
+    "clientExternals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "modelTools": 7,
+    "optionalDelegateTools": 1,
+    "conditionalAuditTools": 1,
+    "remoteMethods": 16,
+    "clientWireKeys": 9,
+    "notRun": [
+      "dual-root suite",
+      "no-host-root suite",
+      "isolated headless install/mount",
+      "real-model trial",
+      "graphical-browser/GUI acceptance",
+      "local DSH/Profile install",
+      "npm publish"
+    ],
+    "modelInvoked": false,
+    "installedOnHost": false,
+    "guiTested": false
+  },
+  "boundaries": {
+    "noPush": false,
+    "noTag": false,
+    "noRelease": false,
+    "noNpmPublish": true,
+    "noLocalInstall": true,
+    "noStrongBindingWriterAdded": true,
+    "noNewModelTool": true,
+    "delegateDefaultDisabled": true,
+    "bindingConfirmedIsHeaderCheckpointOnly": true,
+    "ownerViewGapIsCoverageGap": true
+  },
+  "release": {
+    "tag": "v0.9.0",
+    "tagObject": "33558f31ba4077cb824720e729e1549cfd4338d0",
+    "tagCommit": "ccaac0d88bd76e12bbacb5253ff536b43c296b69",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0",
+    "sourceCommit": "708b277a2bb6699de05c822572057b29b842d0ab",
+    "verificationCommit": "ccaac0d88bd76e12bbacb5253ff536b43c296b69",
+    "assets": [
+      "lmgatex-dsh-mattpocock-skills-0.9.0.tgz",
+      "lmgatex-dsh-mattpocock-skills-0.9.0.tgz.sha256",
+      "lmgatex-dsh-mattpocock-skills-0.9.0.tgz.size",
+      "lmgatex-dsh-mattpocock-skills-0.9.0.tgz.source-commit",
+      "lmgatex-dsh-mattpocock-skills-0.9.0.tgz.pnpm-version"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # 仪器事实边界、部分成功与恢复
 
-> **状态：2026-11-04（北京时间）所有者认可；0.9.0 已实施并验证，尚未安装。** 本页契约已由 0.9.0 源码、完整测试与精确制品覆盖，不再是未来要求；源码提交 `708b277a2bb6699de05c822572057b29b842d0ab`（分支 `release-0.9.0-fact-boundaries`），精确计数与制品见 [VERIFICATION](<VERIFICATION.md>)。历史 0.7.0/0.7.1/0.8.0 记录保留，不回填；尚未 push/tag/GitHub Release，未 npm publish，未安装本机 DSH/Profile/GUI。权威入口为 [DESIGN](<DESIGN.md>)，实施门禁为 [IMPLEMENTATION_PLAN](<IMPLEMENTATION_PLAN.md>)。
+> **状态：2026-11-04（北京时间）所有者认可；0.9.0 已实施并验证，尚未安装。** 本页契约已由 0.9.0 源码、完整测试与精确制品覆盖，不再是未来要求；源码提交 `708b277a2bb6699de05c822572057b29b842d0ab`（分支 `release-0.9.0-fact-boundaries`），精确计数与制品见 [VERIFICATION](<VERIFICATION.md>)。历史 0.7.0/0.7.1/0.8.0 记录保留，不回填；已 push `main`、tag `v0.9.0` 并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，未 npm publish，未安装本机 DSH/Profile/GUI。权威入口为 [DESIGN](<DESIGN.md>)，实施门禁为 [IMPLEMENTATION_PLAN](<IMPLEMENTATION_PLAN.md>)。
 > 公开资料边界：只保存代码事实、脱敏场景和聚合结果；原始会话、用户正文、本机路径及 Profile 不进入公开仓库。
 
 ## 1. 决策与不变量
