@@ -34,6 +34,12 @@ This document is the authoritative implementation contract. A later implementati
 - **范围收窄。** 仅在本次独立输出工作中收窄 2026-11-01 工具卡“不改变模型输出”的限制；旧卡片/宿主公开字段与历史交付记录不改写。2026-10-21 UI summary 不等于模型当前仪器，也不是本次修复已完成的证明。
 - **交付授权与状态（2026-11-04 更新）。** 所有者已授权由 subagents 在隔离环境实施、验收、push、tag 与 GitHub Release；目标版本 0.10.0，继承已发布 0.9.0 的事实边界修复。源码已实施，固定 clean-source SHA 8ec081d0375231278e151890aae51434d07bddca 已通过双宿主源码回归、Standards/Spec 双轴复审、唯一精确制品与完整 PluginManager 矩阵；已发布 v0.10.0 并通过五资产下载回验，仍不从源码、制品或发布成功推断当前 GUI 已生效；未安装本机。**不为本机安装**，不改当前 Profile/SDK、不清理存量 spill、不重启服务，npm publication 也不在授权内。
 
+## 0.10.1 DSH 0.2.2-alpha.3 兼容补发与本机安装（2026-11-04，所有者指示）
+
+本节记录 0.10.1 的交付范围，不改写 0.10.0 的历史验收。DSH `0.2.2-alpha.3` 已由源码类型编译、双宿主全量套件与隔离 headless 制品装载复核，插件运行时、工具面、DTO、vendor 与宿主兼容声明均不需要变化；因此 0.10.1 是**兼容性补发**，只更新版本、版本断言、兼容记录与发行文档。
+
+所有者已明确指示 push、发版并安装。允许将 0.10.1 的同一精确制品安装到当前 Web Profile；安装不自动重启当前服务，也不等于当前运行进程已加载新版本。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。`main`、annotated tag、GitHub Release 和五资产必须绑定同一 clean-source 与唯一制品；旧 tag/Release 不移动、不覆盖。安装后以包字节/Profile 记录和独立启动核对为准，当前 GUI 的实际生效仍需正常重启后另行观察。
+
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 
 本节收窄 2026-10-06 的执行包装、2026-10-09 的插件 cwd 派发默认用法和 2026-10-13 的 `mattpocock_delegate.worktree` 默认派发用法；强绑定 lane 仍由 delegate 写 binding，T/S、票与裁决、工作树绑定/观测、历史与通知语义不变。delegate 的默认注册已在 0.8.0 关闭，见下节。详细设计与迁移见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。

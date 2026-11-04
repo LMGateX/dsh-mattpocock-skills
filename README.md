@@ -54,6 +54,10 @@ Compatibility notes for the currently inspected local DSH implementation (not a 
 
 See the [thin-adapter scope](docs/ADAPTER_SCOPE.md), [evidence-based compatibility inventory](docs/COMPATIBILITY.md), and [host compatibility record](docs/HOST_COMPATIBILITY.md) (Chinese). These notes neither rewrite upstream bodies or historical campaign results nor lift activation/release gates.
 
+## DSH 0.2.2-alpha.3 compatibility revalidation (0.10.1)
+
+0.10.1 is a compatibility-only patch. It records the revalidation against DSH `0.2.2-alpha.3` without changing runtime code, the tool surface, the schema-2 DTOs, vendor bytes or the declared host range. The alpha.3 type set compiles both the root and Client builds, and the full suite reports 1077 passed and 0 failed; the published 0.10.0 artifact was also installed in an isolated headless profile with 27 Skills and 11 model-visible Skills. See the [host compatibility record](docs/HOST_COMPATIBILITY.md). A running DSH process must be restarted before it can load any newly installed package.
+
 ## Plugin-owned output reduction (0.10.0)
 
 The isolated implementation of the [bounded-output design](<docs/BOUNDED_TOOL_OUTPUTS.md>) replaces full model-facing snapshots with current views, small mutation receipts and permission-checked, versioned content pieces across the plugin tools. The change happens before the typed execute result reaches host logging; it does not patch DSH spill/GC/PTC, delete history, install into the local profile or restart the service. See [result-contract migration](<MIGRATION.md>) and [actual verification status](<docs/VERIFICATION.md>) before using the new schema.

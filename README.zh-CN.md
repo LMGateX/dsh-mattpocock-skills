@@ -47,6 +47,10 @@
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
+## DSH 0.2.2-alpha.3 兼容复核（0.10.1）
+
+0.10.1 是兼容性补丁：记录对 DSH `0.2.2-alpha.3` 的复核，不修改运行时代码、工具面、schema-2 DTO、vendor 字节或宿主版本声明。alpha.3 类型集下根与 Client 均可编译，全量套件 1077 通过、0 失败；已发布的 0.10.0 制品也已在隔离 headless profile 中安装并暴露 27 个 Skills、11 个模型可见。详见[宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。任何当前运行中的 DSH 进程都需要正常重启，才能加载新安装的包。
+
 ## 插件内工具输出减负（0.10.0）
 
 隔离实现遵循[有界输出设计](<docs/BOUNDED_TOOL_OUTPUTS.md>) 将插件模型工具的全快照改为当前视图、小写回执及逐次授权、按版本分段的正文；在 typed execute 返回前处理，不给 DSH spill/GC/PTC 打补丁，不删历史、不为本机安装或重启。新 schema 的用法见[迁移说明](<MIGRATION.md>)，实际完成状态见[验证摘要](<docs/VERIFICATION.md>)。
