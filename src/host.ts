@@ -1110,7 +1110,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
   const liveSource = (sessionId: SessionId): Agent['session'] | undefined => {
     const agent = ctx.agents.get(sessionId)
     const sessions = typeof ctx.get === 'function' ? ctx.get('sessions') : undefined
-    const session = sessions?.get(sessionId)
+    const session = typeof sessions?.get === 'function' ? sessions.get(sessionId) : undefined
     if (agent !== undefined && session !== undefined && agent.session !== session) deny('live Session and Agent identity conflict')
     return session ?? agent?.session
   }
