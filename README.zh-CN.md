@@ -47,6 +47,12 @@
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
+## 插件读取路径性能优化（0.11.0）
+
+0.11.0 减少插件内部重复工作：业务历史改用线性 builder 与精确历史版本索引；Host 仅在公开 live／来源身份与修订能够证明当前有效时复用紧凑 descriptor 事实；完整 Remote 快照复用经过严格验证的不可变 JSON 表示。模型消费直接读取当前业务事实，同时保留必要的历史补捕获、provenance、上下文选择、物理／原生义务与持久提交 frontier 顺序。复用前仍检查当前权限；缺少可靠来源 token 的宿主保守重新观察。完整编辑／历史响应仍无损，模型有界 schema、存储格式、vendor 字节与宿主范围不变。
+
+已认可的边界与测试 seams 见[性能契约](<docs/PERFORMANCE_READ_PATHS.md>)；源码、精确制品与发布证据另记在[验证摘要](<docs/VERIFICATION.md>)。本次交付**不为本机 DSH Profile 安装、不改共享 SDK、不重启服务、不 npm publish**。合成性能结果不充当宿主 CPU 事件的责任归因或生产延迟保证。
+
 ## 模型工具请求描述修正（0.10.2）
 
 0.10.2 是描述补丁：将 `mattpocock_controls`、`mattpocock_record`、`mattpocock_history` 与条件注册的 `mattpocock_audit` 的模型可见描述改为运行时实际接受的顶层 `{action:...}` 请求；`mattpocock_worktree` 不再暗示其 read 形状不接受可选 query。新增回归测试断言这些描述。运行时代码、已注册工具面、schema-2 DTO、vendor 字节与宿主版本声明均不变。[v0.10.2 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.2) 的同一精确五项资产已安装到当前 Web Profile（0.10.1 → 0.10.2），并已于 2026-11-04 12:21:58（+08:00）正常重启；新进程（PID 48436）已加载 0.10.2，工具与 Skill provider 复核通过。
