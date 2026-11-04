@@ -50,7 +50,7 @@ import { createDomainResourceStorage, parseResourceDocument } from './controls/r
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js'
 import { createDomainVersionedStorage } from './controls/versioned-storage.js'
 import type { VersionedStorage } from './controls/versioned-storage.js'
-import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, parsePolicyGrants, parseResourceAction, parseSessionSummaryRequest, parseSessionSummaryBatch } from './controls/remote-contract.js'
+import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, createHostJsonRepresentation, parsePolicyGrants, parseResourceAction, parseSessionSummaryRequest, parseSessionSummaryBatch } from './controls/remote-contract.js'
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, RuntimeSnapshot, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js'
 import { boolean, ControlsError, freeze, id, increment, memoized, record, revision } from './controls/validation.js'
 import { StartupSupport } from './controls/startup-support.js'
@@ -1218,6 +1218,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
 
 /** A source-mode binding plus a strict descriptor contribution; no monkeypatch. */
 export class MattPocockControlsService extends TypertRemoteService {
+  private readonly sessionRepresentation = createHostJsonRepresentation()
   constructor(ctx: Context, private readonly runtime: RuntimeFacade, private readonly ports: HostPorts,
     private readonly grants: VersionedStorage<PolicyGrants>, private readonly supervision: VersionedStorage<SupervisionConfigSnapshot>,
     private readonly startup: StartupSupport,
@@ -1280,7 +1281,7 @@ export class MattPocockControlsService extends TypertRemoteService {
   }
   readSession(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<HostJson> { return this.run(async (caller, signal) => {
     const sid = id(sessionId, 'sessionId'); await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted()
-    return parseHostJson(await this.runtime.readSession(caller, sid, signal))
+    return this.sessionRepresentation(await this.runtime.readSession(caller, sid, signal))
   }, suppliedSignal) }
   readSummaries(request: unknown, suppliedSignal?: AbortSignal): Promise<SessionSummaryBatch> {
     const parsed=parseSessionSummaryRequest(request)

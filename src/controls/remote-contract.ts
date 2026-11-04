@@ -188,8 +188,9 @@ export interface ControlsRemote {
 }
 
 /** A complete lossless JSON boundary, not JSON.stringify-based repair. */
-export function parseHostJson(value: unknown): HostJson {
+function hostJsonRepresentation(value: unknown, inspectImmutable = false): { readonly value: HostJson; readonly immutable: boolean } {
   const ancestors = new Set<object>()
+  let immutable = true
   const visit = (input: unknown, depth: number): HostJson => {
     if (depth > 128) invalid('remote JSON exceeds maximum depth')
     if (input === null || typeof input === 'string' || typeof input === 'boolean') return input
@@ -197,13 +198,31 @@ export function parseHostJson(value: unknown): HostJson {
     if (typeof input !== 'object' || input === null) invalid('remote value must be JSON data')
     if (ancestors.has(input)) invalid('remote JSON must not cycle')
     ancestors.add(input)
+    // This is evidence gathered during strict validation, never permission to skip it.
+    if (inspectImmutable && !Object.isFrozen(input)) immutable = false
     try {
       if (Array.isArray(input)) return array(input, 'remote array').map(entry => visit(entry, depth + 1))
       const raw = record(input, 'remote object')
       return Object.fromEntries(Object.entries(raw).map(([key, entry]) => [key, visit(entry, depth + 1)]))
     } finally { ancestors.delete(input) }
   }
-  return freeze(visit(value, 0))
+  return { value: freeze(visit(value, 0)), immutable }
+}
+export function parseHostJson(value: unknown): HostJson { return hostJsonRepresentation(value).value }
+/** Mount-local, weakly keyed representation cache. Only the strict validator above can
+ * establish eligibility; a frozen root with mutable descendants never enters the cache.
+ * One detached graph (no serialized string) lives at most as long as its source key.
+ * Ordinary parseHostJson calls deliberately retain their validate-and-detach semantics. */
+export function createHostJsonRepresentation(): (value: unknown) => HostJson {
+  const representations = new WeakMap<object, HostJson>()
+  return value => {
+    const object = value !== null && typeof value === 'object' ? value : null
+    const prior = object === null ? undefined : representations.get(object)
+    if (prior !== undefined) return prior
+    const parsed = hostJsonRepresentation(value, true)
+    if (object !== null && parsed.immutable) representations.set(object, parsed.value)
+    return parsed.value
+  }
 }
 export function parsePolicyGrants(value: unknown): PolicyGrants {
   const raw = record(value, 'policy grants', ['schemaVersion', 'revision', 'grants'])

@@ -15,7 +15,7 @@ import type { ModelIdentity, ModelSource, ModelRow, ModelCollection, ModelCurren
 import { SessionWindows, parseWindowDocument } from './controls/windows.js'
 import type { ExecutionToken, WindowProgramPort, WindowCompactRequest, WindowPurgeRequest } from './controls/windows.js'
 import { InstrumentConsumption } from './controls/consumption.js'
-import type { ConsumptionIdentity, ConsumptionProgramPort } from './controls/consumption.js'
+import type { ConsumptionIdentity, ConsumptionProgramPort, ConsumptionSnapshot } from './controls/consumption.js'
 import { createResourceModule, ResourceError, parseResourceDocument } from './controls/resources.js'
 import { concreteGitAdapter, probeWorktree } from './controls/git-worktrees.js'
 import { INITIAL_RUNTIME_DOCUMENT, parseRuntimeDocument } from './controls/runtime-state.js'
@@ -135,7 +135,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // projection is a pure function of the documents plus this process's mutations, so the
   // same watermark serves it: unchanged revisions and no mutation means the frozen value is
   // still the current projection.
-  const projectionCache=new Map<string,{readonly key:string;readonly value:RuntimeSnapshot}>()
+  type CurrentRuntimeSnapshot = Omit<RuntimeSnapshot,'records'> & { readonly records: InstrumentCurrentSnapshot | null }
+  type RuntimeReadSnapshot = Omit<RuntimeSnapshot,'records'> & { readonly records: ConsumptionSnapshot['records'] }
+  const projectionCache=new Map<string,{readonly key:string;readonly value:RuntimeReadSnapshot}>()
   const touchState=(instanceId?:string):void=>{refresh.touch(instanceId);project.touch(instanceId)}
   const controls=new WorkspaceControls(ports.controlsStorage,ports.authority)
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
@@ -159,7 +161,15 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const historyFor=async(view:SessionControlsView)=>{
     const key=view.instance.instrumentInstanceId
     let store=historyStores.get(key)
-    if(!store){store=ports.openUnitStorage('history_'+createHash('sha256').update(key).digest('hex').slice(0,56),parseHistoryDocument);historyStores.set(key,store)}
+    if(!store){
+      const opening=ports.openUnitStorage('history_'+createHash('sha256').update(key).digest('hex').slice(0,56),parseHistoryDocument).catch(error=>{
+        // A failed open is not a durable handle: retaining its rejected promise prevents
+        // every later capture retry, even though its source mark correctly stayed behind.
+        if(historyStores.get(key)===opening)historyStores.delete(key)
+        throw error
+      })
+      store=opening;historyStores.set(key,store)
+    }
     return new SessionHistory(view.instance,await store)
   }
   const historyFailures=new Map<string,string>()
@@ -168,14 +178,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // observation and re-ran the dedupe index even when no source document had moved. The marks
   // are advanced only after a successful capture (or when there was nothing to capture), so a
   // failed capture is retried on the next rebuild rather than hidden behind a newer revision.
-  interface CaptureMarks{ business:number|null; windows:number|null; worktrees:number|null; runtime:number|null; configuration:number|null; resources:number|null }
+  interface CaptureMarks{ business:Map<string,string>; windows:number|null; worktrees:number|null; runtime:number|null; configuration:number|null; resources:number|null }
   const captureMarks=new Map<string,CaptureMarks>()
-  const marksFor=(key:string):CaptureMarks=>{let marks=captureMarks.get(key);if(marks===undefined){marks={business:null,windows:null,worktrees:null,runtime:null,configuration:null,resources:null};captureMarks.set(key,marks)}return marks}
+  const marksFor=(key:string):CaptureMarks=>{let marks=captureMarks.get(key);if(marks===undefined){marks={business:new Map(),windows:null,worktrees:null,runtime:null,configuration:null,resources:null};captureMarks.set(key,marks)}return marks}
   const storedRevision=(raw:unknown):number|null=>{if(raw===null||typeof raw!=='object')return null;const value=(raw as {readonly revision?:unknown}).revision;return typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:null}
+  // Per-session successful marks are bounded to 64 compact tokens per instance. A scope
+  // change replaces that session's token, rather than accumulating arbitrary grant strings.
+  // This is capture bookkeeping only; current identity and permission are checked first.
+  const businessCaptureVersion=(records:NonNullable<ConsumptionSnapshot['records']>):string=>createHash('sha256').update(canonical([records.revision,records.businessRevision,records.scope])).digest('hex')
   const captureBusiness=async(view:SessionControlsView,records:RuntimeSnapshot['records']) => {
     if(!records)return
     const marks=marksFor(view.instance.instrumentInstanceId)
-    if(marks.business===records.businessRevision)return
+    const version=businessCaptureVersion(records),consumer=view.association.sessionId
+    if(marks.business.get(consumer)===version)return
     const observations:HistoryObservation[]=[]
     for(const [kind,rows]of [['workflow',records.workflows],['ticket',records.tickets],['decision',records.decisions]] as const){
       for(const row of rows){const recordId=kind==='workflow'?row.workflowId:JSON.stringify([row.workflowId,'localTicketId' in row?row.localTicketId:'decisionId' in row?row.decisionId:null])
@@ -183,7 +198,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     }
     if(observations.length>0)await (await historyFor(view)).capture(observations)
-    marks.business=records.businessRevision
+    marks.business.delete(consumer);marks.business.set(consumer,version)
+    while(marks.business.size>64)marks.business.delete(marks.business.keys().next().value as string)
   }
   // History capture is a side effect of reading the projection, not a change of it: the
   // fingerprint is computed after the capture, so invalidating here would rebuild on every
@@ -311,7 +327,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     catch{return null}
   }
   /** Held T slots whose ticket already sits in a terminal status: the agent releases them, nothing else does. */
-  function pendingReleaseFor(records:RuntimeSnapshot['records'],windows:RuntimeSnapshot['windows']):readonly {readonly workflowId:string;readonly localTicketId:string;readonly generation:number;readonly label:string|null}[] {
+  function pendingReleaseFor(records:ConsumptionSnapshot['records'],windows:RuntimeSnapshot['windows']):readonly {readonly workflowId:string;readonly localTicketId:string;readonly generation:number;readonly label:string|null}[] {
     if(records===null||windows===null)return []
     const terminal=new Map<string,ReadonlySet<string>>(),labels=new Map<string,string>()
     for(const flow of records.workflows){const marks=new Set<string>();for(const axis of flow.value.axes)for(const status of axis.statuses){labels.set(flow.workflowId+'\u0000'+status.statusKey,status.label);if(status.terminal===true)marks.add(status.statusKey)}if(marks.size>0)terminal.set(flow.workflowId,marks)}
@@ -605,21 +621,23 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }else throw new ControlsError('invalid-input','unsupported detail source domain')
     signal.throwIfAborted();return {identity:who,source}
   })
-  const snapshot=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<RuntimeSnapshot>=>queue.run(async()=>{
+  function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly?:false):Promise<RuntimeSnapshot>
+  function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly:true):Promise<CurrentRuntimeSnapshot>
+  function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly=false):Promise<RuntimeReadSnapshot>{return queue.run(async()=>{
     const view=await identity(caller,sessionId,signal,false)
     const permission=await scope(caller.principalId,sessionId,view)
-    const projectionBase=caller.principalId+'|'+sessionId
+    const projectionBase=caller.principalId+'|'+sessionId+'|'+(currentOnly?'current':'full')
     // The native running count is derived from live Agents and the counter's state, so both are
     // part of the freshness key: a newly live child rebuilds the projection even with no document
     // write, and a counter stop/degradation is never masked by a cached snapshot.
     const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length
     const epoch=project.epoch(view.instance.instrumentInstanceId)
     const projection=projectionCache.get(projectionBase)
-    if(projection!==undefined&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId))return projection.value
+    if(projection!==undefined&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId))return projection.value
     const health: {scope:string;status:string;reason:string|null}[]=[]
     const runtimeDocument=await load()
-    let records:RuntimeSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
-    try{records=await instruments.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
+    let records:ConsumptionSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
+    try{records=currentOnly?await instruments.readCurrent(caller.principalId,sessionId,signal):await instruments.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
     try{windowView=await windows.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
     try{if(permission.kind==='coordinator')resources=await resourceModule(caller,view,signal).resources.list(caller.principalId,signal);else health.push({scope:'resources',status:'restricted',reason:'coordinator registry is not assigned-child task data'})}catch(error){signal.throwIfAborted();health.push({scope:'resources',status:'unknown',reason:String(error)})}
     let worktreeBindings:NonNullable<RuntimeSnapshot['worktreeBindings']>=[]
@@ -676,7 +694,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     try{const notifications=runtimeDocument.notifications.filter(n=>n.instrumentInstanceId===view.instance.instrumentInstanceId);const pending=notifications.filter(n=>n.state==='pending').length,accepted=notifications.filter(n=>n.state==='accepted').length
       health.push({scope:'notifications',status:pending>0?'pending':accepted>0?'accepted':'current',reason:pending>0||accepted>0?'pending='+pending+', accepted-not-consumed='+accepted:null})
     }catch(error){signal.throwIfAborted();health.push({scope:'notifications',status:'unknown',reason:String(error).slice(0,1024)})}
-    await captureSafely(view,async()=>{await captureBusiness(view,records);await captureOthers(view,caller)})
+    await captureSafely(view,async()=>{
+      if(records!==null){
+        // Only a new source/scope version or failed prior capture pays for retained histories.
+        // The current path still performs every native/resource observation above.
+        if('changes' in records)await captureBusiness(view,records)
+        else if(marksFor(view.instance.instrumentInstanceId).business.get(view.association.sessionId)!==businessCaptureVersion(records)){
+          signal.throwIfAborted()
+          const retained=await instruments.read(caller.principalId,sessionId)
+          signal.throwIfAborted();await captureBusiness(view,retained)
+        }
+      }
+      await captureOthers(view,caller)
+    })
     const historyFailure=historyFailures.get(view.instance.instrumentInstanceId);if(historyFailure)health.push({scope:'history',status:'unknown',reason:historyFailure})
     // Execution admission coverage is the native running-count knowledge, not ledger reconciliation.
     if(windowView)health.push(windowView.S.countKnown
@@ -714,9 +744,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
     while(projectionCache.size>64)projectionCache.delete(projectionCache.keys().next().value as string)
     return value
-  })
-  const activeSnapshot=async(caller:HostCaller,signal:AbortSignal):Promise<RuntimeSnapshot & {readonly contextConclusions?:readonly {decisionId:string;workflowId:string;result:string;sourceRevision:number;source:unknown}[]}>=>{
-    const current=await snapshot(caller,caller.sessionId!,signal),view=await identity(caller,caller.sessionId!,signal,false)
+  })}
+  const activeSnapshot=async(caller:HostCaller,signal:AbortSignal):Promise<ConsumptionSnapshot>=>{
+    const current=await snapshot(caller,caller.sessionId!,signal,true),view=await identity(caller,caller.sessionId!,signal,false)
     const records=current.records
     if(!records||current.health.some(row=>row.scope==='history'&&row.status==='unknown'))return current
     try{
@@ -724,9 +754,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const workflows=records.workflows.filter(row=>included.has(JSON.stringify(['workflow',row.workflowId])))
       const tickets=records.tickets.filter(row=>included.has(JSON.stringify(['ticket',JSON.stringify([row.workflowId,row.localTicketId])])))
       const decisions=records.decisions.filter(row=>row.value.pending===true||row.value.awaitingImplementation===true)
-      const contextConclusions=records.decisions.filter(row=>row.value.pending!==true&&row.value.awaitingImplementation!==true&&typeof row.value.result==='string'&&included.has(JSON.stringify(['decision',JSON.stringify([row.workflowId,row.decisionId])]))).map(row=>({decisionId:row.decisionId,workflowId:row.workflowId,result:row.value.result!,sourceRevision:row.revision,source:{kind:'authored',domain:'instruments',author:row.history.at(-1)?.author??null,recordedAt:row.history.at(-1)?.recordedAt??null}}))
+      const contextConclusions=records.decisions.filter(row=>row.value.pending!==true&&row.value.awaitingImplementation!==true&&typeof row.value.result==='string'&&included.has(JSON.stringify(['decision',JSON.stringify([row.workflowId,row.decisionId])]))).map(row=>({decisionId:row.decisionId,workflowId:row.workflowId,result:row.value.result!,sourceRevision:row.revision,source:{kind:'authored',domain:'instruments',author:row.provenance.author,recordedAt:row.provenance.recordedAt}}))
       const statusCounts=records.summary.statusCounts.filter(row=>workflows.some(w=>w.workflowId===row.workflowId)).map(row=>{const active=tickets.filter(ticket=>ticket.workflowId===row.workflowId);return {...row,unreported:active.filter(ticket=>(ticket.value.statuses[row.axisKey]??[]).length===0).length,statuses:row.statuses.map(status=>({...status,count:active.filter(ticket=>ticket.value.statuses[row.axisKey]?.includes(status.statusKey)).length}))}})
-      return {...current,records:{...records,workflows,tickets,decisions,changes:[],summary:{...records.summary,totalTickets:tickets.length,statusCounts}},contextConclusions}
+      return {...current,records:{...records,workflows,tickets,decisions,summary:{...records.summary,totalTickets:tickets.length,statusCounts}},contextConclusions}
     }catch(error){signal.throwIfAborted();return {...current,health:[...current.health,{scope:'active-context',status:'unknown',reason:String(error)}]}}
   }
   const consumption=new InstrumentConsumption({...(options.consumptionTimeoutMs===undefined?{}:{timeoutMs:options.consumptionTimeoutMs}),
@@ -1069,7 +1099,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // re-offered exactly as before, and a degraded cache still takes the full read.
     const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision
     const refreshEpoch=refresh.epoch(view.instance.instrumentInstanceId)
-    const mayReuse=!refresh.shouldRefresh(refreshKey,view.instance.instrumentInstanceId)
+    const mayReuse=!historyFailures.has(view.instance.instrumentInstanceId)&&!refresh.shouldRefresh(refreshKey,view.instance.instrumentInstanceId)
     // Within the gate window the last prepared projection is reused, including the explicitly
     // stale text of a failed refresh: a slow read must neither blank the instrument nor be
     // re-attempted on every step. Degraded text is never returned as current.

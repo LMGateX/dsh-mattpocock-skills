@@ -187,6 +187,10 @@ export function createDomainHistoryStorage(table: VersionedTable<HistoryDocument
   return {async read(){const raw = await storage.read(); return raw === undefined ? undefined : scopedParser(owner)(raw)},
     compareAndSwap(expectedRevision,next){scopedParser(owner)(next);return storage.compareAndSwap(expectedRevision,next)}}
 }
+// Keys come only from load()'s scoped parsed immutable document, never a caller's frozen
+// assertion. A new context/purge/capture document naturally invalidates this projection.
+// Values contain summaries only: do not retain a second graph of historical payloads.
+const activeContexts = new WeakMap<HistoryDocument, readonly HistorySummary[]>()
 /** Trusted scoped core. Runtime must authorize owner/assignment before every call. */
 export class SessionHistory {
   private readonly instance: InstrumentInstance
@@ -228,8 +232,14 @@ export class SessionHistory {
     throw new ControlsError('concurrent-update','history changed repeatedly')
   }
   async activeContext(): Promise<readonly HistorySummary[]> {
-    const d=await this.load()
-    return freeze(latest(d.rows).filter(row=>inContext(row,d.contexts)).map(({snapshot:_snapshot,...summary})=>summary))
+    const d=await this.load(), cached=activeContexts.get(d)
+    if(cached!==undefined)return cached
+    const contexts=new Map(d.contexts.map(context=>[entity(context),context.included]))
+    const current=freeze(latest(d.rows).filter(row=>row.kind==='worktree'||row.kind==='worktrees'
+      ?!row.flags?.cleanedWorktree:!row.purged&&(contexts.get(entity(row))??!row.flags?.done))
+      .map(({snapshot:_snapshot,...summary})=>summary))
+    activeContexts.set(d,current)
+    return current
   }
   async apply(input: HistoryAction, trustedSource: HistorySource, signal?: AbortSignal): Promise<HistoryApplyResult> {
     const action=parseAction(input), source=parseSource(trustedSource), capturedAt=revision(this.now(),'action capturedAt')

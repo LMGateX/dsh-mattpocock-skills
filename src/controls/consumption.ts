@@ -1,6 +1,6 @@
 import type { InstrumentInstance } from './state.js'
 import type { EffectivePolicy } from './policy.js'
-import type { InstrumentSnapshot } from './instruments.js'
+import type { InstrumentSnapshot, InstrumentCurrentSnapshot, InstrumentCurrentProvenance } from './instruments.js'
 import type { WindowSnapshot } from './windows.js'
 import type { ResourceView } from './resources.js'
 import type { WorktreeBindingCurrent } from './worktree-bindings.js'
@@ -21,7 +21,7 @@ export interface ConsumptionSnapshot {
   readonly sessionId: string
   readonly instance: InstrumentInstance
   readonly policy: EffectivePolicy
-  readonly records: InstrumentSnapshot | null
+  readonly records: InstrumentSnapshot | InstrumentCurrentSnapshot | null
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
   /** Re-established native count provenance; null means no window facts were read. */
@@ -102,9 +102,9 @@ function canonical(value: unknown): string {
 function sorted<T>(rows: readonly T[], key: (row: T) => string): T[] {
   return [...rows].sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
 }
-function provenance<T>(row: { readonly history: readonly { readonly author: unknown; readonly references: readonly string[]; readonly value: T }[] }): unknown {
-  const last = row.history[row.history.length - 1]
-  return last ? { author: last.author, references: last.references } : null
+function provenance(row: { readonly provenance: InstrumentCurrentProvenance } | { readonly history: readonly { readonly author: unknown; readonly references: readonly string[]; readonly recordedAt?: number }[] }): unknown {
+  const last = 'provenance' in row ? row.provenance : row.history.at(-1)
+  return last ? { author: last.author, references: last.references, ...(last.recordedAt === undefined ? {} : { recordedAt: last.recordedAt }) } : null
 }
 // Mechanical representation budgets (UTF-16 characters), never business/capacity limits.
 const CATEGORY_TEXT_BUDGET = 2000
@@ -194,8 +194,8 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
       workspaceVerified: snapshot.policy.workspaceVerified, features: snapshot.policy.features, windows: snapshot.policy.windows }, { kind: 'configuration' }),
     records: records === null ? null : { scope: brief(records.scope, { kind: 'records' }),
       summary: { ...records.summary, statusCounts: category(records.summary.statusCounts, { kind: 'status-summary' }) },
-      workflows: category(sorted(records.workflows, row => row.workflowId).map(row => ({ workflowId: row.workflowId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'workflows' }),
-      tickets: category(sorted(records.tickets, row => canonical([row.workflowId, row.localTicketId])).map(row => ({ workflowId: row.workflowId, localTicketId: row.localTicketId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'tickets' }),
+      workflows: category(sorted<InstrumentSnapshot['workflows'][number] | InstrumentCurrentSnapshot['workflows'][number]>(records.workflows, row => row.workflowId).map(row => ({ workflowId: row.workflowId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'workflows' }),
+      tickets: category(sorted<InstrumentSnapshot['tickets'][number] | InstrumentCurrentSnapshot['tickets'][number]>(records.tickets, row => canonical([row.workflowId, row.localTicketId])).map(row => ({ workflowId: row.workflowId, localTicketId: row.localTicketId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'tickets' }),
       decisions: category(sorted(records.decisions.filter(row => row.value.pending === true || row.value.awaitingImplementation === true), row => canonical([row.workflowId, row.decisionId])).map(row => ({ workflowId: row.workflowId, decisionId: row.decisionId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'decisions' }) },
     windows: windows === null ? null : { configRevision: windows.configurationRevision,
       status: windows.status, reason: brief(windows.reason, { kind: 'windows' }), scope: brief(windows.scope, { kind: 'windows' }),
