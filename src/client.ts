@@ -561,7 +561,8 @@ function inputSummaryWorkflows(records: InstrumentSnapshot): readonly InputSumma
   }).sort((left, right) => right.lastActivity - left.lastActivity || left.order - right.order)
 }
 function workflowSummaryLine(workflowId: string, axis: InputSummaryAxis): ReactElement {
-  return h('div', { key: workflowId + ':' + axis.axisKey }, workflowId + ' / ' + axis.label + '（' + (axis.counting === 'exclusive' ? '互斥统计' : '可重叠统计') + '） · ' + axis.statuses.map(status => status.label + ' ' + status.count).join(' · '))
+  const statuses = axis.statuses.filter(status => status.count !== 0)
+  return h('div', { key: workflowId + ':' + axis.axisKey }, workflowId + ' / ' + axis.label + '（' + (axis.counting === 'exclusive' ? '互斥统计' : '可重叠统计') + '） · ' + (statuses.length === 0 ? '当前无非零状态计数' : statuses.map(status => status.label + ' ' + countText(status.count)).join(' · ')))
 }
 export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
   const observation = useSummaryObservation(props.summary)
@@ -572,27 +573,151 @@ function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryF
   const observer = useMemo(props.observe, [props.observe])
   return h(ObservedInputSummary, { ...props, observer })
 }
+type InputDisclosure = 'T' | 'S' | 'pending' | 'awaiting'
+const INPUT_DISCLOSURES = {
+  T: { entrance: '查看 T 票窗口', region: 'T 票窗口详情', color: 'var(--dsh-color-primary, #2563eb)' },
+  S: { entrance: '查看 S 在跑子代理', region: 'S 在跑详情', color: 'var(--dsh-color-accent, #7460c8)' },
+  pending: { entrance: '查看待你裁决事项', region: '待你裁决详情', color: 'var(--dsh-color-danger, #dc4444)' },
+  awaiting: { entrance: '查看待落实事项', region: '待落实详情', color: 'var(--dsh-color-warning, #b7791f)' },
+} as const
+const inputTextButtonStyle = { background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' } as const
+let nextInputDisclosureId = 0
+function signedCountText(value: unknown): string { return typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '未知' }
+function inputReadFailure(view: ClientSessionSnapshot, scope: string): string | null {
+  const row = view.health.find(row => row.scope === scope && (row.status === 'unknown' || row.status === 'restricted'))
+  return row === undefined ? null : (row.status === 'restricted' ? '受限：' : '未知：') + (row.reason ?? '未返回可读数据')
+}
+function inputRecords(view: ClientSessionSnapshot): InstrumentSnapshot | null { return inputReadFailure(view, 'records') === null ? view.records : null }
+function inputWindows(view: ClientSessionSnapshot): WindowSnapshot | null { return inputReadFailure(view, 'windows') === null ? view.windows : null }
+function technicalDetails(value: unknown): ReactElement { return h('details', null, h('summary', null, '技术详情'), pretty(value)) }
+function workflowIdentity(records: InstrumentSnapshot | null, workflowId: string): string {
+  const workflow = records?.workflows?.find(row => row.workflowId === workflowId)
+  return workflow === undefined ? workflowId : workflow.value.title + '（' + workflowId + '）'
+}
+function ticketIdentity(records: InstrumentSnapshot | null, workflowId: string, ticketId: string): string {
+  const ticket = records?.tickets?.find(row => row.workflowId === workflowId && row.localTicketId === ticketId)
+  return workflowId + '/' + ticketId + (ticket === undefined ? '' : ' · ' + ticket.value.title)
+}
+function ticketStatusText(records: InstrumentSnapshot, ticket: InstrumentSnapshot['tickets'][number]): string {
+  const workflow = records.workflows.find(row => row.workflowId === ticket.workflowId)
+  return Object.entries(ticket.value.statuses).map(([axisKey, keys]) => {
+    const axis = workflow?.value.axes.find(row => row.axisKey === axisKey)
+    return (axis?.label ?? axisKey) + '：' + (keys.length === 0 ? '未报告' : keys.map(key => axis?.statuses.find(row => row.statusKey === key)?.label ?? key).join('、'))
+  }).join(' · ') || '未报告状态'
+}
+function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
+  const windows = inputWindows(view), records = inputRecords(view)
+  if (windows === null) return diagnostic('票窗口未知：' + (inputReadFailure(view, 'windows') ?? '未返回窗口；不是空清单或 0'))
+  const held = Array.isArray(windows.tickets) ? windows.tickets.filter(row => row.held === true) : null
+  return h('div', null,
+    diagnostic('实例总占用 T ' + countText(windows.T.used) + ' / 参考 ' + capacityText(windows.T.capacity) + '；仅作规模提示，不是硬名额。'),
+    diagnostic(windows.scope?.kind === 'assigned' ? '当前可见 scope：分配范围，明细只是子集，不能从子集重算实例总数。' : windows.scope?.kind === 'coordinator' ? '当前可见 scope：协调者实例范围。' : '当前可见 scope 未知，不从明细重算实例总数。'),
+    records === null ? diagnostic('票账本未知：' + (inputReadFailure(view, 'records') ?? '未返回账本') + '；保留显式占位身份。') : null,
+    held === null ? diagnostic('占位明细未知：未返回占位记录。') : h('div', null,
+      diagnostic('本次可展示 held=true 占位 ' + held.length + ' 条。'),
+      held.map(row => {
+        const ticket = records?.tickets?.find(ticket => ticket.workflowId === row.workflowId && ticket.localTicketId === row.localTicketId)
+        return h('article', { key: row.workflowId + ':' + row.localTicketId },
+          h('p', null, ticketIdentity(records, row.workflowId, row.localTicketId)),
+          h('p', null, '工作流：' + workflowIdentity(records, row.workflowId)),
+          h('p', null, ticket === undefined || records === null ? '票标题/状态未在当前授权账本返回。' : ticketStatusText(records, ticket)), technicalDetails(row))
+      })),
+    records === null ? null : h('details', null, h('summary', null, '全部状态定义与计数（含零值）'),
+      records.summary.statusCounts.map(axis => h('div', { key: axis.workflowId + ':' + axis.axisKey },
+        h('p', null, axis.workflowId + ' / ' + axis.label + '（' + axis.counting + '） · 未报告 ' + countText(axis.unreported)),
+        axis.statuses.map(status => h('p', { key: status.statusKey }, status.label + ' [' + status.statusKey + '] ' + countText(status.count) + (status.meaning ? ' · ' + status.meaning : '')))))))
+}
+function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting'): ReactElement {
+  const records = inputRecords(view)
+  if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：' + (inputReadFailure(view, 'records') ?? '未返回可读事项'))
+  const decisions: readonly DecisionRecord[] = records.decisions.filter((row: DecisionRecord) => category === 'pending' ? row.value.pending === true && row.value.addressee?.kind === 'user' : row.value.awaitingImplementation === true)
+  return h('div', null, diagnostic(countingScopeText(records.summary.countingScope) + '；只读查看，不标记已读或解决事项。可在原聊天中回答。'),
+    decisions.length === 0 ? diagnostic('本次授权账本未返回此类事项；不从空明细重算摘要计数。') : null,
+    decisions.map(decision => {
+      const value = decision.value
+      const source = decision.history?.find(row => row.revision === decision.revision)
+      const fields = [['背景', value.context], ['建议', value.recommendation], ['影响', value.impact], ['结果', value.result]] as const
+      return h('article', { key: decision.workflowId + ':' + decision.decisionId },
+        h('h4', null, value.question), h('p', null, '工作流：' + workflowIdentity(records, decision.workflowId) + ' · 事项 ' + decision.decisionId + ' · 状态：' + value.status),
+        value.ticketIds?.length ? h('p', null, '关联票：' + value.ticketIds.map(id => ticketIdentity(records, decision.workflowId, id)).join('；')) : null,
+        ...fields.filter(([, text]) => text !== null && text !== undefined).map(([label, text]) => h('p', { key: label, style: { whiteSpace: 'pre-wrap' } }, label + '：' + text)),
+        value.options?.length ? h('div', null, h('p', null, '选项'), h('ul', null, value.options.map(option => h('li', { key: option.key }, option.key + '：' + option.label)))) : null,
+        source === undefined ? null : h('p', null, '来源（authored）：' + source.author.kind + ' / ' + source.author.principalId + ' · 修订 ' + source.revision + (source.references.length ? ' · 引用：' + source.references.join('；') : '')),
+        technicalDetails(decision))
+    }))
+}
+function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {
+  const windows = inputWindows(view)
+  const failure = inputReadFailure(view, 'native-executions')
+  const assigned = inputRecords(view)?.scope?.kind === 'assigned' || windows?.scope?.kind === 'assigned' || view.caller.kind === 'agent'
+  // Neither a persisted state nor execution leases prove live activity. This is a bounded observation, never a roster.
+  const rows = failure !== null || assigned || !Array.isArray(view.nativeExecutions) ? null : view.nativeExecutions.filter(row => row.activity === 'running')
+  return h('div', null,
+    windows === null ? diagnostic('宿主在跑数未知：' + (inputReadFailure(view, 'windows') ?? '未返回窗口'))
+      : diagnostic('宿主在跑数：' + countText(windows.S.used) + (windows.S.countKnown === true && windows.capability === 'cooperative' ? '' : '（已知下界；总数未知）') + (windows.S.countReason ? ' · ' + windows.S.countReason : '')),
+    diagnostic('本次可观测在跑明细：' + (rows === null ? '未知/受限' : rows.length + ' 条') + '；最近原生观测快照默认最多 64 行，明细可能不完整，即使条数相等也不代表完整在跑名册。租约仅作审计，不是实时名册。'),
+    rows === null ? diagnostic('原生明细' + (failure ?? (assigned ? '受限：仅 owner 协调者可读取，不展示 sibling。' : '未知：未返回 nativeExecutions。')))
+      : rows.length === 0 ? diagnostic('本次未返回 activity=running 的可观测记录，不代表没有在跑子代理。')
+      : rows.map(row => h('article', { key: row.sessionId }, h('p', null, nativeExecutionText(row)), h('p', null, '来源：native-observed · ' + row.observed), technicalDetails(row))),
+    windows?.S.depth == null ? diagnostic('深度结构未知/不可测量。') : h('div', null,
+      diagnostic('深度结构：直接 ' + countText(windows.S.depth.direct) + ' · 更深 ' + countText(windows.S.depth.deeper) + ' · 深度未知 ' + countText(windows.S.depth.unknown)),
+      Object.entries(windows.S.depth.levels).map(([level, count]) => h('p', { key: level }, '距离 ' + level + '：' + countText(count)))))
+}
 export function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
-  if (observation.status !== 'ready' || !observation.value.policy.display.inputSummary) return null
-  const view = observation.value
-  const gates = view.policy as { readonly extensionEnabled?: boolean; readonly workspaceEnabled?: boolean }
-  const inactive = gates.extensionEnabled === false ? '全局总闸已关闭' : gates.workspaceEnabled === false ? '本工作区总闸已关闭' : null
-  const workflows = view.records === null ? [] : inputSummaryWorkflows(view.records)
+  const view = observation.status === 'ready' && observation.value.sessionId === props.observer.sessionId ? observation.value : null
+  const shown = view !== null && view.policy.display.inputSummary && props.observer.getDisplay()?.inputSummary !== false
+  // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
+  // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
+  const identity = JSON.stringify([props.observer.sessionId, shown, view?.instance.instrumentInstanceId, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
+    view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
+  const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null }>(() => ({ identity, category: null }))
+  const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
+  const records = view === null ? null : inputRecords(view)
+  const pending = records?.summary.pendingUserDecisionCount, awaiting = records?.summary.awaitingImplementationCount
+  const selected = selection.identity === identity && shown && !(selection.category === 'pending' && pending === 0) && !(selection.category === 'awaiting' && awaiting === 0) ? selection.category : null
+  if (selection.identity !== identity || selection.category !== selected) setSelection({ identity, category: selected })
+  if (!shown || view === null) return null
+  const inactive = view.policy.extensionEnabled === false ? '全局总闸已关闭' : view.policy.workspaceEnabled === false ? '本工作区总闸已关闭' : null
+  const workflows = records === null ? [] : inputSummaryWorkflows(records)
   // Collapsing without an enabled details entrance would make the omitted rows unreachable.
   const visible = view.policy.display.rightPanel ? workflows.slice(0, INPUT_SUMMARY_WORKFLOW_LIMIT) : workflows
   const hidden = view.policy.display.rightPanel ? workflows.slice(INPUT_SUMMARY_WORKFLOW_LIMIT) : []
-  return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, maxHeight: '96px', overflowY: 'auto', overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
-    inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新。'),
-    view.records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + String(view.records.summary.totalTickets) + ' · ' + countingScopeText(view.records.summary.countingScope)),
-    h('span', null, windowSummary(view.windows, view.health).join(' · ')),
-    ...visible.flatMap(workflow => workflow.ticketCount === 0
-      ? [h('div', { key: workflow.workflowId + ':no-tickets' }, workflow.workflowId + ' / ' + workflow.axes.map(axis => axis.label).join(' / ') + ' · 暂无票')]
-      : workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))),
-    hidden.length === 0 ? null : h('button', { key: 'workflow-rest', type: 'button', onClick: props.openDetails,
-      'aria-label': '查看其余 ' + hidden.length + ' 个工作流的完整详情',
-      style: { background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px', cursor: 'pointer' } },
-    '其余 ' + hidden.length + ' 个工作流 · 查看详情'))
+  const entrance = (category: InputDisclosure, text: string): ReactElement => h('button', {
+    key: category, type: 'button', 'aria-label': INPUT_DISCLOSURES[category].entrance, 'aria-expanded': selected === category,
+    'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: INPUT_DISCLOSURES[category].color },
+    onClick: () => setSelection({ identity, category: selected === category ? null : category }),
+  }, text)
+  const windows = inputWindows(view)
+  const windowEntrance = (category: 'T' | 'S'): ReactElement => {
+    const usage = windows?.[category]
+    const depth = category === 'S' ? windows?.S.depth : null
+    const unknownTotal = category === 'S' && windows !== null && !(windows.S.countKnown === true && windows.capability === 'cooperative')
+    return h('span', { key: category, style: { color: 'inherit' } }, entrance(category, category + ' ' + (usage === undefined ? '未知' : countText(usage.used) + '/' + capacityText(usage.capacity))),
+      unknownTotal ? '（下界；总数未知）' : null,
+      depth == null ? null : '（直接 ' + countText(depth.direct) + ' · 更深 ' + countText(depth.deeper) + (depth.unknown === 0 ? '' : ' · 深度未知 ' + countText(depth.unknown)) + '）',
+      usage === undefined ? null : h('span', { style: { color: 'inherit' } },
+        usage.overage === 0 ? null : h('span', { style: { color: INPUT_DISCLOSURES.awaiting.color } }, ' · 超出 ' + countText(usage.overage)),
+        h('span', { style: { color: 'inherit', fontWeight: 'normal' } }, ' · 差额 ' + signedCountText(usage.gap))))
+  }
+  return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
+    h('div', { 'aria-label': '常驻协作提醒', style: { flexShrink: 0, width: '100%' } },
+      inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新（非实时更新）。'),
+      records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + countText(records.summary.totalTickets) + ' · ' + countingScopeText(records.summary.countingScope)),
+      h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
+        pending === 0 ? null : entrance('pending', '待你裁决 ' + countText(pending)),
+        awaiting === 0 ? null : entrance('awaiting', '待落实 ' + countText(awaiting)), windowEntrance('T'), windowEntrance('S'))),
+    h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
+      ...visible.flatMap(workflow => workflow.ticketCount === 0
+        ? [h('div', { key: workflow.workflowId + ':no-tickets' }, workflow.workflowId + ' / ' + workflow.axes.map(axis => axis.label).join(' / ') + ' · 暂无票')]
+        : workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))),
+      hidden.length === 0 ? null : h('button', { key: 'workflow-rest', type: 'button', onClick: props.openDetails,
+        'aria-label': '查看其余 ' + hidden.length + ' 个工作流的完整详情', style: inputTextButtonStyle }, '其余 ' + hidden.length + ' 个工作流 · 查看详情')),
+    h('section', {
+      id: regionPrefix, role: 'region', 'aria-label': selected === null ? undefined : INPUT_DISCLOSURES[selected].region,
+      hidden: selected === null, style: { width: '100%', minWidth: 0, maxHeight: 'min(320px, 35vh)', overflowY: 'auto', textAlign: 'left' },
+    }, selected === null ? null : h('div', null, h('h3', null, INPUT_DISCLOSURES[selected].region),
+      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view) : inputDecisionDetails(view, selected))))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
