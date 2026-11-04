@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.10.2",
+    "private": true
+  },
+  "source": {
+    "commit": "95f7ed8665b137c8e82c471758d3e91a21387ace",
+    "clean": true
+  },
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.10.2.tgz",
+    "bytes": 501481,
+    "sha256": "1cb5f0a4bcbd64f235314e354be06e522b88a781eaef3eefdc6635d5f5a7fcfd",
+    "members": 184,
+    "fixedFiles": 99,
+    "vendorFiles": 85,
+    "directories": 0,
+    "symlinks": 0,
+    "buildFiles": 80,
+    "clientBytes": 278881,
+    "clientPrivateModules": 8,
+    "exportAndEntryTargets": 19,
+    "readOnlyOriginals": true,
+    "identityUnchanged": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "npm": "11.13.0",
+    "tar": "GNU tar 1.35"
+  },
+  "compatibility": {
+    "host": "0.2.2-alpha.3",
+    "typecheck": {
+      "rootErrors": 0,
+      "clientErrors": 0,
+      "nonClientLibByteIdentical": true,
+      "nonClientLibFiles": 78
+    },
+    "sourceSuite": {
+      "files": 89,
+      "total": 1087,
+      "passed": 1081,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "exactArchiveSuite": {
+      "files": 89,
+      "total": 1087,
+      "passed": 1081,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "sourceSuiteSkipReasons": [
+      {
+        "count": 6,
+        "reason": "Native Client activation/browser-loader fixture assembly lacks the public @deepseek-ai/dsh-client-ui-slots package; not GUI acceptance."
+      }
+    ],
+    "exactArchiveSkipReasons": [
+      {
+        "count": 6,
+        "reason": "Native Client activation/browser-loader fixture assembly lacks the public @deepseek-ai/dsh-client-ui-slots package; not GUI acceptance."
+      }
+    ],
+    "sdkVersions": [
+      "0.2.2-alpha.3",
+      "0.2.1-alpha.1"
+    ],
+    "headlessInstallNotRerun": true
+  },
+  "validation": {
+    "sourceModules": 40,
+    "buildFiles": 80,
+    "vendorFiles": 85,
+    "vendorBytes": 296048,
+    "vendorRootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "channelSkillCounts": {
+      "beta": 27,
+      "stable": 27
+    },
+    "prepackVerifier": "passed",
+    "exactArchiveVerifier": "passed",
+    "downloadVerifier": "passed",
+    "downloadAllFiveByteIdentical": true,
+    "modelInvoked": false,
+    "realPtcRunnerInvoked": false,
+    "guiTested": false
+  },
+  "release": {
+    "status": "published",
+    "id": 433507573,
+    "nodeId": "RE_kwDOU4vYYs4Z1sz1",
+    "tag": "v0.10.2",
+    "tagObject": "ae533bd6cf3800466dd0b92ac3396fb443cfe56f",
+    "tagCommit": "95f7ed8665b137c8e82c471758d3e91a21387ace",
+    "sourceCommit": "95f7ed8665b137c8e82c471758d3e91a21387ace",
+    "targetCommitish": "95f7ed8665b137c8e82c471758d3e91a21387ace",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.2",
+    "publishedAt": "2026-11-04T04:17:34Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "id": "RA_kwDOU4vYYs4qNiNH",
+        "numericId": 708191047,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.2.tgz",
+        "size": 501481,
+        "sha256": "1cb5f0a4bcbd64f235314e354be06e522b88a781eaef3eefdc6635d5f5a7fcfd"
+      },
+      {
+        "id": "RA_kwDOU4vYYs4qNiNE",
+        "numericId": 708191044,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.2.tgz.pnpm-version",
+        "size": 7,
+        "sha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b"
+      },
+      {
+        "id": "RA_kwDOU4vYYs4qNiNF",
+        "numericId": 708191045,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.2.tgz.sha256",
+        "size": 107,
+        "sha256": "1d2f5ffa6014566b48a0f663b2a3a8ab449ac19b35d5cc21dfeb1c8a1e76b3d2"
+      },
+      {
+        "id": "RA_kwDOU4vYYs4qNiNK",
+        "numericId": 708191050,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.2.tgz.size",
+        "size": 7,
+        "sha256": "5f985a7c590515332769b09f9bf1c473eb003bf38e2bd692b43efbaf1310e9db"
+      },
+      {
+        "id": "RA_kwDOU4vYYs4qNiNJ",
+        "numericId": 708191049,
+        "name": "lmgatex-dsh-mattpocock-skills-0.10.2.tgz.source-commit",
+        "size": 41,
+        "sha256": "e00b4e60fad1f6103bfb33eb53da08294f28bba7fdfde6caf1d9899d82b1c739"
+      }
+    ],
+    "downloadVerified": true
+  },
+  "installation": {
+    "profile": "web",
+    "dshVersion": "0.2.2-alpha.3",
+    "previousPluginVersion": "0.10.1",
+    "installedPluginVersion": "0.10.2",
+    "installedTreeIdenticalToArtifact": true,
+    "installedManifestSha256": "c7755ca8906a6da8cc36adb6fba87280527a72bf7d210887947b7e8bd40192b7",
+    "previousManifestSha256": "ad4a0cbd3a4fedb8f870894f61b4620ae4236ab4fff36a887f20d051311efb3e",
+    "profilePackageSha256Before": "a954f34aaf8562dd352886dc5cdbe5d662a758b854b2919663f384da6e45778e",
+    "profilePackageSha256After": "8ed9f0e454a677646d4c6d1853fda92c26a66f257e1dcfe498d6a75ab77110b0",
+    "profileLockSha256Before": "015533edfa6e543785705cf9c21092b94973396e00eeaba12bccbc7aa644cf5f",
+    "profileLockSha256After": "2a16546cf85f13b5d137b5e6b07b5a9ec023ce51b52c3fb6697d353ad1e52995",
+    "cordisPatchSha256": "333940b68b81aa63b696e79392553bc24804524189e9f9a12f77c59f7c2f7cd0",
+    "cordisPatchUnchanged": true,
+    "sdkManifestSha256": "f50975cd7583415320289561127e38d7d0f3b7e112e99df118ccac5d2cb458af",
+    "sdkManifestUnchanged": true,
+    "backupRetained": true,
+    "restarted": false,
+    "runningProcessActivationVerified": false
+  },
+  "boundaries": {
+    "npmPublish": false,
+    "dshUpgrade": false,
+    "guiTested": false,
+    "modelInvoked": false,
+    "ptcRunnerInvoked": false,
+    "spillCleanup": false,
+    "sharedSdkPatch": false,
+    "serviceRestart": false,
+    "oldReleaseModified": false
+  }
+}

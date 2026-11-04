@@ -4,6 +4,39 @@
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
+## 0.10.2 模型工具请求描述修正与安装（2026-11-04，已发布/已安装/未重启）
+
+0.10.2 继承 0.10.1，只修正模型工具请求描述，并增加描述契约回归；运行时代码、已注册工具面、schema-2 DTO、vendor 与 `engines.dsh` 不变。详细设计边界见 [DESIGN.md](<DESIGN.md>) 的同名节，实施记录见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>)。
+
+### 源码、制品与回归
+
+- 源码提交：`95f7ed8665b137c8e82c471758d3e91a21387ace`，清洁工作树。
+- 唯一制品 `lmgatex-dsh-mattpocock-skills-0.10.2.tgz`：**501,481 bytes**，SHA-256 `1cb5f0a4bcbd64f235314e354be06e522b88a781eaef3eefdc6635d5f5a7fcfd`，**184** 成员（99 固定 + 85 vendor，0 目录／0 symlink），80 个 JS/DTS 产物，Client 278,881 B，8 个客户端私有模块，19 个闭合导出目标。Node 24.17.0、pnpm 11.8.0、npm 11.13.0、GNU tar 1.35。
+- Host 与 Client TypeScript 编译均 **0 error**；`--prepack` 的 scratch 构建比对通过，非 Client 的 78 个 JS/DTS 产物与提交的 `lib/` 逐字节相同。
+- 源码套件（alpha.3 规范根 + `0.2.1-alpha.1` 兼容根，提供源树）：**1087 项，1081 通过、0 失败、6 skip**；6 个 skip 均为公共 `@deepseek-ai/dsh-client-ui-slots` fixture 缺失。
+- 同一精确制品的归档矩阵（`DSH_CONTROLS_TARBALL`）：**1087 项，1081 通过、0 失败、6 skip**；同一 skip 分类，PluginManager 实测包含在矩阵内并通过。
+- 描述契约测试显式断言 `mattpocock_controls`、`mattpocock_record`、`mattpocock_history` 与条件 `mattpocock_audit` 使用顶层 `{action:...}`，并禁止再出现嵌套 `read={...}`／`save={...}`／`apply={...}` 说明。
+
+### 发布
+
+- [GitHub Release v0.10.2](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.2)：ID **433507573**，node ID `RE_kwDOU4vYYs4Z1sz1`，发布时间 **2026-11-04T04:17:34Z（北京时间 12:17:34）**；draft=false、prerelease=false。
+- annotated tag **v0.10.2**：对象 **ae533bd6cf3800466dd0b92ac3396fb443cfe56f**，peeled source `95f7ed8665b137c8e82c471758d3e91a21387ace`；Release 的 `target_commitish` 已显式固定为该 source。
+- 唯一五项资产：tgz、`.sha256`、`.size`、`.source-commit`、`.pnpm-version`，大小分别为 501,481／107／7／41／7 bytes；下载到新的隔离目录后 **5/5 逐字节相同**，下载副本再次通过 strict `--tarball`（184 成员、source 95f7ed8、pnpm 11.8.0）。
+- 公开机器记录见 [verification-0.10.2.json](<../dist/verification-0.10.2.json>)。旧 v0.10.1 tag/Release/资产未移动或覆盖。
+
+### 本机安装
+
+- 已将 Release 的同一 tgz 安装进当前 Web Profile：插件 **0.10.1 → 0.10.2**；安装树与归档解包 **逐字节相同**（184 个文件、0 symlink）。
+- 安装前插件 manifest SHA `ad4a0cbd3a4fedb8f870894f61b4620ae4236ab4fff36a887f20d051311efb3e`，安装后 `c7755ca8906a6da8cc36adb6fba87280527a72bf7d210887947b7e8bd40192b7`。
+- Profile `package.json` SHA 由 `a954f34aaf8562dd352886dc5cdbe5d662a758b854b2919663f384da6e45778e` 变为 `8ed9f0e454a677646d4c6d1853fda92c26a66f257e1dcfe498d6a75ab77110b0`；lockfile 由 `015533edfa6e543785705cf9c21092b94973396e00eeaba12bccbc7aa644cf5f` 变为 `2a16546cf85f13b5d137b5e6b07b5a9ec023ce51b52c3fb6697d353ad1e52995`。
+- `cordis.patch.yml` SHA 保持 `333940b68b81aa63b696e79392553bc24804524189e9f9a12f77c59f7c2f7cd0`；当前 DSH 为 **0.2.2-alpha.3**，SDK manifest SHA 保持 `f50975cd7583415320289561127e38d7d0f3b7e112e99df118ccac5d2cb458af`。
+- 旧 0.10.1 Profile／插件已私下备份。**未重启**当前 `dsh web` 进程（PID 6273、端口 3080 未变）；运行中的进程仍加载旧版本，不能声称 GUI 已加载 0.10.2。正常重启后才确认新进程激活。没有真实浏览器交互、模型或 PTC 运行。
+
+### 边界
+
+- 不 npm publish、不升级本机 DSH、不清理旧 spill、不改共享 SDK 或宿主补丁。
+- 安装与运行进程分离；安装成功不等于当前进程生效。
+
 ## 0.10.1 DSH 0.2.2-alpha.3 兼容补发与安装（2026-11-04，已发布/已安装/未重启）
 
 0.10.1 是**兼容性补丁**，继承 0.10.0 的运行时、工具面、schema-2 DTO、vendor 与 `engines.dsh`；本版只更新版本、当前版本断言、兼容记录与发行／安装文档。alpha.3 的公开接缝核对、类型编译、双宿主回归和隔离 headless 装载见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 alpha.3 小节。

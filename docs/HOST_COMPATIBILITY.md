@@ -188,7 +188,7 @@ rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Rele
 
 边界：headless profile 不组合 Web 的 `connection`／`workspaceRegistry`，可选控制面没有在真实 headless 进程中装载；其真实 Host 行为由 alpha.3 的全量 Host 用例覆盖。本轮没有真实浏览器 GUI、LLM 或 PTC 运行，也没有把 `0.10.0` 安装到本机 Profile。`pnpm` 仍会报告 profile 未安装 `@deepseek-ai/cordis`／`dsh-skill`／`schemastery` 等 peer（这些服务由 DSH 运行时注入，非 alpha.3 引入），不影响实际安装和装载。
 
-> 2026-11-04 后续：基于本节的兼容结论发布了 `0.10.1`，并把同一 Release 制品安装到当前 Web Profile（插件 0.6.0 → 0.10.1，安装树与归档逐字节相同）。当前 DSH 仍是 `0.2.2-alpha.2`，`dsh web` 进程未重启；实际发布、下载和安装记录见 [VERIFICATION.md](<VERIFICATION.md>)。
+> 2026-11-04 后续：基于本节的兼容结论发布了 `0.10.1`，并把同一 Release 制品安装到当前 Web Profile（插件 0.6.0 → 0.10.1，安装树与归档逐字节相同）。当前运行的 DSH 已升级到 `0.2.2-alpha.3` 并完成一次重启验证；随后发布 `0.10.2` 描述补丁并安装到当前 Web Profile（0.10.1 → 0.10.2），安装后尚未再次重启。实际发布、下载和安装记录见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 核对范围与方法
 

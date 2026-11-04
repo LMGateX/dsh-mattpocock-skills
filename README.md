@@ -56,7 +56,7 @@ See the [thin-adapter scope](docs/ADAPTER_SCOPE.md), [evidence-based compatibili
 
 ## Model tool request-shape correction (0.10.2)
 
-0.10.2 is a description-only patch. The model-facing descriptions for `mattpocock_controls`, `mattpocock_record`, `mattpocock_history` and the conditional `mattpocock_audit` now publish the top-level `{action:...}` requests the runtime already accepts; the `mattpocock_worktree` wording no longer implies its read shape excludes an optional query. Regression tests assert those descriptions. Runtime code, the registered tool set, schema-2 DTOs, vendor bytes and the declared host range are unchanged. The same exact artifact is intended for pinning, Release and installation into the current Web profile; a running process must be restarted before it loads the installed package.
+0.10.2 is a description-only patch. The model-facing descriptions for `mattpocock_controls`, `mattpocock_record`, `mattpocock_history` and the conditional `mattpocock_audit` now publish the top-level `{action:...}` requests the runtime already accepts; the `mattpocock_worktree` wording no longer implies its read shape excludes an optional query. Regression tests assert those descriptions. Runtime code, the registered tool set, schema-2 DTOs, vendor bytes and the declared host range are unchanged. The [v0.10.2 release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.2) and its exact five assets were installed into the current Web profile (0.10.1 → 0.10.2); the running `dsh web` process was not restarted, so fresh-process activation is not claimed.
 
 ## DSH 0.2.2-alpha.3 compatibility revalidation (0.10.1)
 

@@ -44,7 +44,7 @@ This document is the authoritative implementation contract. A later implementati
 
 本节记录 0.10.2 的窄范围补丁，不改写 0.10.1 的兼容验收。模型工具描述曾把 `mattpocock_controls`、`mattpocock_record` 与 `mattpocock_audit` 的请求写成嵌套的 `read={...}`/`save={...}`/`apply={...}`，而实际解析器接受顶层 `{action:...}`；`mattpocock_history` 的描述也未明确 action，`mattpocock_worktree` 的 “exactly” 措辞与可选 query 冲突。0.10.2 只修正这些模型可见文本，并增加描述契约回归；运行时代码、注册工具面、schema-2 DTO、vendor 字节与 `engines.dsh` 不变。
 
-所有者已明确指示 push、发版并安装。同一精确制品用于 annotated tag、GitHub Release 和当前 Web Profile 安装；安装不自动重启服务，也不等于运行进程已加载。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。实际发布、下载与安装结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+所有者已明确指示 push、发版并安装。0.10.2 的同一精确制品已 push `main`、创建 annotated `v0.10.2`、发布 GitHub Release 并安装到当前 Web Profile（0.10.1 → 0.10.2）；安装不自动重启服务，也不等于运行进程已加载。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。实际发布、下载与安装结果见 [VERIFICATION.md](<VERIFICATION.md>)。
 
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 
