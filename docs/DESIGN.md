@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 插件读取路径性能优化（2026-11-04，所有者认可；0.11.0 设计固定、待实施）
+
+权威实施与验收契约见 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>)：线性业务历史投影/精确版本索引、Host 私有紧凑身份事实复用、完整 Remote 表示与 current-facts 消费减负。保持历史、来源/授权/撤权、FIFO、持久提交 frontier、工具/Remote wire 与存储格式；不凭任意 frozen/retained 绕过校验，不以 UI summary 替代真实消费。该增量允许在内部将当前消费和必要历史补捕获分离，不改变模型有界 DTO 或完整编辑/历史 Interface。
+
+所有者授权先固定文档，再由 subagents 在隔离工作树实施、测试、push 与新 GitHub Release，目标 0.11.0；本节当前仅记录设计固定，不声称实现或验收完成。**暂不为本机安装**，不改当前 Profile/共享 SDK、不重启服务、不 npm publish，不处理原生列表/Forge/宿主 spill/GC。
+
 ## 仪器事实边界与恢复（2026-11-04，所有者认可；0.9.0 已实施并验证）
 
 本节是当前权威增量，收窄下方历史 C 阶段的“初始 cwd 已关联/已完成”口径，补足 delegate 部分成功、迟到事件及消费契约。完整设计、兼容规则和验收矩阵见 [INSTRUMENT_FACT_BOUNDARIES.md](<INSTRUMENT_FACT_BOUNDARIES.md>)；实施切片见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>) 的同名节。0.9.0 已在源码实施，并由完整测试与精确制品验证（见 [VERIFICATION.md](<VERIFICATION.md>)）；已 push `main`、tag `v0.9.0` 并创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)，未 npm publish、未安装本机 DSH/Profile/GUI。0.7.0/0.7.1/0.8.0 的既有交付记录不回填为本轮验收。

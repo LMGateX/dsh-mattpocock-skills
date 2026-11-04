@@ -8,4 +8,6 @@ For DSH/worktree compatibility, read [the worktree research](docs/WORKTREE_ISOLA
 
 For model-tool outputs, large instrument histories, typed results or spill amplification, read [bounded tool outputs](docs/BOUNDED_TOOL_OUTPUTS.md). Fix the plugin-owned output seam; this work does not authorize unrelated DSH/SDK patches or spill cleanup.
 
+For identity-fact caching, historical projections, complete Remote representations or model-consumption performance, read [read-path performance](docs/PERFORMANCE_READ_PATHS.md); preserve its source-token, authorization, history and durability-frontier contracts.
+
 Keep implementation-specific evaluation outside vendored upstream Skill directories. Verify generated artifacts and the packed installable bundle before claiming completion.
