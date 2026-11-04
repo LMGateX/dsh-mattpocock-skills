@@ -51,9 +51,9 @@ function validMembers() {
   ]
 }
 
-test('0.10.2 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.10.2' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.10.2')
+test('0.11.0 package policy admits exactly four metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.11.0' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.11.0')
   assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
     'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
   ])
@@ -63,7 +63,7 @@ test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.10.2',
+    version: '0.11.0',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
@@ -72,7 +72,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
-    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]10[.]2/],
+    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]11[.]0/],
     // Derived from the manifest so the drift guard never pins a release number.
     [{ ...packageJson, version: '1.0.0' }, new RegExp(String(packageJson.version).replaceAll('.', '\\.'))],
     [{ ...packageJson, private: false }, /private/],
