@@ -223,9 +223,12 @@ function checkpointState(value: unknown, cut: number): InstrumentState {
     const identities=rows.map(row=>JSON.stringify([row.workflowId,'localTicketId' in row ? row.localTicketId : 'decisionId' in row ? row.decisionId : null,'principalId' in row ? row.principalId : null]))
     if(new Set(identities).size!==identities.length) invalid('duplicate checkpoint record identity')
   }
-  for(const row of tickets) {const workflow=workflows.find(w=>w.workflowId===row.workflowId);if(!workflow) invalid('checkpoint ticket has no workflow');validateTicket(row.value,workflow.value)}
-  for(const row of decisions) if(!workflows.some(w=>w.workflowId===row.workflowId) || (row.value.ticketIds??[]).some(id=>!tickets.some(t=>t.workflowId===row.workflowId && t.localTicketId===id))) invalid('checkpoint decision references unknown records')
-  for(const view of decisionViews) if(view.revision<1 || view.revision>cut || !decisions.some(d=>d.workflowId===view.workflowId && d.decisionId===view.decisionId)) invalid('checkpoint decision view references unknown records')
+  const workflowIndex=new Map(workflows.map(row=>[row.workflowId,row]))
+  const ticketIndex=new Set(tickets.map(row=>entityKey(row.workflowId,row.localTicketId)))
+  const decisionIndex=new Set(decisions.map(row=>entityKey(row.workflowId,row.decisionId)))
+  for(const row of tickets) {const workflow=workflowIndex.get(row.workflowId);if(!workflow) invalid('checkpoint ticket has no workflow');validateTicket(row.value,workflow.value)}
+  for(const row of decisions) if(!workflowIndex.has(row.workflowId) || (row.value.ticketIds??[]).some(id=>!ticketIndex.has(entityKey(row.workflowId,id)))) invalid('checkpoint decision references unknown records')
+  for(const view of decisionViews) if(view.revision<1 || view.revision>cut || !decisionIndex.has(entityKey(view.workflowId,view.decisionId))) invalid('checkpoint decision view references unknown records')
   const businessRevision=revision(s.businessRevision,'business revision')
   if(businessRevision+Object.values(viewerRevisions).reduce((sum,n)=>sum+n,0)>cut) invalid('checkpoint business/viewer revision exceeds source cut')
   return freeze({businessRevision,viewerRevisions,workflows,tickets,decisions,decisionViews})
@@ -305,13 +308,17 @@ function validateCheckpointCounters(state:InstrumentState,dedup:readonly Instrum
   if(state.decisionViews.length!==latestViews.size || state.decisionViews.some(view=>latestViews.get(JSON.stringify([view.workflowId,view.decisionId,view.principalId]))!==view.revision)) invalid('checkpoint personal view inventory/revision differs from actual viewer receipts')
 }
 function validateCheckpointAuthors(state:InstrumentState,dedup:readonly InstrumentDedup[]):void {
-  const receipts=new Map(dedup.map(d=>[d.appliedRevision,d]))
+  const receipts=new Map(dedup.map(d=>[d.appliedRevision,d])),firstCreators=new Map<string,InstrumentAuthor>()
+  for(const receipt of dedup) if(receipt.kind==='command' && receipt.command!.action==='put-decision') {
+    const key=JSON.stringify(receipt.command!.target)
+    if(!firstCreators.has(key)) firstCreators.set(key,receipt.author)
+  }
   const groups:{kind:'workflow'|'ticket'|'decision';rows:readonly (WorkflowRecord|TicketRecord|DecisionRecord)[]}[]=[{kind:'workflow',rows:state.workflows},{kind:'ticket',rows:state.tickets},{kind:'decision',rows:state.decisions}]
   for(const group of groups) for(const row of group.rows) {
     const target:InstrumentHistoryTarget=group.kind==='workflow' ? {kind:'workflow',workflowId:row.workflowId} : group.kind==='ticket' && 'localTicketId' in row ? {kind:'ticket',workflowId:row.workflowId,localTicketId:row.localTicketId} : 'decisionId' in row ? {kind:'decision',workflowId:row.workflowId,decisionId:row.decisionId} : invalid('invalid checkpoint object target')
     if(group.kind==='decision') {
-      const first=dedup.find(d=>d.kind==='command' && d.command!.action==='put-decision' && JSON.stringify(d.command!.target)===JSON.stringify(target)),creator='creator' in row ? row.creator : undefined
-      if(!first || JSON.stringify(first.author)!==JSON.stringify(creator)) invalid('checkpoint decision creator differs from first source target receipt')
+      const first=firstCreators.get(JSON.stringify(target)),creator='creator' in row ? row.creator : undefined
+      if(!first || JSON.stringify(first)!==JSON.stringify(creator)) invalid('checkpoint decision creator differs from first source target receipt')
     }
     for(const version of row.history) {
       const receipt=receipts.get(version.revision),meta=receipt?.command
@@ -319,9 +326,46 @@ function validateCheckpointAuthors(state:InstrumentState,dedup:readonly Instrume
     }
   }
 }
+/** Composite keys never alias opaque IDs containing separators. Map insertion order is
+ * the source's first-insertion order, even when a later event replaces a row. */
+function entityKey(workflowId: string, localId: string): string { return JSON.stringify([workflowId, localId]) }
+// Only successful strict parses register identities here. This is pure source
+// state, never a principal/scope-authorized snapshot. Weak keys follow source life.
+const validatedDocuments = new WeakMap<object, { readonly document: InstrumentDocument; readonly state: InstrumentState }>()
+function deeplyFrozenData(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value === null || typeof value !== 'object') return true
+  if (!Object.isFrozen(value)) return false
+  if (seen.has(value)) return true
+  seen.add(value)
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!
+    if (!Object.hasOwn(descriptor, 'value') || !deeplyFrozenData(descriptor.value, seen)) return false
+  }
+  return true
+}
 export function projectInstrumentDocument(document: InstrumentDocument): InstrumentState {
-  const base=document.schemaVersion===2 ? document.checkpoint.state : EMPTY_INSTRUMENT_STATE
-  const workflows: WorkflowRecord[] = [...base.workflows], tickets: TicketRecord[] = [...base.tickets], decisions: DecisionRecord[] = [...base.decisions], decisionViews: DecisionViewRecord[] = [...base.decisionViews]
+  const known = validatedDocuments.get(document)
+  if (known) return known.state
+  const base = document.schemaVersion === 2 ? document.checkpoint.state : EMPTY_INSTRUMENT_STATE
+  const workflows = new Map(base.workflows.map(row => [row.workflowId, row]))
+  const tickets = new Map(base.tickets.map(row => [entityKey(row.workflowId, row.localTicketId), row]))
+  const decisions = new Map(base.decisions.map(row => [entityKey(row.workflowId, row.decisionId), row]))
+  const viewKey = (workflowId: string, decisionId: string, principalId: string): string => JSON.stringify([workflowId, decisionId, principalId])
+  const decisionViews = new Map(base.decisionViews.map(row => [viewKey(row.workflowId, row.decisionId, row.principalId), row]))
+  const workflowTickets = new Map<string, Map<string, TicketRecord>>()
+  for (const row of base.tickets) {
+    const group = workflowTickets.get(row.workflowId) ?? new Map<string, TicketRecord>()
+    group.set(row.localTicketId, row); workflowTickets.set(row.workflowId, group)
+  }
+  // Only local arrays are mutable. A checkpoint history is copied once on first
+  // append; subsequent tail versions push rather than spreading all old versions.
+  const histories = new Map<string, Change<unknown>[]>()
+  const append = <T>(key: string, previous: readonly Change<T>[], change: Change<T>): readonly Change<T>[] => {
+    let history = histories.get(key)
+    if (!history) { history = [...previous]; histories.set(key, history) }
+    history.push(change)
+    return history as Change<T>[]
+  }
   let businessRevision = base.businessRevision
   const viewerRevisions = new Map<string, number>(Object.entries(base.viewerRevisions))
   for (const event of document.events) {
@@ -330,41 +374,47 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
     if (command.expectedRevision !== previousRevision) invalid('event expectedRevision mismatches its business/viewer revision')
     if (command.action === 'set-decision-view') viewerRevisions.set(event.author.principalId, previousRevision + 1)
     else businessRevision += 1
-    const workflow = workflows.find(row => row.workflowId === command.workflowId)
+    const workflow = workflows.get(command.workflowId)
     const change = <T>(value: T): Change<T> => ({ revision: event.revision, recordedAt: event.recordedAt, author: event.author, references: command.references ?? [], value })
     if (command.action === 'put-workflow') {
-      for (const ticket of tickets.filter(row => row.workflowId === command.workflowId)) validateTicket(ticket.value, command.value)
-      const row = { workflowId: command.workflowId, revision: event.revision, value: command.value, history: [...(workflow?.history ?? []), change(command.value)] }
-      if (workflow) workflows[workflows.indexOf(workflow)] = row; else workflows.push(row)
+      for (const ticket of workflowTickets.get(command.workflowId)?.values() ?? []) validateTicket(ticket.value, command.value)
+      workflows.set(command.workflowId, { workflowId: command.workflowId, revision: event.revision, value: command.value,
+        history: append(JSON.stringify(['workflow', command.workflowId]), workflow?.history ?? [], change(command.value)) })
       continue
     }
     if (!workflow) invalid('workflow must be declared before its records')
     if (command.action === 'put-ticket') {
       validateTicket(command.value, workflow.value)
-      const previous = tickets.find(row => row.workflowId === command.workflowId && row.localTicketId === command.localTicketId)
+      const key = entityKey(command.workflowId, command.localTicketId), previous = tickets.get(key)
       const value = { ...previous?.value, ...command.value }
-      const row = { workflowId: command.workflowId, localTicketId: command.localTicketId, revision: event.revision, value, history: [...(previous?.history ?? []), change(value)] }
-      if (previous) tickets[tickets.indexOf(previous)] = row; else tickets.push(row)
+      const row = { workflowId: command.workflowId, localTicketId: command.localTicketId, revision: event.revision, value,
+        history: append('ticket' + key, previous?.history ?? [], change(value)) }
+      tickets.set(key, row)
+      const group = workflowTickets.get(command.workflowId) ?? new Map<string, TicketRecord>()
+      group.set(command.localTicketId, row); workflowTickets.set(command.workflowId, group)
     } else if (command.action === 'put-decision') {
-      const previous = decisions.find(row => row.workflowId === command.workflowId && row.decisionId === command.decisionId)
+      const key = entityKey(command.workflowId, command.decisionId), previous = decisions.get(key)
       const value = { ...previous?.value, ...command.value }
-      for (const ticketId of value.ticketIds ?? []) if (!tickets.some(row => row.workflowId === command.workflowId && row.localTicketId === ticketId)) invalid('decision refers to unknown ticket')
-      const row = { workflowId: command.workflowId, decisionId: command.decisionId, revision: event.revision, value, history: [...(previous?.history ?? []), change(value)], ...(previous?.creator ? {creator:previous.creator} : {}) }
-      if (previous) decisions[decisions.indexOf(previous)] = row; else decisions.push(row)
+      for (const ticketId of value.ticketIds ?? []) if (!tickets.has(entityKey(command.workflowId, ticketId))) invalid('decision refers to unknown ticket')
+      decisions.set(key, { workflowId: command.workflowId, decisionId: command.decisionId, revision: event.revision, value,
+        history: append('decision' + key, previous?.history ?? [], change(value)), ...(previous?.creator ? { creator: previous.creator } : {}) })
     } else {
-      if (!decisions.some(row => row.workflowId === command.workflowId && row.decisionId === command.decisionId)) invalid('view refers to unknown decision')
-      const previous = decisionViews.find(row => row.workflowId === command.workflowId && row.decisionId === command.decisionId && row.principalId === event.author.principalId)
-      const row = { workflowId: command.workflowId, decisionId: command.decisionId, principalId: event.author.principalId, revision: event.revision, value: command.value }
-      if (previous) decisionViews[decisionViews.indexOf(previous)] = row; else decisionViews.push(row)
+      if (!decisions.has(entityKey(command.workflowId, command.decisionId))) invalid('view refers to unknown decision')
+      decisionViews.set(viewKey(command.workflowId, command.decisionId, event.author.principalId),
+        { workflowId: command.workflowId, decisionId: command.decisionId, principalId: event.author.principalId, revision: event.revision, value: command.value })
     }
   }
-  return freeze({ businessRevision, viewerRevisions: Object.fromEntries(viewerRevisions), workflows, tickets, decisions, decisionViews })
+  return freeze({ businessRevision, viewerRevisions: Object.fromEntries(viewerRevisions), workflows: [...workflows.values()], tickets: [...tickets.values()], decisions: [...decisions.values()], decisionViews: [...decisionViews.values()] })
 }
 
 export function initialInstrumentDocument(instance: InstrumentInstance): InstrumentDocument {
   return parseInstrumentDocument({ ...instance, schemaVersion: 1, revision: 0, events: [] })
 }
 export function parseInstrumentDocument(value: unknown): InstrumentDocument {
+  if (value !== null && typeof value === 'object') {
+    const known = validatedDocuments.get(value)
+    if (known) return known.document
+  }
   try {
     const raw=record(value,'instrument document',['schemaVersion','revision','instrumentInstanceId','ownerSessionId','controlWorkspaceId','events','checkpoint','dedup','coverage'])
     if(raw.schemaVersion!==1 && raw.schemaVersion!==2) invalid('unsupported instrument schemaVersion')
@@ -390,7 +440,13 @@ export function parseInstrumentDocument(value: unknown): InstrumentDocument {
     if(events.length+cut!==docRevision || new Set(operationIds).size!==operationIds.length) invalid('revision or operation-id index is inconsistent')
     const identity={instrumentInstanceId:id(raw.instrumentInstanceId,'instrumentInstanceId'),ownerSessionId:id(raw.ownerSessionId,'ownerSessionId'),controlWorkspaceId:id(raw.controlWorkspaceId,'controlWorkspaceId'),revision:docRevision,events}
     const result:InstrumentDocument=checkpoint ? {schemaVersion:2,...identity,checkpoint,dedup,coverage} : {schemaVersion:1,...identity}
-    projectInstrumentDocument(result)
-    return freeze(result)
+    const state = projectInstrumentDocument(result)
+    const document = freeze(result), entry = { document, state }
+    validatedDocuments.set(document, entry)
+    // A storage snapshot may be detached from the parser's own result. It can be
+    // reused only AFTER strict parsing and proof that the entire input graph is
+    // immutable. A top-level freeze cannot protect mutable nested commands.
+    if (value !== null && typeof value === 'object' && deeplyFrozenData(value)) validatedDocuments.set(value, entry)
+    return document
   } catch(error) {if(error instanceof ControlsError && error.code==='invalid-input') throw new ControlsError('invalid-state',error.message);throw error}
 }

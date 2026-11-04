@@ -4,7 +4,7 @@ import type { InstrumentInstance } from './state.js'
 import type { InstrumentStorage } from './instrument-storage.js'
 import { initialInstrumentDocument, parseAuthor, parseInstrumentCommand, parseInstrumentDocument, projectInstrumentDocument, upgradeInstrumentDocument, parseInstrumentHistoryTarget, instrumentCommandMetadata } from './instrument-state.js'
 import type { InstrumentAuthor, InstrumentCommand, InstrumentDocument, InstrumentEvent, InstrumentState, WorkflowRecord, TicketRecord, TicketValue, DecisionRecord, DecisionViewValue, DecisionValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, InstrumentDocumentV2, InstrumentDedup, InstrumentHistoryTarget, Change } from './instrument-state.js'
-import { array, ControlsError, freeze, id, increment, invalid, memoized, record, revision } from './validation.js'
+import { array, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
 
 export type InstrumentScope = { readonly kind: 'coordinator' }
   | { readonly kind: 'assigned'; readonly workflowId: string | null; readonly ticketIds: readonly string[] }
@@ -126,7 +126,7 @@ interface CurrentDecisionIndex {
   readonly decisions: readonly CurrentDecision[]
 }
 // Only load()'s validated immutable documents enter this cache. This is deliberately
-// separate from validation.memoized, whose entries identify parsed source documents.
+// separate from the full pure-state memo used by projectInstrumentDocument.
 const currentDecisionIndexes = new WeakMap<InstrumentDocument, CurrentDecisionIndex>()
 function currentDecisionIndex(document: InstrumentDocument): CurrentDecisionIndex {
   const known = currentDecisionIndexes.get(document)
@@ -402,7 +402,7 @@ export class SessionInstruments {
     signal?.throwIfAborted()
     const raw = await this.storage.read(instance.instrumentInstanceId)
     signal?.throwIfAborted()
-    const document = raw === undefined ? initialInstrumentDocument(instance) : memoized(raw, parseInstrumentDocument)
+    const document = raw === undefined ? initialInstrumentDocument(instance) : parseInstrumentDocument(raw)
     if (document.instrumentInstanceId !== instance.instrumentInstanceId || document.ownerSessionId !== instance.ownerSessionId || document.controlWorkspaceId !== instance.controlWorkspaceId) throw new ControlsError('association-conflict', 'instrument record conflicts with trusted owner instance')
     return document
   }
@@ -442,19 +442,27 @@ export class SessionInstruments {
     const withinTicket = (workflowId: string, ticketId: string): boolean => withinWorkflow(workflowId) && (access.scope.kind === 'coordinator' || access.scope.ticketIds.includes(ticketId))
     const workflows = state.workflows.filter(row => withinWorkflow(row.workflowId))
     const tickets = state.tickets.filter(row => withinTicket(row.workflowId, row.localTicketId))
+    const keyOf = (workflowId: string, decisionId: string): string => JSON.stringify([workflowId, decisionId])
+    const views = new Map(state.decisionViews.filter(view => view.principalId === access.author.principalId)
+      .map(view => [keyOf(view.workflowId, view.decisionId), view.value]))
+    // Source revisions are unique within this document. Index the merged value at
+    // that exact revision, never the raw optional patch or the latest association.
+    const versions = new Map<number, { readonly value: DecisionValue; readonly creator: string }>()
+    for (const row of state.decisions) for (const change of row.history) versions.set(change.revision, { value: change.value, creator: creatorOf(row) })
     const decisions = state.decisions.filter(row => decisionAllowed(access, row.workflowId, row.value, creatorOf(row)))
       .map(row => ({ ...row, history: row.history.filter(change => decisionAllowed(access, row.workflowId, change.value, creatorOf(row))),
-        view: state.decisionViews.find(view => view.workflowId === row.workflowId && view.decisionId === row.decisionId && view.principalId === access.author.principalId)?.value ?? { read: false, hidden: false } }))
+        view: views.get(keyOf(row.workflowId, row.decisionId)) ?? { read: false, hidden: false } }))
+    const visibleDecisions = new Set(decisions.map(row => keyOf(row.workflowId, row.decisionId)))
     const changes = document.events.filter(event => {
       if (event.revision <= (filter.afterRevision ?? 0)) return false
       const command = event.command
       if (!withinWorkflow(command.workflowId)) return false
       if (command.action === 'put-ticket') return withinTicket(command.workflowId, command.localTicketId)
       if (command.action === 'put-decision') {
-        const current = state.decisions.find(row => row.workflowId === command.workflowId && row.decisionId === command.decisionId)
-        return !!current && decisions.some(row => row.decisionId === command.decisionId && row.workflowId === command.workflowId) && decisionAllowed(access, command.workflowId, current.history.find(change => change.revision === event.revision)!.value, creatorOf(current))
+        const version = versions.get(event.revision)
+        return !!version && visibleDecisions.has(keyOf(command.workflowId, command.decisionId)) && decisionAllowed(access, command.workflowId, version.value, version.creator)
       }
-      if (command.action === 'set-decision-view') return event.author.principalId === access.author.principalId && decisions.some(row => row.decisionId === command.decisionId && row.workflowId === command.workflowId)
+      if (command.action === 'set-decision-view') return event.author.principalId === access.author.principalId && visibleDecisions.has(keyOf(command.workflowId, command.decisionId))
       return true
     })
     const statusCounts = workflows.flatMap(workflow => workflow.value.axes.map(axis => {
