@@ -105,7 +105,7 @@ test('historical regression: actual ObservedInputSummary exposes pendingUser 3 a
 })
 
 function assertClosed(container) {
-  for (const name of Object.values(regions)) assert.equal(container.querySelector('[aria-label="' + name + '"]'), null, 'no stale ' + name)
+  for (const name of Object.values(regions)) assert.equal(container.querySelector('[aria-label="' + name + '"]') === null, true, 'no stale ' + name)
 }
 function workflow(view, statuses = [{ statusKey: 'doing', label: '工作进行', count: 1 }]) {
   const definitions = statuses.map(({ count: _count, ...value }) => value)
