@@ -1068,8 +1068,14 @@ export function classifySession(facts: SessionFacts, retained?: TrustedSession):
   const h = facts.header
   if (h.origin !== 'subagent') return retained?.kind === 'managed-child' ? undefined : 'owner'
   if (!h.parentSession) return undefined
-  const descriptor = foldSubagentDescriptor(facts.events)
-  if (!descriptor && !(retained?.kind === 'managed-child' && retained.parentSessionId === h.parentSession)) return undefined
+  return classifySessionIdentity(h, foldSubagentDescriptor(facts.events) !== undefined, retained)
+}
+
+/** Compact classification is deliberately separate from full public event facts. */
+function classifySessionIdentity(h: SessionHeader, hasDescriptor: boolean, retained?: TrustedSession): 'owner' | TrustedSession | undefined {
+  if (h.origin !== 'subagent') return retained?.kind === 'managed-child' ? undefined : 'owner'
+  if (!h.parentSession) return undefined
+  if (!hasDescriptor && !(retained?.kind === 'managed-child' && retained.parentSessionId === h.parentSession)) return undefined
   if (retained?.kind === 'owner' || retained?.kind === 'managed-child' && retained.parentSessionId !== h.parentSession) return undefined
   return freeze({ kind: 'managed-child', parentSessionId: h.parentSession })
 }
@@ -1078,100 +1084,123 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
   readonly authority: ControlsAuthority; readonly sessionFacts: HostPorts['sessionFacts']; readonly authorizeCaller: HostPorts['authorizeCaller']; readonly operatorPrincipal: string
 } {
   const operatorPrincipal = 'user:' + id(connectionOperatorPeer(ctx).id, 'operator id')
-  // Authorization, association resolution and native-child confirmation read these facts.
-  // Only subagent classification consumes the folded event stream; every other caller reads
-  // the immutable header. The lightweight persistence port observes one stored session
-  // WITHOUT reading its event log, so owner sessions never pay a cold log decode here; the
-  // full observation stays the fallback and the canonical not-found path, and its result is
-  // shared across concurrent and near-term repeat calls.
-  const FACTS_CACHE_TTL_MS = 5_000
-  const FACTS_CACHE_MAX = 16
-  const FACTS_CACHE_MAX_EVENTS = 4_000
+  // Only compact, verified classification is retained. Public sessionFacts never pins logs.
+  // Tokens are host capabilities, not a version-string or TTL assertion.
+  const IDENTITY_CACHE_MAX = 64
   const EMPTY_EVENTS: readonly SessionEvent[] = Object.freeze([])
-  const LIVE_FACTS_TTL_MS = 250
-  const liveFacts = new Map<string, { readonly at: number; readonly facts: SessionFacts }>()
-  const HEADER_FACTS_TTL_MS = 2_000
-  const HEADER_FACTS_MAX = 64
-  const headerFacts = new Map<string, { readonly at: number; readonly facts: SessionFacts }>()
+  interface IdentityFacts { readonly header: SessionHeader; readonly hasDescriptor: boolean }
+  interface StoredSnapshot { readonly header: SessionHeader; readonly revision?: unknown }
   interface StoredSessionStat {
-    stat(id: SessionId, options?: { readonly signal?: AbortSignal }): Promise<{ readonly header: SessionHeader } | undefined>
+    readonly identity?: unknown
+    stat(id: SessionId, options?: { readonly signal?: AbortSignal }): Promise<StoredSnapshot | undefined>
   }
-  const coldFacts = new Map<string, { readonly at: number; readonly facts: SessionFacts }>()
-  const coldInflight = new Map<string, Promise<SessionFacts>>()
-  const storedSnapshot = async (sessionId: SessionId, signal?: AbortSignal): Promise<{ readonly header: SessionHeader } | undefined> => {
-    // Optional seam: an older composition without this service keeps the observation path.
-    const persistence = typeof ctx.get === 'function' ? ctx.get('sessionPersistence') as StoredSessionStat | undefined : undefined
-    if (persistence === undefined || typeof persistence.stat !== 'function') return undefined
-    return await persistence.stat(sessionId, signal === undefined ? undefined : { signal })
+  interface ColdIdentity { readonly persistence: symbol; readonly revision: string; readonly fingerprint: string; readonly facts: IdentityFacts }
+  const coldIdentities = new Map<string, ColdIdentity>()
+  interface LiveIdentity {
+    readonly session: WeakRef<Agent['session']>; readonly agent: WeakRef<Agent> | undefined
+    readonly seq: number; readonly fingerprint: string; readonly facts: IdentityFacts
   }
-  const observeColdFacts = async (sessionId: SessionId, signal?: AbortSignal): Promise<SessionFacts> => {
-    const cached = coldFacts.get(sessionId)
-    if (cached !== undefined && Date.now() - cached.at < FACTS_CACHE_TTL_MS) return cached.facts
-    const inflight = coldInflight.get(sessionId)
-    if (inflight !== undefined) return await inflight
-    const pending = (async (): Promise<SessionFacts> => {
-      const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
-      try { return freeze({ header: observation.header, events: observation.events.slice(observation.inheritedEventCount), live: false }) }
-      finally { observation[Symbol.dispose]() }
-    })()
-    coldInflight.set(sessionId, pending)
-    try {
-      const facts = await pending
-      if (facts.events.length <= FACTS_CACHE_MAX_EVENTS) {
-        const cutoff = Date.now() - FACTS_CACHE_TTL_MS
-        for (const [key, entry] of coldFacts) if (entry.at < cutoff) coldFacts.delete(key)
-        coldFacts.delete(sessionId)
-        coldFacts.set(sessionId, { at: Date.now(), facts })
-        while (coldFacts.size > FACTS_CACHE_MAX) coldFacts.delete(coldFacts.keys().next().value as string)
-      }
-      return facts
-    } finally { coldInflight.delete(sessionId) }
+  const liveIdentities = new Map<string, LiveIdentity>()
+  const persistencePort = (): StoredSessionStat | undefined => typeof ctx.get === 'function' ? ctx.get('sessionPersistence') as StoredSessionStat | undefined : undefined
+  const fingerprint = (h: SessionHeader): string => JSON.stringify([h.id, h.origin, h.parentSession, h.createdAt, h.cwd, h.isSeeded, h.version])
+  const checkedHeader = (sessionId: string, header: SessionHeader): SessionHeader => {
+    if (header.id !== sessionId) deny('session source returned conflicting identity')
+    return Object.freeze({ ...header })
   }
-  /** foldSubagentDescriptor is the only reader of `events`, and it is reached only
-   * for subagent headers. Deep-freezing a long-lived owner session's whole owned
-   * suffix cost a full traversal per tool execution and per step (measured: 135 ms
-   * for 47k events), which pegged a core while a single agent worked. Owners now
-   * carry no events, and subagent facts are reused briefly instead of re-frozen.
-   */
-  const liveSessionFacts = (live: Agent): SessionFacts => {
-    const header = live.session.header
-    if (header.origin !== 'subagent') return Object.freeze({ header, events: EMPTY_EVENTS, live: true })
-    const cached = liveFacts.get(header.id)
-    const now = Date.now()
-    if (cached !== undefined && now - cached.at < LIVE_FACTS_TTL_MS) return cached.facts
-    const events = live.session.ownEvents()
-    const facts: SessionFacts = Object.freeze({ header, events: Object.freeze(events), live: true })
-    liveFacts.set(header.id, { at: now, facts })
-    while (liveFacts.size > FACTS_CACHE_MAX) liveFacts.delete(liveFacts.keys().next().value as string)
-    return facts
+  const liveSource = (sessionId: SessionId): Agent['session'] | undefined => {
+    const agent = ctx.agents.get(sessionId)
+    const sessions = typeof ctx.get === 'function' ? ctx.get('sessions') : undefined
+    const session = sessions?.get(sessionId)
+    if (agent !== undefined && session !== undefined && agent.session !== session) deny('live Session and Agent identity conflict')
+    return session ?? agent?.session
+  }
+  const storedSnapshot = async (sessionId: SessionId, signal?: AbortSignal): Promise<StoredSnapshot | undefined> => {
+    const persistence = persistencePort()
+    if (typeof persistence?.stat !== 'function') return undefined
+    const snapshot = await persistence.stat(sessionId, signal === undefined ? undefined : { signal })
+    signal?.throwIfAborted()
+    if (snapshot !== undefined) checkedHeader(sessionId, snapshot.header)
+    return snapshot
   }
   const sessionHeaderFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
     const sessionId = SessionId(id(raw, 'sessionId'))
     signal?.throwIfAborted()
-    // Header facts change only when a session is created or delegated, yet the authorization
-    // seam asks for them dozens of times per second (measured: ~82 stored-session stats per
-    // second while a turn was active). Repeat lookups inside this short window reuse them.
-    const cachedHeader = headerFacts.get(sessionId)
-    const now = Date.now()
-    if (cachedHeader !== undefined && now - cachedHeader.at < HEADER_FACTS_TTL_MS) return cachedHeader.facts
-    const live = ctx.agents.get(sessionId)
-    let facts: SessionFacts
-    if (live !== undefined) facts = liveSessionFacts(live)
-    else {
-      const snapshot = await storedSnapshot(sessionId, signal)
-      facts = snapshot !== undefined ? freeze({ header: snapshot.header, events: [], live: false }) : await observeColdFacts(sessionId, signal)
+    const live = liveSource(sessionId)
+    if (live !== undefined) {
+      coldIdentities.delete(sessionId)
+      return Object.freeze({ header: checkedHeader(sessionId, live.header), events: EMPTY_EVENTS, live: true })
     }
-    headerFacts.set(sessionId, { at: now, facts })
-    while (headerFacts.size > HEADER_FACTS_MAX) headerFacts.delete(headerFacts.keys().next().value as string)
-    return facts
+    const snapshot = await storedSnapshot(sessionId, signal)
+    if (snapshot !== undefined) return Object.freeze({ header: checkedHeader(sessionId, snapshot.header), events: EMPTY_EVENTS, live: false })
+    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
+    try {
+      signal?.throwIfAborted()
+      return Object.freeze({ header: checkedHeader(sessionId, observation.header), events: EMPTY_EVENTS, live: observation.source === 'live' })
+    } finally { observation[Symbol.dispose]() }
   }
   const sessionFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
-    const header = await sessionHeaderFacts(raw, signal)
-    if (header.live || header.header.origin !== 'subagent') return header
-    return await observeColdFacts(SessionId(id(raw, 'sessionId')), signal)
+    const sessionId = SessionId(id(raw, 'sessionId'))
+    const facts = await sessionHeaderFacts(raw, signal)
+    if (facts.header.origin !== 'subagent') return facts
+    const live = liveSource(sessionId)
+    if (live !== undefined) return Object.freeze({ header: checkedHeader(sessionId, live.header), events: Object.freeze(live.ownEvents()), live: true })
+    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
+    try {
+      signal?.throwIfAborted()
+      return freeze({ header: checkedHeader(sessionId, observation.header), events: observation.events.slice(observation.inheritedEventCount), live: observation.source === 'live' })
+    } finally { observation[Symbol.dispose]() }
+  }
+  const sessionIdentity = async (raw: string): Promise<IdentityFacts> => {
+    const sessionId = SessionId(id(raw, 'sessionId'))
+    const live = liveSource(sessionId)
+    if (live !== undefined) {
+      coldIdentities.delete(sessionId)
+      const header = checkedHeader(sessionId, live.header), key = fingerprint(header)
+      const agent = ctx.agents.get(sessionId), seq = live.seq
+      const cached = liveIdentities.get(sessionId)
+      if (Number.isSafeInteger(seq) && seq >= 0 && cached?.session.deref() === live && (cached.agent === undefined ? agent === undefined : agent !== undefined && cached.agent.deref() === agent) && cached.seq === seq && cached.fingerprint === key) return cached.facts
+      liveIdentities.delete(sessionId)
+      const facts = Object.freeze({ header, hasDescriptor: header.origin === 'subagent' && !!header.parentSession && foldSubagentDescriptor(live.ownEvents()) !== undefined })
+      if (Number.isSafeInteger(seq) && seq >= 0) {
+        // Weak references prevent this compact cache from pinning an otherwise disposed
+        // Session/Agent (and indirectly its whole event log).
+        liveIdentities.set(sessionId, { session: new WeakRef(live), agent: agent === undefined ? undefined : new WeakRef(agent), seq, fingerprint: key, facts })
+        while (liveIdentities.size > IDENTITY_CACHE_MAX) liveIdentities.delete(liveIdentities.keys().next().value as string)
+      }
+      return facts
+    }
+    liveIdentities.delete(sessionId)
+    const persistence = persistencePort(), identity = persistence?.identity
+    const snapshot = await storedSnapshot(sessionId)
+    if (persistencePort()?.identity !== identity || liveSource(sessionId) !== undefined) deny('session source changed during identity stat')
+    const sourceRevision = snapshot?.revision
+    const key = snapshot === undefined ? undefined : fingerprint(snapshot.header)
+    const cached = coldIdentities.get(sessionId)
+    if (snapshot !== undefined && typeof identity === 'symbol' && typeof sourceRevision === 'string' && sourceRevision.length > 0 && cached?.persistence === identity && cached.revision === sourceRevision && cached.fingerprint === key) return cached.facts
+    coldIdentities.delete(sessionId)
+    // Owner classification needs no log. A child always folds its current OWN descriptor
+    // at least once; retained associations can never hide a malformed current descriptor.
+    if (snapshot !== undefined && snapshot.header.origin !== 'subagent') return { header: checkedHeader(sessionId, snapshot.header), hasDescriptor: false }
+    const observation = await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+    try {
+      const header = checkedHeader(sessionId, observation.header)
+      if (snapshot !== undefined && fingerprint(header) !== key) deny('stored header conflicts with observed session identity')
+      const facts = Object.freeze({ header, hasDescriptor: header.origin === 'subagent' && !!header.parentSession && foldSubagentDescriptor(observation.events.slice(observation.inheritedEventCount)) !== undefined })
+      // Reuse requires a source revision for the exact prepared cut. Compositions
+      // lacking this proof intentionally pay the conservative observation cost.
+      const observed = observation as typeof observation & { readonly revision?: unknown; readonly source?: string }
+      if (typeof sourceRevision === 'string' && observed.revision !== undefined && observed.revision !== sourceRevision) deny('observed session source revision conflicts with current stat')
+      if (snapshot !== undefined && typeof identity === 'symbol' && typeof sourceRevision === 'string' && sourceRevision.length > 0 && observed.source === 'prepared' && observed.revision === sourceRevision && fingerprint(header) === key) {
+        const after = await storedSnapshot(sessionId)
+        if (persistencePort()?.identity !== identity || after?.revision !== sourceRevision || fingerprint(after.header) !== key || liveSource(sessionId) !== undefined) deny('session source changed while verifying identity')
+        coldIdentities.set(sessionId, { persistence: identity, revision: sourceRevision, fingerprint: key, facts })
+        while (coldIdentities.size > IDENTITY_CACHE_MAX) coldIdentities.delete(coldIdentities.keys().next().value as string)
+      }
+      return facts
+    } finally { observation[Symbol.dispose]() }
   }
   const resolveSession = async (sessionId: string): Promise<TrustedSession | undefined> => {
-    const facts = await sessionFacts(sessionId)
+    const facts = await sessionIdentity(sessionId)
     const document = await storage.read()
     const saved = document === undefined ? undefined : memoized(document, parseControlsDocument)
     const association = saved?.associations.find(row => row.sessionId === sessionId)
@@ -1179,7 +1208,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
     const retained: TrustedSession | undefined = association && instance
       ? association.parentSessionId === null ? { kind: 'owner', controlWorkspaceId: instance.controlWorkspaceId }
         : { kind: 'managed-child', parentSessionId: association.parentSessionId } : undefined
-    const classified = classifySession(facts, retained)
+    const classified = classifySessionIdentity(facts.header, facts.hasDescriptor, retained)
     if (classified !== 'owner') return classified
     if (retained?.kind === 'owner') return retained
     if (facts.header.cwd === undefined) return undefined
