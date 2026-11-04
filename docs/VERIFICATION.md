@@ -4,6 +4,36 @@
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
+## 0.12.0 输入区常驻提醒与文字展开（2026-11-04，已发布、未为本机安装）
+
+本轮依据[已认可详细契约](<INPUT_SUMMARY_DISCLOSURES.md>)，先单独提交文档 **8fac3fb**，从远端 0.11.0 基线 f2d48a1 建立隔离实施、测试与独立复核检出；未覆盖原主检出已有未提交内容。最终运行时、测试、生成物和包元数据冻结于 clean source **012a01da9b8ab31de6e8137b4616d27c29d7d65c**。本次 main 后续只追加公开安全完成证据，tag/source sidecar/唯一制品保持该 SHA，不把后续文档 HEAD 冒充制品源。
+
+### 行为、RED/GREEN 与独立复核
+
+- [客户端](<../src/client.ts>) 仅呈现增量：常驻待你裁决/待落实/T/S、96px 工作流进度区、单类别有界只读就地详情分开；直接文字按钮、aria/键盘关系、刷新不抢焦点/打开侧栏；rightPanel=false 仍可查。T 蓝、S 青紫、pending 红、awaiting 琥珀，差额在强调色祖先之外继承正文色；只过滤确定零值。裁决旗标、held T、Host live S 和授权 scope 不变，native 在跑明细始终可能不完整，不新增完整名册能力。
+- [新增实际渲染回归](<../tests/client-input-summary.test.mjs>) 在导出的 ObservedInputSummary + SessionObserver、真实 React/ReactDOM/Happy DOM 上先建立 **25 项 RED**，不是只测新 formatter；隔离实施后全部 GREEN。初候选还真实暴露 slot 已切 Session 而 observer/snapshot 仍旧时的详情泄漏，三方身份 guard 和 selection identity 修复后通过；Boolean 空值断言调整仅避免失败诊断循环打印 DOM，不弱化断言。交接三个 Client 文件 **96/96**；最终独立评审另跑新增 **25/25**，无失败/skip/cancel。
+- Standards / Spec 两名独立评审在固定 **012a01d** 分别完成复审，均 **0 未关闭硬违反**；Standards 的共享 S 可信总数谓词建议已提取，**0 未关闭 heuristic**。未触及 Host/Remote/domain/存储/授权/消费/vendor 或新增宿主 seam。评审意见与测试执行证据分开，不把 native 生命周期/author report 当物理制品证明。
+
+### 冻结 source、真实声明与闭合构建
+
+- **95 文件，1151 tests：1145 pass / 0 fail / 0 cancel / 6 skip**，source **012a01d**；Node 24.17.0，显式 canonical SDK **0.2.2-alpha.3**、独立 compatibility SDK **0.2.1-alpha.1** 和固定 distribution source。六 skip 全部且仅为 native Client activation/browser-loader fixture 无公开 UI-slots 包；未用缺省环境跳过 native storage/Manager 等门禁，也不把这些六项计为 GUI 通过。
+- 保留首轮 **1146 tests / 1121 pass / 19 fail / 6 skip** 的失败记录：传入的同版本 hoisted local-prefix CLI 根缺少旧 fixture 直接要求的自身 nested node_modules，真实 storage/Client Remote/packed 原生探针加载失败。换用现有完整独立 npm-global 根，manifest 与 native entry 摘要相同、Cordis 解析身份一致；最小 **5/5** 后重新完整 source 得到上面的 0 fail。没有为过门禁修改源码、测试或任一 SDK，没有抹掉首次失败或新增 skip。
+- Baseline Host/Client strict、闭合浏览器 build、strict prepack/source-lib scratch 全通过。独立真实 alpha.3 声明视图按同一 SHA 用 git archive 固定输入，root/client/Host emit 均 **0 diagnostics**；实际声明解析路径已记录，**78/78 非 Client JS/DTS、1076365 B** 与同 SHA 生成物逐字节一致，不以 HOST_ROOT 环境变量代替声明切换。
+- Client **297145 B / 8 私有模块**，externals 仍仅 React 与公开 UI primitives；**80 JS/DTS、99 固定文件、19 闭合入口**。vendor **85 文件、296048 B**、root SHA-256 **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**；stable/beta 各 27 Skills，不变更两通道或 provider precedence。
+
+### 唯一归档、独立 archive 全套与双 SDK headless
+
+- 同一 clean source **012a01d** 以 npm 11.13.0 pack --ignore-scripts **仅一次**生成唯一 accepted 归档；pnpm **11.8.0**、GNU tar **1.35**。归档 **511256 bytes**，SHA-256 **519320adc5d311f661c8a8c5ed29f2557c7e6e759f587a5ce0c361d56ab99388**。五资产为 tgz 和 .sha256/.size/.source-commit/.pnpm-version，大小 **511256/107/7/41/7 B**；原件均 0444，验证前后 dev/ino/mode/size/mtimeNs/ctimeNs/hash 不变，没有修包或重打。测试中临时 development/synthetic upgrade 包不是 accepted pack。
+- 主 lane 与独立 archive 子代理均对该原件和四 sidecars strict 验证通过：**184 regular、0 directory、0 symlink、99 固定 + 85 vendor、80 build、19 入口**。独立新检出、新 HOME/TMPDIR/cache/store 的 archive 模式全套 **95 文件，1151 tests：1145 pass / 0 fail / 0 cancel / 6 skip**；**PluginManager 13/13、packed-native 14/14**，各 0 skip。通过显式 archive/hash 双参数消费同一 accepted 原件的已校验私有快照；仅源码 seams 仍测源码，不能泛称每项都直接读归档。
+- 两个独立 SDK **0.2.2-alpha.3 / 0.2.1-alpha.1** 的 source+该 archive × beta/stable headless 均通过；每 channel **27 Skills / 11 model-visible**，source/archive registry 报告逐字节相同。**8/8** 无凭据挂载非零退出并明确停在 MISSING_CREDENTIAL；四个临时 DSH_HOME 与各 mount scrub HOME 随验证工作根清理，私有证据/缓存保留。无真实模型/PTC、无 Web 启动，隔离临时安装不等于当前 Profile 安装。
+
+### 发布、下载回验与未安装边界
+
+- 新鲜 main/ancestry/tag/Release 缺席与旧 refs guards 通过后，非 force **atomic main + 新 annotated v0.12.0** 已完成；main **f2d48a1 → 012a01d**，tag object **ee17611d25576421a7b927213f736920cbce9fbe**，peeled=上述完整 source。旧 tags 均保持原值，前一 v0.11.0 Release 内容及五资产 id/size/digest 不变。安装/重启不随发布授权自动获得。
+- [GitHub Release v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0) 已发布，API id **433617428**，published_at **2026-11-04T07:19:04Z**，draft=false/prerelease=false，target_commitish=完整 source **012a01d**。仅上传同一五原件，API state/size/digest 全匹配；新目录下载 **5/5 逐字节相同**并设 readonly，在冻结 source 检出运行 downloaded strict 再通过。公开资产 id/摘要见[机器验证摘要](<../dist/verification-0.12.0.json>)；原始日志/机器路径/用户环境快照仅私有保留。
+- 完成后再核对当前 Profile manifest/lock/patch、已安装插件和共享 SDK manifest，**5/5 SHA-256 不变**，本机插件仍 **0.10.2**、DSH 仍 **0.2.2-alpha.3**；原 Web listener/PID/启动时间不变。**未安装本机、未改 Profile/共享 SDK、未重启当前服务、未 npm publish**，未清理宿主 spill，未宣称当前 GUI 已更新或图形/窄屏像素验收已通过。
+- 七个本轮隔离检出有意保留供审计/复验；实际路径/Git 身份/clean 已独立核对，另记录 authored retention，未把“保留”标成物理清理。所有相关 jobs 已收集，子代理均已结束，未触碰其他历史工作树或原主检出的既有未提交修改。
+
 ## 0.11.0 插件读取路径性能优化（2026-11-04，已发布、未为本机安装）
 
 本轮先提交 [性能设计/验收契约](<PERFORMANCE_READ_PATHS.md>)（c90af64），再由三个独立 subagent/worktree 实施并提交；集成引用为 A a67dd00、C 29c66a1、B 448f0bb。源码候选 ae23da4 通过全量与独立 Standards/Spec 双轴复核后，仅追加 D 状态文档并冻结 clean source e5d25cf；同一唯一制品的精确包/双宿主 headless/发布/下载回验现已完成。tag 与五资产保持冻结，本次 main 后续仅追加公开安全的完成证据，不改运行时/生成物/测试/打包元数据。当前本机仍保留原安装；本轮不安装当前 Profile、不改共享 SDK、不重启服务、不 npm publish、不连接生产日志或 GUI/模型/PTC。

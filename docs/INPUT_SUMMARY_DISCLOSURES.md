@@ -2,7 +2,7 @@
 
 ## 状态与授权
 
-2026-11-04 所有者认可只读研究后的方案，明确指示先固定文档，再由 subagents 在隔离环境完成实施、测试、push 与 GitHub Release；暂不为本机安装。本页是本轮权威详细契约，目标 0.12.0；当前仅文档固定，实施、机械验证与精确制品/发布结果分阶段追加到 [VERIFICATION](<VERIFICATION.md>)，不得提前宣称已完成或当前 GUI 已变化。
+2026-11-04 所有者认可只读研究后的方案，明确指示先固定文档，再由 subagents 在隔离环境完成实施、测试、push 与 GitHub Release；暂不为本机安装。本页是本轮权威详细契约，文档已先单独提交（8fac3fb）；隔离实现、真实渲染 RED/GREEN、独立 Standards/Spec、固定 clean-source 012a01d 的 source/精确归档/双 SDK headless 与五资产下载 strict 回验均已完成，并已发布 [v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0)。分阶段结果见 [VERIFICATION](<VERIFICATION.md>) 与 [机器摘要](<../dist/verification-0.12.0.json>)；本机仍未安装，当前 GUI 未加载本轮改动，图形/窄屏像素验收未做。
 
 从最新远端基线 0.11.0 开始，不覆盖主检出既有未提交内容。保持 Skills/vendor、两通道、provider precedence、工具集合/描述/schema-2 DTO、Remote wire、存储/授权/CAS、T/S 计数来源、history 与消费性能契约。本轮仅插件客户端呈现，不新增宿主 seam、完整实时名册接口或后台任务。不 npm publish，不安装当前 Web Profile，不改共享 SDK/本机配置，不启动替代服务、不重启现有服务、不清理 spill。
 

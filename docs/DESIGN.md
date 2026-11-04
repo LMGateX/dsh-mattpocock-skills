@@ -12,11 +12,11 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 输入区协作摘要与文字展开（2026-11-04，所有者认可；0.12.0 文档固定、待实施）
+## 输入区协作摘要与文字展开（2026-11-04，所有者认可；0.12.0 已发布、未为本机安装）
 
 详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>)：常驻待裁决/T/S 提醒与可滚动工作流、就地单类别只读详情分区；T 蓝色、S 青紫、待你裁决红系、待落实琥珀，差额正文色；确定零值的超出/票状态省略，未知不隐藏。直接点击文字，不新增占位按钮；鼠标/键盘可达，刷新不抢焦点，Session/实例切换隔离，rightPanel 关闭不影响就地查看。
 
-裁决沿用显式 pending/addressee/awaiting 语义；T 取 held，占用/明细 scope 不混淆；S 取宿主实时总数，最近最多 64 行原生观测只作可能不完整明细，不冒称完整在跑名册。本轮不新增完整名册 Interface、Host/Remote/存储/消费改动。所有者授权先文档、隔离 subagents 实施测试、push/tag/GitHub Release；**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。当前仅固定文档，源码、测试、精确制品和发布分别记录。
+裁决沿用显式 pending/addressee/awaiting 语义；T 取 held，占用/明细 scope 不混淆；S 取宿主实时总数，最近最多 64 行原生观测只作可能不完整明细，不冒称完整在跑名册。本轮不新增完整名册 Interface、Host/Remote/存储/消费改动。所有者授权先文档、隔离 subagents 实施测试、push/tag/GitHub Release；**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。已按顺序完成先独立文档提交、隔离子代理实现/RED-GREEN、双轴复核与修复；冻结 clean source 012a01d 的 source/精确归档全量均为 1151 项（1145 pass / 0 fail / 6 环境 skip），双 SDK headless、非 force atomic main + annotated tag、新 [GitHub Release v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0) 与五资产下载 strict 回验通过，见 [验证摘要](<VERIFICATION.md>) 和 [机器摘要](<../dist/verification-0.12.0.json>)。后续 main 仅追加公开安全完成证据，tag/唯一制品与 source sidecar 保持冻结；Happy DOM/headless 不代表图形 GUI 或本机安装。
 
 ## 插件读取路径性能优化（2026-11-04，所有者认可；0.11.0 已发布、未为本机安装）
 

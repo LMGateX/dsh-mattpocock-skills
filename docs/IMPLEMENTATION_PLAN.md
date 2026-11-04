@@ -6,18 +6,18 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.12.0 输入区摘要与就地详情（2026-11-04，文档固定；待隔离实施）
+## 0.12.0 输入区摘要与就地详情（2026-11-04，A–F 已完成，已发布未安装）
 
 唯一详细契约与验收矩阵见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>)。
 
 | 阶段 | 内容 | 状态/门禁 |
 |---|---|---|
 | A 文档 | 固定交互、配色/零值、裁决/T/S 来源和不完整覆盖、授权 | 已固定；实施前单独提交 |
-| B 展示实施 | 隔离子代理修改 Client，常驻/进度/详情分区、文本入口和只读详情 | 待实施；不改 Host/Remote 或本机 |
-| C 回归 | 独立隔离子代理在真实导出渲染路径建立 RED/GREEN 与生命周期/覆盖矩阵 | 待实施；测试与实现分工，合并候选重跑 |
-| D 整合与复核 | 基于最新 0.11.0 整合，Standards/Spec 双轴复核修复，source 全量/严格构建 | 待实施；skip 与图形验收边界明示 |
-| E 精确制品 | 版本/生成物，冻结 clean-source，唯一 accepted pack，双 SDK/精确归档/Manager/headless | 待实施；字节/hash/source 绑定，生成物和 vendor 验证 |
-| F 发布 | 新鲜远端/旧 tag 不变 guards，非 force push/新 tag/Release，五资产下载 strict 回验 | 已授权、待执行；不安装本机、不 npm publish、不改 Profile/SDK/服务 |
+| B 展示实施 | 隔离子代理修改 Client，常驻/进度/详情分区、文本入口和只读详情 | 已完成；不改 Host/Remote 或本机；三方 Session 身份围栏修复并同步生成物 |
+| C 回归 | 独立隔离子代理在真实导出渲染路径建立 RED/GREEN 与生命周期/覆盖矩阵 | 已完成；25 项真实 RED→GREEN，三个 Client 文件 96/96；最终候选独立 25/25，未把 DOM 当像素验收 |
+| D 整合与复核 | 基于最新 0.11.0 整合，Standards/Spec 双轴复核修复，source 全量/严格构建 | 已完成；固定 012a01d 双轴零未关闭项；source 1151 项、1145 pass / 0 fail / 6 明示环境 skip；真实 alpha.3 类型通过 |
+| E 精确制品 | 版本/生成物，冻结 clean-source，唯一 accepted pack，双 SDK/精确归档/Manager/headless | 已完成；012a01d 唯一 511256 B 归档 strict 与全套 1151 项通过，Manager 13/13、packed-native 14/14，双 SDK source/archive × beta/stable headless 通过 |
+| F 发布 | 新鲜远端/旧 tag 不变 guards，非 force push/新 tag/Release，五资产下载 strict 回验 | 已完成；非 force atomic main + annotated v0.12.0，新 Release 五资产 5/5 字节/API digest/strict 回验通过；未安装、不 npm publish、不改 Profile/SDK/服务 |
 
 ## 0.11.0 读取路径性能优化（2026-11-04，A–F 已完成，已发布未安装）
 

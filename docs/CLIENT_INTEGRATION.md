@@ -57,9 +57,9 @@ Inspected SDK artifact contracts (package-relative locators, not public source-f
 - Native openTab has no background/no-focus mode; it selects and expands. Local sidebar layout persistence is not a business ledger.
 - Ordinary chat messages are not rewritten. In 0.9.0 the seven default fixed tools, the opt-in mattpocock_delegate and conditional mattpocock_audit get source cards (the 0.6.0 release had nine fixed tools including the now-removed mattpocock_execute; historical result cards remain readable). The client retains nine wire keys for opt-in/historical delegate; that is presentation support, not default model registration. They use the DSH baseline DisclosureRow with a collapsed English wire name and action/target summary; expanded input/output use CodeBlock, and the preserved raw public argsRaw/content/error/meta record uses JsonBlock. Preparing/start/result are distinguished; public fields are preserved without serializing lazy argument-reader internals. The expanded body is capped at 360px. The 0.2.2-only DisclosureRow.headerAccessory is not used, so 0.2.1-alpha.1 remains supported. Disabling timeline annotation still preserves the actual Tool record.
 
-## 0.12.0 输入区摘要增量（源码已合入，验收进行中）
+## 0.12.0 输入区摘要增量（已发布、未为本机安装）
 
-[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 已在客户端实施：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。独立真实 React/Happy DOM 回归从旧版 pendingUser=3 / awaiting=2 缺失建立 RED，候选 GREEN、双轴复核、精确制品和发布分别验收；源码合入不代表当前 GUI 已变化，也不授权本机安装。
+[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 已在客户端实施：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。独立真实 React/Happy DOM 回归从旧版 pendingUser=3 / awaiting=2 缺失建立 25 项 RED，源码修复后 GREEN；三方 Session 身份失配亦有回归。固定 012a01d 的双轴复核、source/精确包全量、双 SDK headless、发布与五资产下载 strict 回验均已完成，见 [验证摘要](<VERIFICATION.md>)。当前本机仍 0.10.2，未安装本轮改动、未重启服务；源码/DOM/制品通过不代表真实 GUI 或窄屏像素验收。
 
 ## 配置页分区、中文文案与保存语义
 

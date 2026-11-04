@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@lmgatex/dsh-mattpocock-skills",
+    "version": "0.12.0",
+    "private": true
+  },
+  "source": {
+    "commit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+    "clean": true,
+    "remoteBaseline": "f2d48a1cf99f69dbb07ae6104c3ec132302f3b06",
+    "documentationFirstCommit": "8fac3fb29be4bf8570748adb23095debda19fd95",
+    "runtimeScope": "Client presentation only; Host/Remote/domain/storage/authorization/consumption/vendor unchanged"
+  },
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.12.0.tgz",
+    "bytes": 511256,
+    "sha256": "519320adc5d311f661c8a8c5ed29f2557c7e6e759f587a5ce0c361d56ab99388",
+    "unpackedBytes": 2002890,
+    "members": 184,
+    "fixedFiles": 99,
+    "vendorFiles": 85,
+    "directories": 0,
+    "symlinks": 0,
+    "buildFiles": 80,
+    "clientBytes": 297145,
+    "clientPrivateModules": 8,
+    "exportAndEntryTargets": 19,
+    "readOnlyOriginals": true,
+    "identityUnchanged": true,
+    "identityFieldsChecked": [
+      "dev",
+      "ino",
+      "mode",
+      "size",
+      "mtimeNs",
+      "ctimeNs",
+      "sha256"
+    ],
+    "acceptedPackCount": 1,
+    "packer": "npm pack --ignore-scripts",
+    "developmentAndSyntheticFixturePacksAreNotAcceptedPacks": true
+  },
+  "tools": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0",
+    "npm": "11.13.0",
+    "tar": "GNU tar 1.35"
+  },
+  "compatibility": {
+    "sdkVersions": [
+      "0.2.2-alpha.3",
+      "0.2.1-alpha.1"
+    ],
+    "declaredHostRangeUnchanged": true,
+    "typecheck": {
+      "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+      "actualAlpha3Declarations": true,
+      "rootErrors": 0,
+      "clientErrors": 0,
+      "hostEmitErrors": 0,
+      "nonClientLibByteIdentical": true,
+      "nonClientLibFiles": 78,
+      "nonClientLibBytes": 1076365
+    },
+    "sourceSuite": {
+      "files": 95,
+      "total": 1151,
+      "passed": 1145,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6,
+      "durationMs": 128390.166751,
+      "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c"
+    },
+    "firstSourceAttempt": {
+      "total": 1146,
+      "passed": 1121,
+      "failed": 19,
+      "cancelled": 0,
+      "skipped": 6,
+      "cause": "Same-version hoisted local-prefix CLI root lacked nested node_modules paths directly required by legacy source-only SDK fixtures.",
+      "resolution": "Use an existing independent complete npm-global SDK root with identical manifest/native entry hashes and canonical Cordis identity; 5/5 focused probes and complete source suite passed without source/test/SDK changes."
+    },
+    "exactArchiveSuite": {
+      "files": 95,
+      "total": 1151,
+      "passed": 1145,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 6,
+      "durationMs": 127150.26813,
+      "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+      "acceptedArchiveParametersSupplied": true,
+      "sourceOnlySeamsRemainSourceTests": true,
+      "independentWorktreeAndHomes": true
+    },
+    "skipReasons": [
+      {
+        "count": 6,
+        "reason": "Native Client activation/browser-loader fixture assembly lacks the public @deepseek-ai/dsh-client-ui-slots package; not GUI acceptance."
+      }
+    ],
+    "pluginManager": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "packedNative": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "isolatedHeadless": [
+      {
+        "dsh": "0.2.2-alpha.3",
+        "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+        "archiveSha256": "519320adc5d311f661c8a8c5ed29f2557c7e6e759f587a5ce0c361d56ab99388",
+        "checkoutTarballReportsByteIdentical": true,
+        "channels": {
+          "beta": {
+            "count": 27,
+            "modelVisible": 11
+          },
+          "stable": {
+            "count": 27,
+            "modelVisible": 11
+          }
+        },
+        "freshHomes": true,
+        "homesRemoved": true,
+        "credentialFreeMountStops": 4,
+        "modelInvoked": false,
+        "webStarted": false
+      },
+      {
+        "dsh": "0.2.1-alpha.1",
+        "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+        "archiveSha256": "519320adc5d311f661c8a8c5ed29f2557c7e6e759f587a5ce0c361d56ab99388",
+        "checkoutTarballReportsByteIdentical": true,
+        "channels": {
+          "beta": {
+            "count": 27,
+            "modelVisible": 11
+          },
+          "stable": {
+            "count": 27,
+            "modelVisible": 11
+          }
+        },
+        "freshHomes": true,
+        "homesRemoved": true,
+        "credentialFreeMountStops": 4,
+        "modelInvoked": false,
+        "webStarted": false
+      }
+    ]
+  },
+  "renderingAndReview": {
+    "renderingSeam": "Built exported ObservedInputSummary + SessionObserver with actual React/ReactDOM/Happy DOM",
+    "newRegressionTests": {
+      "redFailures": 25,
+      "greenPasses": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    "handoffThreeClientFiles": {
+      "passed": 96,
+      "failed": 0,
+      "skipped": 0
+    },
+    "sessionMismatchRegression": true,
+    "triPartySessionIdentityFence": true,
+    "standards": {
+      "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+      "openHardViolations": 0,
+      "openHeuristics": 0,
+      "independentFinalRegressionPassed": 25
+    },
+    "spec": {
+      "sourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+      "openHardViolations": 0,
+      "scopeCreep": 0
+    },
+    "graphicalGuiAcceptance": false,
+    "narrowViewportPixelAcceptance": false,
+    "completeSameSourceRunningRosterAdded": false
+  },
+  "vendor": {
+    "sourceDistributionTag": "v0.3.1",
+    "upstreamRelease": "v1.3.2",
+    "channels": {
+      "beta": 27,
+      "stable": 27
+    },
+    "skills": 27,
+    "files": 85,
+    "bytes": 296048,
+    "rootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "unchanged": true
+  },
+  "publication": {
+    "sourcePushCompleted": true,
+    "atomicMainAndAnnotatedTag": true,
+    "forced": false,
+    "mainBefore": "f2d48a1cf99f69dbb07ae6104c3ec132302f3b06",
+    "mainSourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+    "mainEvidenceFollowupDocsOnly": true,
+    "tag": {
+      "name": "v0.12.0",
+      "object": "ee17611d25576421a7b927213f736920cbce9fbe",
+      "peeledCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c"
+    },
+    "oldTagsPreserved": true,
+    "previousReleaseAndFiveAssetsUnchanged": true,
+    "release": {
+      "id": 433617428,
+      "tag": "v0.12.0",
+      "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0",
+      "publishedAt": "2026-11-04T07:19:04Z",
+      "target": "012a01da9b8ab31de6e8137b4616d27c29d7d65c",
+      "draft": false,
+      "prerelease": false
+    },
+    "download": {
+      "assetCount": 5,
+      "allByteIdentical": true,
+      "allApiSizesAndDigestsMatch": true,
+      "allReadOnly": true,
+      "strictTarballPassed": true,
+      "strictSourceCommit": "012a01da9b8ab31de6e8137b4616d27c29d7d65c"
+    },
+    "assets": [
+      {
+        "id": 708621458,
+        "name": "lmgatex-dsh-mattpocock-skills-0.12.0.tgz",
+        "bytes": 511256,
+        "sha256": "519320adc5d311f661c8a8c5ed29f2557c7e6e759f587a5ce0c361d56ab99388",
+        "state": "uploaded",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.12.0/lmgatex-dsh-mattpocock-skills-0.12.0.tgz",
+        "downloadByteIdentical": true,
+        "downloadReadOnly": true
+      },
+      {
+        "id": 708621459,
+        "name": "lmgatex-dsh-mattpocock-skills-0.12.0.tgz.sha256",
+        "bytes": 107,
+        "sha256": "a6076c69ef6b44f2c462a90be6e66b663f143e649952a9d32b076a36f69a4cb6",
+        "state": "uploaded",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.12.0/lmgatex-dsh-mattpocock-skills-0.12.0.tgz.sha256",
+        "downloadByteIdentical": true,
+        "downloadReadOnly": true
+      },
+      {
+        "id": 708621455,
+        "name": "lmgatex-dsh-mattpocock-skills-0.12.0.tgz.size",
+        "bytes": 7,
+        "sha256": "e2b858d548044b5be79a4db01860ed761452d7fd6c66b0c11605f90ff4627198",
+        "state": "uploaded",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.12.0/lmgatex-dsh-mattpocock-skills-0.12.0.tgz.size",
+        "downloadByteIdentical": true,
+        "downloadReadOnly": true
+      },
+      {
+        "id": 708621460,
+        "name": "lmgatex-dsh-mattpocock-skills-0.12.0.tgz.source-commit",
+        "bytes": 41,
+        "sha256": "be675c33d0ff090b70e6bc8bd90d7c33a9ab3cc4029a0c1b858cc94c0fbf21b7",
+        "state": "uploaded",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.12.0/lmgatex-dsh-mattpocock-skills-0.12.0.tgz.source-commit",
+        "downloadByteIdentical": true,
+        "downloadReadOnly": true
+      },
+      {
+        "id": 708621457,
+        "name": "lmgatex-dsh-mattpocock-skills-0.12.0.tgz.pnpm-version",
+        "bytes": 7,
+        "sha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "state": "uploaded",
+        "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.12.0/lmgatex-dsh-mattpocock-skills-0.12.0.tgz.pnpm-version",
+        "downloadByteIdentical": true,
+        "downloadReadOnly": true
+      }
+    ]
+  },
+  "boundary": {
+    "currentProfileInstalled": false,
+    "sharedSdkModified": false,
+    "serviceRestarted": false,
+    "replacementWebServerStarted": false,
+    "npmPublished": false,
+    "currentPluginVersion": "0.10.2",
+    "currentDshVersion": "0.2.2-alpha.3",
+    "currentEnvironmentFingerprintsChecked": 5,
+    "currentEnvironmentFingerprintsUnchanged": true,
+    "existingWebListenerAndStartUnchanged": true,
+    "hostSpillCleanupPerformed": false
+  },
+  "worktreeDisposition": {
+    "taskCreatedTreesRetained": 7,
+    "purpose": "Audit and revalidation; branch/HEAD/clean and physical directory identity checked separately from authored retention notes.",
+    "physicalCleanupClaimed": false,
+    "originalDirtyCheckoutUntouched": true
+  },
+  "evidence": {
+    "rawMachinePathsAndLogsPublic": false,
+    "summaryIsNotIndependentCertification": true,
+    "sourceAndArtifactTestsDoNotProveLocalInstallationOrGraphicalGui": true
+  }
+}
