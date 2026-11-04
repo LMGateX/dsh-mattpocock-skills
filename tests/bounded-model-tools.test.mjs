@@ -278,6 +278,9 @@ test('all seven tools plus optional delegate and standalone audit bound direct a
     ['mattpocock_history',{action:'query',query:{kind:'workflow'}}],['mattpocock_worktree',{action:'read'}],
     ['mattpocock_delegate',{operationId:'surface-delegate',description:'One lane',prompt:'One task'}],['mattpocock_audit',{action:'read'}],
   ]
+  const auditDescription=f.ctx.tools.get('mattpocock_audit').description
+  assert.match(auditDescription,/\{action:"read"/u)
+  assert.doesNotMatch(auditDescription,/\bread=\{/u)
   const direct=new Map()
   for(const [name,request] of requests)direct.set(name,value(await f.execute(name,{request})))
   assert.equal(direct.get('mattpocock_resource').actualCanRetire.allowed,false)

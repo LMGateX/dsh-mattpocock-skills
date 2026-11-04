@@ -113,3 +113,20 @@ test('a nested worktree action names the received key and the expected shape', a
   assert.match(message, /worktree action required: received no action with request keys \["update-observation"\]/)
   assert.match(message, /expected one of .*"action":"update-observation","command"/)
 })
+
+test('model tool descriptions publish the top-level action requests they accept', async t => {
+  const f = await mountedFixture(t)
+  const description = name => f.ctx.tools.get(name).description
+  for (const name of FIXED_TOOLS) {
+    assert.doesNotMatch(description(name), /\b(?:read|save|apply)=\{/u,
+      name + ' must not describe a nested request-key envelope')
+  }
+  assert.match(description('mattpocock_controls'), /\{action:"read"/u)
+  assert.match(description('mattpocock_controls'), /\{action:"save"/u)
+  assert.match(description('mattpocock_record'), /\{action:"read"/u)
+  assert.match(description('mattpocock_record'), /\{action:"detail"/u)
+  assert.match(description('mattpocock_record'), /\{action:"apply"/u)
+  assert.match(description('mattpocock_history'), /\{action:"query"/u)
+  assert.match(description('mattpocock_history'), /\{action:"detail"/u)
+  assert.match(description('mattpocock_history'), /\{action:"purge-source"/u)
+})
