@@ -665,11 +665,11 @@ function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {
 }
 export function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
-  const view = observation.status === 'ready' && observation.value.sessionId === props.observer.sessionId ? observation.value : null
+  const view = observation.status === 'ready' && props.sessionId === props.observer.sessionId && observation.value.sessionId === props.sessionId ? observation.value : null
   const shown = view !== null && view.policy.display.inputSummary && props.observer.getDisplay()?.inputSummary !== false
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
-  const identity = JSON.stringify([props.observer.sessionId, shown, view?.instance.instrumentInstanceId, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
+  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance.instrumentInstanceId, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
     view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
   const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null }>(() => ({ identity, category: null }))
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
