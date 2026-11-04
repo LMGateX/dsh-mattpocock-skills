@@ -49,7 +49,7 @@
 
 ## 模型工具请求描述修正（0.10.2）
 
-0.10.2 是描述补丁：将 `mattpocock_controls`、`mattpocock_record`、`mattpocock_history` 与条件注册的 `mattpocock_audit` 的模型可见描述改为运行时实际接受的顶层 `{action:...}` 请求；`mattpocock_worktree` 不再暗示其 read 形状不接受可选 query。新增回归测试断言这些描述。运行时代码、已注册工具面、schema-2 DTO、vendor 字节与宿主版本声明均不变。[v0.10.2 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.2) 的同一精确五项资产已安装到当前 Web Profile（0.10.1 → 0.10.2）；当前 `dsh web` 进程未重启，不声称新进程已激活。
+0.10.2 是描述补丁：将 `mattpocock_controls`、`mattpocock_record`、`mattpocock_history` 与条件注册的 `mattpocock_audit` 的模型可见描述改为运行时实际接受的顶层 `{action:...}` 请求；`mattpocock_worktree` 不再暗示其 read 形状不接受可选 query。新增回归测试断言这些描述。运行时代码、已注册工具面、schema-2 DTO、vendor 字节与宿主版本声明均不变。[v0.10.2 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.2) 的同一精确五项资产已安装到当前 Web Profile（0.10.1 → 0.10.2），并已于 2026-11-04 12:21:58（+08:00）正常重启；新进程（PID 48436）已加载 0.10.2，工具与 Skill provider 复核通过。
 
 ## DSH 0.2.2-alpha.3 兼容复核（0.10.1）
 

@@ -192,7 +192,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 | D 发布 | 非 force push `main`、annotated `v0.10.2` 指向制品 source、新 Release 五项资产 | 远端 refs、tag object／peeled、下载 5/5 逐字节 |
 | E 安装 | 同一 tgz 安装到当前 Web Profile，记录旧/新包、Profile 与配置指纹 | 安装成功、版本/字节匹配；不自动重启 |
 
-实际结果：源码 95f7ed8 的 0.10.2 制品（501,481 B，SHA-256 `1cb5f0a4…`，184 成员）通过 strict 验包；双宿主源码与同一精确归档矩阵均为 **1087 项、1081 通过、0 失败、6 个 Client UI-slots skip**。`v0.10.2` 已 push/tag 并发布，五资产下载 5/5 逐字节一致；当前 Web Profile 已由 0.10.1 安装为 0.10.2，安装树与归档相同，Profile 配置的 `cordis.patch.yml` 未变。当前 `dsh web` 进程未重启（PID 6273、端口 3080 未变），运行进程仍加载旧版本；正常重启后的 GUI 生效需另行观察。
+实际结果：源码 95f7ed8 的 0.10.2 制品（501,481 B，SHA-256 `1cb5f0a4…`，184 成员）通过 strict 验包；双宿主源码与同一精确归档矩阵均为 **1087 项、1081 通过、0 失败、6 个 Client UI-slots skip**。`v0.10.2` 已 push/tag 并发布，五资产下载 5/5 逐字节一致；当前 Web Profile 已由 0.10.1 安装为 0.10.2，安装树与归档相同，Profile 配置的 `cordis.patch.yml` 未变。安装后 `dsh web` 于 2026-11-04 12:21:58 正常重启（新 PID 48436、端口 3080），新进程加载 0.10.2；controls／record／history／worktree 读取与 Skill provider 复核通过，未做浏览器截图、模型或 PTC 运行。
 
 边界：不升级本机 DSH、不 npm publish、不覆盖旧 tag／Release、不改共享 SDK 或宿主补丁、不清理旧 spill。安装不改写当前进程；正常重启后的 GUI 生效需另行观察。
 

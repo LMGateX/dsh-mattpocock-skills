@@ -160,8 +160,27 @@
     "sdkManifestSha256": "f50975cd7583415320289561127e38d7d0f3b7e112e99df118ccac5d2cb458af",
     "sdkManifestUnchanged": true,
     "backupRetained": true,
-    "restarted": false,
-    "runningProcessActivationVerified": false
+    "restarted": true,
+    "runningProcess": {
+      "pid": 48436,
+      "startedAt": "2026-11-04T12:21:58+08:00",
+      "port": 3080,
+      "dshVersion": "0.2.2-alpha.3",
+      "pluginVersion": "0.10.2",
+      "runtimeId": "e0326f50-882d-409b-b631-a0464ae7aba9",
+      "previousRuntimeId": "b3acb884-2095-4a27-88f4-e8d68d02e591"
+    },
+    "postRestartChecks": {
+      "controlsRead": true,
+      "recordRead": true,
+      "historyQuery": true,
+      "worktreeRead": true,
+      "skillProvider": "dsh-mattpocock-skills",
+      "skillName": "writing-for-agents",
+      "extensionEnabled": true,
+      "modelInvoked": false
+    },
+    "runningProcessActivationVerified": true
   },
   "boundaries": {
     "npmPublish": false,
