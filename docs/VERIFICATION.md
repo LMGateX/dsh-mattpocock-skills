@@ -30,7 +30,7 @@
 - 安装前插件 manifest SHA `ad4a0cbd3a4fedb8f870894f61b4620ae4236ab4fff36a887f20d051311efb3e`，安装后 `c7755ca8906a6da8cc36adb6fba87280527a72bf7d210887947b7e8bd40192b7`。
 - Profile `package.json` SHA 由 `a954f34aaf8562dd352886dc5cdbe5d662a758b854b2919663f384da6e45778e` 变为 `8ed9f0e454a677646d4c6d1853fda92c26a66f257e1dcfe498d6a75ab77110b0`；lockfile 由 `015533edfa6e543785705cf9c21092b94973396e00eeaba12bccbc7aa644cf5f` 变为 `2a16546cf85f13b5d137b5e6b07b5a9ec023ce51b52c3fb6697d353ad1e52995`。
 - `cordis.patch.yml` SHA 保持 `333940b68b81aa63b696e79392553bc24804524189e9f9a12f77c59f7c2f7cd0`；当前 DSH 为 **0.2.2-alpha.3**，SDK manifest SHA 保持 `f50975cd7583415320289561127e38d7d0f3b7e112e99df118ccac5d2cb458af`。
-- 旧 0.10.1 Profile／插件已私下备份。安装后 **2026-11-04 12:21:58 已正常重启** `dsh web`（新 PID 48436，端口 3080）；新进程加载 0.10.2，插件 runtime ID 由 `b3acb884…` 变为 `e0326f50…`。重启后 controls／record／history／worktree 读取与 `writing-for-agents` Skill provider 均通过；没有真实浏览器截图、模型或 PTC 运行。
+- 旧 0.10.1 Profile／插件已私下备份。安装后 **2026-11-04 12:21:58 已正常重启** `dsh web`（新 PID 48436，端口 3080）；新进程加载 0.10.2，插件 runtime ID 由 `b3acb884…` 变为 `e0326f50…`。重启后 controls／record／history／worktree 读取与 `writing-for-agents` Skill provider 均通过；实际注入的系统提示已包含新的顶层 `{action:...}` 描述。没有真实浏览器截图、模型或 PTC 运行。
 
 ### 边界
 

@@ -178,6 +178,7 @@
       "skillProvider": "dsh-mattpocock-skills",
       "skillName": "writing-for-agents",
       "extensionEnabled": true,
+      "toolDescriptionsCurrent": true,
       "modelInvoked": false
     },
     "runningProcessActivationVerified": true
