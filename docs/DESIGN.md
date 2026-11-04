@@ -12,11 +12,11 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 插件读取路径性能优化（2026-11-04，所有者认可；0.11.0 设计固定、待实施）
+## 插件读取路径性能优化（2026-11-04，所有者认可；0.11.0 已实施、待统一验收）
 
 权威实施与验收契约见 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>)：线性业务历史投影/精确版本索引、Host 私有紧凑身份事实复用、完整 Remote 表示与 current-facts 消费减负。保持历史、来源/授权/撤权、FIFO、持久提交 frontier、工具/Remote wire 与存储格式；不凭任意 frozen/retained 绕过校验，不以 UI summary 替代真实消费。该增量允许在内部将当前消费和必要历史补捕获分离，不改变模型有界 DTO 或完整编辑/历史 Interface。
 
-所有者授权先固定文档，再由 subagents 在隔离工作树实施、测试、push 与新 GitHub Release，目标 0.11.0；本节当前仅记录设计固定，不声称实现或验收完成。**暂不为本机安装**，不改当前 Profile/共享 SDK、不重启服务、不 npm publish，不处理原生列表/Forge/宿主 spill/GC。
+所有者授权先固定文档，再由 subagents 在隔离工作树实施、测试、push 与新 GitHub Release，目标 0.11.0；三个隔离切片已合入，源实现与 Host/Client 闭合构建已完成；双轴复核、全量与精确制品/发布尚待统一验收，不把切片测试当最终交付。**暂不为本机安装**，不改当前 Profile/共享 SDK、不重启服务、不 npm publish，不处理原生列表/Forge/宿主 spill/GC。
 
 ## 仪器事实边界与恢复（2026-11-04，所有者认可；0.9.0 已实施并验证）
 

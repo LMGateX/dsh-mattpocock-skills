@@ -1,6 +1,6 @@
 import type { InstrumentInstance } from './state.js';
 import type { EffectivePolicy } from './policy.js';
-import type { InstrumentSnapshot } from './instruments.js';
+import type { InstrumentSnapshot, InstrumentCurrentSnapshot } from './instruments.js';
 import type { WindowSnapshot } from './windows.js';
 import type { ResourceView } from './resources.js';
 import type { WorktreeBindingCurrent } from './worktree-bindings.js';
@@ -25,7 +25,7 @@ export interface ConsumptionSnapshot {
     readonly sessionId: string;
     readonly instance: InstrumentInstance;
     readonly policy: EffectivePolicy;
-    readonly records: InstrumentSnapshot | null;
+    readonly records: InstrumentSnapshot | InstrumentCurrentSnapshot | null;
     readonly windows: WindowSnapshot | null;
     readonly resources: readonly ResourceView[];
     /** Re-established native count provenance; null means no window facts were read. */

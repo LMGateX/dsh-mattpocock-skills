@@ -4,6 +4,49 @@
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
+## 0.11.0 插件读取路径性能优化（2026-11-04，隔离源实现完成，统一验收中）
+
+本轮先提交 [性能设计/验收契约](<PERFORMANCE_READ_PATHS.md>)（c90af64），再由三个独立 subagent/worktree 实施并提交；集成引用为 A a67dd00、C 29c66a1、B 448f0bb。当前只报告源实现/切片验证，双轴复核、全量套件、唯一制品、push/Release/下载回验尚未完成。当前本机仍保留原安装；本轮不安装当前 Profile、不改共享 SDK、不重启服务、不 npm publish、不连接生产日志或 GUI/模型/PTC。
+
+### 实现与可复核 seams
+
+- A：[历史 builder/源验证](<../src/controls/instrument-state.ts>)、[完整投影/版本索引](<../src/controls/instruments.ts>)；[增长与语义回归](<../tests/instrument-projection-performance.test.mjs>) 从真实 source seam 计数数组遍历/历史查找，不反射私有 Map。500/1000/2000/4000 版本的 cold 投影 array steps 为 6534/13034/26034/52034；500 版本旧值 131284。V2 1000 实体校验旧 505506 个搜索候选，现 3006。精确 historical merged value ACL、checkpoint+tail COW、不可变 pure state 复用、浅 frozen 可变源拒绝/健康/撤权有回归；current Interface 未变。
+- B：[Host 私有身份事实](<../src/host.ts>)、[真实 authority/Runtime/公开 SessionQuery 回归](<../tests/performance-host-identity.test.mjs>)；cache 只含紧凑 hasDescriptor/header/token，cold/live 各最多 64，live 对实际 Session/Agent 用 WeakRef+seq，不保留事件数组。两个独立公开宿主 0.2.1-alpha.1 与 0.2.2-alpha.3 的真实 JSONL 4002 事件探针均证明公开 source token 可用：首次 1 observation、热 known-version 新增 0、flush 追加后新增 1，不激活 Session；按能力而非版本开启。缺 stat/identity/observation revision 的四类组合仍保守观察，可能比旧 TTL small-log 路径观察更多，不声称所有组合都提速。当前 stat/lease、畸形 descriptor、缺 parent、显式 stale revision、继承/retained、深链/cycle、source/header/Agent 替换、授权/撤权/OFF 和取消均覆盖。
+- C：[Remote 严格表示](<../src/controls/remote-contract.ts>)、[current-facts 消费与捕获](<../src/runtime.ts>)、[formatter](<../src/controls/consumption.ts>)、[上下文索引](<../src/controls/history.ts>)；[mounted Remote](<../tests/performance-remote.test.mjs>)、[真实 Runtime preStep/postExecute](<../tests/performance-runtime.test.mjs>) 与 [context/purge/suppression](<../tests/performance-consumption.test.mjs>) 是回归 seams。严格全图验证同时证明不可变才复用 detached/frozen wire，普通 parseHostJson 保持总验证。热消费读 current/provenance，首次/变更/失败仍补捕获；每实例最多 64 个成功 consumer token，交替 owner/child 场景 full reads 8→2，assignment 撤销后再捕获。failed-open 仅驱逐仍匹配的拒绝 promise；成功后继 handle 保留，已打开 uncertain latch 不自动重开。未拆 FIFO、延长 timeout 或削弱持久 frontier/原生物理义务。
+
+### 独立切片合成基准（不是生产 SLA）
+
+基线代码为 c90af64（运行时等同 0.10.2），Node 24.17.0。A 为真实 SessionInstruments/Domain adapter/短正文、每点 5 样本中位数；测量源内容与 A 集成一致，不含序列化。
+
+| H 个 decision 版本 | full read 前→后 ms | 真正非 memo cold project 前→后 ms |
+|---:|---:|---:|
+| 500 | 9.194→1.547 | 1.610→1.309 |
+| 1000 | 34.419→2.742 | 3.708→1.734 |
+| 2000 | 129.031→5.000 | 9.878→3.470 |
+| 4000 | 463.316→9.588 | 31.194→6.755 |
+
+固定 H=2000/N=1000 的 full read 为 99.971→7.587ms。4000 版本的结构/多语长正文形状约 15.856–19.965ms（不含 stringify），未声称所有 workflow 重定义/cleanup 证明形状都严格 O(E)。pure state 按源寿命保留 O(H+N) 图；4000 版本单实体相对 normalized source 增加约 8011 对象、6 数组、4000 slots，是结构计数而非 RSS 字节或泄漏结论。candidate 预校验与 normalize parse 仍可分别构建，不声称不同 mutable 对象共享投影。
+
+C 为实际 mounted Typert Remote+Runtime，hot 7 样本，强制 freshness 失效每点也 7 次；该切片基准未合入 A，以下不当作合并后重新测量或与 A 时间相加。
+
+| H / 短正文 | Remote hot 前→后 ms | 每次强制重建 current 消费 前→后 ms |
+|---:|---:|---:|
+| 100 | 3.362→0.326 | 4.341→2.691 |
+| 500 | 13.480→0.283 | 13.386→2.021 |
+| 1000 | 28.205→0.233 | 38.932→2.376 |
+| 2000 | 58.650→0.264 | 145.269→2.356 |
+
+七次强制热重建的 full-history reads 均 7→0，Remote 同 wire 表示 identity 命中 0/7→7/7；100×32768 chars 形状分别 2.908→0.278ms / 3.457→2.492ms。fresh 完整 Remote 仍支付完整构造/验证成本（2000 版本 201.948→203.271ms），source change 仍全捕获，单次数据不作稳定改善声明。WeakMap 额外驻留一份 wire graph，2000 版本 source DAG 14066 节点→detached 18073 节点，wire 约 1.614MB；长正文约 6.645MB，没有巨型字符串缓存。未将图结构计数、GC 或计时推断成内存泄漏/现场 CPU 归因。
+
+### 已运行切片门禁与当前边界
+
+- A 最终显式 SDK source seam 定向 75/75，含真实存储 write/reopen、CAS、uncertain/purge；strict tsc 通过。
+- B 两个独立宿主各 68/68、0 skip，实际 JSONL probe 包含在回归；baseline 与 alpha.3 声明均 0 diagnostics。
+- C 定向 137 项 135 pass/2 skip（未设 HOST_ROOT 的 native history probes）；显式 alpha.3 定向 20/20、零 skip，实际补测这两项。
+- 主 lane 已独立重跑 A current/projection 13/13、summary 9/9、A+C Runtime/Remote/consumer 43/43；这些不是全量验收计数。
+- 合并后 Host build、Client noEmit、闭合浏览器 build 通过；Client 283100 B / 8 私有模块，仅 React 与公开 UI primitives external。完整 source/lib scratch、vendor 与唯一归档门禁尚待运行。
+- 原始日志、机器路径与样本仅在本地保留；此页是公开安全摘要，不把缺少公开原始证明的计时写成独立认证。公开测试可复跑行为/工作量，且 fixture/对照失败与真实产品 RED 已区分。
+
 ## 0.10.2 模型工具请求描述修正与安装（2026-11-04，已发布/已安装/未重启）
 
 0.10.2 继承 0.10.1，只修正模型工具请求描述，并增加描述契约回归；运行时代码、已注册工具面、schema-2 DTO、vendor 与 `engines.dsh` 不变。详细设计边界见 [DESIGN.md](<DESIGN.md>) 的同名节，实施记录见 [IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>)。

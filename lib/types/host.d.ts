@@ -323,6 +323,7 @@ export declare class MattPocockControlsService extends TypertRemoteService {
     private readonly supervision;
     private readonly startup;
     private readonly lifecycle;
+    private readonly sessionRepresentation;
     constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, supervision: VersionedStorage<SupervisionConfigSnapshot>, startup: StartupSupport, lifecycle: {
         readonly signal: AbortSignal;
         track<T>(work: () => Promise<T>): Promise<T>;

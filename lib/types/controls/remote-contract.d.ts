@@ -193,8 +193,12 @@ export interface ControlsRemote {
     historyAction(sessionId: string, request: HostJson, signal?: AbortSignal): Promise<HostJson>;
     worktreeAction(sessionId: string, request: HostJson): Promise<HostJson>;
 }
-/** A complete lossless JSON boundary, not JSON.stringify-based repair. */
 export declare function parseHostJson(value: unknown): HostJson;
+/** Mount-local, weakly keyed representation cache. Only the strict validator above can
+ * establish eligibility; a frozen root with mutable descendants never enters the cache.
+ * One detached graph (no serialized string) lives at most as long as its source key.
+ * Ordinary parseHostJson calls deliberately retain their validate-and-detach semantics. */
+export declare function createHostJsonRepresentation(): (value: unknown) => HostJson;
 export declare function parsePolicyGrants(value: unknown): PolicyGrants;
 /** Browser-safe equivalent of the window business command boundary, never execution receipts. */
 export declare function parseRemoteTicketWindow(value: unknown): TicketWindowCommand;
