@@ -4,9 +4,9 @@
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
-## 0.11.0 插件读取路径性能优化（2026-11-04，隔离源实现完成，统一验收中）
+## 0.11.0 插件读取路径性能优化（2026-11-04，源码与双轴验收完成，唯一制品/发布待验收）
 
-本轮先提交 [性能设计/验收契约](<PERFORMANCE_READ_PATHS.md>)（c90af64），再由三个独立 subagent/worktree 实施并提交；集成引用为 A a67dd00、C 29c66a1、B 448f0bb。当前只报告源实现/切片验证，双轴复核、全量套件、唯一制品、push/Release/下载回验尚未完成。当前本机仍保留原安装；本轮不安装当前 Profile、不改共享 SDK、不重启服务、不 npm publish、不连接生产日志或 GUI/模型/PTC。
+本轮先提交 [性能设计/验收契约](<PERFORMANCE_READ_PATHS.md>)（c90af64），再由三个独立 subagent/worktree 实施并提交；集成引用为 A a67dd00、C 29c66a1、B 448f0bb。源码候选 ae23da4 已通过主 lane 全量与独立 Standards/Spec 双轴复核；唯一制品、push/Release/下载回验尚未完成。后续 source 冻结前只更新文档状态，运行时/生成物/测试/打包元数据不变。当前本机仍保留原安装；本轮不安装当前 Profile、不改共享 SDK、不重启服务、不 npm publish、不连接生产日志或 GUI/模型/PTC。
 
 ### 实现与可复核 seams
 
@@ -46,6 +46,18 @@ C 为实际 mounted Typert Remote+Runtime，hot 7 样本，强制 freshness 失�
 - 主 lane 已独立重跑 A current/projection 13/13、summary 9/9、A+C Runtime/Remote/consumer 43/43；这些不是全量验收计数。
 - 合并后 Host build、Client noEmit、闭合浏览器 build 通过；Client 283100 B / 8 私有模块，仅 React 与公开 UI primitives external。完整 source/lib scratch、vendor 与唯一归档门禁尚待运行。
 - 原始日志、机器路径与样本仅在本地保留；此页是公开安全摘要，不把缺少公开原始证明的计时写成独立认证。公开测试可复跑行为/工作量，且 fixture/对照失败与真实产品 RED 已区分。
+
+### 合并候选重测与 D 阶段验收
+
+主 lane 在合并三个切片的 929c5da 以显式 alpha.3 SDK 独立复跑同一 mounted benchmark（7 hot / 3 fresh samples）。H=100/500/1000/2000 的 Remote hot 中位数为 0.557/0.341/0.435/0.434ms，强制 current rebuild 为 3.836/2.987/3.177/2.749ms；每点 full-history reads 0、表示复用 7/7。2000 版本 fresh full 仍 64.537ms，真实 source change 单次 258.547ms，不承诺这两项为零或稳定提速；其余 wire 内容/长度/equality 断言均通过。此为整合候选复测，不与切片时间相加、不当源源码最终 SHA、RPC 网络序列化、GUI/模型验收或现场 CPU/RSS 归因；其后仅能力 guard/测试迁移与共享 context 私有规则收敛，不变更优化契约。
+
+D 最终代码候选 **ae23da4a3f96cccac787c7abcb3b2ab0c8910e8e**，工作树 clean：
+
+- 主 lane 全量 source：**94 文件，1126 项，1120 pass / 0 fail / 0 cancel / 6 skip**，Node 24.17.0，canonical 0.2.2-alpha.3 + 独立 compatibility 0.2.1-alpha.1，固定 distribution source。六项 skip 均为 Native Client activation/browser-loader fixture 无公开 UI slots 包，不冒称 GUI 通过。性能 source-only seams 不冒称全都直读归档。
+- 首次 source gate 的 7 项失败已诊断：三个真实 native inbox/steer/startup 路径暴露 partial Sessions 缺 get 的新适配回归；四项是已被新契约替代的 public full-array TTL/identity/singleflight 断言。隔离 follow-up 88118e4（原 9bf8b7a）加能力 guard，并将八项测试完整迁移到源码 seam 的当前 header/完整 owned suffix/继承隔离/冻结/独立取消/lease 释放语义，未恢复大数组缓存；两个真实宿主定向各 103/103、零 skip。随后本节全量重新通过，不抹除早先失败。
+- 初次 Standards 唯一 P3 为 activeContext 复制 inContext 领域规则，隔离 c064ddc（原 ad47360）合一并保留 Map O(1)；Spec 独立复现上述可选能力回归。最终双轴针对 929c5da…ae23da4 窄 diff 均确认关闭、无新增未关闭发现；Spec 同一反例回退成功，完整 facts/context 定向 9/9。
+- baseline Host/Client 严格构建与闭合 Client 通过；独立 alpha.3 声明 root/client 均 **0 diagnostics**，78/78 非 Client 生成物逐字节一致；strict --prepack 通过，80 闭合 build / 99 固定 files / 85 vendor / 19 exports，Client 283100 B / 8 私有模块。vendor 296048 B、SHA-256 70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8，beta/stable 各 27 Skills 不变。
+- 目前 E/F 尚未完成：不把 prepack 当唯一归档签收、不把评审/源码测试当 push 或 Release 收据。安装当前 Profile、修改共享 SDK、服务重启、npm publish 仍不在授权内。
 
 ## 0.10.2 模型工具请求描述修正与安装（2026-11-04，已发布/已安装/未重启）
 
