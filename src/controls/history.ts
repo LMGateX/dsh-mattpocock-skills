@@ -125,11 +125,10 @@ function latest(rows: readonly HistoryRow[]): readonly HistoryRow[] {
   for(const row of rows) {const prior=map.get(entity(row));if(!prior || prior.sourceDomain!==row.sourceDomain || row.version>=prior.version) map.set(entity(row),row)}
   return [...map.values()]
 }
-function inContext(row: HistoryRow, contexts: readonly HistoryContext[]): boolean {
+function inContext(row: HistoryRow, included: (key: string) => boolean | undefined): boolean {
   if(row.kind==='worktree' || row.kind==='worktrees') return !row.flags?.cleanedWorktree
   if(row.purged) return false
-  const context=contexts.find(c=>entity(c)===entity(row))
-  return context?.included ?? !row.flags?.done
+  return included(entity(row)) ?? !row.flags?.done
 }
 function identity(value: HistoryObservation | HistoryRow): string { return JSON.stringify([value.kind,value.recordId,value.version,'sourceDomain' in value ? value.sourceDomain : value.source.domain]) }
 function suppressionKey(value: {readonly kind:string;readonly recordId:string;readonly sourceDomain:string}): string {return JSON.stringify([value.kind,value.recordId,value.sourceDomain])}
@@ -235,8 +234,8 @@ export class SessionHistory {
     const d=await this.load(), cached=activeContexts.get(d)
     if(cached!==undefined)return cached
     const contexts=new Map(d.contexts.map(context=>[entity(context),context.included]))
-    const current=freeze(latest(d.rows).filter(row=>row.kind==='worktree'||row.kind==='worktrees'
-      ?!row.flags?.cleanedWorktree:!row.purged&&(contexts.get(entity(row))??!row.flags?.done))
+    const included=(key:string)=>contexts.get(key)
+    const current=freeze(latest(d.rows).filter(row=>inContext(row,included))
       .map(({snapshot:_snapshot,...summary})=>summary))
     activeContexts.set(d,current)
     return current
@@ -257,7 +256,8 @@ export class SessionHistory {
       } else {
         if(action.historyIds?.some(historyId=>!d.rows.some(row=>row.historyId===historyId))) invalid('purge explicit historyId is not recorded')
         if(action.range && action.range.toSequence>d.rows.length) invalid('purge range exceeds recorded history')
-        const active=new Set(latest(d.rows).filter(row=>inContext({...row,purged:false},d.contexts)).map(entity))
+        const included=(key:string)=>d.contexts.find(context=>entity(context)===key)?.included
+        const active=new Set(latest(d.rows).filter(row=>inContext({...row,purged:false},included)).map(entity))
         const targets=d.rows.filter(row=>!row.purged && (action.historyIds?.includes(row.historyId) || action.range && row.sequence>=action.range.fromSequence && row.sequence<=action.range.toSequence) && (!action.archivedOnly || !active.has(entity(row))))
         if(targets.length===0) return freeze({revision:d.revision,operation:null})
         const ids=new Set(targets.map(row=>row.historyId)), high=new Map(d.suppression.map(s=>[suppressionKey(s),s]))
