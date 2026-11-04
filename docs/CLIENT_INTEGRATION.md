@@ -57,9 +57,9 @@ Inspected SDK artifact contracts (package-relative locators, not public source-f
 - Native openTab has no background/no-focus mode; it selects and expands. Local sidebar layout persistence is not a business ledger.
 - Ordinary chat messages are not rewritten. In 0.9.0 the seven default fixed tools, the opt-in mattpocock_delegate and conditional mattpocock_audit get source cards (the 0.6.0 release had nine fixed tools including the now-removed mattpocock_execute; historical result cards remain readable). The client retains nine wire keys for opt-in/historical delegate; that is presentation support, not default model registration. They use the DSH baseline DisclosureRow with a collapsed English wire name and action/target summary; expanded input/output use CodeBlock, and the preserved raw public argsRaw/content/error/meta record uses JsonBlock. Preparing/start/result are distinguished; public fields are preserved without serializing lazy argument-reader internals. The expanded body is capped at 360px. The 0.2.2-only DisclosureRow.headerAccessory is not used, so 0.2.1-alpha.1 remains supported. Disabling timeline annotation still preserves the actual Tool record.
 
-## 0.12.0 输入区摘要增量（已认可，待实施）
+## 0.12.0 输入区摘要增量（源码已合入，验收进行中）
 
-[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 收窄下方旧“整个摘要 96px 滚动”布局：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。本文旧段在实施后更新；当前文档固定不代表源码/GUI 已变化。
+[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 已在客户端实施：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。独立真实 React/Happy DOM 回归从旧版 pendingUser=3 / awaiting=2 缺失建立 RED，候选 GREEN、双轴复核、精确制品和发布分别验收；源码合入不代表当前 GUI 已变化，也不授权本机安装。
 
 ## 配置页分区、中文文案与保存语义
 
@@ -72,7 +72,7 @@ Inspected SDK artifact contracts (package-relative locators, not public source-f
 
 “保存下次启动请求”仅写启动文档，“保存并应用配置”仅写协作策略；两者分别使用各自读取到的修订，不互相借用。启动启用仍需实际 SDK 支持和真正的进程重启；保存不会修改运行中的 SDK。固定界面文本中文化不翻译任务自定义状态、真实标识符、命令参数或原始程序诊断，后者作为技术数据保留。
 
-配置卡片采用可换行的响应式网格与操作条。输入区摘要的盒子通过宿主 composer 宽度／边距变量和回退值居中，内部文本居中、长名称换行，并保留 96px 最大高度与纵向滚动。工作流行按最近活动（工作流定义或任一票的最新修订）倒序；右侧详情入口开启时最多展开两个工作流，其余折叠为一行「其余 N 个工作流 · 查看详情」，按钮只在用户点击时打开既有详情标签。右侧入口关闭时不折叠，保留全部行，避免摘要把数据变成不可达。没有票的工作流显示「暂无票」，不铺开全零状态计数。以上仅为当前投影的显示排序和折叠，不删除记录、不改变状态定义、计数、权限或 T/S 语义。工具卡默认折叠为一行，展开体上限 360px；输入/输出使用 CodeBlock，原始记录在 JsonBlock 中二级展开；它只约束自身宽度和换行，不接管原生会话布局。紧凑标题入口保留宽度上限，避免挤占会话标题。原生装饰与 dock 的显示条件保持不变。
+配置卡片采用可换行的响应式网格与操作条。输入区摘要通过宿主 composer 宽度／边距变量和回退值居中，长名称换行；只有工作流进度区保留 96px 最大高度与纵向滚动，常驻裁决/T/S 提醒在该区之外，单类别就地详情另设 min(320px,35vh) 高度上限和滚动。工作流行按最近活动（工作流定义或任一票的最新修订）倒序；右侧详情入口开启时最多展开两个工作流，其余折叠为一行「其余 N 个工作流 · 查看详情」，按钮只在用户点击时打开既有详情标签。右侧入口关闭时不折叠，保留全部行，避免摘要把数据变成不可达。没有票的工作流显示「暂无票」；有票时紧凑行统一省略任意已知零值状态，全部为零给出诚实空态，未知不伪装零。T 就地详情的二级区保留完整状态定义/计数（含零值）。四类文字按钮可键盘访问，使用 aria-expanded/aria-controls；刷新不自动展开/切换或抢焦点，身份、显示和读取健康改变时清掉旧选择。查看只读，不写已读/裁决或触发模型。以上仅为当前投影的显示排序和折叠，不删除记录、不改变状态定义、计数、权限或 T/S 语义。工具卡默认折叠为一行，展开体上限 360px；输入/输出使用 CodeBlock，原始记录在 JsonBlock 中二级展开；它只约束自身宽度和换行，不接管原生会话布局。紧凑标题入口保留宽度上限，避免挤占会话标题。原生装饰与 dock 的显示条件保持不变。
 
 ## Settings and explicit writes
 
