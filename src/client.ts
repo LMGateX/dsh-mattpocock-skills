@@ -431,6 +431,9 @@ export function nativeExecutionText(row: NativeExecutionView): string {
     + (row.lane.ticketIds.length === 0 ? '' : '/' + row.lane.ticketIds.join(','))
   return row.sessionId + ' · ' + row.state + outcome + ' · 活动 ' + row.activity + headerCwd + lane
 }
+function hasKnownNativeRunningTotal(windows: WindowSnapshot): boolean {
+  return windows.S.countKnown === true && windows.capability === 'cooperative'
+}
 export function windowSummary(windows: WindowSnapshot | null, health: ClientSessionSnapshot['health'] = []): readonly string[] {
   if (windows === null || health.some(row => row.scope === 'windows' && row.status === 'unknown')) return ['T 未知', 'S 未知']
   const signed = (value: unknown): string => typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '未知'
@@ -444,7 +447,7 @@ export function windowSummary(windows: WindowSnapshot | null, health: ClientSess
     return '（直接 ' + countText(depth.direct) + ' · 更深 ' + countText(depth.deeper)
       + (depth.unknown === 0 ? '' : ' · 深度未知 ' + countText(depth.unknown)) + '）'
   }
-  const knownS = windows.S.countKnown === true && windows.capability === 'cooperative'
+  const knownS = hasKnownNativeRunningTotal(windows)
   const S = knownS ? 'S ' + countText(windows.S.used) + depthText(windows.S) + reference(windows.S)
     : 'S 在跑 ' + countText(windows.S.used) + depthText(windows.S) + reference(windows.S) + '（下界） · 总数未知'
   return [T, S]
@@ -654,7 +657,7 @@ function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {
   const rows = failure !== null || assigned || !Array.isArray(view.nativeExecutions) ? null : view.nativeExecutions.filter(row => row.activity === 'running')
   return h('div', null,
     windows === null ? diagnostic('宿主在跑数未知：' + (inputReadFailure(view, 'windows') ?? '未返回窗口'))
-      : diagnostic('宿主在跑数：' + countText(windows.S.used) + (windows.S.countKnown === true && windows.capability === 'cooperative' ? '' : '（已知下界；总数未知）') + (windows.S.countReason ? ' · ' + windows.S.countReason : '')),
+      : diagnostic('宿主在跑数：' + countText(windows.S.used) + (hasKnownNativeRunningTotal(windows) ? '' : '（已知下界；总数未知）') + (windows.S.countReason ? ' · ' + windows.S.countReason : '')),
     diagnostic('本次可观测在跑明细：' + (rows === null ? '未知/受限' : rows.length + ' 条') + '；最近原生观测快照默认最多 64 行，明细可能不完整，即使条数相等也不代表完整在跑名册。租约仅作审计，不是实时名册。'),
     rows === null ? diagnostic('原生明细' + (failure ?? (assigned ? '受限：仅 owner 协调者可读取，不展示 sibling。' : '未知：未返回 nativeExecutions。')))
       : rows.length === 0 ? diagnostic('本次未返回 activity=running 的可观测记录，不代表没有在跑子代理。')
@@ -692,7 +695,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const windowEntrance = (category: 'T' | 'S'): ReactElement => {
     const usage = windows?.[category]
     const depth = category === 'S' ? windows?.S.depth : null
-    const unknownTotal = category === 'S' && windows !== null && !(windows.S.countKnown === true && windows.capability === 'cooperative')
+    const unknownTotal = category === 'S' && windows !== null && !(hasKnownNativeRunningTotal(windows))
     return h('span', { key: category, style: { color: 'inherit' } }, entrance(category, category + ' ' + (usage === undefined ? '未知' : countText(usage.used) + '/' + capacityText(usage.capacity))),
       unknownTotal ? '（下界；总数未知）' : null,
       depth == null ? null : '（直接 ' + countText(depth.direct) + ' · 更深 ' + countText(depth.deeper) + (depth.unknown === 0 ? '' : ' · 深度未知 ' + countText(depth.unknown)) + '）',
