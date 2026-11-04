@@ -54,6 +54,10 @@ Compatibility notes for the currently inspected local DSH implementation (not a 
 
 See the [thin-adapter scope](docs/ADAPTER_SCOPE.md), [evidence-based compatibility inventory](docs/COMPATIBILITY.md), and [host compatibility record](docs/HOST_COMPATIBILITY.md) (Chinese). These notes neither rewrite upstream bodies or historical campaign results nor lift activation/release gates.
 
+## Model tool request-shape correction (0.10.2)
+
+0.10.2 is a description-only patch. The model-facing descriptions for `mattpocock_controls`, `mattpocock_record`, `mattpocock_history` and the conditional `mattpocock_audit` now publish the top-level `{action:...}` requests the runtime already accepts; the `mattpocock_worktree` wording no longer implies its read shape excludes an optional query. Regression tests assert those descriptions. Runtime code, the registered tool set, schema-2 DTOs, vendor bytes and the declared host range are unchanged. The same exact artifact is intended for pinning, Release and installation into the current Web profile; a running process must be restarted before it loads the installed package.
+
 ## DSH 0.2.2-alpha.3 compatibility revalidation (0.10.1)
 
 0.10.1 is a compatibility-only patch. It records the revalidation against DSH `0.2.2-alpha.3` without changing runtime code, the tool surface, the schema-2 DTOs, vendor bytes or the declared host range. The alpha.3 type set compiles both the root and Client builds, and the full suite reports 1077 passed and 0 failed; the published 0.10.0 artifact was also installed in an isolated headless profile with 27 Skills and 11 model-visible Skills. See the [host compatibility record](docs/HOST_COMPATIBILITY.md). The [v0.10.1 release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.1) was installed into the current Web profile with a retained 0.6.0 backup. The running `dsh web` process was not restarted; fresh-process activation of the installed version is not claimed.

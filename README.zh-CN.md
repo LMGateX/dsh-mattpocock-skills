@@ -47,6 +47,10 @@
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
+## 模型工具请求描述修正（0.10.2）
+
+0.10.2 是描述补丁：将 `mattpocock_controls`、`mattpocock_record`、`mattpocock_history` 与条件注册的 `mattpocock_audit` 的模型可见描述改为运行时实际接受的顶层 `{action:...}` 请求；`mattpocock_worktree` 不再暗示其 read 形状不接受可选 query。新增回归测试断言这些描述。运行时代码、已注册工具面、schema-2 DTO、vendor 字节与宿主版本声明均不变。同一精确制品用于 tag、Release 与当前 Web Profile 安装；运行中的进程需要正常重启后才能加载新安装的包。
+
 ## DSH 0.2.2-alpha.3 兼容复核（0.10.1）
 
 0.10.1 是兼容性补丁：记录对 DSH `0.2.2-alpha.3` 的复核，不修改运行时代码、工具面、schema-2 DTO、vendor 字节或宿主版本声明。alpha.3 类型集下根与 Client 均可编译，全量套件 1077 通过、0 失败；已发布的 0.10.0 制品也已在隔离 headless profile 中安装并暴露 27 个 Skills、11 个模型可见。详见[宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。[v0.10.1 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.1) 已安装到当前 Web Profile，并保留了 0.6.0 备份；当前 `dsh web` 进程未重启，不声称新进程已激活该版本。

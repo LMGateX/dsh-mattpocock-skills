@@ -40,6 +40,12 @@ This document is the authoritative implementation contract. A later implementati
 
 所有者已明确指示 push、发版并安装。0.10.1 的同一精确制品已于 2026-11-04 安装到当前 Web Profile；安装没有自动重启当前服务，也不等于当前运行进程已加载新版本。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。`main`、annotated tag、GitHub Release 和五资产绑定同一 clean-source 与唯一制品；旧 tag/Release 未移动或覆盖。实际发布、下载与安装结果见 [VERIFICATION.md](<VERIFICATION.md>)；当前 GUI 的实际生效仍需正常重启后另行观察。
 
+## 0.10.2 模型工具请求描述修正（2026-11-04，所有者指示）
+
+本节记录 0.10.2 的窄范围补丁，不改写 0.10.1 的兼容验收。模型工具描述曾把 `mattpocock_controls`、`mattpocock_record` 与 `mattpocock_audit` 的请求写成嵌套的 `read={...}`/`save={...}`/`apply={...}`，而实际解析器接受顶层 `{action:...}`；`mattpocock_history` 的描述也未明确 action，`mattpocock_worktree` 的 “exactly” 措辞与可选 query 冲突。0.10.2 只修正这些模型可见文本，并增加描述契约回归；运行时代码、注册工具面、schema-2 DTO、vendor 字节与 `engines.dsh` 不变。
+
+所有者已明确指示 push、发版并安装。同一精确制品用于 annotated tag、GitHub Release 和当前 Web Profile 安装；安装不自动重启服务，也不等于运行进程已加载。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。实际发布、下载与安装结果见 [VERIFICATION.md](<VERIFICATION.md>)。
+
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 
 本节收窄 2026-10-06 的执行包装、2026-10-09 的插件 cwd 派发默认用法和 2026-10-13 的 `mattpocock_delegate.worktree` 默认派发用法；强绑定 lane 仍由 delegate 写 binding，T/S、票与裁决、工作树绑定/观测、历史与通知语义不变。delegate 的默认注册已在 0.8.0 关闭，见下节。详细设计与迁移见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>)。

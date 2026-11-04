@@ -180,6 +180,20 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 
 边界：不升级本机 DSH、不 npm publish、不覆盖旧 tag／Release、不改共享 SDK 或宿主补丁、不清理旧 spill。
 
+## 0.10.2 模型工具请求描述修正（2026-11-04，所有者指示；进行中）
+
+接受范围：修正 `mattpocock_controls`、`mattpocock_record`、`mattpocock_history`、`mattpocock_audit` 与 `mattpocock_worktree` 的模型可见请求描述，使其与实际顶层 `{action:...}` 解析一致；增加描述契约回归。版本升为 0.10.2，构建并验证唯一精确制品，push `main`、新建 annotated `v0.10.2`、创建 GitHub Release，并把同一制品安装进当前 Web Profile。运行时代码、工具面、DTO、vendor、宿主兼容声明和 `engines.dsh` 不变。
+
+| 阶段 | 内容 | 门禁 |
+|---|---|---|
+| A 源码版本 | `package.json` 升为 0.10.2，同步 verifier／scaffold／package-artifact／plugin-manager 的当前版本断言 | 定向 tests 与 `validatePackagePolicy` |
+| B 构建与回归 | 严格 Host 编译、Client noEmit；alpha.3 全量源码套件与描述回归 | 0 fail，环境 skip 分类不变 |
+| C 唯一制品 | clean-source `npm pack`，五项资产，strict `--tarball` 与独立验包 | source clean／hash／size／members／vendor／exports |
+| D 发布 | 非 force push `main`、annotated `v0.10.2` 指向制品 source、新 Release 五项资产 | 远端 refs、tag object／peeled、下载 5/5 逐字节 |
+| E 安装 | 同一 tgz 安装到当前 Web Profile，记录旧/新包、Profile 与配置指纹 | 安装成功、版本/字节匹配；不自动重启 |
+
+边界：不升级本机 DSH、不 npm publish、不覆盖旧 tag／Release、不改共享 SDK 或宿主补丁、不清理旧 spill。安装不改写当前进程；正常重启后的 GUI 生效需另行观察。
+
 ## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
 
 本阶段授权为既有 Profile 旧依赖接入与组件强制开启覆盖的代码修复和真实 SDK／Loader／Plugin Manager 验证。新版本 push／Release／同字节本机安装另行确认；不沿用只针对 0.4.3 的发布安装授权，不自动重启 GUI，也不静默清除当前 Profile 的布尔覆盖。
