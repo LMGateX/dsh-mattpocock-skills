@@ -6,6 +6,19 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.12.0 输入区摘要与就地详情（2026-11-04，文档固定；待隔离实施）
+
+唯一详细契约与验收矩阵见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>)。
+
+| 阶段 | 内容 | 状态/门禁 |
+|---|---|---|
+| A 文档 | 固定交互、配色/零值、裁决/T/S 来源和不完整覆盖、授权 | 已固定；实施前单独提交 |
+| B 展示实施 | 隔离子代理修改 Client，常驻/进度/详情分区、文本入口和只读详情 | 待实施；不改 Host/Remote 或本机 |
+| C 回归 | 独立隔离子代理在真实导出渲染路径建立 RED/GREEN 与生命周期/覆盖矩阵 | 待实施；测试与实现分工，合并候选重跑 |
+| D 整合与复核 | 基于最新 0.11.0 整合，Standards/Spec 双轴复核修复，source 全量/严格构建 | 待实施；skip 与图形验收边界明示 |
+| E 精确制品 | 版本/生成物，冻结 clean-source，唯一 accepted pack，双 SDK/精确归档/Manager/headless | 待实施；字节/hash/source 绑定，生成物和 vendor 验证 |
+| F 发布 | 新鲜远端/旧 tag 不变 guards，非 force push/新 tag/Release，五资产下载 strict 回验 | 已授权、待执行；不安装本机、不 npm publish、不改 Profile/SDK/服务 |
+
 ## 0.11.0 读取路径性能优化（2026-11-04，A–F 已完成，已发布未安装）
 
 本轮范围、保持条件、已认可测试 seams 与 A/B/C/D/E/F 阶段只在 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>) 维护：先单独文档提交，再由隔离 subagents 实施历史算法、身份事实和表示/消费切片，集成后独立双轴复核、双宿主源码/精确制品门禁，最后按所有者授权 push/tag/GitHub Release 与下载回验。目标版本 0.11.0，阶段 0 与 A/B/C/D/E/F 已完成；冻结 source e5d25cf 的唯一制品已发布并通过五资产下载回验，当前 Profile 仍 0.10.2；实际状态/证据随实施更新，禁止由旧测试或合成基准推断交付完成。当前 Profile/共享 SDK、本机安装与服务重启均不在本次授权内；不 npm publish。

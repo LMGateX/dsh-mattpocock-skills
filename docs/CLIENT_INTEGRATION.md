@@ -57,6 +57,10 @@ Inspected SDK artifact contracts (package-relative locators, not public source-f
 - Native openTab has no background/no-focus mode; it selects and expands. Local sidebar layout persistence is not a business ledger.
 - Ordinary chat messages are not rewritten. In 0.9.0 the seven default fixed tools, the opt-in mattpocock_delegate and conditional mattpocock_audit get source cards (the 0.6.0 release had nine fixed tools including the now-removed mattpocock_execute; historical result cards remain readable). The client retains nine wire keys for opt-in/historical delegate; that is presentation support, not default model registration. They use the DSH baseline DisclosureRow with a collapsed English wire name and action/target summary; expanded input/output use CodeBlock, and the preserved raw public argsRaw/content/error/meta record uses JsonBlock. Preparing/start/result are distinguished; public fields are preserved without serializing lazy argument-reader internals. The expanded body is capped at 360px. The 0.2.2-only DisclosureRow.headerAccessory is not used, so 0.2.1-alpha.1 remains supported. Disabling timeline annotation still preserves the actual Tool record.
 
+## 0.12.0 输入区摘要增量（已认可，待实施）
+
+[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 收窄下方旧“整个摘要 96px 滚动”布局：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。本文旧段在实施后更新；当前文档固定不代表源码/GUI 已变化。
+
 ## 配置页分区、中文文案与保存语义
 
 配置页按独立职责分区：

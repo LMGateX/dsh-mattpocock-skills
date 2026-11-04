@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 输入区协作摘要与文字展开（2026-11-04，所有者认可；0.12.0 文档固定、待实施）
+
+详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>)：常驻待裁决/T/S 提醒与可滚动工作流、就地单类别只读详情分区；T 蓝色、S 青紫、待你裁决红系、待落实琥珀，差额正文色；确定零值的超出/票状态省略，未知不隐藏。直接点击文字，不新增占位按钮；鼠标/键盘可达，刷新不抢焦点，Session/实例切换隔离，rightPanel 关闭不影响就地查看。
+
+裁决沿用显式 pending/addressee/awaiting 语义；T 取 held，占用/明细 scope 不混淆；S 取宿主实时总数，最近最多 64 行原生观测只作可能不完整明细，不冒称完整在跑名册。本轮不新增完整名册 Interface、Host/Remote/存储/消费改动。所有者授权先文档、隔离 subagents 实施测试、push/tag/GitHub Release；**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。当前仅固定文档，源码、测试、精确制品和发布分别记录。
+
 ## 插件读取路径性能优化（2026-11-04，所有者认可；0.11.0 已发布、未为本机安装）
 
 权威实施与验收契约见 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>)：线性业务历史投影/精确版本索引、Host 私有紧凑身份事实复用、完整 Remote 表示与 current-facts 消费减负。保持历史、来源/授权/撤权、FIFO、持久提交 frontier、工具/Remote wire 与存储格式；不凭任意 frozen/retained 绕过校验，不以 UI summary 替代真实消费。该增量允许在内部将当前消费和必要历史补捕获分离，不改变模型有界 DTO 或完整编辑/历史 Interface。
