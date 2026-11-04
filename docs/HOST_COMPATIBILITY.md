@@ -10,6 +10,8 @@
 
 `0.2.2-alpha.2` **要求第二次运行时代码适配**：工具执行拆成 executor 插件，旧的单调用 `ctx.tools.execute` 被删除；本插件改用公开 `ToolExecutionPipeline` 保留受管嵌套调用的 parent token 与既有 policy／guard 语义，并对没有该接缝的旧宿主保留单调用回退。Skills provider 仍不需要改动（核对见后文）。
 
+`0.2.2-alpha.3` **不需要新的运行时代码或包元数据适配**。本轮在隔离的全局安装、alpha.3 类型声明、双宿主全量套件与实际 0.10.0 制品的无凭据 headless 装载上复核：没有新增失败或 alpha.3 专用 skip，插件使用的宿主 seam 仍存在。alpha.3 更新了 Cordis／Loader／Include，并对部分客户端 UI 契约做了加法式扩展；本插件的七个固定工具、可选委托、Skills provider 与客户端七个插槽均未改变。详见下节。
+
 Skill Provider 契约在所有已核对的宿主版本之间保持不变：`registerProvider`、`list`、`get` 的签名、`BUNDLED_SKILL_RANK`、运行时导出清单都没有变化。用新宿主的类型声明重新编译后，从 `0.1.2-rc.1` 到 `0.2.1-rc.2` 的 `lib/` 产物与最初宿主编译结果**逐字节相同**；`0.2.2-alpha.2` 因上述工具接缝改变了 `lib/host.js`，Client 产物仍逐字节不变。
 
 ### 客户端 baseline 与仪器工具卡（2026-11-01）
@@ -169,6 +171,22 @@ rc.2 是模型目录与 Web 搜索能力的小版本；npm 发布比 GitHub Rele
 该 0.6.0 适配的运行时代码改动只有两个接缝：`src/host.ts` 的 `executeNative`（0.7.0 已删除）和旧子代理回退的结构化类型。Skill 正文、vendor 字节、通道语义、provider 优先级与 `engines.dsh` 声明均未改变。测试夹具侧新增了公开 pipeline 的单调用适配、真实 `SessionProjectionRegistry`、以 `ctx.plugin()` 挂载异步服务，以及 0.2.2 的 official-bundles 读取；这些不改变产品入口。
 
 > 2026-11-03 设计变更，0.7.0 已实施：本表（含上文“受管原生调用”）是 0.6.0 的 execute 包装适配历史；0.7.0 已删除该工具及 `executeManaged`/`executeNative` 路径。普通无绑定派发使用原生 `subagent`/`subagent_fork`/`send_message` + `create_worktree`/`cwd`；`mattpocock_delegate` 保留为强绑定创建，不随 execute 退役，但 0.8.0 起默认不注册，只有显式 `delegate: true` 才启用。C（原生观察读取时关联/账本补齐）已于 0.7.1 完成，不改变宿主工具面或 Remote 方法。详见 [NATIVE_DISPATCH_FIRST.md](<NATIVE_DISPATCH_FIRST.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。
+
+## 0.2.2-alpha.3 核对（2026-11-04，源码与隔离安装；未安装本机）
+
+在隔离的全局前缀安装 `0.2.2-alpha.3`（Node 24.17.0），另以独立 `DSH_HOME` 安装已发布的 `0.10.0` 制品（500,162 B，SHA-256 `53bfd050d64f95f19045bd3ecb94d89057cdfde57e2df29e81a1476469f8d7f2`）。未改动本机 DSH、Profile 或当前 GUI，未调用模型。
+
+| 检查 | 结果 |
+|---|---|
+| 相关宿主包对拆 | `dsh-tools`、`dsh-session`、`dsh-agent`、`dsh-skill`、`dsh-workspace`、`dsh-storage-domain`、`dsh-typert-protocol`／`dsh-typert-registry` 除各自版本号外无内容差异；`dsh-subagent` 仅生成的 Typert 声明增加 `step/end`；`dsh-api-gateway` 的三个 client 文件把 `privateEvents` 改为返回 `ctx.events`；`dsh-system-prompt` 仅新增工具优先级常量；`dsh-fs` 新增 patch／move／delete 契约。没有删除本插件使用的 seam |
+| 类型编译 | 以 alpha.3 的声明（包括 `dsh-client-ui-slots`／`primitives` 0.2.2-alpha.3）编译 `tsconfig.json` 与 `tsconfig.client.json`，两者均 **0 error**；非 Client 的 **78** 个 JS/DTS 产物与提交的 `lib/` **逐字节相同** |
+| 全量套件 | 以 alpha.3 为规范根、`0.2.1-alpha.1` 为兼容根运行 **1086 项：1077 通过、0 失败、9 skip**。skip 为 6 个缺少公共 UI-slots 的 native Client 激活场景，以及 3 个需要可选源树的 source-ingestion 场景；没有 alpha.3 专用失败或新增的宿主门禁 skip |
+| 实际制品装载 | 已发布 `0.10.0` tgz 在全新 `DSH_HOME` 的 `headless` profile 安装成功；无凭据启动停在 `MISSING_CREDENTIAL`，注册表检查仍读到 **27 个 Skills、11 个模型可见**，`implement-spec` 正文与 directory resource 正常；未出现插件装载错误 |
+| 安装期门禁 | alpha.3 的 `evaluatePluginCompatibility` 通过既有 `engines.dsh: "~0.2.1-alpha.1"`；实际 `dsh plugin add` 未使用 `allow-version`，安装成功 |
+
+**结论：alpha.3 对本插件是兼容宿主，不需要新的源码、包元数据或制品适配。** Cordis／Loader／Include 的更新和客户端 UI 契约的加法式变化没有移除本插件使用的接缝；七个固定工具、可选 `delegate`、Skills provider 与客户端七个插槽保持原语义。
+
+边界：headless profile 不组合 Web 的 `connection`／`workspaceRegistry`，可选控制面没有在真实 headless 进程中装载；其真实 Host 行为由 alpha.3 的全量 Host 用例覆盖。本轮没有真实浏览器 GUI、LLM 或 PTC 运行，也没有把 `0.10.0` 安装到本机 Profile。`pnpm` 仍会报告 profile 未安装 `@deepseek-ai/cordis`／`dsh-skill`／`schemastery` 等 peer（这些服务由 DSH 运行时注入，非 alpha.3 引入），不影响实际安装和装载。
 
 ## 核对范围与方法
 

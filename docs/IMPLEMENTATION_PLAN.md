@@ -156,6 +156,14 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 
 技术边界：Skills provider、vendor 字节、通道语义、provider 优先级与 `engines.dsh: "~0.2.1-alpha.1"` 未改变；新宿主门禁仍放行该预发布线，无需 `allow-version`。没有真实模型活动、浏览器 GUI 会话或 PTC program 运行；真实 Host 的工具策略／guard／parent token 用例覆盖了受管嵌套路径。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 `0.2.2-alpha.2` 小节。
 
+## DSH 0.2.2-alpha.3 兼容核对（2026-11-04，隔离安装内完成；未安装、未发布）
+
+接受范围：核对 `0.2.2-alpha.3` 相对 `0.2.2-alpha.2` 的宿主变化，判断是否需要适配。**结论是不需要新的源码、包元数据或制品改动。** 已核对的接缝包括 `dsh-tools`、`dsh-session`、`dsh-agent`、`dsh-skill`、`dsh-workspace`、`dsh-storage-domain`、Typert、`dsh-subagent`、Gateway client 与客户端插槽；alpha.3 的 Cordis／Loader／Include 更新和 UI 契约变化没有移除本插件使用的入口。
+
+隔离边界：`npm install --global --prefix <隔离前缀> @deepseek-ai/dsh@0.2.2-alpha.3`；另以独立 `DSH_HOME` 安装已发布的 `0.10.0` 制品并做无凭据 headless 装载。未改动本机 DSH、任何 Profile 或当前 GUI，未 push／Release，未调用模型。
+
+机械证据：alpha.3 声明下根与 Client TypeScript 编译均 **0 error**，非 Client 的 78 个 JS/DTS 产物与提交的 `lib/` 逐字节相同；全量套件 **1086 项：1077 通过、0 失败、9 skip**（6 个 UI-slots 与 3 个可选源树环境门禁）；实际 `dsh plugin add` 成功，启动停在 `MISSING_CREDENTIAL` 时注册表已有 **27 个 Skills、11 个模型可见**。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 `0.2.2-alpha.3` 小节。
+
 ## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
 
 本阶段授权为既有 Profile 旧依赖接入与组件强制开启覆盖的代码修复和真实 SDK／Loader／Plugin Manager 验证。新版本 push／Release／同字节本机安装另行确认；不沿用只针对 0.4.3 的发布安装授权，不自动重启 GUI，也不静默清除当前 Profile 的布尔覆盖。
