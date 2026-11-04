@@ -2,7 +2,35 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-> 2026-11-04 状态：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
+> 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
+
+## 0.10.1 DSH 0.2.2-alpha.3 兼容补发与安装（2026-11-04，已发布/已安装/未重启）
+
+0.10.1 是**兼容性补丁**，继承 0.10.0 的运行时、工具面、schema-2 DTO、vendor 与 `engines.dsh`；本版只更新版本、当前版本断言、兼容记录与发行／安装文档。alpha.3 的公开接缝核对、类型编译、双宿主回归和隔离 headless 装载见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 alpha.3 小节。
+
+### 源码、制品与回归
+
+- 源码提交：`4feafbe400c16dbccf215ef48e44313b46f859bc`，清洁工作树。
+- 唯一制品 `lmgatex-dsh-mattpocock-skills-0.10.1.tgz`：**500,871 bytes**，SHA-256 `c678d37dcb5b966ba4bf75b15069fdff10b6f883b1a898d2fcaaa39c11219a7a`，**184** 成员（99 固定 + 85 vendor，0 目录／0 symlink），80 个 JS/DTS 产物，Client 278,881 B，19 个闭合导出目标。Node 24.17.0、pnpm 11.8.0、npm 11.13.0、GNU tar 1.35。
+- alpha.3 类型声明下根与 Client 编译均 **0 error**；非 Client 的 78 个 JS/DTS 产物与提交的 `lib/` 逐字节相同。
+- 源码全量套件（alpha.3 规范根 + `0.2.1-alpha.1` 兼容根）：**1086 项，1077 通过、0 失败、9 skip**；3 个可选 source-ingestion 场景在提供只读本地源克隆后启用。
+- 同一精确制品的归档矩阵（`DSH_CONTROLS_TARBALL`）：**1086 项，1080 通过、0 失败、6 skip**；6 个 skip 均为安装包不提供公共 `@deepseek-ai/dsh-client-ui-slots` 的 native Client fixture。PluginManager 实测包含在该矩阵中并通过。
+- 精确 `--tarball` 验包、源字节／模式／导出／vendor／成员检查通过；下载回验使用同一归档，不重新打包。
+
+### 发布
+
+- [GitHub Release v0.10.1](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.1)：ID **433485643**，发布时间 **2026-11-04T03:40:31Z（北京时间 11:40:31）**；draft=false、prerelease=false。
+- annotated tag **v0.10.1**：对象 **7d3dd74fd6f15108bd02447f825af055a9e60333**，peeled source **4feafbe400c16dbccf215ef48e44313b46f859bc**；`target_commitish` 显式固定为该 source。main 在发布时为同一 source。
+- 唯一五项资产：tgz、`.sha256`、`.size`、`.source-commit`、`.pnpm-version`，大小分别为 500,871／107／7／41／7 bytes。全部下载到新的隔离目录后 **5/5 逐字节相同**，下载副本再次通过 strict `--tarball`（184 成员、source 4feafbe、pnpm 11.8.0）。
+- 公开机器记录见 [verification-0.10.1.json](<../dist/verification-0.10.1.json>)。旧 v0.10.0 tag/Release/资产未移动或覆盖。
+
+### 本机安装
+
+- 已将 Release 的同一 tgz 安装进当前 Web Profile：插件 **0.6.0 → 0.10.1**；安装树与归档解包 **逐字节相同**。
+- Profile `package.json` 与 `pnpm-lock.yaml` 按安装更新；`cordis.patch.yml` **未变**，仍保留 beta channel 与 `disabled: false`。安装前旧 0.6.0 Profile／插件已私下备份。
+- 当前 DSH 仍为 **0.2.2-alpha.2**，未升级；SDK manifest 指纹保持 `fcfbff65bc9a7beae1d5bd56af6eb166b61dcd22bd20234653d2b8d56d09aa63`。
+- **未重启**当前 `dsh web` 进程（PID 与 3080 端口未变化）；当前运行进程是否已热加载 0.10.1 未验证，不把 GUI 生效作为事实。正常重启后才确认新进程加载该制品。没有真实浏览器交互、模型或 PTC 运行。
+- 不 npm publish、不清理旧 spill、不改共享 SDK 或宿主补丁。
 
 ## 0.9.0 制品验收（2026-11-04，隔离工作树；已发布/未安装）
 

@@ -56,7 +56,7 @@ See the [thin-adapter scope](docs/ADAPTER_SCOPE.md), [evidence-based compatibili
 
 ## DSH 0.2.2-alpha.3 compatibility revalidation (0.10.1)
 
-0.10.1 is a compatibility-only patch. It records the revalidation against DSH `0.2.2-alpha.3` without changing runtime code, the tool surface, the schema-2 DTOs, vendor bytes or the declared host range. The alpha.3 type set compiles both the root and Client builds, and the full suite reports 1077 passed and 0 failed; the published 0.10.0 artifact was also installed in an isolated headless profile with 27 Skills and 11 model-visible Skills. See the [host compatibility record](docs/HOST_COMPATIBILITY.md). A running DSH process must be restarted before it can load any newly installed package.
+0.10.1 is a compatibility-only patch. It records the revalidation against DSH `0.2.2-alpha.3` without changing runtime code, the tool surface, the schema-2 DTOs, vendor bytes or the declared host range. The alpha.3 type set compiles both the root and Client builds, and the full suite reports 1077 passed and 0 failed; the published 0.10.0 artifact was also installed in an isolated headless profile with 27 Skills and 11 model-visible Skills. See the [host compatibility record](docs/HOST_COMPATIBILITY.md). The [v0.10.1 release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.1) was installed into the current Web profile with a retained 0.6.0 backup. The running `dsh web` process was not restarted; fresh-process activation of the installed version is not claimed.
 
 ## Plugin-owned output reduction (0.10.0)
 

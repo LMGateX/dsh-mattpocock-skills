@@ -164,7 +164,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 
 机械证据：alpha.3 声明下根与 Client TypeScript 编译均 **0 error**，非 Client 的 78 个 JS/DTS 产物与提交的 `lib/` 逐字节相同；全量套件 **1086 项：1077 通过、0 失败、9 skip**（6 个 UI-slots 与 3 个可选源树环境门禁）；实际 `dsh plugin add` 成功，启动停在 `MISSING_CREDENTIAL` 时注册表已有 **27 个 Skills、11 个模型可见**。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 `0.2.2-alpha.3` 小节。
 
-## 0.10.1 兼容补发与本机安装（2026-11-04，所有者指示；进行中）
+## 0.10.1 兼容补发与本机安装（2026-11-04，所有者指示；已发布/下载回验/已安装，未重启）
 
 接受范围：把已完成的 alpha.3 兼容核对作为 `0.10.1` 补发，更新版本与版本断言、构建并验证唯一精确制品，push `main`、新建 annotated `v0.10.1`、创建 GitHub Release，并把同一制品安装进当前 Web Profile。运行时、工具面、DTO、vendor、宿主兼容声明和 `engines.dsh` 不变。
 
@@ -176,7 +176,9 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 | D 发布 | 非 force push `main`、annotated `v0.10.1` 指向制品 source、新 Release 五项资产 | 远端 refs、tag object／peeled、下载 5/5 逐字节 |
 | E 安装 | 同一 tgz 安装到当前 Web Profile，记录旧/新包、Profile 与配置指纹 | 安装成功、版本/字节匹配；不自动重启 |
 
-边界：不升级本机 DSH、不 npm publish、不覆盖旧 tag／Release、不改共享 SDK 或宿主补丁、不清理旧 spill。安装不改写当前进程；正常重启后的 GUI 生效需另行观察。
+实际结果：源码 4feafbe 的 0.10.1 制品（500,871 B，SHA-256 `c678d37d…`，184 成员）通过 strict 验包；alpha.3 精确矩阵 **1086 项、1080 通过、0 失败、6 个 Client UI-slots skip**。`v0.10.1` 已 push/tag 并发布，五资产下载 5/5 逐字节一致；当前 Web Profile 已由 0.6.0 安装为 0.10.1，安装树与归档相同，Profile 配置的 `cordis.patch.yml` 未变。当前 `dsh web` 进程未重启；当前进程是否已热加载未验证，正常重启后的 GUI 生效需另行观察。
+
+边界：不升级本机 DSH、不 npm publish、不覆盖旧 tag／Release、不改共享 SDK 或宿主补丁、不清理旧 spill。
 
 ## 0.4.4 既有 Profile 原生依赖接入修复（候选，未发布／安装）
 

@@ -1,6 +1,6 @@
 # 插件模型工具输出减负：有界当前视图、小回执与按需正文
 
-> **状态：0.10.0 clean-source 8ec081d 已通过完整源码回归、双轴复审与唯一精确制品/PluginManager 全矩阵；已 push/tag、发布 GitHub Release 并完成五资产下载回验，未安装本机。** 2026-11-04 所有者认可研究与插件内处理范围，随后授权 subagents 在隔离环境实施、验收、push/tag/GitHub Release；暂不为本机安装。研究与设计已固定，后续结果只按实际门禁登记，不提前宣称通过或当前 GUI 生效。权威决策见 [DESIGN](<DESIGN.md>)，执行阶段见 [实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)。
+> **状态：0.10.0 clean-source 8ec081d 已通过完整源码回归、双轴复审与唯一精确制品/PluginManager 全矩阵；已 push/tag、发布 GitHub Release 并完成五资产下载回验。** 2026-11-04 后续发布 `0.10.1` 兼容性补丁并安装到当前 Web Profile；模型输出契约、DTO 与 `0.10.0` 验收不变。0.10.0 发布时未安装本机，当前安装与重启状态以 [VERIFICATION.md](<VERIFICATION.md>) 为准。权威决策见 [DESIGN](<DESIGN.md>)，执行阶段见 [实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)。
 
 ## 1. 结论与责任范围
 

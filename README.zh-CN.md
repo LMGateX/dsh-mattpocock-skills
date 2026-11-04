@@ -49,7 +49,7 @@
 
 ## DSH 0.2.2-alpha.3 兼容复核（0.10.1）
 
-0.10.1 是兼容性补丁：记录对 DSH `0.2.2-alpha.3` 的复核，不修改运行时代码、工具面、schema-2 DTO、vendor 字节或宿主版本声明。alpha.3 类型集下根与 Client 均可编译，全量套件 1077 通过、0 失败；已发布的 0.10.0 制品也已在隔离 headless profile 中安装并暴露 27 个 Skills、11 个模型可见。详见[宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。任何当前运行中的 DSH 进程都需要正常重启，才能加载新安装的包。
+0.10.1 是兼容性补丁：记录对 DSH `0.2.2-alpha.3` 的复核，不修改运行时代码、工具面、schema-2 DTO、vendor 字节或宿主版本声明。alpha.3 类型集下根与 Client 均可编译，全量套件 1077 通过、0 失败；已发布的 0.10.0 制品也已在隔离 headless profile 中安装并暴露 27 个 Skills、11 个模型可见。详见[宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。[v0.10.1 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.1) 已安装到当前 Web Profile，并保留了 0.6.0 备份；当前 `dsh web` 进程未重启，不声称新进程已激活该版本。
 
 ## 插件内工具输出减负（0.10.0）
 

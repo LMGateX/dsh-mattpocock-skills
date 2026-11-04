@@ -38,7 +38,7 @@ This document is the authoritative implementation contract. A later implementati
 
 本节记录 0.10.1 的交付范围，不改写 0.10.0 的历史验收。DSH `0.2.2-alpha.3` 已由源码类型编译、双宿主全量套件与隔离 headless 制品装载复核，插件运行时、工具面、DTO、vendor 与宿主兼容声明均不需要变化；因此 0.10.1 是**兼容性补发**，只更新版本、版本断言、兼容记录与发行文档。
 
-所有者已明确指示 push、发版并安装。允许将 0.10.1 的同一精确制品安装到当前 Web Profile；安装不自动重启当前服务，也不等于当前运行进程已加载新版本。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。`main`、annotated tag、GitHub Release 和五资产必须绑定同一 clean-source 与唯一制品；旧 tag/Release 不移动、不覆盖。安装后以包字节/Profile 记录和独立启动核对为准，当前 GUI 的实际生效仍需正常重启后另行观察。
+所有者已明确指示 push、发版并安装。0.10.1 的同一精确制品已于 2026-11-04 安装到当前 Web Profile；安装没有自动重启当前服务，也不等于当前运行进程已加载新版本。不升级本机 DSH，不 npm publish，不清理旧 spill，不修改共享 SDK 或宿主补丁。`main`、annotated tag、GitHub Release 和五资产绑定同一 clean-source 与唯一制品；旧 tag/Release 未移动或覆盖。实际发布、下载与安装结果见 [VERIFICATION.md](<VERIFICATION.md>)；当前 GUI 的实际生效仍需正常重启后另行观察。
 
 ## 原生派发优先与 execute 退役（2026-11-03，所有者认可；B/D/E 已在 0.7.0 源码实施，C 已在 0.7.1 完成）
 
