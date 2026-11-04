@@ -4,9 +4,9 @@
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
-## 0.11.0 插件读取路径性能优化（2026-11-04，源码与双轴验收完成，唯一制品/发布待验收）
+## 0.11.0 插件读取路径性能优化（2026-11-04，已发布、未为本机安装）
 
-本轮先提交 [性能设计/验收契约](<PERFORMANCE_READ_PATHS.md>)（c90af64），再由三个独立 subagent/worktree 实施并提交；集成引用为 A a67dd00、C 29c66a1、B 448f0bb。源码候选 ae23da4 已通过主 lane 全量与独立 Standards/Spec 双轴复核；唯一制品、push/Release/下载回验尚未完成。后续 source 冻结前只更新文档状态，运行时/生成物/测试/打包元数据不变。当前本机仍保留原安装；本轮不安装当前 Profile、不改共享 SDK、不重启服务、不 npm publish、不连接生产日志或 GUI/模型/PTC。
+本轮先提交 [性能设计/验收契约](<PERFORMANCE_READ_PATHS.md>)（c90af64），再由三个独立 subagent/worktree 实施并提交；集成引用为 A a67dd00、C 29c66a1、B 448f0bb。源码候选 ae23da4 通过全量与独立 Standards/Spec 双轴复核后，仅追加 D 状态文档并冻结 clean source e5d25cf；同一唯一制品的精确包/双宿主 headless/发布/下载回验现已完成。tag 与五资产保持冻结，本次 main 后续仅追加公开安全的完成证据，不改运行时/生成物/测试/打包元数据。当前本机仍保留原安装；本轮不安装当前 Profile、不改共享 SDK、不重启服务、不 npm publish、不连接生产日志或 GUI/模型/PTC。
 
 ### 实现与可复核 seams
 
@@ -38,7 +38,7 @@ C 为实际 mounted Typert Remote+Runtime，hot 7 样本，强制 freshness 失�
 
 七次强制热重建的 full-history reads 均 7→0，Remote 同 wire 表示 identity 命中 0/7→7/7；100×32768 chars 形状分别 2.908→0.278ms / 3.457→2.492ms。fresh 完整 Remote 仍支付完整构造/验证成本（2000 版本 201.948→203.271ms），source change 仍全捕获，单次数据不作稳定改善声明。WeakMap 额外驻留一份 wire graph，2000 版本 source DAG 14066 节点→detached 18073 节点，wire 约 1.614MB；长正文约 6.645MB，没有巨型字符串缓存。未将图结构计数、GC 或计时推断成内存泄漏/现场 CPU 归因。
 
-### 已运行切片门禁与当前边界
+### 切片交接时门禁（D 前记录；最终门禁见下）
 
 - A 最终显式 SDK source seam 定向 75/75，含真实存储 write/reopen、CAS、uncertain/purge；strict tsc 通过。
 - B 两个独立宿主各 68/68、0 skip，实际 JSONL probe 包含在回归；baseline 与 alpha.3 声明均 0 diagnostics。
@@ -49,7 +49,7 @@ C 为实际 mounted Typert Remote+Runtime，hot 7 样本，强制 freshness 失�
 
 ### 合并候选重测与 D 阶段验收
 
-主 lane 在合并三个切片的 929c5da 以显式 alpha.3 SDK 独立复跑同一 mounted benchmark（7 hot / 3 fresh samples）。H=100/500/1000/2000 的 Remote hot 中位数为 0.557/0.341/0.435/0.434ms，强制 current rebuild 为 3.836/2.987/3.177/2.749ms；每点 full-history reads 0、表示复用 7/7。2000 版本 fresh full 仍 64.537ms，真实 source change 单次 258.547ms，不承诺这两项为零或稳定提速；其余 wire 内容/长度/equality 断言均通过。此为整合候选复测，不与切片时间相加、不当源源码最终 SHA、RPC 网络序列化、GUI/模型验收或现场 CPU/RSS 归因；其后仅能力 guard/测试迁移与共享 context 私有规则收敛，不变更优化契约。
+主 lane 在合并三个切片的 929c5da 以显式 alpha.3 SDK 独立复跑同一 mounted benchmark（7 hot / 3 fresh samples）。H=100/500/1000/2000 的 Remote hot 中位数为 0.557/0.341/0.435/0.434ms，强制 current rebuild 为 3.836/2.987/3.177/2.749ms；每点 full-history reads 0、表示复用 7/7。2000 版本 fresh full 仍 64.537ms，真实 source change 单次 258.547ms，不承诺这两项为零或稳定提速；其余 wire 内容/长度/equality 断言均通过。此为整合候选复测，不与切片时间相加、不作为最终发布源码 SHA 的重复计时证明、RPC 网络序列化、GUI/模型验收或现场 CPU/RSS 归因；其后仅能力 guard/测试迁移与共享 context 私有规则收敛，不变更优化契约。
 
 D 最终代码候选 **ae23da4a3f96cccac787c7abcb3b2ab0c8910e8e**，工作树 clean：
 
@@ -57,7 +57,18 @@ D 最终代码候选 **ae23da4a3f96cccac787c7abcb3b2ab0c8910e8e**，工作树 cl
 - 首次 source gate 的 7 项失败已诊断：三个真实 native inbox/steer/startup 路径暴露 partial Sessions 缺 get 的新适配回归；四项是已被新契约替代的 public full-array TTL/identity/singleflight 断言。隔离 follow-up 88118e4（原 9bf8b7a）加能力 guard，并将八项测试完整迁移到源码 seam 的当前 header/完整 owned suffix/继承隔离/冻结/独立取消/lease 释放语义，未恢复大数组缓存；两个真实宿主定向各 103/103、零 skip。随后本节全量重新通过，不抹除早先失败。
 - 初次 Standards 唯一 P3 为 activeContext 复制 inContext 领域规则，隔离 c064ddc（原 ad47360）合一并保留 Map O(1)；Spec 独立复现上述可选能力回归。最终双轴针对 929c5da…ae23da4 窄 diff 均确认关闭、无新增未关闭发现；Spec 同一反例回退成功，完整 facts/context 定向 9/9。
 - baseline Host/Client 严格构建与闭合 Client 通过；独立 alpha.3 声明 root/client 均 **0 diagnostics**，78/78 非 Client 生成物逐字节一致；strict --prepack 通过，80 闭合 build / 99 固定 files / 85 vendor / 19 exports，Client 283100 B / 8 私有模块。vendor 296048 B、SHA-256 70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8，beta/stable 各 27 Skills 不变。
-- 目前 E/F 尚未完成：不把 prepack 当唯一归档签收、不把评审/源码测试当 push 或 Release 收据。安装当前 Profile、修改共享 SDK、服务重启、npm publish 仍不在授权内。
+- D 结束时 E/F 尚未完成（最终结果见下节）：不把 prepack 当唯一归档签收、不把评审/源码测试当 push 或 Release 收据。安装当前 Profile、修改共享 SDK、服务重启、npm publish 仍不在授权内。
+
+### E/F 唯一制品、双宿主 headless 与发布/下载完成
+
+- 冻结 source **e5d25cf75ed20bcf7d7991065824108fabf375f4**，clean=true。沿用当前发行方案，以 npm 11.13.0 `pack --ignore-scripts` **仅一次**生成唯一 accepted 归档；pnpm 11.8.0、Node 24.17.0、GNU tar 1.35。归档 **506502 bytes**，SHA-256 **c903f2f923fb352cf8ff16da26cba76fe06739540fad3be3cac02ae33c4e0398**。唯一五资产为 tgz 与 .sha256/.size/.source-commit/.pnpm-version，大小依次 506502/107/7/41/7 B；原件均 readonly，门禁前后身份/大小/摘要不变，没有修包或重打。
+- strict --prepack 与 --tarball 通过，**184 regular、0 directory、0 symlink、99 固定 + 85 vendor、80 JS/DTS、19 入口**；归档 source/lib/模式/vendor 一致。主 lane 另行独立验同一原件与下载副本，各 strict 通过；没有把源码 fixture 包代替 accepted 归档。
+- 精确归档全量：94 文件，**1126 项，1120 pass / 0 fail / 0 cancel / 6 skip**，canonical alpha.3 + 独立 compatibility alpha.1，显式携带 accepted archive/hash 双参数；PluginManager **13/13**。六 skip 仍只限缺少公开 UI slots 的 native Client fixture；source-only 性能 seams 保持源码测试，不宣称每个测试直接加载归档。两个历史 synthetic upgrade fixture 与正式制品分离。
+- 两个独立公开 SDK **0.2.2-alpha.3 / 0.2.1-alpha.1** 的 source+同一 archive × beta/stable headless 全通过，source/archive registry 报告逐字节相同，每 channel 27 Skills / 11 model-visible。四个 fresh 临时安装 HOME 与其 DSH_HOME 已清理；**8/8** 无凭据 mount 明确停在 MISSING_CREDENTIAL，无真实模型/PTC、无 Web 启动、无当前 Profile 安装或 SDK 改动。这是隔离 headless，不是本机/GUI 验收。
+- 非 force **atomic main + 新 annotated v0.11.0** 推送完成：发布前 main=29e25ce，经新鲜远端/ancestry/缺席 guards 后前进到 source e5d25cf；tag 对象 **93d1d550a1492b309e64a048557e3a3c13701546**，peeled=source e5d25cf。旧 v0.10.2 对象/peeled 未变。首次只读 fetch 的 TLS 握手失败后同命令重试成功，未改安全配置，未导致重打或覆盖。
+- [GitHub Release v0.11.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.11.0) 已发布，API id **433564914**，published_at **2026-11-04T06:00:11Z**，draft=false/prerelease=false，target_commitish=完整 source e5d25cf。只上传同一五资产，API size/digest/state 均匹配；新隔离目录下载 **5/5 逐字节相同**，原件与下载均 readonly，下载 strict 再确认完整 source/字节/模式/184 成员。主 lane 独立读取公开 API、远端 tag/main，并复核五份 bytes/hash/API digest 与下载 strict。公开 id/摘要见 [机器验证摘要](<../dist/verification-0.11.0.json>)，不公开私有机器路径/日志/凭据。
+- 不安装边界最后复核：从实施前基线比较当前 Profile/lock/patch、已安装插件 manifest 与共享 SDK manifest，**5/5 SHA-256 不变**；当前本机插件仍 **0.10.2**、DSH 仍 **0.2.2-alpha.3**，原 Web 服务 PID 与启动时间不变。未 npm publish、未接触原生列表/Forge/宿主 spill/GC，未宣称现场 CPU/RSS 已修复或 GUI 已更新。
+- 三个已完成 feature 检出在核对绝对路径、branch/HEAD/clean 后用 git worktree remove 清理，分支/commit 保留；旧工作树未碰。明确保留集成/最终证据检出与精确 e5 source release 检出供复验，五资产/私有证据保留；处置 author notes 与实际 Git/路径缺失核验分开，不当作执行或物理资源互相证明。
 
 ## 0.10.2 模型工具请求描述修正与安装（2026-11-04，已发布/已安装/未重启）
 

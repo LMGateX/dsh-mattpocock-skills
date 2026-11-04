@@ -6,9 +6,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.11.0 读取路径性能优化（2026-11-04，D 已完成，E/F 待验收）
+## 0.11.0 读取路径性能优化（2026-11-04，A–F 已完成，已发布未安装）
 
-本轮范围、保持条件、已认可测试 seams 与 A/B/C/D/E/F 阶段只在 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>) 维护：先单独文档提交，再由隔离 subagents 实施历史算法、身份事实和表示/消费切片，集成后独立双轴复核、双宿主源码/精确制品门禁，最后按所有者授权 push/tag/GitHub Release 与下载回验。目标版本 0.11.0，阶段 0 与 A/B/C/D 已完成，E/F 待验收；实际状态/证据随实施更新，禁止由旧测试或合成基准推断交付完成。当前 Profile/共享 SDK、本机安装与服务重启均不在本次授权内；不 npm publish。
+本轮范围、保持条件、已认可测试 seams 与 A/B/C/D/E/F 阶段只在 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>) 维护：先单独文档提交，再由隔离 subagents 实施历史算法、身份事实和表示/消费切片，集成后独立双轴复核、双宿主源码/精确制品门禁，最后按所有者授权 push/tag/GitHub Release 与下载回验。目标版本 0.11.0，阶段 0 与 A/B/C/D/E/F 已完成；冻结 source e5d25cf 的唯一制品已发布并通过五资产下载回验，当前 Profile 仍 0.10.2；实际状态/证据随实施更新，禁止由旧测试或合成基准推断交付完成。当前 Profile/共享 SDK、本机安装与服务重启均不在本次授权内；不 npm publish。
 
 ## 仪器事实边界与恢复（2026-11-04；0.9.0 已完成并验证）
 

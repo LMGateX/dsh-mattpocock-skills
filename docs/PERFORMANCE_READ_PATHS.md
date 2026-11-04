@@ -2,7 +2,7 @@
 
 ## 状态、授权与范围
 
-2026-11-04 所有者认可三项风险分析，并指示先固定文档，再由 subagents 在隔离环境实施、测试、push 与 GitHub Release。目标版本 0.11.0；本页为当前实施契约，已先单独固定设计，再完成并合入三个隔离切片；统一双轴复核与全量 source 已通过，精确制品/发布仍待验收。完成证据追加到 VERIFICATION，不改写 0.10.x 历史。
+2026-11-04 所有者认可三项风险分析，并指示先固定文档，再由 subagents 在隔离环境实施、测试、push 与 GitHub Release。目标版本 0.11.0；本页为当前实施契约，已先单独固定设计，再完成并合入三个隔离切片；统一双轴复核与全量 source、唯一精确制品/双 SDK headless/发布/五资产下载 strict 回验均已完成；冻结 source e5d25cf，对应 0/A/B/C/D/E/F 全部完成，完成证据在 [验证摘要](<VERIFICATION.md>) 与 [机器验证摘要](<../dist/verification-0.11.0.json>)。本机 Profile 未安装此版本。完成证据追加到 VERIFICATION，不改写 0.10.x 历史。
 
 本轮只优化插件自身的身份事实读取、业务历史投影、完整 Remote 表示和模型消费内部读取；不把此前现场 CPU 当归因证明。原生 list_agents descendants、Forge、DSH 日志/GC/spill 属于范围外。当前 Web Profile 继续保持已安装版本；**暂不为本机安装、不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。隔离测试依赖和临时 DSH_HOME 可以创建，不连接生产服务或真实业务日志。
 
