@@ -6,11 +6,11 @@
 
 ## 0.4.4 候选：既有 Profile 接入与精确诊断
 
-旧 Profile 可仍独立解析旧协议依赖。兼容实现现在由[共享 canonical 绑定证明](<../src/compatibility/peer-bindings.ts>)沿当前公共 `Loader.internal.resolveSync` 的实际 native importer 选择依赖，不要求迁移其他插件依赖。固定资产和 provenance 摘要通过后，仅绑定[生成清单](<../compatibility/native-subagent.provenance.json>)中的 14 个非 builtin 字面量；3 个 builtin、MIT 和 manager／activation 区域不变。确定性 data URL 仍由普通 ESM 导入，保留相同 canonical SDK 错误类型、Typert 基类和模块缓存身份。解析格式、规范 file URL、首个所属 package manifest 与 native 包边界均严格核验；版本相同但实际身份不同仍拒绝。
+旧 Profile 可仍独立解析旧协议依赖。兼容实现现在由[共享 canonical 绑定证明](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/peer-bindings.ts>)沿当前公共 `Loader.internal.resolveSync` 的实际 native importer 选择依赖，不要求迁移其他插件依赖。固定资产和 provenance 摘要通过后，仅绑定[生成清单](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent.provenance.json>)中的 14 个非 builtin 字面量；3 个 builtin、MIT 和 manager／activation 区域不变。确定性 data URL 仍由普通 ESM 导入，保留相同 canonical SDK 错误类型、Typert 基类和模块缓存身份。解析格式、规范 file URL、首个所属 package manifest 与 native 包边界均严格核验；版本相同但实际身份不同仍拒绝。
 
-宿主组件开关保存 `disabled:false`，不是恢复原先自动组合 guard。[只读准备](<../src/compatibility/readiness.ts>)以 `compatibility-component-forced-enabled` 区分这种覆盖与普通 `disabled:true`，界面只说明撤销该字段、保留请求并恢复自动选择。插件不伪造宿主 reset API，也不静默清除覆盖或换掉当前服务。实际已加载能力仍优先；仅清除覆盖不等于当前进程立即具备首次 cwd。
+宿主组件开关保存 `disabled:false`，不是恢复原先自动组合 guard。[只读准备](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/readiness.ts>)以 `compatibility-component-forced-enabled` 区分这种覆盖与普通 `disabled:true`，界面只说明撤销该字段、保留请求并恢复自动选择。插件不伪造宿主 reset API，也不静默清除覆盖或换掉当前服务。实际已加载能力仍优先；仅清除覆盖不等于当前进程立即具备首次 cwd。
 
-当前源码验收为全量 761／761、0 skipped；[绑定实际 SDK 身份](<../tests/canonical-peer-bindings.test.mjs>)5／5、[完整导入清单](<../tests/compatible-import-inventory.test.mjs>)18／18、组合 49／49、准备 87／87、实际 Plugin Manager 11／11。后者包括关→开覆盖／已有服务与 B child 连续性，以及真实旧协议包只读接入的 Manager 安装／新启动、A/B 文件读取、继承／冻结持久 header／热续用；独立旧 importer 仍不变。真实原生提供者与普通解包合计 30／30，通过 full native spawn/fork／冷恢复等既有路径。测试只写自有隔离目录，无模型、无监听；不是当前已部署 GUI 激活证明。候选 clean-source 一次制品与同字节矩阵、复审、发布和安装另行报告；本机路径、Profile 快照和原始证据不进入公开材料。
+当前源码验收为全量 761／761、0 skipped；[绑定实际 SDK 身份](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/canonical-peer-bindings.test.mjs>)5／5、[完整导入清单](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/compatible-import-inventory.test.mjs>)18／18、组合 49／49、准备 87／87、实际 Plugin Manager 11／11。后者包括关→开覆盖／已有服务与 B child 连续性，以及真实旧协议包只读接入的 Manager 安装／新启动、A/B 文件读取、继承／冻结持久 header／热续用；独立旧 importer 仍不变。真实原生提供者与普通解包合计 30／30，通过 full native spawn/fork／冷恢复等既有路径。测试只写自有隔离目录，无模型、无监听；不是当前已部署 GUI 激活证明。候选 clean-source 一次制品与同字节矩阵、复审、发布和安装另行报告；本机路径、Profile 快照和原始证据不进入公开材料。
 
 ## 0.2.1-alpha.2 接入口径（2026-10-09）
 
@@ -26,12 +26,12 @@
 若将来确有需要（例如会话导出需自证工作树来历），只做**只读镜像**：账本始终是唯一权威，官方记录不得用于判定业务状态。
 ## 当前源码进度与验收边界
 
-0.4.2 发布线已将版本固定的[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>)、[公开来源与变换记录](<../compatibility/native-subagent.provenance.json>)、[真实包装入口](<../src/compatibility/native-subagent.ts>)与[只读启动准备观测](<../src/compatibility/readiness.ts>)纳入精确文件／exports 清单，并通过[编译后启动选择器](<../src/compatibility/composition.ts>)生成公开 bundle 覆盖。历史 0.4.1 Release 不含此实现；发行包内容不等于当前进程安装／启用事实。
+0.4.2 发布线已将版本固定的[兼容实现](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent-0.2.1-alpha.1.js>)、[公开来源与变换记录](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent.provenance.json>)、[真实包装入口](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/native-subagent.ts>)与[只读启动准备观测](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/readiness.ts>)纳入精确文件／exports 清单，并通过[编译后启动选择器](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/composition.ts>)生成公开 bundle 覆盖。历史 0.4.1 Release 不含此实现；发行包内容不等于当前进程安装／启用事实。
 
 - 兼容实现保持完整原始 manager／activation 语义，只应用已审阅的首次 cwd 变换、共享公开错误类型及只读来源标识；来源标识不是能力 getter。开发构建器不修改 SDK，普通用户不需要运行它。
 - 独立运行既有[真实 native 目录与续用测试](<../tests/host-cwd.test.mjs>)的 plugin-owned 分支：10／10 通过，包括实际 A/B 文件读取、持久冻结 header、原始 spawn/fork 与冷恢复；其中两项仍是旧离线补丁拒绝测试，不把它们算成插件目录行为证明。无模型调用。
-- 上轮[公开 Loader 组合测试](<../tests/compatibility-composition.test.mjs>)：35／35 通过。覆盖真正启动的唯一选择、首次安装与反复热重载保留已有 ACTIVE／PENDING 服务、用户覆盖、源版本／字节检查及导入前决策。兼容服务在这组测试中是明确标注的生命周期 fixture，不冒充目录行为或完整 Web。
-- [旧管理器升级回归](<../tests/managed-sdk.test.mjs>)：28／28 通过，跨版本相同 recipe 维护保留 creator 来源，错误 owner／schema／recipe／SDK／目录与不合法版本不授予写权限。版本模拟使用独立 package fixture，不声称实际发布过模拟版本。
+- 上轮[公开 Loader 组合测试](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/compatibility-composition.test.mjs>)：35／35 通过。覆盖真正启动的唯一选择、首次安装与反复热重载保留已有 ACTIVE／PENDING 服务、用户覆盖、源版本／字节检查及导入前决策。兼容服务在这组测试中是明确标注的生命周期 fixture，不冒充目录行为或完整 Web。
+- [旧管理器升级回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/managed-sdk.test.mjs>)：28／28 通过，跨版本相同 recipe 维护保留 creator 来源，错误 owner／schema／recipe／SDK／目录与不合法版本不授予写权限。版本模拟使用独立 package fixture，不声称实际发布过模拟版本。
 
 前轮正式包装与原配置桥接完成：当时实际 Loader／native 13／13 回归，maxDepth／maxActiveSubagents 数值及 !!js 通过原生公开 schema，在原 disabled 行的同作用域／身份下解析；非法更新保留最后有效整组限制，不重挂载服务。资产／metadata 错误在导入前拒绝兼容实现并使用实际原生构造器，不伪造来源或能力。
 
@@ -49,10 +49,10 @@
 
 ## 现有实现事实
 
-- [随包 recipe](<../compatibility/initial-cwd.recipe.json>)限定实际 SDK 身份、版本和五个文件的前／后镜像。
-- [兼容管理器](<../src/compatibility/managed-sdk.ts>)具有校验、锁、备份、事务记录、准备与显式恢复；不能冒领外部补丁或覆盖漂移文件。
-- [CLI](<../src/compatibility/cli.ts>)提供离线检查／准备／恢复／启动，但当前要求使用者传入明确 SDK 目录并声明 DSH 已停止，属于内部诊断／维护工具，不应作为正常 GUI 用户必经流程。
-- [当前 Host 启动观测](<../src/compatibility/host-startup.ts>)先观察实际公共能力，再通过只读插件准备 callback 验证下一次实现；[启动设置](<../src/controls/startup-support.ts>)仍只保存下次请求。常规启动不调用旧 SDK 写入准备，兼容服务由同包公开组合接入。
+- [随包 recipe](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/initial-cwd.recipe.json>)限定实际 SDK 身份、版本和五个文件的前／后镜像。
+- [兼容管理器](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/managed-sdk.ts>)具有校验、锁、备份、事务记录、准备与显式恢复；不能冒领外部补丁或覆盖漂移文件。
+- [CLI](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/cli.ts>)提供离线检查／准备／恢复／启动，但当前要求使用者传入明确 SDK 目录并声明 DSH 已停止，属于内部诊断／维护工具，不应作为正常 GUI 用户必经流程。
+- [当前 Host 启动观测](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/host-startup.ts>)先观察实际公共能力，再通过只读插件准备 callback 验证下一次实现；[启动设置](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/controls/startup-support.ts>)仍只保存下次请求。常规启动不调用旧 SDK 写入准备，兼容服务由同包公开组合接入。
 - 旧事务记录已支持相同 owner／schema／SDK／recipe 与已核验文件／备份跨插件版本接续；ownerVersion 是有效 SemVer 的 creator 来源，不是当前版本锁。foreign／漂移／未知仍拒绝，不自动接管。
 
 ## 接入方案的验证要求

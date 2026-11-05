@@ -589,7 +589,7 @@ Host 严格构建与 Client noEmit／闭合浏览器图检查通过；68 个 JS�
 - `DSH_CONTROLS_HOST_ROOT`：规范宿主（本地 `<DSH_INSTALL>`，`0.2.1-alpha.2`；具体主机路径不进入公开文档）。Host／Client 通用用例、宿主原生 seam 用例在这里运行。
 - `DSH_CONTROLS_COMPAT_HOST_ROOT`：兼容桥证据根（本地 `<DSH_HOME>/hosts/dsh-0.2.1-alpha.1/node_modules/@deepseek-ai/dsh`，`0.2.1-alpha.1`）。初始 cwd recipe 应用、兼容 subagent 字节与 peer 绑定、公开 Loader 组合 guard、打包插件桥场景、真实 Plugin Manager 桥场景必须使用它；缺失时这些用例带 `set DSH_CONTROLS_COMPAT_HOST_ROOT ...` 诊断 skip，不改写断言、不计成通过。
 
-在 prefix 中重建 alpha.1 根：`npm install --install-strategy=nested @deepseek-ai/dsh@0.2.1-alpha.1 <prefix>`，根即 `<prefix>/node_modules/@deepseek-ai/dsh`。nested 策略把传递依赖保留在各 owner 包的 `node_modules` 下，所以桥夹具会在临时只读 view 中把这些 owner 内包按 Node 可见名链接成一个根（[compat-host.mjs](<../tests/fixtures/compat-host.mjs>)，只创建 scratch 符号链接，不写任何已安装文件），让整套 alpha.1 闭包从单一根可解析。桥的原生入口字节仍钉住 SHA-256 `75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541`。
+在 prefix 中重建 alpha.1 根：`npm install --install-strategy=nested @deepseek-ai/dsh@0.2.1-alpha.1 <prefix>`，根即 `<prefix>/node_modules/@deepseek-ai/dsh`。nested 策略把传递依赖保留在各 owner 包的 `node_modules` 下，所以桥夹具会在临时只读 view 中把这些 owner 内包按 Node 可见名链接成一个根（[compat-host.mjs](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/fixtures/compat-host.mjs>)，只创建 scratch 符号链接，不写任何已安装文件），让整套 alpha.1 闭包从单一根可解析。桥的原生入口字节仍钉住 SHA-256 `75b50b1c9452a6aeb10d1c859e3f45b05e062ea1fad6ed3bcd9577f2bc912541`。
 
 `packed-native-subagent` 与 `plugin-manager-compatibility` 只把 alpha.1 桥场景切到兼容根；alpha.2 的 HMR、安装与卸载等通用场景继续在规范根运行，因此不会用“全文件跳过”掩盖宿主通用行为。
 
@@ -637,7 +637,7 @@ Host 严格构建与 Client noEmit／闭合浏览器图检查通过；68 个 JS�
 
 - 实际 Loader／native 包装器与 Host／只读准备组合定向 **103／103**，0 skipped；覆盖来源／能力区分、原 schema 及 volatile 配置、资产失败的实际原生回退和本机原始 SDK 哈希保留。
 - 实际原生 Client 激活加全部 client 测试 **73／73**，0 failed／cancelled／skipped。真实 DOM 新增三条逐一 RED→GREEN 轨迹：所有状态及折叠详情不含 SDK 路径／手工维护命令；独立 StartupSupport→Remote→页面保存，fixture 同 epoch 重挂载／重建不启用，新 epoch 加真实 capability 观测才显示生效，关闭同理；未知／失败不变成已关闭或承诺重启可修复。管理保持 OFF，零 React 警告／错误。fixture epoch 变化不是实际 DSH 重启。
-- [解包启动矩阵](<../tests/packed-native-subagent.test.mjs>) **10／10**，从实际 development tarball 解包，在普通 Node 进程中以真实 SDK entryListSchema 读取 shipped YAML，公开 Loader／applyEntryPatches 激活真实包装器与不可变 Skills，无 registerHooks、NODE_OPTIONS 为空。覆盖 ACTIVE／PENDING stock 三次 HMR 保留、真正 A/B 原生 read／冻结 header／JSONL、原始 spawn／fork 前缀、热 send／公开 selective drain 后冷 send、第二独立 Node 进程恢复同一 child/B header、真实启动文档跨进程请求且管理 OFF、非法 volatile 配置最后有效值、坏资产不执行并保留实际普通原生 create/send。每个 worker 确认零模型调用与参考 SDK 原字节。
+- [解包启动矩阵](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/packed-native-subagent.test.mjs>) **10／10**，从实际 development tarball 解包，在普通 Node 进程中以真实 SDK entryListSchema 读取 shipped YAML，公开 Loader／applyEntryPatches 激活真实包装器与不可变 Skills，无 registerHooks、NODE_OPTIONS 为空。覆盖 ACTIVE／PENDING stock 三次 HMR 保留、真正 A/B 原生 read／冻结 header／JSONL、原始 spawn／fork 前缀、热 send／公开 selective drain 后冷 send、第二独立 Node 进程恢复同一 child/B header、真实启动文档跨进程请求且管理 OFF、非法 volatile 配置最后有效值、坏资产不执行并保留实际普通原生 create/send。每个 worker 确认零模型调用与参考 SDK 原字节。
 - 已逐一复现 pristine 同版本 native copy、scope copy 与 import/require wrapper export 分歧的 RED，再通过 before-import 公共解析／包身份 gate 修成 GREEN。此 gate 35／35 公开 Loader 回归通过；同时核对 wrapper 与 asset 两个实际 import 位置的 14 个固定直接 peer、公共 Context／Loader，并先保留现有 ACTIVE／PENDING Fiber。普通 Node、固定公开包图之外的任意自定义 resolver／恶意 package.json 重定向不在证明范围。准备观测对应 gate **74／74**，包含两位置全部 14 peer 的副本／包身份及 native-local 解析回归，已纳入上述完整根测试。旧 source fixture 已按真实公开 export／Node 解析补齐，13／13；缺资产改为准确的导入前 stock 保留，未放松 gate 或伪造 wrapper 回退。完整默认 Web／普通 Plugin Manager 流程仍未验收。
 
 本轮源码尚未完成真实默认 Profile／正常安装重启全链路验收；没有发布、推送、当前 Profile 安装或 GUI／共享 SDK 改写。以下为上轮核心矩阵的历史证据，不冒充最新全量结果。
@@ -665,10 +665,10 @@ Host 严格构建与 Client noEmit／闭合浏览器图检查通过；68 个 JS�
 当前开发实现基于 0.4.1，正式入口尚未接通，不能把本节视作现有 Release、本机安装包或当前 GUI 已含新能力。实施要求与边界见[单包兼容说明](<PLUGIN_MANAGED_COMPATIBILITY.md>)。
 
 - 根测试 **564／564** 通过，0 failed、0 cancelled、0 skipped；严格 Host 构建／scratch 字节一致性通过，JS／DTS 共 58 个。新增启动组合模块进入精确构建允许清单，固定文件 71 加不可变 vendor 85，当前开发包测试精确核对 156 文件；这不是新 Release 制品身份。
-- [公开组合回归](<../tests/compatibility-composition.test.mjs>) **27／27**：实际 Loader／Fiber、导入前选择、热重载保留 ACTIVE／PENDING 原服务、用户覆盖及版本／源字节拒绝。兼容服务在该矩阵是标注的生命周期 fixture，不声称完整 Web 或 cwd。
+- [公开组合回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/compatibility-composition.test.mjs>) **27／27**：实际 Loader／Fiber、导入前选择、热重载保留 ACTIVE／PENDING 原服务、用户覆盖及版本／源字节拒绝。兼容服务在该矩阵是标注的生命周期 fixture，不声称完整 Web 或 cwd。
 - 另行以 plugin-owned 模式运行[真实 native cwd 矩阵](<../tests/host-cwd.test.mjs>) **10／10**，使用插件生成的兼容实现与同一宿主 peer，包含 A/B 读取、实际冻结／持久 header、原始 spawn/fork、冷恢复与省略继承；其中两项是既有离线补丁拒绝回归。无模型调用，不修改参考 SDK。
-- [旧兼容记录回归](<../tests/managed-sdk.test.mjs>) **28／28**，相同所有者与 recipe 跨版本接续，creator 版本来源不被只读或幂等调用改写；外国所有者、身份／配方漂移、不合法版本和原有事务／备份／权限保护保持拒绝。版本样本由隔离 package fixture 模拟，不声称模拟版本已发布。
-- [构建器](<../scripts/build-compatible-subagent.mjs>)两次确定性生成及 --check、语法／共享公开错误类型核对通过；[兼容实现](<../compatibility/native-subagent-0.2.1-alpha.1.js>) 136833 bytes，公开来源／变换摘要保存在[provenance](<../compatibility/native-subagent.provenance.json>)。原始 MIT 完整声明已保留，来源标识不是能力 getter。
+- [旧兼容记录回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/managed-sdk.test.mjs>) **28／28**，相同所有者与 recipe 跨版本接续，creator 版本来源不被只读或幂等调用改写；外国所有者、身份／配方漂移、不合法版本和原有事务／备份／权限保护保持拒绝。版本样本由隔离 package fixture 模拟，不声称模拟版本已发布。
+- [构建器](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/scripts/build-compatible-subagent.mjs>)两次确定性生成及 --check、语法／共享公开错误类型核对通过；[兼容实现](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent-0.2.1-alpha.1.js>) 136833 bytes，公开来源／变换摘要保存在[provenance](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent.provenance.json>)。原始 MIT 完整声明已保留，来源标识不是能力 getter。
 - frozen-lockfile 离线安装与 vendor 校验通过；85 文件／279662 bytes、stable／beta 各 27 Skills、既有 vendor root hash 未变。
 
 兼容实现与正式包装／bundle 入口仍未接入，原配置桥接、启动观测、真实默认 Profile 与安装／重启矩阵还待完成。未创建新发布包、推送、安装、改 SDK 或重启当前 GUI。测试中的临时 development pack 随 fixture 清理，不代替 clean-source 正式制品门禁。

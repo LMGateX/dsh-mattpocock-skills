@@ -20,7 +20,7 @@ The initial desired value is `{ startupCwdEnabled: false }`. A settings save is 
 
 ## Public seam
 
-[StartupSupport](<../src/controls/startup-support.ts>) has one trusted constructor and two operations:
+[StartupSupport](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/controls/startup-support.ts>) has one trusted constructor and two operations:
 
 ```ts
 new StartupSupport(storage: VersionedStorage<StartupDocument>,
@@ -30,7 +30,7 @@ save(desired: { startupCwdEnabled: boolean }, expectedRevision: number,
   signal?: AbortSignal): Promise<StartupStatus>
 ```
 
-[Startup state](<../src/controls/startup-state.ts>) contains browser-pure readonly types and strict JSON codecs: `parseStartupDesired`, `parseStartupDocument`, `parseStartupObservation`, and `parseStartupStatus`. The status codec validates transport facts and does not duplicate the status projection in the UI. The core imports no Node filesystem or SDK implementation.
+[Startup state](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/controls/startup-state.ts>) contains browser-pure readonly types and strict JSON codecs: `parseStartupDesired`, `parseStartupDocument`, `parseStartupObservation`, and `parseStartupStatus`. The status codec validates transport facts and does not duplicate the status projection in the UI. The core imports no Node filesystem or SDK implementation.
 
 Host must authorize reads and saves using its existing operator settings authority. Neither the settings request nor a model request supplies an epoch, SDK root, preparation receipt, or claimed native capability. The constructor is a trusted program seam, not user self-attestation.
 
@@ -78,7 +78,7 @@ Cancellation is checked before and after preparatory read/inspection awaits and 
 
 ## Verification
 
-[Public-seam tests](<../tests/startup-support.test.mjs>) cover default off, save-before-read, no-op/stale/concurrent saves, durable multiple-epoch latches, capability/preparation states and strict status transport, same-process inspection changes, abort timing, corrupt documents, and actual native DomainFacility/JsonStorageBackend reopen plus a second Node process. The native probe is opt-in and reports skipped unless its Host root is explicitly supplied.
+[Public-seam tests](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/startup-support.test.mjs>) cover default off, save-before-read, no-op/stale/concurrent saves, durable multiple-epoch latches, capability/preparation states and strict status transport, same-process inspection changes, abort timing, corrupt documents, and actual native DomainFacility/JsonStorageBackend reopen plus a second Node process. The native probe is opt-in and reports skipped unless its Host root is explicitly supplied.
 
 ```bash
 pnpm exec tsc -p tsconfig.json

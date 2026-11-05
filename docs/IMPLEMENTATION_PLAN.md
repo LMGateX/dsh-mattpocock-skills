@@ -146,7 +146,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 | 已实现源码范围 | 当前契约与操作说明 |
 |---|---|
 | 参考窗口、真实程序事实与当前消费去重 | [使用指南](<../CONTROLS.md>)、[消费模块](<../src/controls/consumption.ts>) |
-| 首次目录能力与可信技术授权 | [宿主补丁交付](<../host-patches/README.md>)、[宿主接口](<HOST_INTEGRATION.md>) |
+| 首次目录能力与可信技术授权 | [宿主补丁交付](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/host-patches/README.md>)、[宿主接口](<HOST_INTEGRATION.md>) |
 | 持久意图、实际绑定、discarded/cleaned 与源 checkpoint/旧版本删除 | [工作树绑定](<WORKTREE_BINDINGS.md>) |
 | 历史副本、主动查询、三源域整理及非原子部分结果 | [历史核心](<HISTORY_CORE.md>) |
 | 默认七项模型工具 + opt-in delegate + 条件 audit（0.7.0 已退役 execute）、客户端历史与源清理操作 | [中文使用指南](<../CONTROLS.md#6-工具与实际权限>) |
@@ -181,7 +181,7 @@ A/B/D/E 已在 0.7.0 源码与制品准备中完成，并已发布 v0.7.0；C �
 |---|---|---|
 | A 门禁声明 | `package.json` 的 `engines` 增加 `dsh: "~0.2.1-alpha.1"`；`verify-package.mjs` 导出 `EXPECTED_ENGINES` 并在 `validatePackagePolicy` 中断言；scaffold 用例同步 | 两版真身 `evaluatePluginCompatibility` × 9 个运行时版本：声明前后逐版本一致 |
 | B 接缝核对 | 21 个宿主包运行时导出清单、`post-execute`、`create_worktree` 结果键、子代理目录／启动方法、会话事件名、技能注册表、`DomainFacility`、6 个客户端插槽键 | 逐项同名存在；导出清单零删除 |
-| C fixture 适配 | 新增 `tests/fixtures/peer.mjs`；[host.test.mjs](<../tests/host.test.mjs>)、[host-startup.test.mjs](<../tests/host-startup.test.mjs>)、[host-collaboration.test.mjs](<../tests/host-collaboration.test.mjs>) 与 `tests/fixtures/runtime-host.mjs` 改用两版都合法的 Peer；客户端原生激活 fixture 在宿主安装不提供 `@deepseek-ai/dsh-client-ui-slots` 时按环境门禁 skip | 四个文件在 alpha.2 与 alpha.4 均 0 失败 |
+| C fixture 适配 | 新增 `tests/fixtures/peer.mjs`；[host.test.mjs](<../tests/host.test.mjs>)、[host-startup.test.mjs](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/tests/host-startup.test.mjs>)、[host-collaboration.test.mjs](<../tests/host-collaboration.test.mjs>) 与 `tests/fixtures/runtime-host.mjs` 改用两版都合法的 Peer；客户端原生激活 fixture 在宿主安装不提供 `@deepseek-ai/dsh-client-ui-slots` 时按环境门禁 skip | 四个文件在 alpha.2 与 alpha.4 均 0 失败 |
 | D 回归 | 全量根测试在两个宿主分别运行 | alpha.4：851 项 **648 通过／0 失败／203 skip**；alpha.2：851 项 **654 通过／0 失败／197 skip**（与改动前逐项一致） |
 
 技术边界（核对中确认）：本插件的客户端产物不 require 任何 `@deepseek-ai/*` 模块 id（导入全为 type-only 或服务注入），因此 alpha.4 把 slots 从安装依赖改为 Web 前端 static module 不影响运行时；产品代码不构造 `PeerScope`，新契约只需要测试 fixture 满足。详细核对表见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>) 的 alpha.3／alpha.4 小节。

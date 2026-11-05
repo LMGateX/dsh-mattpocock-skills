@@ -118,7 +118,7 @@ query.current 只包含最新 value、bindingId/revision 和最新 source/author
 
 初始测试的重开夹具使用同一显式 Memory 底层及全新模块对象，检查文档恢复与不重派；保存回执丢失使用受控 table 驱动真实 CAS Adapter，检查提交已发生但确认失败的恢复语义。真实 durable backend、nativeCreate/header/read、续聊与冷恢复的集成检查由对应工程记录承载，不能将这些不同夹具的结果混算。
 
-本轮 runtime/Host/Client 和历史组合已另行落地；原生源码/编译补丁交付见[宿主补丁说明](<../host-patches/README.md>)。这些仓库变更不自动安装到当前 SDK、启用 Profile 或更新运行 GUI。
+本轮 runtime/Host/Client 和历史组合已另行落地；原生源码/编译补丁交付见[宿主补丁说明](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/host-patches/README.md>)。这些仓库变更不自动安装到当前 SDK、启用 Profile 或更新运行 GUI。
 
 ## 8. 本轮补充：源 checkpoint 与定向旧版本删除
 

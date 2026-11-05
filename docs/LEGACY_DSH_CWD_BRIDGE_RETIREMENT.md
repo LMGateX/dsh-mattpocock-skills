@@ -4,7 +4,7 @@
 >
 > **Decision:** 方案 C——删除兼容桥与 startupCwdEnabled，最低宿主 `~0.2.1-alpha.2`，版本 0.13.0；允许隔离开发、测试、push、tag 与 GitHub Release，**不安装本机**、不改当前 Profile/共享 SDK、不重启服务、不 npm publish。
 >
-> 公开边界：本文只引用仓库内可公开核对的文档、代码和聚合文件大小；不包含本机会话、原始日志、用户内容或私有路径。
+> 公开边界：本文只引用仓库内可公开核对的文档、代码和聚合文件大小；不包含本机会话、原始日志、用户内容或私有路径。已删除文件的历史链接指向 `v0.12.0` tag。
 
 ## 1. 结论
 
@@ -20,11 +20,11 @@
 
 | 层 | 位置 | 作用 |
 |---|---|---|
-| 固定改造 provider | [native-subagent-0.2.1-alpha.1.js](<../compatibility/native-subagent-0.2.1-alpha.1.js>)、[provenance](<../compatibility/native-subagent.provenance.json>) | 136,833 B 的固定产物；加载时校验字节/provenance，再绑定 canonical peer |
-| 旧 SDK 补丁 | [initial-cwd.recipe.json](<../compatibility/initial-cwd.recipe.json>)、[host-patches](<../host-patches/README.md>) | 固定 0.2.1-alpha.1 的 5 个文件前后镜像；给旧 manager 加 cwd 和 initialCwdSupported |
-| 同进程包装 | [native-subagent.ts](<../src/compatibility/native-subagent.ts>)、[composition.ts](<../src/compatibility/composition.ts>)、[peer-bindings.ts](<../src/compatibility/peer-bindings.ts>) | 通过公开 Loader 组合选择 stock 或兼容 provider；校验 ESM 解析、包身份和内置符号 |
-| 准备/诊断 | [managed-sdk.ts](<../src/compatibility/managed-sdk.ts>)、[cli.ts](<../src/compatibility/cli.ts>)、[readiness.ts](<../src/compatibility/readiness.ts>)、[host-startup.ts](<../src/compatibility/host-startup.ts>) | 旧 SDK 检查/准备/恢复、启动前准备观测与兼容诊断 |
-| 启动开关 | [startup-support.ts](<../src/controls/startup-support.ts>)、[startup-state.ts](<../src/controls/startup-state.ts>)、[client.ts](<../src/client.ts>) | startupCwdEnabled 的持久请求、boot receipt、设置页；当前仍 gate delegate 的显式 cwd |
+| 固定改造 provider | [native-subagent-0.2.1-alpha.1.js](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent-0.2.1-alpha.1.js>)、[provenance](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/native-subagent.provenance.json>) | 136,833 B 的固定产物；加载时校验字节/provenance，再绑定 canonical peer |
+| 旧 SDK 补丁 | [initial-cwd.recipe.json](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/compatibility/initial-cwd.recipe.json>)、[host-patches](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/host-patches/README.md>) | 固定 0.2.1-alpha.1 的 5 个文件前后镜像；给旧 manager 加 cwd 和 initialCwdSupported |
+| 同进程包装 | [native-subagent.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/native-subagent.ts>)、[composition.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/composition.ts>)、[peer-bindings.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/peer-bindings.ts>) | 通过公开 Loader 组合选择 stock 或兼容 provider；校验 ESM 解析、包身份和内置符号 |
+| 准备/诊断 | [managed-sdk.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/managed-sdk.ts>)、[cli.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/cli.ts>)、[readiness.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/readiness.ts>)、[host-startup.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/compatibility/host-startup.ts>) | 旧 SDK 检查/准备/恢复、启动前准备观测与兼容诊断 |
+| 启动开关 | [startup-support.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/controls/startup-support.ts>)、[startup-state.ts](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/src/controls/startup-state.ts>)、[client.ts](<../src/client.ts>) | startupCwdEnabled 的持久请求、boot receipt、设置页；当前仍 gate delegate 的显式 cwd |
 | 组合补丁 | [cordis.patch.yml](<../cordis.patch.yml>) | 生成两行：禁用 stock subagent 并插入 mattpocock-native-subagent；表达式决定实际选择 |
 | 包面 | [package.json](<../package.json>) | ./compatibility 与 ./native-subagent 导出、dsh-mattpocock-skills-cwd bin、worktree-bridge locale、固定 files 清单 |
 
@@ -152,5 +152,5 @@
 - [STARTUP_CWD_SUPPORT.md](<STARTUP_CWD_SUPPORT.md>)：旧桥开关、下次启动请求、准备/诊断边界。
 - [PLUGIN_MANAGED_COMPATIBILITY.md](<PLUGIN_MANAGED_COMPATIBILITY.md>)：0.4.2/0.4.3 的同进程兼容 provider 与旧 SDK 维护。
 - [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>)：alpha.2 的 native cwd、alpha.2 worktree 默认未装载、alpha.3/4 的 create_worktree 契约。
-- [host-patches/README.md](<../host-patches/README.md>)：旧 SDK 补丁、固定来源、恢复边界。
+- [host-patches/README.md](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/v0.12.0/host-patches/README.md>)：旧 SDK 补丁、固定来源、恢复边界。
 - [package.json](<../package.json>)、[cordis.patch.yml](<../cordis.patch.yml>)、[src/host.ts](<../src/host.ts>)：当前包面、组合行与 seam 选择。
