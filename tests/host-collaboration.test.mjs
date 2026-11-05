@@ -160,10 +160,9 @@ test('existing read-only and danger-full policies retain their native permission
 })
 
 test('upstream activation seam carries the explicit cwd and keeps upstream ownership', options, async t => {
-  const activations = [], bridge = { calls: 0 }
+  const activations = []
   const native = {
     resolveMaxDepth: () => 2,
-    async startActivation() { bridge.calls++; throw new Error('compatibility bridge must not serve a host that exposes the activation seam') },
     async startActivation(spec) {
       activations.push(spec)
       // Local children always carry a message id; the rejecting capture result proves
@@ -188,7 +187,6 @@ test('upstream activation seam carries the explicit cwd and keeps upstream owner
   await f.mounted.ports.createContinuable(exec, { provider: 'fork', childId: 'native-inherit', label: 'Inherit', prompt: 'Task' })
   assert.deepEqual(Object.keys(activations[1].request).sort(), ['maxDepth', 'parent', 'prompt'])
   await new Promise(resolve => setImmediate(resolve))
-  assert.equal(bridge.calls, 0)
 })
 
 test('activation seam still authorizes the directory before any child exists, and needs the directory owner', options, async t => {
