@@ -32,19 +32,21 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 本增量不改变 0.12.0 的已发布制品，也不声称当前 0.10.2 GUI 已修复；安装 0.12.0 仍不会修复侧栏全量列表。
 
-## 0.13.0 早期 DSH cwd 兼容桥退役（方案 C，2026-11-05 所有者认可；实施中）
+## 0.13.0 早期 DSH cwd 兼容桥退役（方案 C，2026-11-05 所有者认可；源码已实施，待发布）
 
 权威范围见 [DESIGN.md](<DESIGN.md>) 同名节与 [退役研究](<LEGACY_DSH_CWD_BRIDGE_RETIREMENT.md>)。目标是删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、组合/准备、包面与 `startupCwdEnabled` 启动开关；最低宿主至少 `~0.2.1-alpha.2`。不要求原生 worktree 工具，不删除 delegate/binding/观测/历史。
 
 | 阶段 | 内容 | 状态/门禁 |
 |---|---|---|
 | A 文档 | 固定方案 C、方案 B 仅为历史备选、最低宿主、迁移风险与发布边界 | 已完成（文档提交） |
-| B 包面 | 删除 compatibility/host-patches/src-compatibility/脚本/测试/包 exports/bin/locale/files；`cordis.patch.yml` 仅保留 Skills 行 | 待实施；包清单/验证器同步，不能只删文件 |
-| C Host | 只保留 native seam；删除 bridge/legacy continuation/startup domain/UI/Remote；无 native seam 失败关闭 | 待实施；不改 delegate/binding/观测语义 |
-| D 迁移与回归 | alpha.1 拒绝；alpha.2/0.2.2-alpha.3 native 正常；0.12 Profile 无残留 compat 行；旧数据可读；无 native seam 不创建 child | 待实施；真实升级矩阵与完整 source 套件 |
+| B 包面 | 删除 compatibility/host-patches/src-compatibility/脚本/测试/包 exports/bin/locale/files；`cordis.patch.yml` 仅保留 Skills 行 | **已完成**；包清单固定 76 files / 62 lib，验证器与 scaffold 同步 |
+| C Host | 只保留 native seam；删除 bridge/legacy continuation/startup domain/UI/Remote；无 native seam 失败关闭 | **已完成**；delegate/binding/观测语义未改，无原生 seam 的 host-collaboration 用例失败关闭 |
+| D 迁移与回归 | alpha.1 拒绝；alpha.2/0.2.2-alpha.3 native 正常；0.12 Profile 无残留 compat 行；旧数据可读；无 native seam 不创建 child | **源码/完整 fixture 已完成**；真实 0.12 Profile 升级矩阵仍未在 live Profile 上执行（不得改动本机 Profile），另见残余风险 |
 | E 制品与发布 | 独立 Standards/Spec、严格构建、唯一精确制品、双 SDK/headless、五资产下载 strict 回验 | 已授权 push/tag/Release；不安装本机、不改 Profile/SDK/服务、不 npm publish |
 
 0.13.0 的两个增量一起发布；迁移说明必须把“最低宿主提升/旧桥退役”作为破坏性变更单独列出，不能混在侧栏 UI 修复中淡化。
+
+**本轮机械结果（2026-11-05）：** 在完整 fixture root `DSH_CONTROLS_HOST_ROOT=/home/dev/dev/isolated/dsh-alpha3-g.m9uoL7/lib/node_modules/@deepseek-ai/dsh` 上，全量 `node --test` 为 **860 项：851 通过、0 失败、9 skip**；根与 Client TypeScript 检查均 0 error；新增的引擎门禁用例以真实 `evaluatePluginCompatibility` 验证 `0.2.1-alpha.1` 被拒绝、`0.2.1-alpha.2`／`0.2.1-alpha.3`／`0.2.2-alpha.3` 被放行。真实 0.12 Profile 的升级矩阵**没有在 live Profile 上执行**（本 lane 禁止改动本机 Profile），集成者需在隔离 Profile 副本上补做并核对无残留 `mattpocock-native-subagent` 行。
 
 ## 0.11.0 读取路径性能优化（2026-11-04，A–F 已完成，已发布未安装）
 

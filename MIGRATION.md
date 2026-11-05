@@ -1,5 +1,31 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.13.0 native-cwd migration
+
+0.13.0 is a breaking host-compatibility release: it removes the 0.2.1-alpha.1 cwd bridge, the pinned compatibility provider, the old SDK patch tooling, the cwd CLI, the `./compatibility` and `./native-subagent` exports, the worktree-bridge locale files and the `startupCwdEnabled` next-boot request. The Skills provider, instruments, delegate binding/assignment, native lifecycle/worktree observation and historical data remain.
+
+### Before upgrading
+
+1. **Back up the Profile** (or at least its `package.json`, `cordis.patch.yml` and any custom overrides) and the current child/history stores if you need them for rollback.
+2. **Upgrade DSH first** to a host admitted by this package: `0.2.1-alpha.2` or newer on the 0.2.1/0.2.2-alpha line. The current tested complete fixture is `0.2.2-alpha.3`. `0.2.1-alpha.1` is refused by `engines.dsh`.
+3. **Inspect custom Profile edits.** If you explicitly added a `mattpocock-native-subagent` row, or a `disabled: true`/forced-enable override for it, remove that override after taking the backup. The bundle patch no longer emits that row; a stale custom row is your own Profile data, not something the plugin silently rewrites.
+
+### If you manually applied the old SDK patches
+
+The old `host-patches/` and `dsh-mattpocock-skills-cwd` CLI are gone. Restore the original DSH files from the backup you made when applying them (or reinstall that DSH version) before upgrading. This repository no longer ships a restore command. Do not leave a patched `@deepseek-ai/dsh-subagent` behind and assume capability truth: check the host capability at runtime.
+
+### Upgrade and verify
+
+1. Install/update the 0.13.0 bundle normally and let DSH load it.
+2. Confirm the Skills provider still mounts and the stock native subagent is not replaced. The old compatibility row must be absent.
+3. Check `capabilities.nativeInitialChildCwd`. On a host with the native `startActivation` initial-child-cwd seam it is `supported`; without that seam it is `unsupported`.
+4. With the native seam, delegate an explicit cwd and verify the child's effective working directory. Without the native seam, an explicit-cwd delegation must fail closed and create no child; an omitted cwd inherits the parent directory.
+5. Old startup settings and the old startup storage domain may remain on disk but are no longer read or written. Existing bindings, child sessions and history remain readable and are not automatically deleted; do not treat an old record as a current capability claim.
+
+### Rollback boundaries
+
+Downgrading to 0.12.x requires the alpha.1 host and its old Profile composition. Do not downgrade in place on a newer host and do not reapply the old patches without a separate backup. This repository does not publish or install either release automatically.
+
 ## Plugin 0.10.0 model-result contract
 
 This is a deliberate change to the optional collaboration tools, not to upstream Skill bodies. The isolated implementation uses schemaVersion 2 and bounds the final UTF-8 JSON result: 64 KiB for current reads/pages/content and 8 KiB for mutation receipts/plugin diagnostics. It does not require a DSH patch, change source-history retention or reclaim existing spill files. Exact implementation and artifact status is recorded in [verification](<docs/VERIFICATION.md>).

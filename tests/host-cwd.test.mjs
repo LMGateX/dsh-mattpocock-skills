@@ -138,5 +138,3 @@ test('invalid absolute first cwd rejects without publishing a live child', optio
     assert.equal(f.ctx.agents.get('invalid-child-' + index), undefined)
   }
 })
-
-

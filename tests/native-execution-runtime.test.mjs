@@ -403,6 +403,6 @@ test('C adds no model tool and no Remote method', async t => {
     'mattpocock_record', 'mattpocock_resource', 'mattpocock_window', 'mattpocock_worktree'])
   assert.equal(visible.length, 7)
   assert.equal(f.ctx.tools.get('mattpocock_delegate'), undefined, 'delegate is opt-in, not part of the default C surface')
-  assert.equal(core.REMOTE_METHODS.length, 16)
+  assert.equal(core.REMOTE_METHODS.length, 14)
   assert.equal(core.REMOTE_METHODS.includes('readNativeExecutions'), false)
 })

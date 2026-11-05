@@ -744,7 +744,7 @@ function collectExportTargets(value, result = []) {
 }
 
 async function requirePackageTargets(extractedRoot, packageJson) {
-  const targets = new Set([packageJson.main, packageJson.types, packageJson.dsh.bundle.patch, packageJson.dsh.client.entry, ...collectExportTargets(packageJson.exports), ...Object.values(packageJson.bin)])
+  const targets = new Set([packageJson.main, packageJson.types, packageJson.dsh.bundle.patch, packageJson.dsh.client.entry, ...collectExportTargets(packageJson.exports), ...(packageJson.bin === undefined ? [] : Object.values(packageJson.bin))])
   for (const target of targets) {
     assert(typeof target === 'string' && target.startsWith('./'), 'package target must be package-relative: ' + JSON.stringify(target))
     const normalized = posix.normalize(target.slice(2))
