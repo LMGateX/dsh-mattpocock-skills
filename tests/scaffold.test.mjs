@@ -4,7 +4,6 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { parse } from 'yaml'
-import { createCompatibilityCompositionPatches } from '../lib/compatibility/composition.js'
 import { PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES, EXPECTED_PACKED_FILES, EXPECTED_PEERS, EXPECTED_PEER_META, EXPECTED_CLIENT, EXPECTED_ENGINES, validatePackagePolicy } from '../scripts/verify-package.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -22,7 +21,7 @@ async function pathExists(path) {
 
 test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.name, '@lmgatex/dsh-mattpocock-skills')
-  assert.equal(packageJson.version, '0.12.0')
+  assert.equal(packageJson.version, '0.13.0')
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
@@ -36,9 +35,8 @@ test('declares one private installable DSH bundle', async () => {
   assert.equal(await pathExists(join(root, 'dsh.plugin.json')), false)
 
   const patch = parse(await readFile(join(root, 'cordis.patch.yml'), 'utf8'), { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => ({ __jsExpr: value }) }] })
-  assert.equal(patch.length, 3)
-  assert.deepEqual(patch.slice(0, 2), createCompatibilityCompositionPatches())
-  assert.deepEqual(patch.slice(2), [
+  assert.equal(patch.length, 1, 'only the Skills provider is inserted; no stock subagent row is disabled or replaced')
+  assert.deepEqual(patch, [
     {
       insert: [
         {
@@ -81,21 +79,19 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   const sources = entries.filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
   assert.equal(sources.filter(path => !path.includes('/')).length, 7)
-  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 26)
+  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 24)
   const expected = sources.flatMap(path => [
     'lib/' + path.replace(/\.ts$/, '.js'),
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
   const actual = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort()
-  assert.equal(actual.length, 80)
+  assert.equal(actual.length, 62)
   assert.deepEqual(actual, expected)
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
-  assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), [
-    'locale/en.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json', 'locale/zh.json',
-  ])
-  assert.equal(FIXED_PACKED_FILES.length, 99)
+  assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), ['locale/en.json', 'locale/zh.json'])
+  assert.equal(FIXED_PACKED_FILES.length, 76)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 184)
+  assert.equal(EXPECTED_PACKED_FILES, 161)
 })

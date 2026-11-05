@@ -1,5 +1,3 @@
-import { parseStartupDesired, parseStartupStatus } from './startup-state.js'
-import type { StartupDesired, StartupStatus } from './startup-state.js'
 import { parsePolicyIntent, parsePolicySnapshot, DISPLAY_NAMES } from './policy.js'
 import { parseSupervisionConfigIntent, parseSupervisionConfigSnapshot } from './supervision-config.js'
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot } from './supervision-config.js'
@@ -17,7 +15,7 @@ import { array, boundedArray, boolean, freeze, id, invalid, record, revision } f
 
 /** Shared by Host and Client; no Host SDK or Node imports enter the browser. */
 export const REMOTE_NAMESPACE = 'mattpocockControls' as const
-export const REMOTE_METHODS = ['readPolicy', 'savePolicy', 'readSupervisionConfig', 'saveSupervisionConfig', 'readSupervision', 'listWorkspaces', 'readSession', 'readSummaries', 'applyInstrument', 'applyTicketWindow', 'resourceAction', 'grantPolicy', 'historyAction', 'worktreeAction', 'startupStatus', 'saveStartupSettings'] as const
+export const REMOTE_METHODS = ['readPolicy', 'savePolicy', 'readSupervisionConfig', 'saveSupervisionConfig', 'readSupervision', 'listWorkspaces', 'readSession', 'readSummaries', 'applyInstrument', 'applyTicketWindow', 'resourceAction', 'grantPolicy', 'historyAction', 'worktreeAction'] as const
 export type RemoteMethod = typeof REMOTE_METHODS[number]
 export type HostJson = null | boolean | number | string | HostJson[] | { [key: string]: HostJson }
 export interface HostCaller { readonly kind: 'user' | 'agent'; readonly principalId: string; readonly sessionId: string | null }
@@ -169,8 +167,6 @@ export type ResourceAction =
   | { readonly action: 'request-retire'; readonly resourceId: string; readonly disposition: RetireDisposition }
 
 export interface ControlsRemote {
-  startupStatus(signal?: AbortSignal): Promise<StartupStatus>
-  saveStartupSettings(desired: StartupDesired, expectedRevision: number, signal?: AbortSignal): Promise<StartupStatus>
   readPolicy(): Promise<PolicySnapshot>
   savePolicy(intent: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>
   readSupervisionConfig(): Promise<SupervisionConfigSnapshot>
@@ -285,14 +281,12 @@ const revisionCodec = strict('Revision', value => revision(value, 'expectedRevis
 function descriptor(method: RemoteMethod, parameters: readonly [string, TypertCodec][], result: TypertCodec): InvocationDescriptor {
   return { id: '@lmgatex/dsh-mattpocock-skills#' + REMOTE_NAMESPACE + '/' + method, service: REMOTE_NAMESPACE, namespace: REMOTE_NAMESPACE, method,
     invocation: { kind: 'direct' }, parameters: parameters.map(([name, codec]) => ({ name, wire: name, source: 'json', codec })), result,
-    ...((method === 'readSession' || method === 'readSummaries' || method === 'historyAction' || method === 'startupStatus' || method === 'saveStartupSettings') ? { cancellation: { parameter: 'signal' as const } } : {}) }
+    ...((method === 'readSession' || method === 'readSummaries' || method === 'historyAction') ? { cancellation: { parameter: 'signal' as const } } : {}) }
 }
 /** The same strict contract is registered on Host and selected by Client $mount. */
 export const REMOTE_CONTRIBUTION: TypertRemoteContribution = Object.freeze({
   package: '@lmgatex/dsh-mattpocock-skills',
   descriptors: Object.freeze([
-    descriptor('startupStatus', [], strict('StartupStatus', parseStartupStatus)),
-    descriptor('saveStartupSettings', [['desired', strict('StartupDesired', parseStartupDesired)], ['expectedRevision', revisionCodec]], strict('StartupStatus', parseStartupStatus)),
     descriptor('readPolicy', [], strict('PolicySnapshot', parsePolicySnapshot)),
     descriptor('savePolicy', [['intent', strict('PolicyIntent', parsePolicyIntent)], ['expectedRevision', revisionCodec]], strict('PolicySnapshot', parsePolicySnapshot)),
     descriptor('readSupervisionConfig', [], strict('SupervisionConfigSnapshot', parseSupervisionConfigSnapshot)),

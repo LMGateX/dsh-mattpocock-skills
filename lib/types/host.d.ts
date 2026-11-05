@@ -16,8 +16,6 @@ import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from 
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js';
 import type { VersionedStorage } from './controls/versioned-storage.js';
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js';
-import { StartupSupport } from './controls/startup-support.js';
-import type { StartupStatus } from './controls/startup-state.js';
 declare module '@deepseek-ai/dsh-llm' {
     interface MessageSourceMap {
         'mattpocock-controls-notification': {
@@ -230,8 +228,6 @@ export interface HostPorts {
     readonly resourceLifecycle: ResourceLifecycle;
     /** Background startup notification retries await registration; factories must not await their flush. */
     readonly notificationObserverReady?: Promise<void>;
-    /** Host-owned startup configuration and real native health; never a policy write port. */
-    startupStatus?(signal?: AbortSignal): Promise<StartupStatus>;
     gitRunnerForSession(sessionId: string, signal: AbortSignal): AuthorizedGitRunner;
     makeSnapshotMessage(text: string): UserMessage;
     /** Program-only proof on the exact live model surface; preparation/log existence is not visibility. */
@@ -280,12 +276,6 @@ export interface HostOptions {
     readonly delegate?: boolean;
     /** Notified after a saved policy change so derived caches can be refreshed. */
     readonly onPolicyChanged?: () => void;
-    /** Explicit trusted launch configuration; not a Remote/GUI/model path. */
-    readonly sdkRoot?: string;
-    /** Program-only test/embedding seam; production uses the actual process epoch. */
-    readonly startup?: {
-        readonly bootEpoch?: string;
-    };
 }
 export interface HostMount {
     /** Workspace-scoped Skill delivery gate; unavailable policy keeps skills on. */
@@ -321,18 +311,15 @@ export declare class MattPocockControlsService extends TypertRemoteService {
     private readonly ports;
     private readonly grants;
     private readonly supervision;
-    private readonly startup;
     private readonly lifecycle;
     private readonly sessionRepresentation;
-    constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, supervision: VersionedStorage<SupervisionConfigSnapshot>, startup: StartupSupport, lifecycle: {
+    constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, grants: VersionedStorage<PolicyGrants>, supervision: VersionedStorage<SupervisionConfigSnapshot>, lifecycle: {
         readonly signal: AbortSignal;
         track<T>(work: () => Promise<T>): Promise<T>;
         readonly onPolicyChanged?: () => void;
         readonly onSupervisionChanged?: (snapshot: SupervisionConfigSnapshot) => void;
     });
     private run;
-    startupStatus(suppliedSignal?: AbortSignal): Promise<StartupStatus>;
-    saveStartupSettings(desired: unknown, expectedRevision: unknown, suppliedSignal?: AbortSignal): Promise<StartupStatus>;
     readPolicy(): Promise<PolicySnapshot>;
     readSupervisionConfig(): Promise<SupervisionConfigSnapshot>;
     saveSupervisionConfig(intent: unknown, expectedRevision: unknown): Promise<SupervisionConfigSnapshot>;

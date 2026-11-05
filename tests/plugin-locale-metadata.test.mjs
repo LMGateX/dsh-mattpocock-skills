@@ -37,17 +37,6 @@ test('actual SDK resolves package-root localized Skill and optional management m
   assert.match(meta?.description?.zh ?? '', /不可变.*技能/)
 })
 
-test('actual SDK resolves bridge provenance independently of package-root metadata', options, () => {
-  const meta = app.readPluginMeta(pluginName + '/native-subagent', parentURL)
-  assert.equal(meta?.error, undefined)
-  assert.equal(meta?.title?.en, 'Subagent Working-Directory Compatibility Bridge (Provided by This Plugin)')
-  assert.equal(meta?.title?.zh, '子代理工作目录兼容桥（本插件提供）')
-  assert.equal(meta?.description?.zh, '由本插件提供的内部兼容依赖，为受支持的 DSH 补充子代理初始工作目录能力；不是 DSH 官方组件。功能开关在本插件设置页；不创建、合并或清理工作树。')
-  assert.match(meta?.description?.en ?? '', /not an official DSH component/)
-  assert.match(meta?.description?.en ?? '', /does not create, merge, or clean up worktrees/)
-  assert.notDeepEqual(meta?.title, app.readPluginMeta(pluginName, parentURL)?.title)
-})
-
 test('actual disabled Loader rows retain localized metadata without evaluating provider modules', options, async () => {
   const scratch = await mkdtemp(join(tmpdir(), 'dsh-locale-disabled-'))
   // External provider fixture, not SDK monkeypatching: executing the entry emits
@@ -59,11 +48,11 @@ test('actual disabled Loader rows retain localized metadata without evaluating p
     const fixtureName = '@fixtures/dsh-locale-metadata'
     await writeFile(join(scratch, 'package.json'), JSON.stringify({
       name: fixtureName, version: '1.0.0', type: 'module',
-      exports: { ...manifest.exports, '.': './provider.mjs', './native-subagent': './provider.mjs' },
+      exports: { ...manifest.exports, '.': './provider.mjs' },
     }), { flag: 'wx' })
     await writeFile(join(scratch, 'provider.mjs'),
       'globalThis[Symbol.for(' + JSON.stringify(markerKey) + ')]++; throw new Error("provider entry must not execute for metadata");\n', { flag: 'wx' })
-    for (const relative of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) {
+    for (const relative of ['locale/en.json', 'locale/zh.json']) {
       const destination = join(scratch, relative)
       await mkdir(dirname(destination), { recursive: true })
       await writeFile(destination, await readFile(join(repo, relative)), { flag: 'wx' })
@@ -72,22 +61,16 @@ test('actual disabled Loader rows retain localized metadata without evaluating p
     const { readPluginInventory } = await load('@deepseek-ai/dsh-host-plugin-inventory')
     await ctx.plugin(Loader, { baseUrl: pathToFileURL(join(scratch, 'package.json')).href })
     await ctx.loader.create({ id: 'locale-root', name: fixtureName, disabled: true })
-    await ctx.loader.create({ id: 'locale-bridge', name: fixtureName + '/native-subagent', disabled: true })
     await ctx.loader.await()
     const { entries: rows } = await readPluginInventory(ctx)
     const root = rows.find(row => row.moduleName === fixtureName)
-    const bridge = rows.find(row => row.moduleName === fixtureName + '/native-subagent')
-    assert(root && bridge, 'actual disabled entries remain in the SDK inventory')
+    assert(root, 'actual disabled entries remain in the SDK inventory')
     assert.equal(root.enabled, false)
-    assert.equal(bridge.enabled, false)
     assert.equal(root.fiberPhase, null)
-    assert.equal(bridge.fiberPhase, null)
     assert.equal(root.meta?.error, undefined)
-    assert.equal(bridge.meta?.error, undefined)
     assert.equal(root.meta?.title?.zh, 'Matt Pocock 技能与可选协作管理')
-    assert.equal(bridge.meta?.title?.zh, '子代理工作目录兼容桥（本插件提供）')
-    assert.match(bridge.meta?.description?.zh ?? '', /不是 DSH 官方组件/)
-    assert.equal(globalThis[Symbol.for(markerKey)], 0, 'neither provider entry was evaluated')
+    assert.match(root.meta?.description?.zh ?? '', /原生 activation seam/)
+    assert.equal(globalThis[Symbol.for(markerKey)], 0, 'provider entry was not evaluated')
     assert.equal(ctx.get('subagents'), undefined)
     assert.equal(ctx.get('skills'), undefined)
   } finally {

@@ -51,19 +51,17 @@ function validMembers() {
   ]
 }
 
-test('0.12.0 package policy admits exactly four metadata locale files and exports', () => {
-  const candidate = { ...packageJson, version: '0.12.0' }
-  assert.equal(validatePackagePolicy(candidate).version, '0.12.0')
-  assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), [
-    'locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json',
-  ])
+test('0.13.0 package policy admits exactly two metadata locale files and exports', () => {
+  const candidate = { ...packageJson, version: '0.13.0' }
+  assert.equal(validatePackagePolicy(candidate).version, '0.13.0')
+  assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('locale/')), ['locale/en.json', 'locale/zh.json'])
 })
 
 test('package policy accepts the current private source-only manifest', () => {
   const result = validatePackagePolicy(packageJson)
   assert.deepEqual(result, {
     name: '@lmgatex/dsh-mattpocock-skills',
-    version: '0.12.0',
+    version: '0.13.0',
     private: true,
     files: PACKAGE_FILES_ALLOWLIST.length,
     peerDependencies: Object.keys(EXPECTED_PEERS).sort(),
@@ -72,7 +70,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
-    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]12[.]0/],
+    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]13[.]0/],
     // Derived from the manifest so the drift guard never pins a release number.
     [{ ...packageJson, version: '1.0.0' }, new RegExp(String(packageJson.version).replaceAll('.', '\\.'))],
     [{ ...packageJson, private: false }, /private/],
@@ -85,7 +83,8 @@ test('package policy rejects release, lifecycle, publication, client graph, and 
     [{ ...packageJson, exports: { ...packageJson.exports, './runtime': './lib/runtime.js' } }, /exports/],
     [{ ...packageJson, files: [...packageJson.files.filter(path => !path.startsWith('locale/')), 'locale/**/*.json'] }, /allowlist/],
     [{ ...packageJson, exports: { ...packageJson.exports, './locale/fr.json': './locale/en.json' } }, /exports/],
-    [{ ...packageJson, exports: { ...packageJson.exports, './native-subagent/locale/en.json': './locale/en.json' } }, /exports/],
+    [{ ...packageJson, exports: { ...packageJson.exports, './compatibility': './lib/compatibility/managed-sdk.js' } }, /exports/],
+    [{ ...packageJson, bin: { 'dsh-mattpocock-skills-cwd': './lib/compatibility/cli.js' } }, /bin/],
     [{ ...packageJson, exports: { ...packageJson.exports, './locale/en.json': { default: './locale/en.json' } } }, /exports/],
     [{ ...packageJson, exports: { ...packageJson.exports, './host': { types: './src/host.ts', default: './lib/host.js' } } }, /exports/],
     [{ ...packageJson, dsh: { ...packageJson.dsh, client: { ...EXPECTED_CLIENT, platform: 'desktop' } } }, /client/],
@@ -101,25 +100,26 @@ test('package policy rejects release, lifecycle, publication, client graph, and 
 
 test('locale metadata verification rejects unknown structure and changed public display strings', async () => {
   const { validatePackageLocale } = await import('../scripts/verify-package.mjs')
-  const value = JSON.parse(await readFile(resolve(root, 'locale/worktree-bridge/en.json'), 'utf8'))
-  assert.doesNotThrow(() => validatePackageLocale('locale/worktree-bridge/en.json', value))
+  const value = JSON.parse(await readFile(resolve(root, 'locale/en.json'), 'utf8'))
+  assert.doesNotThrow(() => validatePackageLocale('locale/en.json', value))
   for (const candidate of [
     { ...value, controls: {} },
     { meta: { ...value.meta, title: 'Official DSH Native Subagent' } },
     { meta: { ...value.meta, description: '' } },
     { meta: { ...value.meta, icon: 'other.svg' } },
-  ]) assert.throws(() => validatePackageLocale('locale/worktree-bridge/en.json', candidate), /locale|metadata/i)
+  ]) assert.throws(() => validatePackageLocale('locale/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 99 fixed files, 85 vendor files and 80 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 99)
-  assert.equal(EXPECTED_PACKED_FILES, 184)
-  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 80)
+test('exact package inventory contains 76 fixed files, 85 vendor files and 62 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 76)
+  assert.equal(EXPECTED_PACKED_FILES, 161)
+  assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 62)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 184)
-  for (const path of ['locale/en.json', 'locale/zh.json', 'locale/worktree-bridge/en.json', 'locale/worktree-bridge/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
+  assert.equal(members.size, 161)
+  for (const path of ['locale/en.json', 'locale/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
+  for (const retired of ['compatibility/initial-cwd.recipe.json', 'locale/worktree-bridge/en.json', 'bin']) assert.equal(members.get('package/' + retired), undefined)
 })
 
 test('bounded model output modules are private exact package members, not public entry points', () => {
@@ -141,23 +141,20 @@ test('bounded model output modules are private exact package members, not public
   }
 })
 
-test('peer-binding support adds only its exact JS and declaration paths to the closed package inventory', () => {
-  const expected = ['lib/compatibility/peer-bindings.js', 'lib/types/compatibility/peer-bindings.d.ts']
-  assert.deepEqual(PACKAGE_FILES_ALLOWLIST.filter(path => path.includes('peer-bindings')), expected)
-  assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.includes('peer-bindings')), expected)
-  assert.deepEqual(packageJson.files.filter(path => path.includes('peer-bindings')), expected)
-  assert.equal(packageJson.exports['./peer-bindings'], undefined, 'internal support must not add a public entry')
-  for (const files of [packageJson.files.filter(path => path !== expected[0]), [...packageJson.files, 'lib/compatibility/*.js']]) {
-    assert.throws(() => validatePackagePolicy({ ...packageJson, files }), /allowlist/)
+test('retired compatibility provider, host patches, startup modules and CLI are absent from the package surface', async () => {
+  for (const files of [packageJson.files, PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES]) {
+    assert.equal(files.filter(path => /(?:^|\/)(?:compatibility|host-patches)(?:\/|$)|startup-(?:state|support)|worktree-bridge/.test(path)).length, 0)
   }
-})
-
-test('native artifact remains byte-identical while peer-binding provenance has its exact new identity', async () => {
-  const artifact = await readFile(resolve(root, 'compatibility/native-subagent-0.2.1-alpha.1.js'))
-  const provenance = await readFile(resolve(root, 'compatibility/native-subagent.provenance.json'))
-  assert.equal(artifact.length, 136833)
-  assert.equal(createHash('sha256').update(artifact).digest('hex'), 'f6197aa3eb84c4f803e2b6517e70b1b62a804bb4e763abec94ebe961dabd77ba')
-  assert.equal(createHash('sha256').update(provenance).digest('hex'), '3b990850e2e8cb82579b258743e0403bcfcbbd54eedbf9a8c55547ef0bafbf75')
+  assert.equal(packageJson.exports['./compatibility'], undefined)
+  assert.equal(packageJson.exports['./native-subagent'], undefined)
+  assert.equal(packageJson.exports['./native-subagent/locale/en.json'], undefined)
+  assert.equal(packageJson.bin, undefined)
+  for (const path of ['compatibility/initial-cwd.recipe.json', 'compatibility/native-subagent.provenance.json', 'lib/compatibility/managed-sdk.js', 'lib/controls/startup-support.js']) {
+    await assert.rejects(lstat(resolve(root, path)), { code: 'ENOENT' })
+  }
+  for (const files of [packageJson.files, [...packageJson.files, 'compatibility/initial-cwd.recipe.json']]) {
+    if (files.length !== packageJson.files.length) assert.throws(() => validatePackagePolicy({ ...packageJson, files }), /allowlist/)
+  }
 })
 
 test('archive paths require normalized package-relative portable names', () => {
@@ -208,9 +205,9 @@ test('manifest member metadata accepts source bytes as well as the one-LF packer
   const sourceBytes = await readFile(resolve(root, 'package.json'))
   const manifest = members.find(member => member.path === 'package/package.json')
   assert.equal(manifest.size, sourceBytes.length - 1)
-  assert.equal(validateTarMembers(members, expected).files, 184)
+  assert.equal(validateTarMembers(members, expected).files, EXPECTED_PACKED_FILES)
   manifest.size = sourceBytes.length
-  assert.equal(validateTarMembers(members, expected).files, 184)
+  assert.equal(validateTarMembers(members, expected).files, EXPECTED_PACKED_FILES)
 })
 
 test('pnpm package manifest normalization removes exactly one final LF only', () => {
@@ -305,11 +302,11 @@ test('tarball verification accepts both exact manifest forms and rejects same-si
     await t.test('source-preserving LF reaches the complete tarball pipeline', async () => {
       const result = await verifyFixture('source-lf', source)
       assert.deepEqual(result.source, { commit, clean: true })
-      assert.equal(result.members.files, 184)
+      assert.equal(result.members.files, EXPECTED_PACKED_FILES)
     })
     await t.test('the legacy single removed LF remains accepted', async () => {
       const result = await verifyFixture('without-lf', source.subarray(0, -1))
-      assert.equal(result.members.files, 184)
+      assert.equal(result.members.files, EXPECTED_PACKED_FILES)
     })
     await t.test('same-size whitespace change is not JSON-equivalent permission', async () => {
       const changed = Buffer.from(source)

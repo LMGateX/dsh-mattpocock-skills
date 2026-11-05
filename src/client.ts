@@ -18,8 +18,6 @@ import { ownSupervisionLeaf, parseSupervisionConfigSnapshot, resolveSupervisionS
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot, SupervisionField, SupervisionSettings } from './controls/supervision-config.js'
 import { parseSupervisionDocument } from './controls/supervision-audit.js'
 import type { SupervisionEpisode } from './controls/supervision-audit.js'
-import { parseStartupDesired, parseStartupStatus } from './controls/startup-state.js'
-import type { StartupDesired, StartupStatus } from './controls/startup-state.js'
 import type { InstrumentSnapshot } from './controls/instruments.js'
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js'
 import type { WindowSnapshot } from './controls/windows.js'
@@ -1188,157 +1186,11 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
     props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('h4', null, '能力、健康观测与有效策略'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health, policy: view.policy }))
 }
-export interface StartupSettingsView {
-  readonly saved: StartupStatus | null
-  readonly draft: StartupDesired | null
-  readonly busy: 'loading' | 'saving' | null
-  readonly error: string | null
-  readonly notice: string | null
-}
-type StartupRemote = Pick<ControlsRemote, 'startupStatus' | 'saveStartupSettings'>
-/** Global Profile startup intent only; no Workspace Policy revision or SDK write enters this seam. */
-export class StartupSettingsController {
-  private state: StartupSettingsView = { saved: null, draft: null, busy: null, error: null, notice: null }
-  private readonly listeners = new Set<() => void>()
-  private generation = 0
-  private controller: AbortController | undefined
-  private holds = 0
-  private closed = false
-  constructor(private readonly remote: StartupRemote) {}
-  getSnapshot = (): StartupSettingsView => this.state
-  subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
-  private publish(state: StartupSettingsView): void { this.state = state; for (const listener of this.listeners) listener() }
-  private cancel(): void { this.generation++; this.controller?.abort(); this.controller = undefined }
-  retain = (): (() => void) => {
-    if (this.closed) throw new Error('Startup settings have been disposed')
-    if (this.holds++ === 0) void this.refresh()
-    let released = false
-    return () => { if (released || this.closed) return; released = true; if (--this.holds === 0) { this.cancel(); this.publish({ saved: null, draft: null, busy: null, error: null, notice: null }) } }
-  }
-  refresh = async (): Promise<void> => {
-    if (this.closed) return
-    this.cancel(); const generation = this.generation; const controller = this.controller = new AbortController()
-    this.publish({ saved: null, draft: null, busy: 'loading', error: null, notice: null })
-    try {
-      const saved = parseStartupStatus(remoteValue(await this.remote.startupStatus(controller.signal)))
-      if (this.closed || generation !== this.generation) return
-      this.publish({ saved, draft: parseStartupDesired(saved.desired), busy: null, error: null, notice: null })
-    } catch (error) {
-      if (!this.closed && generation === this.generation) this.publish({ ...this.state, busy: null, error: '启动状态不可用：' + errorText(error) })
-    }
-  }
-  setDesired = (startupCwdEnabled: boolean): void => {
-    const draft = parseStartupDesired({ startupCwdEnabled })
-    if (this.closed || this.state.busy !== null || this.state.saved === null) return
-    this.publish({ ...this.state, draft, notice: null })
-  }
-  save = async (): Promise<void> => {
-    const { saved, draft, busy } = this.state
-    if (this.closed || busy !== null || saved === null || draft === null || saved.desired.startupCwdEnabled === draft.startupCwdEnabled) return
-    const desired = parseStartupDesired(draft); const expectedRevision = saved.revision
-    this.cancel(); const generation = this.generation; const controller = this.controller = new AbortController()
-    this.publish({ ...this.state, busy: 'saving', error: null, notice: null })
-    try {
-      const receipt = parseStartupStatus(remoteValue(await this.remote.saveStartupSettings(desired, expectedRevision, controller.signal)))
-      if (this.closed || generation !== this.generation) return
-      if (receipt.desired.startupCwdEnabled !== desired.startupCwdEnabled || receipt.revision < expectedRevision) throw new Error('Host startup save receipt does not confirm the submitted configuration')
-      this.publish({ saved: receipt, draft: parseStartupDesired(receipt.desired), busy: null, error: null, notice: '已保存下次启动请求修订 ' + receipt.revision + '；当前进程不会立即改变。' })
-    } catch (error) {
-      if (!this.closed && generation === this.generation) this.publish({ ...this.state, busy: null, error: '保存结果未确认：' + errorText(error) + '。配置可能已写入；请重新读取启动状态核对。', notice: null })
-    }
-  }
-  dispose = (): void => { if (this.closed) return; this.closed = true; this.cancel(); this.holds = 0; this.publish({ saved: null, draft: null, busy: null, error: '启动设置已卸载；状态不可用。', notice: null }); this.listeners.clear() }
-}
-const STARTUP_HINT = '此设置在 DSH 启动时读取。保存只修改下次启动配置，不会立即改变当前进程；刷新网页或热重载不能代替进程重启。兼容支持由同一插件包提供；安装或更新插件后，保存下次启动请求，再正常重启 DSH。是否生效以当前运行状态为准；兼容性尚未验证时，反复重启也不会生效。'
 const settingsCard = { border: '1px solid rgba(127,127,127,.3)', borderRadius: '12px', padding: '20px', minWidth: 0, overflowWrap: 'anywhere' as const }
 const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px', minWidth: 0 }
 const TONE = { open: '#15803d', closed: '#b45309' } as const
 const settingsActions = { display: 'flex', flexWrap: 'wrap' as const, gap: '8px', marginTop: '16px' }
 const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '12px 0', minWidth: 0 }
-function startupFlag(value: boolean | null): string { return value === null ? '未知（观测不可用）' : value ? '启用' : '禁用' }
-/** Translate the authoritative Host state; plugin readiness never overrides loaded capability. */
-function startupStateText(saved: StartupStatus): string {
-  if (saved.state === 'incompatible' && saved.preparation.reason === 'compatibility-component-disabled') return '兼容桥被配置禁用'
-  if (saved.state === 'incompatible' && saved.preparation.reason === 'compatibility-component-forced-enabled') return '兼容桥被强制开启'
-  return ({ disabled: '禁用', enabled: '启用', 'pending-restart': '待重启（当前运行状态未改变）', 'needs-preparation': '插件兼容性尚未验证', unsupported: '增强功能不可用', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['state'], string>)[saved.state]
-}
-function preparationText(saved: StartupStatus): string {
-  if (saved.preparation.reason === 'compatibility-component-disabled') return '兼容桥被配置禁用（需要恢复自动选择）'
-  if (saved.preparation.reason === 'compatibility-component-forced-enabled') return '兼容桥被强制开启（自动选择保护被覆盖）'
-  return ({ ready: '插件实现已就绪（不代表当前已启用）', 'not-prepared': '插件兼容性尚未验证', incompatible: '插件兼容性不匹配', failed: '插件兼容验证失败', uncertain: '状态不确定' } satisfies Record<StartupStatus['preparation']['status'], string>)[saved.preparation.status]
-}
-function startupExplanation(saved: StartupStatus): { readonly title: string; readonly detail: string } {
-  const request = saved.desired.startupCwdEnabled ? '已保存启用请求。' : '已保存关闭请求。'
-  if (saved.state === 'enabled') return { title: '已生效', detail: '当前进程已启用；创建新的可继续交互子代理时，可指定工作树作为初始工作目录。' }
-  if (saved.state === 'disabled') return { title: '已关闭', detail: '当前进程未启用此功能；关闭不卸载运行时能力，也不改变已有子代理的工作目录。' }
-  if (saved.state === 'pending-restart') return { title: saved.enabledNow === true ? '当前仍生效：关闭请求待重启' : '尚未生效：待重启', detail: request + '当前进程保留本次启动配置；重启 DSH 后重新核对运行状态，刷新网页无效。' }
-  if (saved.preparation.reason === 'compatibility-component-disabled') return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + '兼容桥被配置禁用', detail: request + '功能请求已保留，但内部依赖被组件配置关闭。请撤销兼容桥的关闭覆盖，恢复自动选择；不要把组件强制开启当作恢复默认。保存功能请求或反复重启都不会撤销该覆盖。当前进程与已有子代理不会被替换。' }
-  if (saved.preparation.reason === 'compatibility-component-forced-enabled') return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + '兼容桥被强制开启', detail: request + '功能请求已保留，但兼容桥的自动选择保护已被强制开启覆盖替换。请仅撤销该组件的强制开启覆盖，恢复自动选择；不要改成强制关闭或再次强制开启。其他兼容性冲突仍可能存在，恢复后请重新读取诊断。保存功能请求、刷新网页或反复重启都不会撤销该覆盖。当前进程与已有子代理不会被替换。' }
-  if (saved.state === 'needs-preparation') return { title: '尚未生效：插件兼容性尚未验证', detail: request + '插件兼容性尚未验证，反复重启也不会生效。请安装或更新兼容的插件版本，并查看技术诊断。' }
-  if (saved.state === 'unsupported') return { title: '尚未生效：增强功能不可用', detail: request + '当前无法提供此增强功能，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断；重启本身不能解决兼容性未知的问题。' }
-  return { title: (saved.enabledNow === null ? '运行状态未知：' : '尚未生效：') + startupStateText(saved), detail: request + '此增强功能暂不可用，仍可使用普通原生子代理。请更新兼容的插件版本并查看技术诊断，不要将保存成功或重启标记当作功能已生效。' }
-}
-/** Permanently separate from the Workspace Policy form, including while that form is unavailable. */
-export function StartupSettingsPanel(props: { readonly remote: StartupRemote }): ReactElement {
-  const controller = useMemo(() => new StartupSettingsController(props.remote), [props.remote])
-  useEffect(() => controller.retain(), [controller])
-  const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-  const saved = view.saved; const draft = view.draft
-  const dirty = saved !== null && draft !== null && saved.desired.startupCwdEnabled !== draft.startupCwdEnabled
-  const explanation = saved === null ? null : startupExplanation(saved)
-  const needsPreparation = saved !== null && saved.nativeInitialCwdSupported !== true && (saved.preparation.status !== 'ready' || ['needs-preparation', 'unsupported', 'incompatible', 'failed'].includes(saved.state))
-  return h('section', { 'aria-label': '子代理创建时的工作树设置', style: settingsCard },
-    h('h3', { style: { marginTop: 0 } }, '创建子代理（subagent）时指定工作树（worktree）'),
-    h('p', null, '本插件的启动配置（不是 DSH 的全局开关）· 让新建、可继续交互的子代理从指定工作树目录开始工作。不改变 DSH 自身启动目录或已有会话，不负责创建、合并或清理工作树。'),
-    h('p', null, '独立启动配置；只控制本插件显式指定初始工作目录的子代理派发，不是 DSH 全部子代理 API 的总开关；不受工作区策略、管理总开关或技能分发开关控制。'),
-    h('p', null, '子代理工作目录兼容桥（本插件提供）是内部实现依赖，不是 DSH 官方组件。框架插件列表中的组件开关是高级维护控制，不是第二个功能开关；正常使用只需在这里设置功能请求。'),
-    saved !== null && view.error !== null ? h('p', { role: 'alert' }, '以下为上次确认的启动状态；保存后的持久配置尚未确认，不能当作当前配置回执。') : null,
-    h('div', { style: settingsGrid },
-      h('section', { 'aria-label': '当前运行状态', style: { ...settingsCard, background: 'rgba(127,127,127,.05)' } },
-        h('h4', { style: { marginTop: 0 } }, '当前运行状态'),
-        saved === null || explanation === null ? diagnostic(view.error ?? '启动状态不可用：读取中；当前生效与下次配置均未知。') : h('div', { role: 'status', 'aria-live': 'polite' },
-          h('strong', null, explanation.title), h('p', null, explanation.detail),
-          h('p', null, '当前生效：' + startupFlag(saved.enabledNow)),
-          h('p', null, '本次启动请求：' + startupFlag(saved.boot.requested.startupCwdEnabled)),
-          h('p', null, '插件兼容支持：' + (saved.nativeInitialCwdSupported === true ? '当前运行时能力已支持，无需额外兼容准备' : preparationText(saved))),
-          h('p', null, '当前运行时能力：' + (saved.nativeInitialCwdSupported === null ? '未知（观测不可用）' : saved.nativeInitialCwdSupported ? '支持' : '不支持')))),
-      h('section', { 'aria-label': '下次启动设置', style: settingsCard },
-        h('h4', { style: { marginTop: 0 } }, '下次启动设置'),
-        h('label', { style: settingsField }, h('input', { type: 'checkbox', 'aria-label': '允许本插件创建子代理时指定工作树', checked: draft?.startupCwdEnabled ?? false, disabled: view.busy !== null || draft === null,
-          onChange: (event: ChangeEvent<HTMLInputElement>) => controller.setDesired(event.target.checked) }), '允许本插件创建子代理时指定工作树'),
-        saved === null ? h('p', null, '已保存配置与草稿尚未确认。') : h('div', null,
-          h('p', null, '下次启动（已保存）：' + startupFlag(saved.desired.startupCwdEnabled)),
-          h('p', null, '草稿：' + startupFlag(draft?.startupCwdEnabled ?? null) + (dirty ? '（未保存）' : '（与已保存一致）'))),
-        h('div', { style: settingsActions },
-          h('button', { type: 'button', disabled: view.busy !== null || !dirty, onClick: () => { void controller.save() } }, view.busy === 'saving' ? '正在保存…' : '保存下次启动请求'),
-          h('button', { type: 'button', disabled: view.busy === 'loading', onClick: () => { void controller.refresh() } }, '重新读取启动状态（丢弃草稿）')))),
-    h('p', { style: { lineHeight: 1.65 } }, saved?.preparation.reason === 'compatibility-component-disabled'
-      ? saved.nativeInitialCwdSupported === true
-        ? '当前运行时能力已支持，组件关闭覆盖不会抹除当前能力，但可能阻断下次启动的兼容选择。需要继续使用兼容桥时，撤销关闭覆盖以恢复自动选择；保存功能请求或刷新网页不会代替这一配置恢复。'
-        : '此设置在 DSH 启动时读取；保存不改变当前进程。当前阻断是兼容桥的关闭覆盖，不是版本不匹配；先恢复自动选择，再正常重启并核对实际运行状态。刷新网页或反复重启不会撤销配置覆盖。'
-      : saved?.preparation.reason === 'compatibility-component-forced-enabled'
-        ? saved.nativeInitialCwdSupported === true
-          ? '当前运行时能力已支持，强制开启覆盖不会抹除当前能力，但已替换下次启动的自动选择保护。需要继续使用兼容桥时，仅撤销该强制开启覆盖以恢复自动选择；保存功能请求或刷新网页不会代替这一配置恢复。其他兼容性冲突仍可能存在。'
-          : '此设置在 DSH 启动时读取；保存不改变当前进程。兼容桥的强制开启覆盖替换了自动选择保护，不是组件被禁用或版本不匹配；仅撤销该覆盖以恢复自动选择，再重新读取诊断。其他兼容性冲突仍可能存在；刷新网页或反复重启不会撤销配置覆盖。'
-        : STARTUP_HINT),
-    needsPreparation ? h('p', null, saved.state === 'disabled'
-      ? '当前已关闭，不要求兼容验证。若以后启用此功能，请使用兼容的插件版本。'
-      : saved.preparation.reason === 'compatibility-component-disabled'
-        ? '内部依赖被配置禁用；撤销该组件的关闭覆盖以恢复自动选择，而不是强制开启或重新安装。普通原生子代理与已有会话不受此诊断操作影响。'
-        : saved.preparation.reason === 'compatibility-component-forced-enabled'
-          ? '内部兼容桥被强制开启，自动选择保护已被覆盖；仅撤销该组件的强制开启覆盖以恢复自动选择，不改其他配置，也不强制关闭。恢复后重新读取兼容诊断；普通原生子代理与已有会话不受此诊断操作影响。'
-          : '此增强功能暂不可用，仍可使用普通原生子代理。请安装或更新兼容的插件版本并查看技术诊断；保存或反复重启不会自动解决兼容问题。') : null,
-    saved?.state === 'pending-restart' && saved.preparation.status === 'ready' && saved.nativeInitialCwdSupported === false
-      ? h('p', null, '插件实现已就绪，但当前运行时能力尚未启用；实现就绪不等于当前生效。已保存启用请求后，请正常重启 DSH 并重新核对。') : null,
-    saved === null ? null : h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术诊断（启动标识、版本与原始状态）'),
-      h('p', null, '启动配置修订 ' + saved.revision + ' · 启动标识 ' + saved.boot.epoch),
-      h('p', null, '宿主重启标记：' + (saved.restartNeeded ? '是（不代表兼容准备已完成）' : '否（不代表功能已生效）')),
-      h('p', null, '启动状态：' + startupStateText(saved)),
-      h('p', null, 'SDK 版本：' + (saved.preparation.sdkVersion ?? '未知（观测不可用）')),
-      saved.preparation.diagnostic === null ? null : h('p', null, '原始准备诊断：' + saved.preparation.diagnostic), pretty(saved)),
-    view.error === null || saved === null ? null : h('p', { role: 'alert' }, view.error),
-    view.notice === null ? null : diagnostic(view.notice))
-}
 const FEATURE_LABELS = { binding: '工作树绑定', lifecycle: '子代理生命周期观测', windows: '任务与子代理参考窗口', ticketProgress: '任务票进度', pendingDecisions: '待裁决事项' } satisfies Record<typeof FEATURE_NAMES[number], string>
 const DISPLAY_LABELS = { header: '会话标题栏', inputSummary: '输入区摘要', rightPanel: '右侧协作面板', sessionList: '会话列表提醒', timeline: '工具记录标注' } satisfies Record<typeof DISPLAY_NAMES[number], string>
 const CAPACITY_LABELS = { ticketWindowSize: '任务票参考上限（T）', runningSubagentLimit: '运行中子代理参考上限（S）' }
@@ -1570,9 +1422,9 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
     }).catch(error => { if (active) setMessage('协作配置不可用：' + errorText(error)) })
     return () => { active = false }
   }, [props.remote, reload])
-  if (props.view === 'summary') return h('span', null, '子代理工作树启动设置、协作管理、交付监督与会话仪器；配置分别保存。')
+  if (props.view === 'summary') return h('span', null, '协作管理、交付监督与会话仪器；配置分别保存。')
   const pageStyle = { display: 'grid', gap: '24px', minWidth: 0, width: '100%', maxWidth: '1080px', margin: '0 auto', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
-  if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle }, h(StartupSettingsPanel, { remote: props.remote }),
+  if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle },
     h(SupervisionSettingsPanel, { remote: props.remote, workspace: null }),
     h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
   const selected = workspaces.find(row => row.workspaceId === workspace)
@@ -1588,7 +1440,7 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
     try {
       const snapshot = await savePolicyDraft(props.remote, draft, saved.revision)
       setSaved(snapshot); setDraft(intentOf(snapshot)); props.refreshAll()
-      setMessage('已保存并应用配置（修订 ' + snapshot.revision + '）；协作管理' + (snapshot.extensionEnabled ? '已启用' : '已关闭') + '，无需额外启用按钮。功能可用性仍以宿主能力与会话观测为准；上述工作树启动配置独立保存。' + (snapshot.extensionEnabled ? '' : '协作管理总闸（全局）仍为关闭，各工作区的「协作功能」「参考上限」都不会生效。'))
+      setMessage('已保存并应用配置（修订 ' + snapshot.revision + '）；协作管理' + (snapshot.extensionEnabled ? '已启用' : '已关闭') + '，无需额外启用按钮。功能可用性仍以宿主能力与会话观测为准。' + (snapshot.extensionEnabled ? '' : '协作管理总闸（全局）仍为关闭，各工作区的「协作功能」「参考上限」都不会生效。'))
     } catch (error) { setMessage('保存结果未确认：' + errorText(error) + '。请重新读取协作配置核对，草稿未作为成功回执。') } finally { setBusy(false) }
   }
   const globalScope = workspace === null
@@ -1622,7 +1474,7 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
         '协作管理总闸（全局）'),
       badge(draft.extensionEnabled ? '已开启' : '已关闭', draft.extensionEnabled ? TONE.open : TONE.closed),
       badge(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开', preview.workspaceEnabled ? TONE.open : TONE.closed)),
-    h('p', { style: { margin: '0 0 8px' } }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发，也不控制子代理工作树启动设置。'),
+    h('p', { style: { margin: '0 0 8px' } }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发。'),
     h('label', { style: settingsField }, h('span', { style: { fontWeight: 600 } }, '配置编辑范围'),
       h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
         ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
@@ -1638,7 +1490,6 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
   const dirty = JSON.stringify(draft) !== JSON.stringify(intentOf(saved))
   const saveLabel = busy ? '正在保存…' : saved.extensionEnabled !== draft.extensionEnabled ? draft.extensionEnabled ? '保存并启用协作管理' : '保存并关闭协作管理' : '保存并应用配置'
   return h('section', { 'aria-label': '插件配置', style: pageStyle },
-    h(StartupSettingsPanel, { remote: props.remote }),
     h('section', { 'aria-label': '工作区协作管理', style: settingsCard },
       h('h3', { style: { marginTop: 0 } }, '协作管理'),
       gatePanel,

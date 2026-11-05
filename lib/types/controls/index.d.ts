@@ -25,8 +25,6 @@ export * from './native-executions.js';
 export * from './history.js';
 export * from './worktree-bindings.js';
 export * from './worktree-observations.js';
-export * from './startup-state.js';
-export * from './startup-support.js';
 export * from './supervision-config.js';
 export * from './supervision-ledger.js';
 export * from './supervision-audit.js';

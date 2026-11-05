@@ -1,4 +1,3 @@
-import type { StartupDesired, StartupStatus } from './startup-state.js';
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot } from './supervision-config.js';
 import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js';
 import type { InstrumentSnapshot } from './instruments.js';
@@ -11,7 +10,7 @@ import type { TicketWindowCommand } from './windows.js';
 import type { CreateWorktree, ResourceBusiness, RetireDisposition } from './resources.js';
 /** Shared by Host and Client; no Host SDK or Node imports enter the browser. */
 export declare const REMOTE_NAMESPACE: "mattpocockControls";
-export declare const REMOTE_METHODS: readonly ["readPolicy", "savePolicy", "readSupervisionConfig", "saveSupervisionConfig", "readSupervision", "listWorkspaces", "readSession", "readSummaries", "applyInstrument", "applyTicketWindow", "resourceAction", "grantPolicy", "historyAction", "worktreeAction", "startupStatus", "saveStartupSettings"];
+export declare const REMOTE_METHODS: readonly ["readPolicy", "savePolicy", "readSupervisionConfig", "saveSupervisionConfig", "readSupervision", "listWorkspaces", "readSession", "readSummaries", "applyInstrument", "applyTicketWindow", "resourceAction", "grantPolicy", "historyAction", "worktreeAction"];
 export type RemoteMethod = typeof REMOTE_METHODS[number];
 export type HostJson = null | boolean | number | string | HostJson[] | {
     [key: string]: HostJson;
@@ -176,8 +175,6 @@ export type ResourceAction = {
     readonly disposition: RetireDisposition;
 };
 export interface ControlsRemote {
-    startupStatus(signal?: AbortSignal): Promise<StartupStatus>;
-    saveStartupSettings(desired: StartupDesired, expectedRevision: number, signal?: AbortSignal): Promise<StartupStatus>;
     readPolicy(): Promise<PolicySnapshot>;
     savePolicy(intent: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>;
     readSupervisionConfig(): Promise<SupervisionConfigSnapshot>;
