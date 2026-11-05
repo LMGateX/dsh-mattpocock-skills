@@ -592,6 +592,32 @@ function inputReadFailure(view: ClientSessionSnapshot, scope: string): string | 
 }
 function inputRecords(view: ClientSessionSnapshot): InstrumentSnapshot | null { return inputReadFailure(view, 'records') === null ? view.records : null }
 function inputWindows(view: ClientSessionSnapshot): WindowSnapshot | null { return inputReadFailure(view, 'windows') === null ? view.windows : null }
+/** Strict decision membership: pending-user and business awaiting are independent flags. */
+function isPendingUserDecision(row: DecisionRecord): boolean { return row.value.pending === true && row.value.addressee?.kind === 'user' }
+function isAwaitingImplementation(row: DecisionRecord): boolean { return row.value.awaitingImplementation === true }
+function decisionRecordKey(row: DecisionRecord): string { return row.workflowId + '\u0000' + row.decisionId }
+/** Duplicate projection rows never become a second editor or a second queue item. */
+function uniqueDecisionRecords(rows: readonly DecisionRecord[]): readonly DecisionRecord[] {
+  const seen = new Set<string>()
+  const result: DecisionRecord[] = []
+  for (const row of rows) {
+    const key = decisionRecordKey(row)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(row)
+  }
+  return result
+}
+function decisionAddresseeText(row: DecisionRecord): string {
+  const addressee = row.value.addressee
+  if (addressee === undefined) return '缺省（未指定）'
+  return addressee.kind + (addressee.principalId ? ' · ' + addressee.principalId : '') + (addressee.label ? ' · ' + addressee.label : '')
+}
+/** The authorized summary count stays authoritative; a disagreement is diagnosed, never recomputed. */
+function decisionSummaryMismatch(label: string, summary: unknown, listLength: number): ReactElement | null {
+  if (typeof summary !== 'number' || !Number.isSafeInteger(summary) || summary < 0 || summary === listLength) return null
+  return diagnostic(label + '摘要计数 ' + summary + ' 与当前可显示列表 ' + listLength + ' 条不一致；不从列表重算计数，请刷新后核实授权快照。')
+}
 function technicalDetails(value: unknown): ReactElement { return h('details', null, h('summary', null, '技术详情'), pretty(value)) }
 function workflowIdentity(records: InstrumentSnapshot | null, workflowId: string): string {
   const workflow = records?.workflows?.find(row => row.workflowId === workflowId)
@@ -633,7 +659,7 @@ function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
 function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting'): ReactElement {
   const records = inputRecords(view)
   if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：' + (inputReadFailure(view, 'records') ?? '未返回可读事项'))
-  const decisions: readonly DecisionRecord[] = records.decisions.filter((row: DecisionRecord) => category === 'pending' ? row.value.pending === true && row.value.addressee?.kind === 'user' : row.value.awaitingImplementation === true)
+  const decisions: readonly DecisionRecord[] = records.decisions.filter((row: DecisionRecord) => category === 'pending' ? isPendingUserDecision(row) : isAwaitingImplementation(row))
   return h('div', null, diagnostic(countingScopeText(records.summary.countingScope) + '；只读查看，不标记已读或解决事项。可在原聊天中回答。'),
     decisions.length === 0 ? diagnostic('本次授权账本未返回此类事项；不从空明细重算摘要计数。') : null,
     decisions.map(decision => {
@@ -774,18 +800,42 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
   if (observation.status === 'unknown') return h('section', { style: panelStyle }, diagnostic('当前状态未知：' + (observation.error ?? '读取中')), h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取'))
   const view = observation.value
   if (!view.policy.display.rightPanel) return h('section', { style: panelStyle }, diagnostic('右侧显示已关闭；账本和模型消费不受影响。'))
+  const records = view.records
+  const decisions = records === null ? [] : uniqueDecisionRecords(records.decisions)
+  const pendingUser = decisions.filter(isPendingUserDecision)
+  const awaiting = decisions.filter(isAwaitingImplementation)
+  // A pending-user + awaiting item intentionally appears once in each queue, never in "other".
+  const other = decisions.filter(decision => !isPendingUserDecision(decision) && !isAwaitingImplementation(decision))
+  const pendingUserCount = records?.summary.pendingUserDecisionCount
+  const awaitingCount = records?.summary.awaitingImplementationCount
+  const decisionEntry = (decision: DecisionRecord, showAddressee: boolean): ReactElement => {
+    const identity = props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId
+    const editor = h(DecisionEditor, { key: identity, decision, records: records!, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh })
+    return showAddressee ? h('div', { key: identity }, h('p', null, '裁决者：' + decisionAddresseeText(decision)), editor) : editor
+  }
   return h('section', { style: panelStyle, 'aria-label': '协作详情' },
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Session ' + props.sessionId + (tab.tab.visible ? '' : ' · 非前台')),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新已提交投影'),
     h('h4', null, '票进度'),
-    view.records === null ? diagnostic('票/事项账本未知或不可用') : h('div', null,
-      diagnostic('统计范围：' + view.records.summary.countingScope + ' · 业务修订 ' + view.records.businessRevision),
-      view.records.workflows.map(workflow => h('section', { key: workflow.workflowId }, h('h4', null, workflow.value.title),
+    records === null ? diagnostic('票/事项账本未知或不可用') : h('div', null,
+      diagnostic('统计范围：' + records.summary.countingScope + ' · 业务修订 ' + records.businessRevision),
+      records.workflows.map(workflow => h('section', { key: workflow.workflowId }, h('h4', null, workflow.value.title),
         workflow.value.axes.map(axis => h('div', { key: axis.axisKey }, h('p', null, axis.label + ' · ' + axis.counting), axis.statuses.map(status => h('span', { key: status.statusKey, title: status.meaning ?? undefined }, status.label + ' ')))),
-        view.records?.tickets.filter(ticket => ticket.workflowId === workflow.workflowId).map(ticket => h('article', { key: ticket.localTicketId }, h('strong', null, ticket.value.title), pretty(ticket.value))))),
-      h('h4', null, '待用户裁决 ' + view.records.summary.pendingUserDecisionCount + ' · 待落实 ' + view.records.summary.awaitingImplementationCount),
-      view.records.decisions.map(decision => h(DecisionEditor, { key: props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId, decision, records: view.records!, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))),
+        records.tickets.filter(ticket => ticket.workflowId === workflow.workflowId).map(ticket => h('article', { key: ticket.localTicketId }, h('strong', null, ticket.value.title), pretty(ticket.value))))),
+      h('section', { 'aria-label': '待你裁决' },
+        h('h4', null, '待你裁决 ' + countText(pendingUserCount)),
+        decisionSummaryMismatch('待你裁决', pendingUserCount, pendingUser.length),
+        pendingUser.length === 0 ? diagnostic('本次授权账本未返回待你裁决事项；不从空明细重算摘要计数。') : pendingUser.map(decision => decisionEntry(decision, false))),
+      h('section', { 'aria-label': '待落实' },
+        h('h4', null, '待落实 ' + countText(awaitingCount)),
+        diagnostic('此类为业务待落实，不区分裁决者（user/agent/unspecified）。'),
+        decisionSummaryMismatch('待落实', awaitingCount, awaiting.length),
+        awaiting.length === 0 ? diagnostic('本次授权账本未返回待落实事项；不从空明细重算摘要计数。') : awaiting.map(decision => decisionEntry(decision, true))),
+      h('details', { 'aria-label': '其他裁决记录' },
+        h('summary', null, '其他裁决记录（含 agent 内部，不是待你裁决） · ' + other.length + ' 条'),
+        diagnostic('默认折叠；这些记录不是待你裁决，保留显式编辑。'),
+        other.length === 0 ? diagnostic('当前没有其他裁决记录。') : other.map(decision => decisionEntry(decision, true)))),
     h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
     h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
     h(WorktreeObservationsPanel, { key: props.sessionId + ':observations', view, remote: props.remote, refresh: props.observer.refresh }),
