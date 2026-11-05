@@ -18,13 +18,13 @@ This document is the authoritative implementation contract. A later implementati
 
 裁决沿用显式 pending/addressee/awaiting 语义；T 取 held，占用/明细 scope 不混淆；S 取宿主实时总数，最近最多 64 行原生观测只作可能不完整明细，不冒称完整在跑名册。本轮不新增完整名册 Interface、Host/Remote/存储/消费改动。所有者授权先文档、隔离 subagents 实施测试、push/tag/GitHub Release；**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。已按顺序完成先独立文档提交、隔离子代理实现/RED-GREEN、双轴复核与修复；冻结 clean source 012a01d 的 source/精确归档全量均为 1151 项（1145 pass / 0 fail / 6 环境 skip），双 SDK headless、非 force atomic main + annotated tag、新 [GitHub Release v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0) 与五资产下载 strict 回验通过，见 [验证摘要](<VERIFICATION.md>) 和 [机器摘要](<../dist/verification-0.12.0.json>)。后续 main 仅追加公开安全完成证据，tag/唯一制品与 source sidecar 保持冻结；Happy DOM/headless 不代表图形 GUI 或本机安装。
 
-## 侧栏裁决严格分区（2026-11-05，所有者认可；待实施）
+## 侧栏裁决严格分区（2026-11-05，所有者认可；源码已实施，发布门禁中）
 
 详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>) 第 6 节。现有侧栏在「待用户裁决 N · 待落实 M」标题下无条件渲染全部 `decisions`；0.10.2 与 0.12.0 都是该行为。接受的修正是：待你裁决仅 `pending===true && addressee.kind==='user'`，待落实仅 `awaitingImplementation===true`，其他 agent 内部/无 addressee/已结束记录移入默认折叠的其他区；计数与列表使用同一 predicate，保留显式编辑，不删除账本。
 
-本轮只改客户端呈现，不新增 Host/Remote/storage/tool/wire，不改变 pending/addressee/awaiting 语义、授权、CAS、历史或模型唤醒。先固定文档，再由隔离 subagents 实施和测试；push、版本、发版与本机安装未授权。当前 GUI 仍为 0.10.2，0.12.0 未安装；安装 0.12.0 也不会修复侧栏该列表。
+本轮只改客户端呈现，不新增 Host/Remote/storage/tool/wire，不改变 pending/addressee/awaiting 语义、授权、CAS、历史或模型唤醒。0.13.0 已在隔离 worktree 实施并通过混合 fixture 回归；push、版本、发版已授权，本机安装仍未授权。当前 GUI 仍为 0.10.2，0.12.0 未安装；安装 0.12.0 也不会修复侧栏该列表。
 
-## 0.13.0 早期 DSH cwd 兼容桥退役（2026-11-05，所有者认可方案 C；实施中）
+## 0.13.0 早期 DSH cwd 兼容桥退役（2026-11-05，所有者认可方案 C；源码已实施，发布门禁中）
 
 所有者已确认[退役研究](<LEGACY_DSH_CWD_BRIDGE_RETIREMENT.md>)的方案 C：删除 0.2.1-alpha.1 的随包兼容 provider、旧 SDK 补丁、Loader 组合/准备、包导出/bin/locale，以及 `startupCwdEnabled` 启动请求/domain/UI/Remote；最低宿主提升到 `~0.2.1-alpha.2`。0.13.0 与同期侧栏严格分区一起交付。
 

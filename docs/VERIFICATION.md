@@ -4,15 +4,17 @@
 
 ## 0.13.0 原生 cwd 退役（2026-11-05，源码验证；未发布、未安装）
 
-本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。验证使用完整 fixture root `DSH_CONTROLS_HOST_ROOT=/home/dev/dev/isolated/dsh-alpha3-g.m9uoL7/lib/node_modules/@deepseek-ai/dsh`：
+本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。集成分支在完整 fixture root `DSH_CONTROLS_HOST_ROOT=/home/dev/dev/isolated/dsh-alpha3-g.m9uoL7/lib/node_modules/@deepseek-ai/dsh` 上验证：
 
-- 全量 `node --test`：**860 项，851 通过，0 失败，9 skip**。skip 仍为环境门禁场景，没有为通过而新增或隐藏 skip。
-- 根与 Client TypeScript 检查：0 error；客户端 bundle 与生成 lib 已重建并提交。
+- 全量 `node --test`：**861 项，852 通过，0 失败，9 skip**。skip 仍为 6 个 native Client UI-slots fixture 与 3 个 vendor source/tree 环境门禁，没有为通过而新增或隐藏 skip。
+- 根与 Client TypeScript 检查：0 error；客户端 bundle **276397 B / 7 私有模块**，externals 仍仅 `@deepseek-ai/dsh-client-ui-primitives` 与 `react`；`verify-package --prepack` 通过：**76 fixed / 85 vendor / 161 expected**，构建 **62 JS/DTS**。
 - 真实 `evaluatePluginCompatibility`：拒绝 `0.2.1-alpha.1`、`0.2.0-rc.2`、`0.3.0-alpha.1`，放行 `0.2.1-alpha.2`、`0.2.1-alpha.3`、`0.2.2-alpha.3`。
 - 真实 PluginManager/完整默认 base+Web 组合：安装后 Skills 挂载、stock 原生 subagent 保留、旧兼容行不存在；whole-bundle disable 后下一进程 Skills-off，live reenable 保留 stock。
 - 真实原生 cwd：sibling A/B 读取各自目录；初始 cwd 记录为有效工作目录（child header cwd 保持父来源值）；无原生 seam 的 host-collaboration fixture 失败关闭且不创建 child。
+- 隔离 0.12→0.13 Profile 升级：安装后 profile patch 哈希不变，包内 compat 文件 0、bundle patch compat 行 0、`--dump-config` compat 行 0 且 Skills 行 1；显式保留的 `mattpocock-native-subagent` 行得到 `patch: entry ... not found` 警告但不阻断 Skills。未修改 live Profile。
+- 候选 tgz 的 source/精确制品 × `0.2.1-alpha.4` 与 `0.2.2-alpha.3` headless、beta/stable 均通过；`checkoutTarballReportsByteIdentical=true`、`modelInvoked=false`、`webStarted=false`，未启动 Web 或调用模型。
 
-**未执行：** 真实 0.12 live Profile 升级矩阵（本 lane 禁止改动本机 Profile，需在隔离 Profile 副本上由集成者补做）；push/tag/Release/npm publish/本机安装均未执行。该项仍是发布前残余门禁。
+**未执行：** 实际 DSH `0.2.1-alpha.2` 二进制不可用，未声称该版本 runtime 实测；push/tag/Release/npm publish/本机安装尚未执行。独立 Standards/Spec 复核仍在进行。
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 
