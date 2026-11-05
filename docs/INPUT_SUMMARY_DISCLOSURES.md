@@ -4,7 +4,7 @@
 
 2026-11-04 所有者认可只读研究后的方案，明确指示先固定文档，再由 subagents 在隔离环境完成实施、测试、push 与 GitHub Release；暂不为本机安装。本页是本轮权威详细契约，文档已先单独提交（8fac3fb）；隔离实现、真实渲染 RED/GREEN、独立 Standards/Spec、固定 clean-source 012a01d 的 source/精确归档/双 SDK headless 与五资产下载 strict 回验均已完成，并已发布 [v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0)。分阶段结果见 [VERIFICATION](<VERIFICATION.md>) 与 [机器摘要](<../dist/verification-0.12.0.json>)；本机仍未安装，当前 GUI 未加载本轮改动，图形/窄屏像素验收未做。
 >
-> 2026-11-05 增量：第 6 节侧栏严格分区由所有者认可，纳入 0.13.0 实施中；不改变 0.12.0 已发布制品。
+> 2026-11-05 增量：第 6 节侧栏严格分区由所有者认可，0.13.0 源码已实施并纳入发布门禁；不改变 0.12.0 已发布制品。
 
 从最新远端基线 0.11.0 开始，不覆盖主检出既有未提交内容。保持 Skills/vendor、两通道、provider precedence、工具集合/描述/schema-2 DTO、Remote wire、存储/授权/CAS、T/S 计数来源、history 与消费性能契约。本轮仅插件客户端呈现，不新增宿主 seam、完整实时名册接口或后台任务。不 npm publish，不安装当前 Web Profile，不改共享 SDK/本机配置，不启动替代服务、不重启现有服务、不清理 spill。
 
@@ -55,7 +55,7 @@ S.used/countKnown/countReason/depth 继续以宿主实时计数为准，租约 b
 
 每条显示 sessionId、实际可观测活动、来源和可用 lane（inferred）/headerCwd（来源值，不是有效目录证明）。缺失关联不补猜，不跨会话暴露 sibling。**完整同口径实时名册另行研究，本轮不新增 Interface，也不把未来能力作为本版本已实现项。**
 
-## 6. 侧栏协作详情：用户队列与全量记录分开（2026-11-05，所有者认可；待实施）
+## 6. 侧栏协作详情：用户队列与全量记录分开（2026-11-05，所有者认可；源码已实施，发布门禁中）
 
 当前侧栏 `Details` 的标题使用 `summary.pendingUserDecisionCount` / `awaitingImplementationCount`，正文却渲染 `records.decisions` 全部行；0.10.2 与 0.12.0 都是该行为。它会让 agent 内部、无 `addressee` 或已结束事项进入「待用户裁决」标题下，形成“agent 自产自销”的观感。新的呈现契约只改客户端投影：
 
