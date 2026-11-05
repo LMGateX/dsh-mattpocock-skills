@@ -46,7 +46,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 0.13.0 的两个增量一起发布；迁移说明必须把“最低宿主提升/旧桥退役”作为破坏性变更单独列出，不能混在侧栏 UI 修复中淡化。
 
-**本轮机械结果（2026-11-05）：** 集成分支在完整 fixture root `DSH_CONTROLS_HOST_ROOT=/home/dev/dev/isolated/dsh-alpha3-g.m9uoL7/lib/node_modules/@deepseek-ai/dsh` 上，全量 `node --test` 为 **861 项：852 通过、0 失败、9 skip**；根与 Client TypeScript 检查均 0 error，`verify-package --prepack` 通过（76 fixed / 85 vendor / 161 expected）。隔离 0.12→0.13 Profile 升级：安装 0.13.0 后 profile patch 哈希不变、包内 0 个 compat 文件、bundle patch 0 个 compat 行、`--dump-config` 0 个 compat 行且 1 个 Skills 行；显式 stale 行得到 `patch: entry ... not found` 警告但不阻断 Skills。alpha.3 与 alpha.4 的 source/精确候选 tarball × beta/stable headless 均通过，未启动 Web、未调用模型。新增引擎门禁用例以真实 `evaluatePluginCompatibility` 验证 `0.2.1-alpha.1` 被拒绝、`0.2.1-alpha.2`／`0.2.1-alpha.3`／`0.2.2-alpha.3` 被放行。实际 alpha.2 二进制不可用，未声称 alpha.2 runtime 实测。
+**本轮机械结果（2026-11-05）：** 集成分支在完整的 0.2.2-alpha.3 fixture 宿主根（`DSH_CONTROLS_HOST_ROOT=<fixture-dsh-root>`）上，全量 `node --test` 为 **861 项：852 通过、0 失败、9 skip**；根与 Client TypeScript 检查均 0 error，`verify-package --prepack` 通过（76 fixed / 85 vendor / 161 expected）。隔离 0.12→0.13 Profile 升级：安装 0.13.0 后 profile patch 哈希不变、包内 0 个 compat 文件、bundle patch 0 个 compat 行、`--dump-config` 0 个 compat 行且 1 个 Skills 行；显式 stale 行得到 `patch: entry ... not found` 警告但不阻断 Skills。alpha.3 与 alpha.4 的 source/精确候选 tarball × beta/stable headless 均通过，未启动 Web、未调用模型。新增引擎门禁用例以真实 `evaluatePluginCompatibility` 验证 `0.2.1-alpha.1` 被拒绝、`0.2.1-alpha.2`／`0.2.1-alpha.3`／`0.2.2-alpha.3` 被放行。实际 alpha.2 二进制不可用，未声称 alpha.2 runtime 实测。
 
 ## 0.11.0 读取路径性能优化（2026-11-04，A–F 已完成，已发布未安装）
 

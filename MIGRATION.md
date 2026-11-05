@@ -24,7 +24,7 @@ The old `host-patches/` and `dsh-mattpocock-skills-cwd` CLI are gone. Restore th
 
 ### Rollback boundaries
 
-Downgrading to 0.12.x requires the alpha.1 host and its old Profile composition. Do not downgrade in place on a newer host and do not reapply the old patches without a separate backup. This repository does not publish or install either release automatically.
+0.12.x does not require the alpha.1 host when the native `startActivation` seam is present; it declares `~0.2.1-alpha.1` and uses the native seam on newer hosts. Only restoring the retired bridge requires an alpha.1 host and its old Profile composition. Do not reapply the old patches without a separate backup, and do not assume a downgrade brings the bridge back. This repository does not publish or install either release automatically.
 
 ## Plugin 0.10.0 model-result contract
 

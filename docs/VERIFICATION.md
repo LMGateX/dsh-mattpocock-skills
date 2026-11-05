@@ -4,7 +4,7 @@
 
 ## 0.13.0 原生 cwd 退役（2026-11-05，源码验证；未发布、未安装）
 
-本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。集成分支在完整 fixture root `DSH_CONTROLS_HOST_ROOT=/home/dev/dev/isolated/dsh-alpha3-g.m9uoL7/lib/node_modules/@deepseek-ai/dsh` 上验证：
+本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。集成分支在完整的 0.2.2-alpha.3 fixture 宿主根（`DSH_CONTROLS_HOST_ROOT=<fixture-dsh-root>`）上验证：
 
 - 全量 `node --test`：**861 项，852 通过，0 失败，9 skip**。skip 仍为 6 个 native Client UI-slots fixture 与 3 个 vendor source/tree 环境门禁，没有为通过而新增或隐藏 skip。
 - 根与 Client TypeScript 检查：0 error；客户端 bundle **276397 B / 7 私有模块**，externals 仍仅 `@deepseek-ai/dsh-client-ui-primitives` 与 `react`；`verify-package --prepack` 通过：**76 fixed / 85 vendor / 161 expected**，构建 **62 JS/DTS**。
