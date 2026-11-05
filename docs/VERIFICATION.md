@@ -2,7 +2,7 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 0.13.0 原生 cwd 退役（2026-11-05，源码验证；未发布、未安装）
+## 0.13.0 原生 cwd 退役（2026-11-05，源码验证；唯一制品已构建；未发布、未安装）
 
 本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。集成分支在完整的 0.2.2-alpha.3 fixture 宿主根（`DSH_CONTROLS_HOST_ROOT=<fixture-dsh-root>`）上验证：
 
@@ -12,7 +12,8 @@
 - 真实 PluginManager/完整默认 base+Web 组合：安装后 Skills 挂载、stock 原生 subagent 保留、旧兼容行不存在；whole-bundle disable 后下一进程 Skills-off，live reenable 保留 stock。
 - 真实原生 cwd：sibling A/B 读取各自目录；初始 cwd 记录为有效工作目录（child header cwd 保持父来源值）；无原生 seam 的 host-collaboration fixture 失败关闭且不创建 child。
 - 隔离 0.12→0.13 Profile 升级：安装后 profile patch 哈希不变，包内 compat 文件 0、bundle patch compat 行 0、`--dump-config` compat 行 0 且 Skills 行 1；显式保留的 `mattpocock-native-subagent` 行得到 `patch: entry ... not found` 警告但不阻断 Skills。未修改 live Profile。
-- 候选 tgz 的 source/精确制品 × `0.2.1-alpha.4` 与 `0.2.2-alpha.3` headless、beta/stable 均通过；`checkoutTarballReportsByteIdentical=true`、`modelInvoked=false`、`webStarted=false`，未启动 Web 或调用模型。
+- 唯一最终 tgz（源提交 `1ce76eb20af90551ce672d37ea723bc2a9f12edb`）：**433047 B**，SHA-256 `3616070c98fc93a7400916e76c9d02a83e1a91785b65379b459cd7bb45f674e5`，**161 成员**、0 directory、0 symlink、4 只读 sidecars（连同 tgz 共 5 个资产）；`verify-package --tarball` 与 `--prepack` 均通过，固定 76 / vendor 85 / expected 161。
+- 该唯一 tgz 的 source/精确制品 × `0.2.1-alpha.4` 与 `0.2.2-alpha.3` headless、beta/stable 均通过；`checkoutTarballReportsByteIdentical=true`、`modelInvoked=false`、`webStarted=false`，未启动 Web 或调用模型。
 
 **独立复核：** Standards 复核发现并已修复 1 个公开文档本机绝对路径（硬性公开边界）、`CONTROLS` 版本号、`MIGRATION` 回滚表述和 `CLIENT_INTEGRATION` 测试覆盖声明；Spec 复核未发现产品级缺口，仅 `tests/host-collaboration` 的 shadowed stub 验证缺陷已修复，定向 23/23 通过。
 
