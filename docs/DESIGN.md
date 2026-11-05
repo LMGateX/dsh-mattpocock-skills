@@ -18,6 +18,23 @@ This document is the authoritative implementation contract. A later implementati
 
 裁决沿用显式 pending/addressee/awaiting 语义；T 取 held，占用/明细 scope 不混淆；S 取宿主实时总数，最近最多 64 行原生观测只作可能不完整明细，不冒称完整在跑名册。本轮不新增完整名册 Interface、Host/Remote/存储/消费改动。所有者授权先文档、隔离 subagents 实施测试、push/tag/GitHub Release；**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。已按顺序完成先独立文档提交、隔离子代理实现/RED-GREEN、双轴复核与修复；冻结 clean source 012a01d 的 source/精确归档全量均为 1151 项（1145 pass / 0 fail / 6 环境 skip），双 SDK headless、非 force atomic main + annotated tag、新 [GitHub Release v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0) 与五资产下载 strict 回验通过，见 [验证摘要](<VERIFICATION.md>) 和 [机器摘要](<../dist/verification-0.12.0.json>)。后续 main 仅追加公开安全完成证据，tag/唯一制品与 source sidecar 保持冻结；Happy DOM/headless 不代表图形 GUI 或本机安装。
 
+## 侧栏裁决严格分区（2026-11-05，所有者认可；待实施）
+
+详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>) 第 6 节。现有侧栏在「待用户裁决 N · 待落实 M」标题下无条件渲染全部 `decisions`；0.10.2 与 0.12.0 都是该行为。接受的修正是：待你裁决仅 `pending===true && addressee.kind==='user'`，待落实仅 `awaitingImplementation===true`，其他 agent 内部/无 addressee/已结束记录移入默认折叠的其他区；计数与列表使用同一 predicate，保留显式编辑，不删除账本。
+
+本轮只改客户端呈现，不新增 Host/Remote/storage/tool/wire，不改变 pending/addressee/awaiting 语义、授权、CAS、历史或模型唤醒。先固定文档，再由隔离 subagents 实施和测试；push、版本、发版与本机安装未授权。当前 GUI 仍为 0.10.2，0.12.0 未安装；安装 0.12.0 也不会修复侧栏该列表。
+
+## 0.13.0 早期 DSH cwd 兼容桥退役（2026-11-05，所有者认可方案 C；实施中）
+
+所有者已确认[退役研究](<LEGACY_DSH_CWD_BRIDGE_RETIREMENT.md>)的方案 C：删除 0.2.1-alpha.1 的随包兼容 provider、旧 SDK 补丁、Loader 组合/准备、包导出/bin/locale，以及 `startupCwdEnabled` 启动请求/domain/UI/Remote；最低宿主提升到 `~0.2.1-alpha.2`。0.13.0 与同期侧栏严格分区一起交付。
+
+- **只保留 native seam。** `initialChildCwdSeam` 仅为 `native` 或 `unsupported`；没有 `startActivation` + `workingDirectory.ensure` 时失败关闭，不再装载替代 provider。`mattpocock_delegate` 的 cwd 只走 native `startActivation`；不支持时不创建 child。
+- **不要求原生 worktree 工具。** 桥只补首次 cwd，不是 `create_worktree` 的实现；工作树观测继续消费宿主原生工具。alpha.2 默认未装载 worktree 工具不是本轮门槛，不能按版本号推断。
+- **包面与元数据。** 删除 `compatibility/`、`host-patches/`、`src/compatibility/`、对应 `lib/`、脚本、测试和包清单条目；`cordis.patch.yml` 仅保留 Skills provider 行；`engines.dsh` 提升到至少 `~0.2.1-alpha.2`；版本 0.13.0。删除 `@deepseek-ai/dsh-scope` 仅当只剩兼容代码使用它。
+- **数据与历史。** 不删除旧 startup 设置、binding、history 或 child 会话；旧数据保持可读，不重写证据，不自动回滚用户手工应用的旧 SDK 补丁。旧桥文档标为历史，不删除历史记录。
+- **迁移门禁。** 必须真实验证 0.12 Profile 升级后没有残留 `mattpocock-native-subagent` 行/未知覆盖；无 native seam 的 fixture 失败关闭；当前 0.2.2-alpha.3 的 Skills、仪器、delegate、worktree 观测不回归；手工旧 SDK 补丁有恢复说明。
+- **交付边界。** 允许隔离实现、测试、push、annotated tag 与 GitHub Release；**不安装本机、不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。发布前须独立 Standards/Spec 复核、完整 source/精确制品与五资产下载回验。
+
 ## 插件读取路径性能优化（2026-11-04，所有者认可；0.11.0 已发布、未为本机安装）
 
 权威实施与验收契约见 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>)：线性业务历史投影/精确版本索引、Host 私有紧凑身份事实复用、完整 Remote 表示与 current-facts 消费减负。保持历史、来源/授权/撤权、FIFO、持久提交 frontier、工具/Remote wire 与存储格式；不凭任意 frozen/retained 绕过校验，不以 UI summary 替代真实消费。该增量允许在内部将当前消费和必要历史补捕获分离，不改变模型有界 DTO 或完整编辑/历史 Interface。

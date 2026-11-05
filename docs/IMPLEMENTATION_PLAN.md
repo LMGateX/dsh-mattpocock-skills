@@ -19,6 +19,33 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | E 精确制品 | 版本/生成物，冻结 clean-source，唯一 accepted pack，双 SDK/精确归档/Manager/headless | 已完成；012a01d 唯一 511256 B 归档 strict 与全套 1151 项通过，Manager 13/13、packed-native 14/14，双 SDK source/archive × beta/stable headless 通过 |
 | F 发布 | 新鲜远端/旧 tag 不变 guards，非 force push/新 tag/Release，五资产下载 strict 回验 | 已完成；非 force atomic main + annotated v0.12.0，新 Release 五资产 5/5 字节/API digest/strict 回验通过；未安装、不 npm publish、不改 Profile/SDK/服务 |
 
+## 0.13.0 侧栏裁决严格分区（2026-11-05，所有者认可；实施中）
+
+唯一详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>) 第 6 节；范围与保持条件见 [DESIGN.md](<DESIGN.md>) 同名节。
+
+| 阶段 | 内容 | 状态/门禁 |
+|---|---|---|
+| A 文档 | 固定待你裁决/待落实/其他三分区、同 predicate、显式编辑保留与边界 | 已完成（文档提交）；仅文档 |
+| B 客户端 | 在既有 `Details` 中按严格投影拆区；其他区默认折叠；不新增 Host/Remote/storage/tool/wire | 待实施；只改 Client 呈现，不改旗标/授权/历史 |
+| C 回归 | 混合 fixture 覆盖 pending-user、pending-agent、无 addressee、已结束、仅 awaiting、pending+awaiting；计数/行数一致且无泄漏 | 待实施；真实导出渲染路径，含刷新/会话切换 |
+| D 复核与制品 | 独立 Standards/Spec、严格构建、source/精确包、现有宿主 headless | 已授权纳入 0.13.0；push/tag/Release；不安装本机 |
+
+本增量不改变 0.12.0 的已发布制品，也不声称当前 0.10.2 GUI 已修复；安装 0.12.0 仍不会修复侧栏全量列表。
+
+## 0.13.0 早期 DSH cwd 兼容桥退役（方案 C，2026-11-05 所有者认可；实施中）
+
+权威范围见 [DESIGN.md](<DESIGN.md>) 同名节与 [退役研究](<LEGACY_DSH_CWD_BRIDGE_RETIREMENT.md>)。目标是删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、组合/准备、包面与 `startupCwdEnabled` 启动开关；最低宿主至少 `~0.2.1-alpha.2`。不要求原生 worktree 工具，不删除 delegate/binding/观测/历史。
+
+| 阶段 | 内容 | 状态/门禁 |
+|---|---|---|
+| A 文档 | 固定方案 C、方案 B 仅为历史备选、最低宿主、迁移风险与发布边界 | 已完成（文档提交） |
+| B 包面 | 删除 compatibility/host-patches/src-compatibility/脚本/测试/包 exports/bin/locale/files；`cordis.patch.yml` 仅保留 Skills 行 | 待实施；包清单/验证器同步，不能只删文件 |
+| C Host | 只保留 native seam；删除 bridge/legacy continuation/startup domain/UI/Remote；无 native seam 失败关闭 | 待实施；不改 delegate/binding/观测语义 |
+| D 迁移与回归 | alpha.1 拒绝；alpha.2/0.2.2-alpha.3 native 正常；0.12 Profile 无残留 compat 行；旧数据可读；无 native seam 不创建 child | 待实施；真实升级矩阵与完整 source 套件 |
+| E 制品与发布 | 独立 Standards/Spec、严格构建、唯一精确制品、双 SDK/headless、五资产下载 strict 回验 | 已授权 push/tag/Release；不安装本机、不改 Profile/SDK/服务、不 npm publish |
+
+0.13.0 的两个增量一起发布；迁移说明必须把“最低宿主提升/旧桥退役”作为破坏性变更单独列出，不能混在侧栏 UI 修复中淡化。
+
 ## 0.11.0 读取路径性能优化（2026-11-04，A–F 已完成，已发布未安装）
 
 本轮范围、保持条件、已认可测试 seams 与 A/B/C/D/E/F 阶段只在 [PERFORMANCE_READ_PATHS.md](<PERFORMANCE_READ_PATHS.md>) 维护：先单独文档提交，再由隔离 subagents 实施历史算法、身份事实和表示/消费切片，集成后独立双轴复核、双宿主源码/精确制品门禁，最后按所有者授权 push/tag/GitHub Release 与下载回验。目标版本 0.11.0，阶段 0 与 A/B/C/D/E/F 已完成；冻结 source e5d25cf 的唯一制品已发布并通过五资产下载回验，当前 Profile 仍 0.10.2；实际状态/证据随实施更新，禁止由旧测试或合成基准推断交付完成。当前 Profile/共享 SDK、本机安装与服务重启均不在本次授权内；不 npm publish。

@@ -3,6 +3,8 @@
 ## 状态与授权
 
 2026-11-04 所有者认可只读研究后的方案，明确指示先固定文档，再由 subagents 在隔离环境完成实施、测试、push 与 GitHub Release；暂不为本机安装。本页是本轮权威详细契约，文档已先单独提交（8fac3fb）；隔离实现、真实渲染 RED/GREEN、独立 Standards/Spec、固定 clean-source 012a01d 的 source/精确归档/双 SDK headless 与五资产下载 strict 回验均已完成，并已发布 [v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0)。分阶段结果见 [VERIFICATION](<VERIFICATION.md>) 与 [机器摘要](<../dist/verification-0.12.0.json>)；本机仍未安装，当前 GUI 未加载本轮改动，图形/窄屏像素验收未做。
+>
+> 2026-11-05 增量：第 6 节侧栏严格分区由所有者认可，纳入 0.13.0 实施中；不改变 0.12.0 已发布制品。
 
 从最新远端基线 0.11.0 开始，不覆盖主检出既有未提交内容。保持 Skills/vendor、两通道、provider precedence、工具集合/描述/schema-2 DTO、Remote wire、存储/授权/CAS、T/S 计数来源、history 与消费性能契约。本轮仅插件客户端呈现，不新增宿主 seam、完整实时名册接口或后台任务。不 npm publish，不安装当前 Web Profile，不改共享 SDK/本机配置，不启动替代服务、不重启现有服务、不清理 spill。
 
@@ -43,7 +45,7 @@ T、S、待你裁决、待落实各自直接点击文字；无额外查看按钮
 
 待你裁决仅列 pending===true && addressee.kind===user，待落实仅列 awaitingImplementation===true；两旗标独立，允许同一事项出现在两个类别。显示 question、workflow/关联票、status，以及现有 context/options/recommendation/impact/result/来源（存在才显示），不虚构信息/来源链接。可以逐项用原生 details/summary 折叠，技术 JSON 二级展开；首屏为可读内容而非整段 JSON。
 
-就地详情只读；不得复用可保存的 DecisionEditor 来暗中引入编辑/已读写入。查看不调用 applyInstrument、set-decision-view 或 historyAction，不唤醒模型。用户可在原聊天自然语言回答；既有侧栏的显式编辑不变。
+就地详情只读；不得复用可保存的 DecisionEditor 来暗中引入编辑/已读写入。查看不调用 applyInstrument、set-decision-view 或 historyAction，不唤醒模型。用户可在原聊天自然语言回答；既有侧栏的显式编辑保留，但侧栏队列必须按第 6 节的严格投影分区，不能继续把全部 decisions 放在「待用户裁决」标题下。
 
 ### S：总数与明细分开
 
@@ -53,7 +55,20 @@ S.used/countKnown/countReason/depth 继续以宿主实时计数为准，租约 b
 
 每条显示 sessionId、实际可观测活动、来源和可用 lane（inferred）/headerCwd（来源值，不是有效目录证明）。缺失关联不补猜，不跨会话暴露 sibling。**完整同口径实时名册另行研究，本轮不新增 Interface，也不把未来能力作为本版本已实现项。**
 
-## 6. 验收矩阵
+## 6. 侧栏协作详情：用户队列与全量记录分开（2026-11-05，所有者认可；待实施）
+
+当前侧栏 `Details` 的标题使用 `summary.pendingUserDecisionCount` / `awaitingImplementationCount`，正文却渲染 `records.decisions` 全部行；0.10.2 与 0.12.0 都是该行为。它会让 agent 内部、无 `addressee` 或已结束事项进入「待用户裁决」标题下，形成“agent 自产自销”的观感。新的呈现契约只改客户端投影：
+
+1. **待你裁决**：仅 `pending === true && addressee.kind === 'user'`；标题使用 `summary.pendingUserDecisionCount`。不得显示 agent、`unspecified`、缺省 addressee、已结束或仅 awaiting 的事项。
+2. **待落实**：仅 `awaitingImplementation === true`；标题使用 `summary.awaitingImplementationCount`。该类别是业务待落实，不区分 user/agent；每项显示 addressee，并标注“不区分裁决者”。与待你裁决独立，同一事项可同时出现在两区。
+3. **其他裁决记录**：所有不属于前两区的当前记录，包括 `addressee.kind=agent|unspecified|缺省`、已结束、以及仅 pending 的 agent 内部事项。默认折叠，标题明确“其他裁决记录（含 agent 内部，不是待你裁决）”；不得把其他区内容渲染在待你裁决标题下。
+4. **同一事项**按 `(workflowId, decisionId)` 去重；前两区允许同一 pending-user + awaiting 事项各出现一次，其他区不得重复。排序沿用当前投影；不根据聊天文字重算或改变业务状态。
+5. **显式编辑保留**：三区继续使用既有 `DecisionEditor`；其他区默认折叠，避免编辑器被误读为待用户队列。编辑仍走既有显式保存与授权，不新增自动写入。
+6. **空态/未知**：账本不可读显示未知/原因，不能把读取失败当 0；`pendingUserDecisionCount` 与列表由同一授权快照产生，若数量与筛选结果不一致显示诊断，不从列表重算计数。
+7. **边界**：仅插件客户端呈现；不新增 Host/Remote/storage/tool/wire、不删除记录、不改变 pending/addressee/awaiting 旗标、授权、CAS 或历史；不唤醒模型。
+8. **回归**：混合 fixture 至少覆盖 pending-user、pending-agent、无 addressee、已结束 user、已结束 agent、仅 awaiting、pending+awaiting；断言待你裁决计数/行数一致且无 agent 泄漏；其他区默认折叠；待落实保留；Session/实例切换不残留旧行。
+
+## 7. 验收矩阵
 
 | 类别 | 必须覆盖 |
 |---|---|
@@ -62,6 +77,7 @@ S.used/countKnown/countReason/depth 继续以宿主实时计数为准，租约 b
 | 结构与配色 | 常驻/进度/详情三个区域，96px 只约束进度；T/S/pending 不同色、pending 红系、差额实际继承中性色 |
 | 零值 | 超出 0 隐藏/>0 显示/null 未知；任意自定义零值状态隐藏，非零/未知不丢；详情保留零值定义 |
 | 裁决 | user 与 agent/unspecified 分开，pending/awaiting 独立、两个类别筛选正确；只读无写请求/模型唤醒 |
+| 侧栏裁决分区 | 待你裁决只列 pending-user 且无 agent/无 addressee/已结束泄漏；计数与行数一致；待落实独立；其他区默认折叠且保留显式编辑；没有全部 decisions 落在待裁决标题下 |
 | T | held 真值，不以业务标签猜；无匹配票仍显示占位身份；assigned scope 和总数不混用 |
 | S | >64/截断、activity 与 state 不同、下界/未知/受限；列表条数不改变总数，不宣称全部 |
 | 生命周期与门控 | 刷新保持类别和焦点、不自动打开；切 Session/实例/unknown/关闭显示立即清掉旧展开；rightPanel=false 仍可查看；0 值消失收起 |

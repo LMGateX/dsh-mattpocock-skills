@@ -23,6 +23,8 @@
 - **执行事实来自观察（C 已于 0.7.1 实施；0.9.0 收窄目录语义）。** 原生 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 是程序事实来源；owner runtime 文档按 child session 保存 `nativeExecutions` 事实（`executionId = sessionId`），不要求模型补记，也不把模型文字当回执。S 继续按宿主 live `Agent.status` 计数；普通路径不以 lease 为前提。0.9.0 起执行事实只保存 `headerCwd` 来源值，不再由初始 cwd 路径相等派生 worktree/initial-cwd 关联；lane 仍从 assignment/binding 推导标 `inferred`，它们不是强 binding。0.7.0 只有 S/结局/通知与 worktree observation；0.7.1 补齐持久执行事实与读取时关联。
 - **旧宿主按 capability 兼容。** 没有原生 cwd/创建 seam 的宿主仍使用随包兼容提供者或明确拒绝；`host-patches/` 与 startup cwd 设置保留为旧宿主路径，不构成保留 execute 的理由。
 
+> 2026-11-05 更新：所有者已认可[方案 C](<LEGACY_DSH_CWD_BRIDGE_RETIREMENT.md>)，0.13.0 删除上述旧宿主兼容桥、`host-patches/` 与 startup cwd 设置，最低宿主提升到 `~0.2.1-alpha.2`；本段其余内容描述实施前行为。
+
 本节收窄 2026-10-06 的执行包装、2026-10-09 的插件 cwd 派发默认用法和 2026-10-13 的 `mattpocock_delegate.worktree` 默认派发用法；强绑定 lane 仍由 delegate 写 binding，T/S、票与裁决、工作树绑定/观测、历史与通知语义不变。
 
 ## 2. 背景与依据
