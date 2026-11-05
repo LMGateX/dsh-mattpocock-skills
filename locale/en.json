@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Matt Pocock Skills and Optional Collaboration Controls",
-    "description": "Distributes immutable Matt Pocock Skills with optional collaboration controls and subagent working-directory support configured in this plugin’s settings."
+    "description": "Distributes immutable Matt Pocock Skills with optional collaboration controls; explicit initial subagent directories use the host’s native activation seam when the host provides it, and this plugin loads no replacement provider."
   }
 }

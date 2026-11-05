@@ -82,7 +82,7 @@
 - 错误：在输出之前或之后显示 `error.name/code/reason` 的纯文本块，错误色；完整对象仍在原始记录。
 - 原始记录：`JsonBlock` 标签“原始记录（JSON）”，`defaultOpen=false`，payload 为 `sourceRecord(props)`；只有用户点开时才序列化。
 - 动作：原生 `Button` 放在展开体尾部；只在 `timeline && rightPanel` 时显示“打开当前实例”。注释只在 `timeline` 时显示。
-- **不使用** 0.2.2 才有的 `DisclosureRow.headerAccessory`：本仓库仍支持 0.2.1-alpha.1；动作放展开体可同时兼容两版。等最低宿主版本提升到 0.2.2 后，再迁移到 `headerAccessory`。
+- **不使用** 0.2.2 才有的 `DisclosureRow.headerAccessory`：0.13.0 的最低宿主为 0.2.1-alpha.2（alpha.1 已不再支持）；动作放展开体仍可兼容 0.2.1-alpha.2 与 0.2.2。
 - preparing 不显示展开体；start 显示“运行中，尚无输出”。
 
 ### 4.4 数据、未知与保真
@@ -103,7 +103,7 @@
 ## 5. 兼容性
 
 - `@deepseek-ai/dsh-client-ui-primitives` 是 DSH 隐式 baseline，已在 [build-client.mjs](../scripts/build-client.mjs#L6-L10) 的 `BASELINE_EXTERNALS` 中，且 [CLIENT_INTEGRATION.md](<CLIENT_INTEGRATION.md#L28>) 将 ui-primitives 列为 implicit baseline；不要写进 `dsh.client.external`。
-- 核对版本：`0.2.1-alpha.1` 与 `0.2.2-alpha.2` 都导出 `DisclosureRow`、`CodeBlock`、`JsonBlock`、`Button`、`IconSparkleRegular`；`headerAccessory` 只在 0.2.2 出现。本设计不使用它。支持的宿主范围仍为 `~0.2.1-alpha.1`（[HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md#L5-L11>)）。
+- 核对版本：`0.2.1-alpha.1` 与 `0.2.2-alpha.2` 都导出 `DisclosureRow`、`CodeBlock`、`JsonBlock`、`Button`、`IconSparkleRegular`；`headerAccessory` 只在 0.2.2 出现，本设计不使用它。0.13.0 起支持的宿主范围为 `~0.2.1-alpha.2`，alpha.1 已不再支持（[HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>)）。
 - 客户端 bundle 的 external 将从 `react` 变为 `react + @deepseek-ai/dsh-client-ui-primitives`；测试与文档必须同步，不能继续声称“React 唯一 external”。
 
 ## 6. 实施计划

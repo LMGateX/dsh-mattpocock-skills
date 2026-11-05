@@ -1,5 +1,7 @@
 # Optional Host integration — DSH 0.2.1-alpha.1
 
+> **Historical (removed in 0.13.0).** The pinned compatibility provider, startup readiness, old SDK preparation and `startupCwdEnabled` paths described below no longer exist. Current integration uses only the native `startActivation` seam and fails closed without it. See [MIGRATION.md](<../MIGRATION.md#plugin-0130-native-cwd-migration>).
+
 This records the actual adapter in [host.ts](<../src/host.ts>) and its browser-safe [Remote contract](<../src/controls/remote-contract.ts>). It does not authorize profile activation, live GUI changes, installation/publication or model trials. The immutable Skill provider remains independent of this optional adapter.
 
 ## Composition, ownership and persistence

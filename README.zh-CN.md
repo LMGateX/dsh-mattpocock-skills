@@ -23,7 +23,15 @@
 
 **升级须知：** 上游 v1.3 把 `CONTEXT.md` 改名为 `GLOSSARY.md`，且**没有旧名回退**；技能在旧名缺失时**不会报错**，只会静默新建一份空的 `GLOSSARY.md`。已有仓库请先读 [MIGRATION.md](MIGRATION.md)。
 
-## 0.4.2 单包兼容接入
+## 0.13.0 只保留原生 cwd（破坏性变更）
+
+0.13.0 删除 0.2.1-alpha.1 兼容桥与 `startupCwdEnabled` 下次启动请求。包内不再有固定的子代理 provider、旧 SDK 补丁、cwd CLI、`./compatibility`、`./native-subagent` 或 worktree-bridge locale 导出；`cordis.patch.yml` 只插入 Skills provider，不再禁用或替换 stock 原生子代理。
+
+最低宿主为 DSH `~0.2.1-alpha.2`（由 `engines.dsh` 声明；alpha.1 会被拒绝）。宿主提供原生 `startActivation` 首次子代理 cwd seam 时，`mattpocock_delegate` 把显式 cwd 交给该 seam，并由会话工作目录 owner 记录；没有该原生 seam 时能力报告 `nativeInitialChildCwd: unsupported`，显式请求 cwd 的委托会在创建 child 之前失败关闭，省略 cwd 则继续继承父目录。
+
+插件不再读取或写入任何启动设置。既有启动设置、binding、history 与 child 会话仍留在磁盘上，并在各自存储支持范围内保持可读；不会被自动删除或重写。若你曾手工应用旧 `host-patches/` 或使用旧 CLI，请先用自有备份恢复原 SDK；本仓库不再提供该工具。升级检查见 [MIGRATION.md](MIGRATION.md#plugin-0130-native-cwd-migration)。
+
+## 0.4.2 单包兼容接入（历史；0.13.0 已删除）
 
 本发布线包含针对 SDK `0.2.1-alpha.1`／canonical 公共包图的插件自有、哈希钉住首次 cwd 兼容实现。不改共享 SDK，不让用户另管补丁或启动器。正常流程只有安装／更新插件、保存独立的下次启动请求、必要时正常重启 DSH，再核对实际加载能力。保留既有 ACTIVE／PENDING 提供者和 continuable child；整个 bundle 移除／恢复不会构造第二个 canonical manager，真正根 shutdown 仍排空原生图。身份未知或不支持的拓扑保留普通原生行为。管理与启动请求仍默认关闭。准确的发行包身份与门禁结果随 GitHub Release 附件提供；安装不冒称当前 GUI 已启用。
 
@@ -43,7 +51,7 @@
 - DSH 默认识别 `AGENTS.md` 与 `CLAUDE.md`，无需批量改写为某一种文件名。
 - **后台派发不等于 headless 保活。** 当前 headless 等 root idle 后汇总并退出，不能承诺后台子任务继续正常完成及回传。Web 场景不能由此直接推断；完整无人值守工作流需另行解决宿主生命周期。
 - Git/worktree、浏览器、网络研究与共享笔记目录依赖目标环境和权限。provider 不安装这些工具、不授予外部写权限，也不绕过文件策略。
-- **宿主版本。** Skills provider 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2` 与 `0.2.1-alpha.1` 上核对，该部分始终无需修改运行时代码。`0.2.1-alpha.2` 是第一个需要适配的宿主（原生子代理 activation seam）。`0.2.1-alpha.3` 移除了 `connection.operator`，改为 owner 的 `connection.browserPeer`；可选控制面读取的是旧属性，因此从 alpha.3 起它会在注册九个工具之前中断装载，而 Skills 分发不受影响（cordis 默认日志级别会丢弃 `warn`，所以实机终端上看不到任何提示）。现在以版本中立方式读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者都不存在时失败关闭），并由用例覆盖两种拼写。`0.2.1-alpha.4` 改变了安装期门禁的判定依据：声明了 `engines.dsh` 就只按它判断，未声明才回退到 `@deepseek-ai/dsh*` peer 规则。本版本声明 `"engines.dsh": "~0.2.1-alpha.1"`，与既有 peer 判定实测等价：门禁放行 `0.2.1-alpha.1` 到 `0.2.2-alpha.*`，拒绝 `0.2.0-rc.2` 与 `0.3.0-alpha.1`；该范围在 `0.2.1-alpha.2` 与 `0.2.1-alpha.4` 两版门禁实现上都测过。`0.2.2-alpha.2` 在 `mattpocock_execute` 尚存时是需要运行时代码适配的宿主：工具执行拆入 executor 插件并移除了旧的单调用 `ctx.tools.execute`，该包装在那一宿主线上改用公开 `ToolExecutionPipeline`。0.7.0 源码线已整体移除该包装及 `executeNative` 路径，普通派发使用宿主原生工具。Skills provider 本身不变。`0.2.2-alpha.3` 已于 2026-11-04 复核，无需新的插件代码、元数据或制品改动：alpha.3 类型集下根与 Client 编译均 0 error，全量套件 **1077 通过、0 失败**（9 个环境门禁 skip）；已发布的 0.10.0 制品在隔离 headless profile 中成功安装并暴露 **27 个 Skills、11 个模型可见**。这是 headless 兼容核对，不代表浏览器 GUI 或模型运行。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
+- **宿主版本。** Skills provider 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2` 与 `0.2.1-alpha.1` 上核对，该部分始终无需修改运行时代码。`0.2.1-alpha.2` 是第一个需要适配的宿主（原生子代理 activation seam）。`0.2.1-alpha.3` 移除了 `connection.operator`，改为 owner 的 `connection.browserPeer`；可选控制面读取的是旧属性，因此从 alpha.3 起它会在注册九个工具之前中断装载，而 Skills 分发不受影响（cordis 默认日志级别会丢弃 `warn`，所以实机终端上看不到任何提示）。现在以版本中立方式读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者都不存在时失败关闭），并由用例覆盖两种拼写。`0.2.1-alpha.4` 改变了安装期门禁的判定依据：声明了 `engines.dsh` 就只按它判断，未声明才回退到 `@deepseek-ai/dsh*` peer 规则。0.13.0 声明 `"engines.dsh": "~0.2.1-alpha.2"`：引擎感知门禁放行 `0.2.1-alpha.2`、`0.2.1-alpha.3` 与 `0.2.2-alpha.*`，拒绝 `0.2.1-alpha.1`、`0.2.0-rc.2` 与 `0.3.0-alpha.1`；旧的兼容桥及其下次启动请求已不存在。`0.2.2-alpha.2` 在 `mattpocock_execute` 尚存时是需要运行时代码适配的宿主：工具执行拆入 executor 插件并移除了旧的单调用 `ctx.tools.execute`，该包装在那一宿主线上改用公开 `ToolExecutionPipeline`。0.7.0 源码线已整体移除该包装及 `executeNative` 路径，普通派发使用宿主原生工具。Skills provider 本身不变。`0.2.2-alpha.3` 已于 2026-11-04 复核，无需新的插件代码、元数据或制品改动：alpha.3 类型集下根与 Client 编译均 0 error，全量套件 **1077 通过、0 失败**（9 个环境门禁 skip）；已发布的 0.10.0 制品在隔离 headless profile 中成功安装并暴露 **27 个 Skills、11 个模型可见**。这是 headless 兼容核对，不代表浏览器 GUI 或模型运行。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
@@ -73,14 +81,13 @@
 
 T/S 超限或观测未知不拒绝合法原生委派，不新增业务审批。Git 工作树由 agent 自行创建、合并和删除；已清理树退出持续注入，废弃未清理仍提示，历史不默认过期。
 
-`0.4.2` 由同一个插件包管理首次 cwd 兼容支持：固定版本兼容服务、公开启动组合与只读身份／完整性检查，不改共享 SDK，也不另管启动器。正常流程是安装／更新插件、页面保存下次启动请求、必要时正常重启 DSH；用户无需选择 SDK 目录或执行离线准备命令。当前能力、下次请求与实现就绪分别展示，刷新／HMR 不算重启。保留已有 ACTIVE／PENDING 服务及明确原生覆盖；未知或自定义隔离组合保留普通原生行为，关闭不改变既有 child／历史／cwd 或权限。旧 CLI 仅为维护诊断保留，不是必经步骤。历史 0.4.1 Release 不含该提供者；安装 0.4.2 也不证明当前运行中的 GUI 已加载或启用它。具体见[控制指南](<CONTROLS.md>)和[验证摘要](<docs/VERIFICATION.md>)。原始研究、日志及收据保留在仓库外；package.private 防止 npm 发布，与仓库公开可见性分开。
+0.4.2–0.12.x 的桥工作流已成为历史；0.13.0 删除该 provider、页面级下次启动请求与旧 CLI。原生 cwd 是直接的宿主能力：显式 delegate cwd 不再需要保存启动请求、boot receipt 或重启流程；没有原生 seam 的宿主会失败关闭，而不是装载替代 provider。既有 child cwd／历史与权限不变。具体见[控制指南](<CONTROLS.md>)和[验证摘要](<docs/VERIFICATION.md>)。原始研究、日志及收据保留在仓库外；package.private 防止 npm 发布，与仓库公开可见性分开。
 
 ## 当前开发验证
 
 ```bash
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm exec tsc -p tsconfig.json
-chmod 755 lib/compatibility/cli.js
 pnpm exec tsc -p tsconfig.client.json --noEmit
 node scripts/build-client.mjs --out lib/client.js --declaration
 # Optional installed-host storage/API fixtures: set DSH_CONTROLS_HOST_ROOT explicitly.

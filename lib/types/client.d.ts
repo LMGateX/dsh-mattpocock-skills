@@ -5,7 +5,6 @@ import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-ma
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js';
-import type { StartupDesired, StartupStatus } from './controls/startup-state.js';
 import type { InstrumentSnapshot } from './controls/instruments.js';
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js';
 import type { WindowSnapshot } from './controls/windows.js';
@@ -271,38 +270,6 @@ export declare function ObservedSettingsInspection(props: {
     readonly sessionId: string;
     readonly observer: SessionObservation;
     readonly remote?: ControlsRemote;
-}): ReactElement;
-export interface StartupSettingsView {
-    readonly saved: StartupStatus | null;
-    readonly draft: StartupDesired | null;
-    readonly busy: 'loading' | 'saving' | null;
-    readonly error: string | null;
-    readonly notice: string | null;
-}
-type StartupRemote = Pick<ControlsRemote, 'startupStatus' | 'saveStartupSettings'>;
-/** Global Profile startup intent only; no Workspace Policy revision or SDK write enters this seam. */
-export declare class StartupSettingsController {
-    private readonly remote;
-    private state;
-    private readonly listeners;
-    private generation;
-    private controller;
-    private holds;
-    private closed;
-    constructor(remote: StartupRemote);
-    getSnapshot: () => StartupSettingsView;
-    subscribe: (listener: () => void) => (() => void);
-    private publish;
-    private cancel;
-    retain: () => (() => void);
-    refresh: () => Promise<void>;
-    setDesired: (startupCwdEnabled: boolean) => void;
-    save: () => Promise<void>;
-    dispose: () => void;
-}
-/** Permanently separate from the Workspace Policy form, including while that form is unavailable. */
-export declare function StartupSettingsPanel(props: {
-    readonly remote: StartupRemote;
 }): ReactElement;
 export declare function SupervisionSettingsPanel(props: {
     readonly remote: ControlsRemote;

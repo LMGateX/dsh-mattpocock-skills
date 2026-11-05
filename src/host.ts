@@ -53,11 +53,6 @@ import type { VersionedStorage } from './controls/versioned-storage.js'
 import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, createHostJsonRepresentation, parsePolicyGrants, parseResourceAction, parseSessionSummaryRequest, parseSessionSummaryBatch } from './controls/remote-contract.js'
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, RuntimeSnapshot, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js'
 import { boolean, ControlsError, freeze, id, increment, memoized, record, revision } from './controls/validation.js'
-import { StartupSupport } from './controls/startup-support.js'
-import { parseStartupDesired, parseStartupDocument } from './controls/startup-state.js'
-import type { StartupStatus } from './controls/startup-state.js'
-import { HostStartupNode } from './compatibility/host-startup.js'
-import { inspectCompatibilityPreparation } from './compatibility/readiness.js'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -90,19 +85,15 @@ export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChil
   readonly nativeInitialChildCwd: 'supported' | 'unsupported'
   readonly allNativeWakeAdmission: 'supported' | 'unsupported'
 }
-/** Which live seam carries an explicit initial child directory. `native` is the
- * upstream activation contract (0.2.1-alpha.2 and later, where the provider itself
- * resolves and records the request directory); `bridge` is this plugin's pinned
- * compatibility provider. Neither is inferred from a version string — only the
- * public method the actual service exposes authorizes cwd transmission. */
-type InitialChildCwdSeam = 'native' | 'bridge' | 'unsupported'
+/** Which live seam carries an explicit initial child directory. Only `native` —
+ * the upstream activation contract (0.2.1-alpha.2 and later, where the provider
+ * itself resolves and records the request directory) — is supported. This plugin
+ * loads no replacement provider, and the seam is not inferred from a version
+ * string: only the public methods the actual service exposes authorize cwd
+ * transmission. */
+type InitialChildCwdSeam = 'native' | 'unsupported'
 interface NativeActivationFacade {
-  readonly initialCwdSupported?: boolean
   readonly startActivation?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown; readonly result?: unknown }>
-}
-/** Pre-activation continuation spelling still exposed by hosts before 0.2.1-alpha.2. */
-interface LegacyContinuationFacade {
-  readonly startContinuable?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown }>
 }
 function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
   const subagents = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
@@ -110,10 +101,10 @@ function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
   // Upstream resolves the directory through the session working-directory owner;
   // a service that carries the method without that owner cannot honor the value.
   if (typeof subagents.startActivation === 'function' && ctx.get('workingDirectory')?.ensure !== undefined) return 'native'
-  return subagents.initialCwdSupported === true ? 'bridge' : 'unsupported'
+  return 'unsupported'
 }
-function initialChildCwdSupported(ctx: Context): boolean {
-  return initialChildCwdSeam(ctx) !== 'unsupported'
+function hasNativeInitialChildCwd(ctx: Context): boolean {
+  return initialChildCwdSeam(ctx) === 'native'
 }
 /** Structural view of the native subagent catalog seam; no Agent or provider class is fabricated. */
 interface NativeSubagentRow {
@@ -979,8 +970,6 @@ export interface HostPorts {
   readonly resourceLifecycle: ResourceLifecycle
   /** Background startup notification retries await registration; factories must not await their flush. */
   readonly notificationObserverReady?: Promise<void>
-  /** Host-owned startup configuration and real native health; never a policy write port. */
-  startupStatus?(signal?: AbortSignal): Promise<StartupStatus>
   gitRunnerForSession(sessionId: string, signal: AbortSignal): AuthorizedGitRunner
   makeSnapshotMessage(text: string): UserMessage
   /** Program-only proof on the exact live model surface; preparation/log existence is not visibility. */
@@ -1018,10 +1007,6 @@ export interface HostOptions {
   readonly delegate?: boolean
   /** Notified after a saved policy change so derived caches can be refreshed. */
   readonly onPolicyChanged?: () => void
-  /** Explicit trusted launch configuration; not a Remote/GUI/model path. */
-  readonly sdkRoot?: string
-  /** Program-only test/embedding seam; production uses the actual process epoch. */
-  readonly startup?: { readonly bootEpoch?: string }
 }
 export interface HostMount {
   /** Workspace-scoped Skill delivery gate; unavailable policy keeps skills on. */
@@ -1250,19 +1235,12 @@ export class MattPocockControlsService extends TypertRemoteService {
   private readonly sessionRepresentation = createHostJsonRepresentation()
   constructor(ctx: Context, private readonly runtime: RuntimeFacade, private readonly ports: HostPorts,
     private readonly grants: VersionedStorage<PolicyGrants>, private readonly supervision: VersionedStorage<SupervisionConfigSnapshot>,
-    private readonly startup: StartupSupport,
     private readonly lifecycle: { readonly signal: AbortSignal; track<T>(work: () => Promise<T>): Promise<T>; readonly onPolicyChanged?: () => void; readonly onSupervisionChanged?: (snapshot: SupervisionConfigSnapshot) => void }) { super(ctx, REMOTE_NAMESPACE) }
   private run<T>(operation: (caller: HostCaller, signal: AbortSignal) => Promise<T>, suppliedSignal?: AbortSignal): Promise<T> {
     const caller = operatorCaller(this.ctx)
     this.lifecycle.signal.throwIfAborted()
     const signal = AbortSignal.any([this.ctx.invocation!.signal, this.lifecycle.signal, ...(suppliedSignal ? [suppliedSignal] : [])])
     return this.lifecycle.track(() => operation(caller, signal))
-  }
-  startupStatus(suppliedSignal?: AbortSignal): Promise<StartupStatus> {
-    return this.run((_, signal) => this.startup.readStatus(signal), suppliedSignal)
-  }
-  saveStartupSettings(desired: unknown, expectedRevision: unknown, suppliedSignal?: AbortSignal): Promise<StartupStatus> {
-    return this.run((_, signal) => this.startup.save(parseStartupDesired(desired), revision(expectedRevision, 'expectedRevision'), signal), suppliedSignal)
   }
   readPolicy(): Promise<PolicySnapshot> { return this.run(async (caller, signal) => parsePolicySnapshot(await this.runtime.readPolicy(caller, signal))) }
   readSupervisionConfig(): Promise<SupervisionConfigSnapshot> {
@@ -1487,27 +1465,6 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (closing) { await domain.close(); throw new ControlsError('access-denied', 'host is disposing') }
       domains.push(domain); return domain.table('records')
     }
-    const startupNode = new HostStartupNode({
-      observeCompatibilityPreparation: signal => inspectCompatibilityPreparation(ctx, signal),
-      nativeSource: () => {
-        // Diagnostic origin of the actually loaded seam; never a capability claim.
-        const seam = initialChildCwdSeam(ctx)
-        if (seam === 'native') return 'native-activation'
-        if (seam !== 'bridge') return null
-        const service = ctx.get('subagents') as unknown as Record<symbol, unknown> | undefined
-        const source = service?.[Symbol.for('@lmgatex/dsh-mattpocock-skills/compatible-subagent-origin')]
-        return source === 'native-subagent-0.2.1-alpha.1' ? source : null
-      },
-      ...(options.sdkRoot === undefined ? {} : { sdkRoot: options.sdkRoot }), ...options.startup,
-    },
-      () => initialChildCwdSupported(ctx), lifetime.signal)
-    const startup = new StartupSupport(createDomainVersionedStorage(await open('startup_settings', parseStartupDocument), 'state', parseStartupDocument),
-      { epoch: startupNode.epoch }, signal => startupNode.observe(signal))
-    // Capture the trusted boot request before runtime factories or model tools exist.
-    const bootRequested = (await startup.readStatus(lifetime.signal)).boot.requested.startupCwdEnabled
-    const requireStartupCwd = () => {
-      if (!bootRequested) throw new ControlsError('feature-disabled', 'initial child cwd is disabled for this process; save startup settings and restart the instance to enable it')
-    }
     const controlsStorage = createDomainControlsStorage(await open('controls', parseControlsDocument))
     const supervisionStorage = createDomainVersionedStorage(await open('supervision_config', parseSupervisionConfigDocument), 'state', parseSupervisionConfigDocument)
     let supervisionSnapshot: SupervisionConfigSnapshot = INITIAL_SUPERVISION_CONFIG
@@ -1518,8 +1475,8 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       ctx.logger('mattpocock-controls').warn('supervision configuration unavailable; audit remains off', error)
     }
     // The multi-row instruments/windows domains validate every stored record on open. They are
-    // not needed to mount: the first session read opens them, so startup pays only the two
-    // documents every mount actually needs (startup settings and controls).
+    // not needed to mount: the first session read opens them, so startup pays only the
+    // documents every mount actually needs (controls and supervision configuration).
     let instrumentOpening: Promise<InstrumentStorage> | undefined
     const instrumentStorage: InstrumentStorage = {
       read: async id => (await (instrumentOpening ??= open('instruments', parseInstrumentDocument).then(createDomainInstrumentStorage))).read(id),
@@ -1563,7 +1520,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     const ports: HostPorts = {
       controlsStorage, instrumentStorage, windowStorage, resourceStorage, ...identity,
       capabilities: freeze({ ...HOST_CAPABILITIES,
-        get nativeInitialChildCwd(): HostCapabilities['nativeInitialChildCwd'] { return initialChildCwdSupported(ctx) ? 'supported' : 'unsupported' },
+        get nativeInitialChildCwd(): HostCapabilities['nativeInitialChildCwd'] { return hasNativeInitialChildCwd(ctx) ? 'supported' : 'unsupported' },
         get allNativeWakeAdmission(): HostCapabilities['allNativeWakeAdmission'] { return nativeSubagentLister(ctx) === undefined ? 'unsupported' : 'supported' } }),
       makeSnapshotMessage, notificationObserverReady,
       snapshotVisible(caller, actualAgent, message) {
@@ -1576,7 +1533,6 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
             && snapshotContent({ source: visible.source, content: visible.content }) === expected)
         } catch { return false }
       },
-      startupStatus(signal) { return track(() => startup.readStatus(signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal)) },
       async notifyOwner(input, signal) {
         const control = AbortSignal.any([signal, lifetime.signal]); control.throwIfAborted()
         if (closing) return { status: 'unavailable', messageId: null }
@@ -1599,11 +1555,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         const caller = agentCaller(ctx, exec.agent)
         await identity.authorizeCaller(caller, caller.sessionId!)
         if (typeof cwd !== 'string' || cwd.length === 0 || cwd.length > 16384 || cwd.includes('\0') || !isAbsolute(cwd) || normalize(cwd) !== cwd) throw new ControlsError('invalid-input', 'cwd must be a bounded normalized absolute path')
-        requireStartupCwd()
-        if (!initialChildCwdSupported(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
+        if (!hasNativeInitialChildCwd(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
         const verify = await authorizeInitialChildCwd(ctx, exec.agent!, cwd, AbortSignal.any([exec.signal, lifetime.signal]))
-        requireStartupCwd()
-        if (!initialChildCwdSupported(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
+        if (!hasNativeInitialChildCwd(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
         verify()
         // This is a fresh technical read, not a reusable authorization token.
         // Creation repeats the full scope check at its own native effect boundary.
@@ -1621,45 +1575,33 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         const childId = SessionId(id(raw.childId, 'childId')), label = bounded(raw.label, 'label', 256), prompt = bounded(raw.prompt, 'prompt', 262144)
         const cwd = raw.cwd === undefined ? undefined : bounded(raw.cwd, 'cwd', 16384)
         if (cwd !== undefined && (!isAbsolute(cwd) || normalize(cwd) !== cwd)) throw new ControlsError('invalid-input', 'cwd must be a normalized absolute path')
-        if (cwd !== undefined) requireStartupCwd()
-        const native = ctx.get('subagents')
-        if (!native) throw new ResourceError('unsupported', 'native continuable creation is unavailable')
-        if (cwd !== undefined && !initialChildCwdSupported(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
+        const native = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
+        if (!native || typeof native.startActivation !== 'function') throw new ResourceError('unsupported', 'native continuable creation is unavailable; no child was requested')
+        // No replacement provider is loaded: an explicit cwd requires the native
+        // activation contract, and an unsupported host creates no child at all.
+        if (cwd !== undefined && !hasNativeInitialChildCwd(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
         const verifyCwd = cwd === undefined ? undefined : await authorizeInitialChildCwd(ctx, exec.agent!, cwd, AbortSignal.any([exec.signal, lifetime.signal]))
         const maxDepth = native.resolveMaxDepth()
         lifetime.signal.throwIfAborted(); exec.signal.throwIfAborted(); agentCaller(ctx, exec.agent)
+        verifyCwd?.()
+        if (cwd !== undefined && !hasNativeInitialChildCwd(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
         // Public manager owns provider capability/depth checks, permissions, lineage,
         // factory headers and durable descriptors. Never mutate parent/child metadata.
-        const spec = { provider: raw.provider, label, childId,
-          request: { parent: exec.agent!, prompt: [{ type: 'text' as const, text: prompt }], ...(maxDepth === undefined ? {} : { maxDepth }) },
-          signal: exec.signal, ...(cwd === undefined ? {} : { cwd }) }
-        const seam = initialChildCwdSeam(ctx)
-        if (cwd !== undefined) {
-          requireStartupCwd()
-          if (seam === 'unsupported') throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
-        }
-        verifyCwd?.()
-        if (seam === 'native') {
-          // Upstream keeps the reserved identity and carries the directory inside the
-          // request, so the provider resolves and records it before the child exists.
-          // Parent delivery is the model-facing completion notice this plugin's receipt
-          // already implies; the returned handle stays with the upstream manager, which
-          // settles the child and releases its slot without further action here.
-          const activation = await (native as unknown as NativeActivationFacade).startActivation!({ provider: raw.provider, label, childId,
-            request: { parent: exec.agent!, prompt: [{ type: 'text' as const, text: prompt }], ...(maxDepth === undefined ? {} : { maxDepth }), ...(cwd === undefined ? {} : { cwd }) },
-            signal: exec.signal, delivery: 'parent' })
-          // The result promise rejects on capture failure; nobody here awaits it, and an
-          // unhandled rejection would surface in the host process. The parent notice and
-          // this plugin's lifecycle observation carry the outcome instead.
-          const result = activation.result
-          if (result !== null && typeof result === 'object' && typeof (result as Promise<unknown>).catch === 'function') (result as Promise<unknown>).catch(() => undefined)
-          // The local-child overload with a reserved childId guarantees the message id.
-          return { childId: String(activation.childId), messageId: String(activation.messageId ?? '') }
-        }
-        const legacy = native as unknown as LegacyContinuationFacade
-        if (typeof legacy.startContinuable !== 'function') throw new ResourceError('unsupported', 'native continuable creation is unavailable')
-        const handle = await legacy.startContinuable(spec)
-        return { childId: String(handle.childId), messageId: String(handle.messageId ?? '') }
+        // Upstream keeps the reserved identity and carries the directory inside the
+        // request, so the provider resolves and records it before the child exists.
+        // Parent delivery is the model-facing completion notice this plugin's receipt
+        // already implies; the returned handle stays with the upstream manager, which
+        // settles the child and releases its slot without further action here.
+        const activation = await native.startActivation({ provider: raw.provider, label, childId,
+          request: { parent: exec.agent!, prompt: [{ type: 'text' as const, text: prompt }], ...(maxDepth === undefined ? {} : { maxDepth }), ...(cwd === undefined ? {} : { cwd }) },
+          signal: exec.signal, delivery: 'parent' })
+        // The result promise rejects on capture failure; nobody here awaits it, and an
+        // unhandled rejection would surface in the host process. The parent notice and
+        // this plugin's lifecycle observation carry the outcome instead.
+        const result = activation.result
+        if (result !== null && typeof result === 'object' && typeof (result as Promise<unknown>).catch === 'function') (result as Promise<unknown>).catch(() => undefined)
+        // The local-child overload with a reserved childId guarantees the message id.
+        return { childId: String(activation.childId), messageId: String(activation.messageId ?? '') }
       },
       installNativeGuard(guard) { const remove = ctx.tools.guard(guard); disposers.push(remove); return remove },
       installManagedGuard(guard) { const remove = ctx.tools.guard(guard); disposers.push(remove); return remove },
@@ -1731,7 +1673,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       return undefined
     }
     let syncAuditTool: (snapshot: SupervisionConfigSnapshot) => void = () => {}
-    const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, startup, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }), onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
+    const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }), onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
     disposers.push(ctx.typert.register(hostRemoteContribution()))
     // Model tools always address the actual caller's session, never a supplied principal.
     const model = createModelTools(active)

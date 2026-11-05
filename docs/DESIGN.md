@@ -85,7 +85,7 @@ This document is the authoritative implementation contract. A later implementati
 - **`mattpocock_assign` 保留。** 只对真实直接 child 登记受授 workflow/ticket；不派发、不创建 child。创建前 scope 由 delegate（若使用）检查，创建后由 assign 再检查；普通 native 路径以 assign 为准。
 - **执行事实来自观察，工作树强绑定由 delegate 写入。** 原生 `agent/created`、child header、`subagent/start|end`、`agent/disposed` 是执行事实来源；0.7.1 把这些事实按 child session 持久化在 owner runtime document 的 `nativeExecutions`（`executionId = sessionId`，重跑更新同一行，`activity` 只在读取时取 live Agent，`outcome` 只取宿主 `stopReason`）。opt-in 的 `mattpocock_delegate`（0.8.0 默认不注册）的 `registerIntent → confirm` 才是 child↔初始 cwd/task/ticketIds 的强 binding 创建入口。成功的 `create_worktree` 只产生树创建 observation；读取时可用 creator + assignment/binding 关联出 lane，但必须标为 observed/inferred，不能冒充强 binding。S 继续按宿主 live `Agent.status` 计数；普通路径不再以 lease 为前提。
 - **绑定观察的读取时关联（0.7.1 的历史实现）。** 当时用首次 child header cwd 精确匹配 `create_worktree`，生成 `worktree: observed` 与 `nativeChildren`（`created-tree` / `initial-cwd`）；lane 从 assignment/binding 推导。账本及这些投影已交付，但 header 不能据此证明实际初始 cwd，“实际初始目录关联已验证”的结论撤回，后续契约以 2026-11-04 节为准；0.9.0 已取消 `initial-cwd` 路径关联，只保留 `created-tree`。它们从来不是 delegate 风格的强 binding。方案 A 仍保留 delegate 实现；0.8.0 起默认不注册。未来若退役它，须先接受等价强绑定设计并另更新本节。
-- **旧宿主兼容。** 没有原生 cwd/创建 seam 的宿主仍按 capability 使用随包兼容提供者或明确拒绝；`host-patches/` 与 startup cwd 设置保留为旧宿主路径，不构成保留 execute 的理由。当前宿主优先原生；不得用版本字符串冒充能力。
+- **旧宿主兼容（0.13.0 起移除）。** 没有原生 cwd/创建 seam 的宿主不再装载随包兼容提供者；能力为 unsupported，显式 cwd 的 delegate 失败关闭。`compatibility/`、`host-patches/`、启动设置与旧 CLI 已删除，最低宿主 `~0.2.1-alpha.2`；不得用版本字符串冒充能力。
 - **验收与迁移。** B（移除 execute）、D（delegate 绑定式创建）与 E（构建/制品/发布准备）已在 0.7.0 源码线完成；C（原生观察读取时关联/账本补齐）已在 0.7.1 完成，规格与验收见 [NATIVE_OBSERVATION_CORRELATION.md](<NATIVE_OBSERVATION_CORRELATION.md>) 与 [VERIFICATION.md](<VERIFICATION.md>)。0.8.0 已把 delegate 默认关闭；只有显式 `delegate: true` 才注册，普通 lane 的 native + assign 路径不变。C 不写强 binding、不新增模型工具、不新增 Remote 方法或存储域；观察失败不阻断 native 事件、S、nativeStops 或通知。0.7.0/0.7.1 的发布、推送和 tag 已按发布记录执行；本决策仍不授权安装或 Profile 修改。移除 execute 至少验收：模型工具面不再注册它；native `subagent` + `mattpocock_assign` 只产生一个 child；native `send_message` 不重复投递；PTC 嵌套路径仍注入状态；无 execute 时 S、结局、通知与绑定观测仍完整。强绑定验收：delegate 以准备好的 `worktree` 创建时只产生一个 child，并写出 requested/actual cwd、task、ticketIds 的 binding；`mattpocock_worktree` 能读到它；原生无绑定 lane 不得静默产生强 binding。
 
 ## delegate 默认禁用（2026-11-03，所有者认可；0.8.0 源码实施）
@@ -104,7 +104,7 @@ This document is the authoritative implementation contract. A later implementati
 - 采用 DSH 公开 baseline `@deepseek-ai/dsh-client-ui-primitives` 的 `DisclosureRow` 作为行外壳，展开体输入/输出用 `CodeBlock`，原始记录用 `JsonBlock`，动作使用 `Button`；不复制私有 `ToolRow` CSS、不导入私有组件。
 - 标题保留完整英文 wire 名；摘要保留英文 action/target；默认折叠，展开体上限 360px。preparing/start/result 与 timeline/rightPanel 门控语义不变。
 - 不改变 Host 模型可见输出、source card 的公开 `argsRaw/content/error/meta` 字段、工具键或其他原生布局。
-- 保持 `~0.2.1-alpha.1` 宿主兼容：不使用仅 0.2.2 存在的 `DisclosureRow.headerAccessory`；“打开当前实例”暂放展开体，最低宿主版本提升后再迁移。
+- 0.13.0 的最低宿主为 `~0.2.1-alpha.2`；不使用仅 0.2.2 存在的 `DisclosureRow.headerAccessory`，“打开当前实例”继续放在展开体。alpha.1 已不再支持。
 - 详细设计与实施计划见 [仪器工具卡呈现](<INSTRUMENT_TOOL_CARDS.md>)。2026-11-01 源码、客户端测试与闭合构建已完成；未安装本机 DSH/Profile，未做真实 GUI 验收，发布制品与 tag 以 [公开验证说明](<VERIFICATION.md>) 为准。
 
 ## 仪器读取减负与客户端观测（2026-10-21）
@@ -120,7 +120,7 @@ This document is the authoritative implementation contract. A later implementati
 - **T/S 是参考上限**：展示占用、参考值和超出情况，引导 agent 安排工作；超限或统计未知本身不拒绝派发，不另要求批准。执行事实仍如实记录（按 2026-11-03 设计，普通路径由原生生命周期观察；工作树强 binding 仍由 delegate 程序确认，见顶部新节），不以模型自报冒充程序事实。
 - **工作树核心是创建绑定工具**：主 agent 自行准备工作树，在创建可续聊子代理时传入 worktree；工具使其成为实际工作目录，随后同 child 身份/历史/目录继续。按 2026-11-03 设计，普通无绑定 lane 由宿主 `create_worktree` + `subagent({cwd})` 完成，插件只观察/登记；需要 ticket↔tree 强绑定时用 delegate，`worktree` 参数是强绑定入口。
 - **仪器只记录真实绑定关系与状态**：帮助 agent 看见哪些树与哪些子代理/任务有关。分支/树的创建、合并、删除，以及是否该清理由 agent 按 Skills 和用户约定决定；不再增加资源处置审批系统。
-- **已落地的创建接口**：首次 continuable 创建可选 cwd 的原生源码/编译补丁已独立交付，省略保持继承；原 manager 负责生命周期，插件执行可信路径预检查、持久意图、原生调用及实际 header 核对。明确 cwd 在原生副作用边界再次核验现有权限，不新增业务批准；未补丁安装版按公开能力 getter 明确 unsupported。见[宿主补丁交付](<../host-patches/README.md>)与[工作树绑定契约](<WORKTREE_BINDINGS.md>)。
+- **已落地的创建接口**：0.13.0 只走宿主原生 `startActivation` 首次 cwd seam，省略保持继承；宿主 manager 负责生命周期，插件执行可信路径预检查、持久意图、原生调用及实际 header 核对。明确 cwd 在原生副作用边界再次核验现有权限，不新增业务批准；没有原生 seam 的宿主按公开能力 getter 明确 unsupported。旧 `host-patches/` 与随包 provider 已删除；工作树绑定语义见[工作树绑定契约](<WORKTREE_BINDINGS.md>)。
 - **持久化、当前注入与历史查询分开**：研究和设计覆盖全部仪器，不只工作树；保存历史不等于持续注入全部历史，退出注入不等于删除数据。主会话通过主动历史接口查询本 session 权限范围内的保留记录；摘要分页与按需详情明示来源覆盖，不冒称已返回全部正文。
 - **工作树退出条件**：只有已被清理的树退出持续注入；废弃但未清理的树仍提示待处置。本 session 已清理树的历史仍可主动查，不能因树清理而默认删除记录。模型登记清理与程序物理回执分别标来源，不新增原生续用闭合审批。
 - **记录整理已实施，期限仍由用户决定**：主动摘要分页/详情、显式当前范围、历史副本 purge，以及 records/windows/worktrees 三个源域的 checkpoint 和定向源旧历史删除均已有源码接口。副本删除不冒称源删除，源清理保留当前/最新状态、创建作者与技术去重摘要；多域非原子、部分成功和未知修订如实报告。任意字段级删除、全部作用域擦除与自动 TTL 不在本轮接口内；已清理树不默认删除历史。见[历史核心契约](<HISTORY_CORE.md>)。
@@ -142,7 +142,7 @@ This document is the authoritative implementation contract. A later implementati
 
 - 已核对 DSH `0.2.1-alpha.2` 的公开 `@deepseek-ai/dsh-subagent`：`startContinuable` 已删除，改为 `startActivation(spec)`，`SubagentStartRequest.cwd?` 由提供者自行解析并经会话工作目录 owner 记录；省略仍继承父目录。
 - 实际加载的服务同时暴露 `startActivation` 与会话工作目录 owner（`workingDirectory.ensure`）时，本插件使用宿主原生 seam 传递显式首次 cwd；否则仍使用随包版本固定兼容提供者。能力判定只来自实际加载的公开服务对象，不来自版本字符串、模型输入或用户声明。
-- 随包兼容提供者、recipe 与 `host-patches/` 继续交付，服务没有原生 seam 的宿主；本决策不改变 0.4.3 的用户入口、启动时采样、实际 header 核对，也不增加第二个 cwd 来源。
+- **历史（0.13.0 已删除）：** 随包兼容提供者、recipe 与 `host-patches/` 曾服务没有原生 seam 的旧宿主，现已移除；无原生 seam 时 delegate 的显式 cwd 失败关闭。本决策保留实际 header 核对，不增加第二个 cwd 来源。
 - 授权、持久意图、原生副作用边界复验与确认序列不变：宿主原生不豁免预检查，省略 cwd 仍不写任何目录值。
 
 ## 宿主原生实时运行状态计数（2026-10-10 决策，同日按所有者要求修订）
@@ -181,7 +181,7 @@ This document is the authoritative implementation contract. A later implementati
 ## 宿主引擎兼容声明（2026-10-15 按所有者要求核对 DSH 0.2.1-alpha.4）
 
 - DSH `0.2.1-alpha.4` 起，第三方插件的版本兼容性**优先按 `engines.dsh` 判断**，未声明时沿用原有 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` peer 规则（`dsh-app-boot` 的 `unmetRequirements`）。
-- 本插件显式声明 `engines.dsh: "~0.2.1-alpha.1"`。该范围与既有 peer 判定在两版宿主真身函数上逐版本实测等价：`0.2.1-alpha.1` … `0.2.2-alpha.*` 放行，`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝。声明只记录**已实测**的宿主线，不扩大第 11 节的兼容承诺，也不违反第 13 节「不声明未验证的未来版本」。
+- 0.13.0 显式声明 `engines.dsh: "~0.2.1-alpha.2"`。引擎感知门禁在真身函数上实测：`0.2.1-alpha.2`、`0.2.1-alpha.3` 与 `0.2.2-alpha.*` 放行，`0.2.1-alpha.1`、`0.2.0-rc.2` 与 `0.3.0-alpha.1` 拒绝。声明只记录**已实测**的宿主线，不扩大第 11 节的兼容承诺，也不违反第 13 节「不声明未验证的未来版本」。
 - 范围变化必须同时更新 [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md) 的实测矩阵；[包策略校验](<../scripts/verify-package.mjs>)与[脚手架用例](<../tests/scaffold.test.mjs>)固定当前声明，防止它随版本漂移。
 - alpha.4 的其余变化不触碰产品代码：`PeerScope` 新增 `principal`／`signal`／`interactions`（本插件只读 `peer.id`），宿主侧 fixture 已补齐该契约；`@deepseek-ai/dsh-client-ui-slots` 不再随安装提供（Renderer 仍 require 该模块 id，由 Web 前端构建产物以 static module 提供），本插件客户端产物不 require 任何 `@deepseek-ai/*` 模块 id，因此运行时不受影响。
 - 详细核对表、门禁实测与未验证事项见 [HOST_COMPATIBILITY.md](<HOST_COMPATIBILITY.md>)；本轮改动限于 `package.json` 声明、固定包策略、测试 fixture 与文档，不改 vendor 字节、不加宿主补丁、不安装本机 DSH 或 Profile、不发布。

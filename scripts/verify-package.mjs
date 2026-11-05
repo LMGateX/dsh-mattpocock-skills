@@ -74,27 +74,6 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/controls/remote-contract.d.ts',
   'lib/types/controls/runtime-state.d.ts',
   'lib/types/controls/native-executions.d.ts',
-  'lib/controls/startup-state.js',
-  'lib/controls/startup-support.js',
-  'lib/types/controls/startup-state.d.ts',
-  'lib/types/controls/startup-support.d.ts',
-  'lib/compatibility/native-subagent.js',
-  'lib/types/compatibility/native-subagent.d.ts',
-  'compatibility/native-subagent-0.2.1-alpha.1.js',
-  'compatibility/native-subagent.provenance.json',
-  'lib/compatibility/readiness.js',
-  'lib/types/compatibility/readiness.d.ts',
-  'lib/compatibility/composition.js',
-  'lib/types/compatibility/composition.d.ts',
-  'lib/compatibility/peer-bindings.js',
-  'lib/types/compatibility/peer-bindings.d.ts',
-  'lib/compatibility/managed-sdk.js',
-  'lib/compatibility/cli.js',
-  'lib/compatibility/host-startup.js',
-  'lib/types/compatibility/managed-sdk.d.ts',
-  'lib/types/compatibility/cli.d.ts',
-  'lib/types/compatibility/host-startup.d.ts',
-  'compatibility/initial-cwd.recipe.json',
   'cordis.patch.yml',
   'generated/catalog.json',
   'vendor/mattpocock-skills/',
@@ -109,8 +88,6 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'THIRD_PARTY_NOTICES.md',
   'locale/en.json',
   'locale/zh.json',
-  'locale/worktree-bridge/en.json',
-  'locale/worktree-bridge/zh.json',
 ])
 
 export const FIXED_PACKED_FILES = Object.freeze([
@@ -178,27 +155,6 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/controls/remote-contract.d.ts',
   'lib/types/controls/runtime-state.d.ts',
   'lib/types/controls/native-executions.d.ts',
-  'lib/controls/startup-state.js',
-  'lib/controls/startup-support.js',
-  'lib/types/controls/startup-state.d.ts',
-  'lib/types/controls/startup-support.d.ts',
-  'lib/compatibility/native-subagent.js',
-  'lib/types/compatibility/native-subagent.d.ts',
-  'compatibility/native-subagent-0.2.1-alpha.1.js',
-  'compatibility/native-subagent.provenance.json',
-  'lib/compatibility/readiness.js',
-  'lib/types/compatibility/readiness.d.ts',
-  'lib/compatibility/composition.js',
-  'lib/types/compatibility/composition.d.ts',
-  'lib/compatibility/peer-bindings.js',
-  'lib/types/compatibility/peer-bindings.d.ts',
-  'lib/compatibility/managed-sdk.js',
-  'lib/compatibility/cli.js',
-  'lib/compatibility/host-startup.js',
-  'lib/types/compatibility/managed-sdk.d.ts',
-  'lib/types/compatibility/cli.d.ts',
-  'lib/types/compatibility/host-startup.d.ts',
-  'compatibility/initial-cwd.recipe.json',
   'LICENSE',
   'package.json',
   'PROVENANCE.json',
@@ -211,17 +167,15 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'vendor-files.json',
   'locale/en.json',
   'locale/zh.json',
-  'locale/worktree-bridge/en.json',
-  'locale/worktree-bridge/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.12.0'
+const EXPECTED_VERSION = '0.13.0'
 // DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
-// peers declared below only when it is absent. The declared range therefore repeats the exact
-// verdict those peers already produce on both host lines, measured with the real
-// evaluatePluginCompatibility: 0.2.1-alpha.1 … 0.2.2-alpha.* pass, 0.2.0-rc.2 and
-// 0.3.0-alpha.1 are refused.
-const EXPECTED_DSH_ENGINE = '~0.2.1-alpha.1'
+// peers declared below only when it is absent. The declared range excludes the retired
+// 0.2.1-alpha.1 cwd bridge host and accepts the native activation seam, measured with the
+// real evaluatePluginCompatibility: 0.2.1-alpha.2 … 0.2.2-alpha.* pass, 0.2.1-alpha.1,
+// 0.2.0-rc.2 and 0.3.0-alpha.1 are refused.
+const EXPECTED_DSH_ENGINE = '~0.2.1-alpha.2'
 export const EXPECTED_ENGINES = Object.freeze({ node: '>=22', dsh: EXPECTED_DSH_ENGINE })
 
 export const EXPECTED_PEERS = Object.freeze({
@@ -241,7 +195,6 @@ export const EXPECTED_PEERS = Object.freeze({
   '@deepseek-ai/dsh-attachment': '~0.2.1-alpha.1',
   '@deepseek-ai/dsh-brand': '~0.2.1-alpha.1',
   '@deepseek-ai/dsh-chunked-list': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-scope': '~0.2.1-alpha.1',
   '@deepseek-ai/dsh-util-time': '~0.2.1-alpha.1',
   '@deepseek-ai/dsh-util-values': '~0.2.1-alpha.1',
   'react': '^18.2.0',
@@ -280,7 +233,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 99
+const EXPECTED_FIXED_PACKED_FILES = 76
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
@@ -332,19 +285,11 @@ export function matchesPackedFileBytes(path, sourceBytes, packedBytes) {
 const EXPECTED_LOCALE_META = Object.freeze(Object.fromEntries(Object.entries({
   "locale/en.json": {
     "title": "Matt Pocock Skills and Optional Collaboration Controls",
-    "description": "Distributes immutable Matt Pocock Skills with optional collaboration controls and subagent working-directory support configured in this plugin’s settings."
+    "description": "Distributes immutable Matt Pocock Skills with optional collaboration controls; explicit initial subagent directories use the host’s native activation seam when the host provides it, and this plugin loads no replacement provider."
   },
   "locale/zh.json": {
     "title": "Matt Pocock 技能与可选协作管理",
-    "description": "分发不可变的 Matt Pocock 技能，并提供可选协作管理与子代理工作目录增强；功能开关位于本插件设置页。"
-  },
-  "locale/worktree-bridge/en.json": {
-    "title": "Subagent Working-Directory Compatibility Bridge (Provided by This Plugin)",
-    "description": "An internal compatibility dependency provided by this plugin that adds initial subagent working-directory support to supported DSH versions; not an official DSH component. The feature switch is on this plugin’s settings page; it does not create, merge, or clean up worktrees."
-  },
-  "locale/worktree-bridge/zh.json": {
-    "title": "子代理工作目录兼容桥（本插件提供）",
-    "description": "由本插件提供的内部兼容依赖，为受支持的 DSH 补充子代理初始工作目录能力；不是 DSH 官方组件。功能开关在本插件设置页；不创建、合并或清理工作树。"
+    "description": "分发不可变的 Matt Pocock 技能，并提供可选协作管理；显式子代理初始目录仅在宿主提供原生 activation seam 时使用，本插件不再装载替代 provider。"
   }
 }).map(([path, meta]) => [path, Object.freeze(meta)])))
 
@@ -380,21 +325,17 @@ export function validatePackagePolicy(packageJson) {
   const exports = {
     '.': { types: './lib/types/index.d.ts', default: './lib/index.js' },
     './controls': { types: './lib/types/controls/index.d.ts', default: './lib/controls/index.js' },
-    './compatibility': { types: './lib/types/compatibility/managed-sdk.d.ts', default: './lib/compatibility/managed-sdk.js' },
-    './native-subagent': { types: './lib/types/compatibility/native-subagent.d.ts', default: './lib/compatibility/native-subagent.js' },
     './host': { types: './lib/types/host.d.ts', default: './lib/host.js' },
     './client': { types: './lib/types/client.d.ts', default: './lib/client.js' },
     './cordis.patch.yml': './cordis.patch.yml',
     './package.json': './package.json',
     './locale/en.json': './locale/en.json',
     './locale/zh.json': './locale/zh.json',
-    './native-subagent/locale/en.json': './locale/worktree-bridge/en.json',
-    './native-subagent/locale/zh.json': './locale/worktree-bridge/zh.json',
   }
   // Subpath order is immaterial; conditional targets must still put types first.
   assert(packageJson.exports && sameJson(Object.keys(packageJson.exports).sort(), Object.keys(exports).sort())
     && Object.entries(exports).every(([name, target]) => sameJson(packageJson.exports[name], target)), 'package exports differ from the closed runtime entry targets')
-  assert(sameJson(packageJson.bin, { 'dsh-mattpocock-skills-cwd': './lib/compatibility/cli.js' }), 'compatibility CLI must be the one closed bin target')
+  assert(!Object.hasOwn(packageJson, 'bin'), 'package must not declare a bin after the compatibility CLI retirement')
   assert(packageJson.dsh?.bundle?.patch === './cordis.patch.yml', 'DSH bundle patch target is invalid')
   assert(sameJson(packageJson.dsh?.client, EXPECTED_CLIENT), 'optional DSH client graph differs from the accepted web integration')
   for (const key of ['scripts', 'dependencies', 'optionalDependencies', 'bundledDependencies', 'bundleDependencies', 'publishConfig']) {
@@ -596,9 +537,6 @@ export async function compareCommittedBuild(root) {
     } finally {
       process.umask(previousUmask)
     }
-    // tsc preserves the CLI shebang but creates scratch files without execute bits.
-    // The one closed package.bin target is executable in both reproducible trees.
-    await chmod(join(builtRoot, 'compatibility/cli.js'), 0o755)
     const [committed, built] = await Promise.all([walkRegularFiles(join(root, 'lib')), walkRegularFiles(builtRoot)])
     const expectedPaths = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).map(path => path.slice(4)).sort()
     assert(sameJson(committed.map(entry => entry.path).sort(), expectedPaths), 'committed lib does not match the exact prebuilt module allowlist')
@@ -614,10 +552,6 @@ export async function compareCommittedBuild(root) {
     ]
     const clientDifferences = diffFileInventories(committed.filter(entry => clientPaths.has(entry.path)), clientBuilt)
     assert(clientDifferences.length === 0, 'committed lazy-CJS Client differs from independent in-memory build:\n' + clientDifferences.join('\n'))
-    // Guard source spelling is part of the shipped before-import protocol.
-    // The generator is read-only in check mode and imports no SDK runtime.
-    execFileSync(process.execPath, [join(root, 'scripts/build-compatibility-patch.mjs'), '--check'],
-      { cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
     return { files: committed.length, paths: committed.map((entry) => entry.path) }
   } finally {
     assert(isAbsolute(temporary) && temporary.startsWith(join(tmpdir(), 'dsh-package-build-')), 'unexpected scratch build cleanup path')
@@ -810,7 +744,7 @@ function collectExportTargets(value, result = []) {
 }
 
 async function requirePackageTargets(extractedRoot, packageJson) {
-  const targets = new Set([packageJson.main, packageJson.types, packageJson.dsh.bundle.patch, packageJson.dsh.client.entry, ...collectExportTargets(packageJson.exports), ...Object.values(packageJson.bin)])
+  const targets = new Set([packageJson.main, packageJson.types, packageJson.dsh.bundle.patch, packageJson.dsh.client.entry, ...collectExportTargets(packageJson.exports), ...(packageJson.bin === undefined ? [] : Object.values(packageJson.bin))])
   for (const target of targets) {
     assert(typeof target === 'string' && target.startsWith('./'), 'package target must be package-relative: ' + JSON.stringify(target))
     const normalized = posix.normalize(target.slice(2))
