@@ -2,7 +2,7 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 0.13.0 原生 cwd 退役（2026-11-05，源码验证；唯一制品已构建；未发布、未安装）
+## 0.13.0 原生 cwd 退役（2026-11-05，已发布；未为本机安装）
 
 本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。集成分支在完整的 0.2.2-alpha.3 fixture 宿主根（`DSH_CONTROLS_HOST_ROOT=<fixture-dsh-root>`）上验证：
 
@@ -17,7 +17,9 @@
 
 **独立复核：** Standards 复核发现并已修复 1 个公开文档本机绝对路径（硬性公开边界）、`CONTROLS` 版本号、`MIGRATION` 回滚表述和 `CLIENT_INTEGRATION` 测试覆盖声明；Spec 复核未发现产品级缺口，仅 `tests/host-collaboration` 的 shadowed stub 验证缺陷已修复，定向 23/23 通过。
 
-**未执行：** 实际 DSH `0.2.1-alpha.2` 二进制不可用，未声称该版本 runtime 实测；push/tag/Release/npm publish/本机安装尚未执行。
+- 发布：annotated `v0.13.0` tag 对象 `d4de061a3640392a9025da4c33ac8dfd2b24d13e`，peeled 源提交 `1ce76eb20af90551ce672d37ea723bc2a9f12edb`；[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.13.0) 已创建并上传 5 assets。下载全部 5 个资产后，`.sha256` 校验、433047 B size、161 成员和 source-commit 均一致；在 detached clean source `1ce76eb` 上对下载件运行 `verify-package --tarball` 通过。`main` 的后续 docs commit 只追加公开证据，不冒充制品源。
+
+**未执行：** 实际 DSH `0.2.1-alpha.2` 二进制不可用，未声称该版本 runtime 实测；npm publish 与为本机安装均未执行。
 
 > 2026-11-04（0.10.0 历史状态）：0.10.0 隔离源码、固定 SHA 双轴复审与精确制品/PluginManager 全矩阵均已通过，并已 push、新建 source tag、创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.10.0) 与下载回验；当时未安装本机。0.9.0 为已发布历史基线，事实边界与恢复已实施，完整测试、闭合构建与精确 clean-source 制品已验证，并已 push `main`、tag `v0.9.0` 与创建 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.9.0)；未 npm publish、未安装本机 DSH/Profile/GUI。0.9.0 的精确计数与制品见下方 0.9.0 专节。0.8.0 已把 `mattpocock_delegate` 默认关闭、保留实现，只有显式 `delegate: true` 才注册；其 tag `v0.8.0` 指向 docs 验证提交 `3fa1d04`，验收 tarball 的源提交仍是 `dfe0322`。历史 0.7.0（B/D/E）与 0.7.1（C）记录保持原样。
 

@@ -19,7 +19,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | E 精确制品 | 版本/生成物，冻结 clean-source，唯一 accepted pack，双 SDK/精确归档/Manager/headless | 已完成；012a01d 唯一 511256 B 归档 strict 与全套 1151 项通过，Manager 13/13、packed-native 14/14，双 SDK source/archive × beta/stable headless 通过 |
 | F 发布 | 新鲜远端/旧 tag 不变 guards，非 force push/新 tag/Release，五资产下载 strict 回验 | 已完成；非 force atomic main + annotated v0.12.0，新 Release 五资产 5/5 字节/API digest/strict 回验通过；未安装、不 npm publish、不改 Profile/SDK/服务 |
 
-## 0.13.0 侧栏裁决严格分区（2026-11-05，所有者认可；源码已实施，发布门禁中）
+## 0.13.0 侧栏裁决严格分区（2026-11-05，所有者认可；已随 0.13.0 发布，未安装）
 
 唯一详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>) 第 6 节；范围与保持条件见 [DESIGN.md](<DESIGN.md>) 同名节。
 
@@ -32,7 +32,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 本增量不改变 0.12.0 的已发布制品，也不声称当前 0.10.2 GUI 已修复；安装 0.12.0 仍不会修复侧栏全量列表。
 
-## 0.13.0 早期 DSH cwd 兼容桥退役（方案 C，2026-11-05 所有者认可；源码已实施，发布门禁中）
+## 0.13.0 早期 DSH cwd 兼容桥退役（方案 C，2026-11-05 所有者认可；已随 0.13.0 发布，未安装）
 
 权威范围见 [DESIGN.md](<DESIGN.md>) 同名节与 [退役研究](<LEGACY_DSH_CWD_BRIDGE_RETIREMENT.md>)。目标是删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、组合/准备、包面与 `startupCwdEnabled` 启动开关；最低宿主至少 `~0.2.1-alpha.2`。不要求原生 worktree 工具，不删除 delegate/binding/观测/历史。
 
@@ -42,7 +42,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | B 包面 | 删除 compatibility/host-patches/src-compatibility/脚本/测试/包 exports/bin/locale/files；`cordis.patch.yml` 仅保留 Skills 行 | **已完成**；包清单固定 76 files / 62 lib，验证器与 scaffold 同步 |
 | C Host | 只保留 native seam；删除 bridge/legacy continuation/startup domain/UI/Remote；无 native seam 失败关闭 | **已完成**；delegate/binding/观测语义未改，无原生 seam 的 host-collaboration 用例失败关闭 |
 | D 迁移与回归 | alpha.1 拒绝；alpha.2/0.2.2-alpha.3 native 正常；0.12 Profile 无残留 compat 行；旧数据可读；无 native seam 不创建 child | **已完成隔离矩阵**；0.12→0.13 升级无 compat 行、profile patch 不变；显式 stale 行仅警告 entry not found；alpha.3/alpha.4 headless 通过；实际 alpha.2 二进制不可用 |
-| E 制品与发布 | 独立 Standards/Spec、严格构建、唯一精确制品、双 SDK/headless、五资产下载 strict 回验 | **独立复核已完成**；Standards 公开边界/文档问题已修复，Spec 仅 LOW 测试缺陷已修复；唯一制品/发布/下载回验进行中 |
+| E 制品与发布 | 独立 Standards/Spec、严格构建、唯一精确制品、双 SDK/headless、五资产下载 strict 回验 | **已发布**；Standards 公开边界/文档问题已修复，Spec 仅 LOW 测试缺陷已修复；5 assets 下载 strict 回验通过；未 npm publish/本机安装 |
 
 0.13.0 的两个增量一起发布；迁移说明必须把“最低宿主提升/旧桥退役”作为破坏性变更单独列出，不能混在侧栏 UI 修复中淡化。
 

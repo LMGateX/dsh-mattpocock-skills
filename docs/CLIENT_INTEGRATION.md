@@ -59,7 +59,7 @@ Inspected SDK artifact contracts (package-relative locators, not public source-f
 
 ## 0.12.0 输入区摘要增量（已发布、未为本机安装）
 
-[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 已在客户端实施：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。独立真实 React/Happy DOM 回归从旧版 pendingUser=3 / awaiting=2 缺失建立 25 项 RED，源码修复后 GREEN；三方 Session 身份失配亦有回归。固定 012a01d 的双轴复核、source/精确包全量、双 SDK headless、发布与五资产下载 strict 回验均已完成，见 [验证摘要](<VERIFICATION.md>)。当前本机仍 0.10.2，未安装本轮改动、未重启服务；源码/DOM/制品通过不代表真实 GUI 或窄屏像素验收。侧栏既有显式编辑保留；其「待用户裁决」全量列表的严格分区契约见 [输入区契约](<INPUT_SUMMARY_DISCLOSURES.md>) 第 6 节，0.13.0 客户端源码已实施（定向 65/65），待发布；0.10.2/0.12.0 都仍显示全量 decisions。
+[输入区展开契约](<INPUT_SUMMARY_DISCLOSURES.md>) 已在客户端实施：常驻提醒与单类别就地只读详情在工作流滚动区之外；文本式入口独立于 rightPanel，颜色区分 T/S/待裁决，差额正文色，省略已知零值而不隐藏未知。裁决与 T/S 仍读既有授权投影，S 明细保守声明不完整，不引入新 wire 或名册。独立真实 React/Happy DOM 回归从旧版 pendingUser=3 / awaiting=2 缺失建立 25 项 RED，源码修复后 GREEN；三方 Session 身份失配亦有回归。固定 012a01d 的双轴复核、source/精确包全量、双 SDK headless、发布与五资产下载 strict 回验均已完成，见 [验证摘要](<VERIFICATION.md>)。当前本机仍 0.10.2，未安装本轮改动、未重启服务；源码/DOM/制品通过不代表真实 GUI 或窄屏像素验收。侧栏既有显式编辑保留；其「待用户裁决」全量列表的严格分区契约见 [输入区契约](<INPUT_SUMMARY_DISCLOSURES.md>) 第 6 节，0.13.0 客户端源码已实施（定向 65/65）并随 0.13.0 发布；0.10.2/0.12.0 都仍显示全量 decisions。
 
 ## 配置页分区、中文文案与保存语义
 
