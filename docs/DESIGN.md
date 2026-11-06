@@ -12,7 +12,7 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 设置页视觉层级增量（2026-11-06，所有者要求；隔离实施中）
+## 设置页视觉层级增量（2026-11-06，所有者要求；隔离实现与验证完成，未安装/发布）
 
 所有者反馈设置页配色单调、样式原始，内容缺少层次与重点。本增量只改客户端呈现：建立页面/分区/字段/辅助说明四级层次；编辑范围与两级总闸先于功能，状态与未保存草稿以文字配合主题语义色；协作策略、显示、浏览器提醒和进阶查看明确分区，主保存与次要操作区分。优先复用原生 Button/Input/Checkbox 和真实 DSH token；允许克制的主题底色、分隔、边框与小面积强调，不增加全局 CSS、私有 UI 库、彩色大卡片或导航框架。
 

@@ -9,8 +9,11 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 ## 设置页视觉层级增量（2026-11-06）
 
 - 范围：见 [DESIGN.md](<DESIGN.md>) 同名节；仅客户端视觉与布局，不安装、不发布。
-- 进行中：隔离工作树检查原生主题/组件，调整范围与总闸、功能/显示分组、个人提醒和保存区层级。
-- 待验收：行为回归、严格类型/闭合构建与生成物同步、精确包检查，真实浏览器明暗/窄屏/键盘检查、独立复核。
+- 已完成：先提交设计契约 8d65c66；隔离分支 settings-visual-hierarchy 由主代理与子代理实现四级文字层次、主题中性底色/语义色、范围与总闸先行、协作/上限/显示分组、三渠道个人提醒与独立保存重点。原生 Button 明确 primary/outline/ghost，三态继承仍为语义 select；没有新 UI 库、全局 CSS 或业务策略变更。
+- 复核：固定基线 153b6fa 至 ab7e59e，Standards 无发现；Spec 两个 P2（暗色 S 标签对比度、个人提醒编辑后仍显示旧已保存反馈）在 d647efa/58b966b 修复，独立增量复审全部关闭。提醒草稿真实 React 回归先 RED 后 GREEN；错误提示不被未保存状态遮蔽。
+- 最终代码 58b966b：根/Client 严格类型、闭合构建/生成物同步通过；完整源码 916 项（907 pass / 0 fail / 9 skip：3 项未提供上游源，6 项宿主无可装配 UI-slots）；另以已有原生 Client fixture 运行这 6 项为 6/6 pass。浏览器 fixture 使用实际 DSH 0.2.2-alpha.3 shell React/控件与原主题，真实插件 SettingsPage + 受控 Remote；1440/390 宽度 × 明/暗主题覆盖常态、草稿/总闸关闭、提醒未保存、进阶展开及键盘焦点；无横向溢出、无页面异常、无 Remote 写入。不是当前 GUI 安装或真实声音/OS 投递验收。
+- 精确本地候选（**不是已发布的 0.14.0 归档**）：prepack 与严格 tarball 检查通过，161 个普通文件/0 目录/0 symlink，451121 B，SHA-256 `1e782d467a92b10770327ad2d2f1e140582eba56eca57d4301aa0c143473f465`，source 58b966b。pnpm 11.8.0 默认 pack 会移除 packageManager，首个候选被严格检查拒绝；保留失败件，以 `--skip-manifest-obfuscation` 重新打包验证通过，不放宽验证器。原始脚本、截图、测试/制品回执留在忽略的本地研究目录；后续文档提交不改变冻结源码/候选。
+- 交付边界：隔离分支与证据保留供审阅；没有 merge/push/tag/发版、安装、当前 Profile/共享 SDK 修改或服务重启，已有 0.14.0 Release 不变。
 
 ## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可）
 
