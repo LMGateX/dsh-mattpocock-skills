@@ -12,11 +12,11 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 设置页视觉层级增量（2026-11-06，所有者要求；隔离实现与验证完成，未安装/发布）
+## 0.14.1 设置页视觉层级增量（2026-11-06，所有者要求；隔离验证完成，已授权 push/发版，暂不安装本机）
 
 所有者反馈设置页配色单调、样式原始，内容缺少层次与重点。本增量只改客户端呈现：建立页面/分区/字段/辅助说明四级层次；编辑范围与两级总闸先于功能，状态与未保存草稿以文字配合主题语义色；协作策略、显示、浏览器提醒和进阶查看明确分区，主保存与次要操作区分。优先复用原生 Button/Input/Checkbox 和真实 DSH token；允许克制的主题底色、分隔、边框与小面积强调，不增加全局 CSS、私有 UI 库、彩色大卡片或导航框架。
 
-原有稀疏继承、来源、两级总闸、原修订 CAS、独立保存、错误保留草稿、通知与授权契约不变。验证包含真实浏览器明/暗主题、窄屏溢出与键盘可达性；fixture 截图与当前 GUI 生效严格区分。本次未授权安装、修改当前 Profile/SDK、重启、push/tag/发版；保留隔离分支供审阅。
+原有稀疏继承、来源、两级总闸、原修订 CAS、独立保存、错误保留草稿、通知与授权契约不变。验证包含真实浏览器明/暗主题、窄屏溢出与键盘可达性；fixture 截图与当前 GUI 生效严格区分。初轮仅授权隔离实现与验证；所有者随后明确要求 push/发版，作为新补丁版本 0.14.1 发布，不能覆盖已有 0.14.0 tag/Release。发布门禁包括同步版本断言、clean-source 构建与完整 suite、唯一精确归档、隔离 headless、非 force push/新 annotated tag/GitHub Release、五资产下载 strict 回验。**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**；保留隔离分支与本地验证证据。
 
 ## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可；文档先行，已发布/未安装本机）
 
