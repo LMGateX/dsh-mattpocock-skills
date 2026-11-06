@@ -281,6 +281,10 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
   const number = (key: 'soundSeconds' | 'volume' | 'toastSeconds', label: string, min: number, max: number): ReactElement => h('label', { style: { display: 'grid', gap: 6, width: '16rem', maxWidth: '100%', minWidth: 0, fontSize: 13 } }, label,
     h(Input, { 'aria-label': label, type: 'number', min, max, step: 1, value: Number.isNaN(draft[key]) ? '' : draft[key], onChange: (event: ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, [key]: event.target.value === '' ? NaN : Number(event.target.value) }) }))
   const caps = saved.capabilities
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved.preferences)
+  const draftColor = 'color-mix(in srgb, var(--dsw-alias-state-warn-label, #dd8629) 65%, var(--dsw-alias-label-primary, CanvasText))'
+  // A later edit supersedes old success feedback, but never hides an error.
+  const feedback = dirty && (message === '本浏览器提醒已独立保存' || message === '已恢复当前本浏览器设置') ? '提醒草稿尚未保存' : message
   return h('section', { 'aria-label': '本浏览器提醒', style: { display: 'grid', gap: 16, minWidth: 0, color: 'var(--dsw-alias-label-primary)', overflowWrap: 'anywhere' } },
     h('header', { style: { display: 'grid', gap: 8 } },
       h('h3', { style: { margin: 0, paddingLeft: 10, borderLeft: '3px solid ' + accent, color: accentText, fontSize: 18, fontWeight: 650 } }, '本浏览器提醒'),
@@ -313,7 +317,8 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
       h('div', { style: actions },
         h(Button, { type: 'button', variant: 'primary', onClick: () => { try { const persisted = center.save(draft); setMessage(persisted ? '本浏览器提醒已独立保存' : '保存失败；仅本页内存生效') } catch (error) { setMessage(String(error)) } } }, '保存本浏览器提醒'),
         h(Button, { type: 'button', variant: 'outline', onClick: () => { setDraft(saved.preferences); setMessage('已恢复当前本浏览器设置') } }, '恢复当前提醒设置')),
-      h('p', { role: 'status', style: { ...description, color: 'var(--dsw-alias-label-primary)' } }, message),
+      h('p', { role: 'status', style: { ...description, color: dirty ? draftColor : 'var(--dsw-alias-label-primary)' } },
+        dirty ? h('strong', null, '有未保存的提醒更改 · ') : null, feedback),
       h('p', { role: 'status', style: description }, saved.storage)),
     h('details', { style: { fontSize: 13, lineHeight: 1.6 } }, h('summary', { style: { cursor: 'pointer', color: 'var(--dsw-alias-label-secondary)' } }, '提醒能力与限制'),
       h('div', { style: { display: 'grid', gap: 12, minWidth: 0, paddingTop: 12 } },
