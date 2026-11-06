@@ -1,5 +1,7 @@
 # 输入区协作摘要：常驻提醒、文字展开与覆盖边界（0.12.0）
 
+> 2026-11-06 增量：下述 0.12.0「归零/入口消失即收起」是历史行为。0.14.0 已认可改为固定已打开事项身份、显式关闭；新问题/分类变化/归零不挤掉阅读与草稿，身份/授权变化仍即时清除，unknown 不渲染旧正文。新权威契约见[裁决交互与设置整理](<DECISION_INTERACTION_AND_SETTINGS.md>)；0.14.0 尚在隔离集成验收，未发布/安装。
+
 ## 状态与授权
 
 2026-11-04 所有者认可只读研究后的方案，明确指示先固定文档，再由 subagents 在隔离环境完成实施、测试、push 与 GitHub Release；暂不为本机安装。本页是本轮权威详细契约，文档已先单独提交（8fac3fb）；隔离实现、真实渲染 RED/GREEN、独立 Standards/Spec、固定 clean-source 012a01d 的 source/精确归档/双 SDK headless 与五资产下载 strict 回验均已完成，并已发布 [v0.12.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.12.0)。分阶段结果见 [VERIFICATION](<VERIFICATION.md>) 与 [机器摘要](<../dist/verification-0.12.0.json>)；本机仍未安装，当前 GUI 未加载本轮改动，图形/窄屏像素验收未做。
