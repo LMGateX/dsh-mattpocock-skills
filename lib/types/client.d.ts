@@ -199,11 +199,12 @@ interface NotificationReadingValue {
     readonly sessionId: string | null;
     readonly scope: string | null;
     readonly key: string | null;
+    readonly identity: string | null;
 }
 interface NotificationReading {
     readonly getSnapshot: () => NotificationReadingValue;
     readonly subscribe: (listener: () => void) => () => void;
-    readonly select: (sessionId: string | null, scope: string | null, key: string | null) => void;
+    readonly select: (view: ClientSessionSnapshot | null, key: string | null) => void;
 }
 /** Independent native header lifetime; no policy display gate or automatic navigation. */
 export declare function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & {

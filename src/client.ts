@@ -681,13 +681,22 @@ function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' |
     }))
 }
 // One explicit navigation selection per plugin activation; no business content, polling or Session retention.
-interface NotificationReadingValue { readonly sessionId: string | null; readonly scope: string | null; readonly key: string | null }
-interface NotificationReading { readonly getSnapshot: () => NotificationReadingValue; readonly subscribe: (listener: () => void) => () => void; readonly select: (sessionId: string | null, scope: string | null, key: string | null) => void }
+interface NotificationReadingValue { readonly sessionId: string | null; readonly scope: string | null; readonly key: string | null; readonly identity: string | null }
+interface NotificationReading { readonly getSnapshot: () => NotificationReadingValue; readonly subscribe: (listener: () => void) => () => void; readonly select: (view: ClientSessionSnapshot | null, key: string | null) => void }
+function notificationReadingIdentity(view: ClientSessionSnapshot): string {
+  const c = view.caller, i = view.instance
+  return JSON.stringify([view.sessionId, c.kind, c.principalId, c.sessionId, i?.instrumentInstanceId, i?.ownerSessionId, i?.controlWorkspaceId, view.policyGrants?.revision])
+}
 function createNotificationReading(): NotificationReading {
-  let value: NotificationReadingValue = { sessionId: null, scope: null, key: null }
+  let value: NotificationReadingValue = { sessionId: null, scope: null, key: null, identity: null }
   const listeners = new Set<() => void>()
   return { getSnapshot: () => value, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener) } },
-    select: (sessionId, scope, key) => { if (value.sessionId === sessionId && value.scope === scope && value.key === key) return; value = { sessionId, scope, key }; for (const listener of listeners) listener() } }
+    select: (view, key) => {
+      const scope = view !== null && key !== null ? notificationScope(view) : null
+      const next = view !== null && scope !== null ? { sessionId: view.sessionId, scope, key, identity: notificationReadingIdentity(view) } : { sessionId: null, scope: null, key: null, identity: null }
+      if (value.sessionId === next.sessionId && value.scope === next.scope && value.key === next.key && value.identity === next.identity) return
+      value = next; for (const listener of listeners) listener()
+    } }
 }
 /** Independent native header lifetime; no policy display gate or automatic navigation. */
 export function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement {
@@ -695,22 +704,24 @@ export function DecisionNotificationSeat(props: PropsRuntime<'conversation.sessi
     const latest = props.observer.getSnapshot()
     if (latest.status !== 'ready' || props.observer.sessionId !== props.sessionId || latest.value.sessionId !== props.sessionId || inputRecords(latest.value) === null) return
     const scope = notificationScope(latest.value), row = latest.value.records?.decisions.find(row => row.workflowId === workflowId && row.decisionId === decisionId)
-    if (scope !== null && row !== undefined && isPendingUserDecision(row)) props.reading.select(props.sessionId, scope, decisionRecordKey(row))
+    if (scope !== null && row !== undefined && isPendingUserDecision(row)) props.reading.select(latest.value, decisionRecordKey(row))
   } })
 }
 /** Reuse the native input dock, not a custom overlay or a second composer. */
 export function DecisionNotificationReader(props: PropsRuntime<'conversation.input.dock'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement | null {
   const observation = useObservation(props.observer), store = props.reading
   const selection = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
-  const view = observation.status === 'ready' && props.observer.sessionId === props.sessionId && observation.value.sessionId === props.sessionId && inputRecords(observation.value) !== null ? observation.value : null
+  const view = observation.status === 'ready' ? observation.value : null
   const scope = view === null ? null : notificationScope(view)
+  const identityMatches = props.observer.sessionId === props.sessionId && (view === null || (view.sessionId === props.sessionId && notificationReadingIdentity(view) === selection.identity))
+  const unknown = view === null || scope === null || inputRecords(view) === null
   const present = view?.records?.decisions.some(row => decisionRecordKey(row) === selection.key) === true
-  const valid = selection.sessionId === props.sessionId && scope !== null && scope === selection.scope && selection.key !== null && present
-  useEffect(() => { if (selection.sessionId === props.sessionId && !valid && selection.key !== null) store.select(null, null, null) }, [store, valid, selection, props.sessionId])
-  useEffect(() => () => { if (store.getSnapshot().sessionId === props.sessionId) store.select(null, null, null) }, [store, props.sessionId])
-  if (!valid || view === null) return null
+  const valid = selection.sessionId === props.sessionId && selection.key !== null && identityMatches && (scope === null || scope === selection.scope) && (unknown || present)
+  useEffect(() => { if (selection.sessionId === props.sessionId && !valid && selection.key !== null) store.select(null, null) }, [store, valid, selection, props.sessionId])
+  useEffect(() => () => { if (store.getSnapshot().sessionId === props.sessionId) store.select(null, null) }, [store, props.sessionId])
+  if (!valid) return null
   return h('section', { 'aria-label': '通知裁决阅读', style: { boxSizing: 'border-box', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', maxHeight: '50vh', overflow: 'auto', overflowWrap: 'anywhere' } },
-    h(Button, { type: 'button', onClick: () => store.select(null, null, null) }, '关闭通知阅读'), inputDecisionDetails(view, 'pending', [selection.key!]))
+    h(Button, { type: 'button', onClick: () => store.select(null, null) }, '关闭通知阅读'), unknown || view === null ? diagnostic('裁决读取未知；暂停显示正文，待相同授权范围恢复后继续阅读。') : inputDecisionDetails(view, 'pending', [selection.key!]))
 }
 
 function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {

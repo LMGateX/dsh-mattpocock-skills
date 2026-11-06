@@ -81,7 +81,7 @@ test('notification opens persistent native-dock reading even with every display 
   window.__ModuleLoader__ = { load: value => { realRegistration = value } }
   vm.runInThisContext('(function(window){' + built.code + '\n})')(window)
   const client = realRegistration.factory(name => { if (name === 'react') return React; if (name === PRIMITIVES_ID) return clientPrimitives(React); throw new Error(name) })
-  let root, current = snapshot()
+  let root, current = snapshot(), unavailable = false
   t.after(async () => {
     try { if (root) await React.act(async () => root.unmount()); await window.happyDOM.close() } finally {
       console.error = originalError
@@ -89,7 +89,7 @@ test('notification opens persistent native-dock reading even with every display 
     }
     assert.deepEqual(warnings, [], 'real React integration must not warn')
   })
-  const entries = await activation(t, async id => { assert.equal(id, current.sessionId); return { ok: true, value: structuredClone(current) } }, client)
+  const entries = await activation(t, async id => { assert.equal(id, current.sessionId); if (unavailable) throw new Error('controlled read outage'); return { ok: true, value: structuredClone(current) } }, client)
   const seat = entries.find(row => row.component === client.DecisionNotificationSeat), reader = entries.find(row => row.component === client.DecisionNotificationReader)
   assert.ok(seat && reader, 'both contributions use native declared seats')
   const seatProps = { sessionId: current.sessionId, ...seat.options.inject(current.sessionId) }
@@ -109,6 +109,20 @@ test('notification opens persistent native-dock reading even with every display 
   await refresh(put(current, 'A', { pending: false, status: 'resolved', result: 'confirmed A' }))
   assert.ok(region()); assert.match(region().textContent, /confirmed A|已解决/)
   assert.equal(container.querySelector('textarea'), composer); assert.equal(window.document.activeElement, composer)
+  unavailable = true; await refresh(current)
+  assert.ok(region(), 'temporary unknown keeps explicit reading metadata and a diagnostic')
+  assert.match(region().textContent, /未知/); assert(!region().textContent.includes('Question A')); assert(!region().textContent.includes('confirmed A'))
+  unavailable = false; await refresh(current)
+  assert.ok(region()); assert.match(region().textContent, /confirmed A/)
+  assert.equal(window.document.activeElement, composer); assert.equal(composer.value, 'native answer draft')
+  const verified = structuredClone(current), recordsUnknown = { ...structuredClone(current), records: null }
+  await refresh(recordsUnknown); assert.ok(region()); assert.match(region().textContent, /未知/); assert(!region().textContent.includes('confirmed A'))
+  await refresh(verified); assert.match(region().textContent, /confirmed A/)
+  const changedPrincipal = { ...recordsUnknown, caller: { ...recordsUnknown.caller, principalId: 'different-operator' } }
+  await refresh(changedPrincipal); assert.equal(region(), null, 'proven principal change discards even while records are unknown')
+  await refresh(verified); assert.equal(region(), null, 'identity recovery cannot resurrect discarded selection')
+  await refresh(put(current, 'A', { pending: true, status: 'open' })); await click('打开裁决详情')
+  assert.ok(region())
   const revoked = structuredClone(current); revoked.policyGrants.revision++; await refresh(revoked)
   assert.equal(region(), null, 'authorization change synchronously fences old content')
   const restored = structuredClone(current); restored.policyGrants.revision--; await refresh(restored)

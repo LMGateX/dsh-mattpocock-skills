@@ -78,9 +78,10 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   const entries = await readdir(join(root, 'src'), { recursive: true, withFileTypes: true })
   const sources = entries.filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
-  assert.equal(sources.filter(path => !path.includes('/')).length, 7)
+  assert.equal(sources.filter(path => !path.includes('/')).length, 8)
   assert.equal(sources.filter(path => path.startsWith('controls/')).length, 24)
-  const expected = sources.flatMap(path => [
+  assert.ok(sources.includes('client-notifications.ts'), 'private browser module is bundled into the existing closed Client')
+  const expected = sources.filter(path => path !== 'client-notifications.ts').flatMap(path => [
     'lib/' + path.replace(/\.ts$/, '.js'),
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
