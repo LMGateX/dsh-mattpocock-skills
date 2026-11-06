@@ -155,7 +155,7 @@ async function worker(scenario, tarball) {
       assert.equal(result.packageResult?.exitCode, 0, JSON.stringify(result))
       assert.equal(result.application, 'applied', JSON.stringify(result))
       assert.equal(result.bundle, pluginName)
-      assert.equal(result.version, '0.13.0')
+      assert.equal(result.version, '0.14.0')
       const installed = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName)
       assert.equal(installed.installed, true)
       assert.equal(installed.enabled, true)
@@ -213,7 +213,7 @@ before(async () => {
     await run('pnpm', ['pack', '--pack-destination', join(scratch, 'pack')], { cwd: repo, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
     tarball = join(scratch, 'pack', (await readdir(join(scratch, 'pack'))).find(name => name.endsWith('.tgz')))
   }
-  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.13.0')
+  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.14.0')
   profile = join(scratch, 'canonical-home/profiles/web')
   await mkdir(profile, { recursive: true })
 })
