@@ -12,7 +12,7 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可；先文档，待实施）
+## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可；文档先行，源码已集成）
 
 详细契约见 [DECISION_INTERACTION_AND_SETTINGS.md](<DECISION_INTERACTION_AND_SETTINGS.md>)。两种偏好共用最小裁决引导模板，只替换提出渠道/等待方式，不增裁决内容必填规范。原生提问优先与异步裁决优先沿用全局默认/工作区覆盖；异步答复完全走 DSH 原生输入框及原生消息机制，插件不增加输入框、队列或自动裁决器。
 

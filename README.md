@@ -24,6 +24,14 @@ This release mirrors upstream **v1.3.2** (commit `d1478fc`). `PROVENANCE.json` r
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.
 
+## 0.14.0 decision interaction, personal reminders and native settings
+
+Choose native-question-first or async-decision-first through the existing global/workspace policy. Both use one minimal guidance template; Skills and task agreements still decide the business content. Async replies use DSH’s native composer and native queue/steer, not a plugin input or message channel.
+
+Personal same-origin browser preferences provide configurable sound duration/volume, a nonmodal page notice and opt-in desktop notification. Only native-mounted Sessions are observed; closed/unmounted Sessions and closed browsers are not covered. Capability, permission, autoplay and best-effort cross-tab coordination limits are explicit, and desktop notices contain no decision body.
+
+Settings use public native controls with semantic HTML fallbacks and independent policy/browser/supervision save boundaries. Deliberate decision reading and editor drafts are stable across normal updates; notification reading is separate from transient notices, and unknown reads show a diagnostic without stale business content. Authority and Session fences remain mandatory. See the [shipped guide](<CONTROLS.md>) and [verification scope](<docs/VERIFICATION.md>). This release does not authorize local installation or service restart.
+
 ## 0.13.0 native-only cwd (breaking)
 
 0.13.0 removes the 0.2.1-alpha.1 compatibility bridge and the `startupCwdEnabled` next-boot request. The plugin no longer ships a pinned subagent provider, old SDK patches, the cwd CLI, `./compatibility`, `./native-subagent`, or worktree-bridge locale exports. `cordis.patch.yml` now only inserts the Skills provider; the stock native subagent is left untouched.

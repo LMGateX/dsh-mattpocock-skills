@@ -2,6 +2,17 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.14.0 裁决交互、个人提醒与原生设置（2026-11-06，源码门禁通过；制品/发布进行中）
+
+先独立提交[已认可契约](<DECISION_INTERACTION_AND_SETTINGS.md>)（c6480d5），再由三个隔离子代理实施策略/消费、提醒、设置/阅读；运行时与生成物修复冻结于 c6a72ee。本段不把源码接受冒充已发布或本机已安装。
+
+- 完整源码 suite：**913 tests / 907 pass / 0 fail / 6 skip**，显式完整 canonical SDK `0.2.2-alpha.3` 与本地固定上游源；六 skip 均为 canonical 根缺少 native UI-slots fixture。另用具备该公开包的隔离 native Client loader/activation fixture **6/6 pass，0 skip**，没有隐藏这些门禁。
+- Host/Client 严格构建、独立真实 alpha.3 UI primitives 声明检查与 clean-source prepack 通过；仍为 **76 fixed / 85 vendor / 161 packed expected / 62 JS+DTS**，外部依赖仍仅 React 与公开 UI primitives；新提醒模块只内嵌现有闭合 Client，不增加 standalone 包面。vendor、渠道及 provider precedence 未变。
+- 真实 React/Happy DOM 覆盖已注册原生 header → input-dock 只读阅读、全 display=false、原生输入框 stand-in 的 DOM/焦点/文字保持、提醒关闭/新事项/已解决、unknown 隐藏正文并恢复同授权选择、身份/授权变化清理；不等于真实 GUI 或桌面通知/扬声器实测。
+- 独立 Standards 初审与修复复审均 0 未关闭规则/实质 heuristic；Spec 初审 1 个 P2（临时 unknown 永久丢阅读选择），经 RED→GREEN、仅保存选择身份/不存业务正文修复并复审关闭；最终 0 未关闭 Spec finding。
+- 精确唯一制品、双宿主 source/archive headless、packed Manager/native、远端发布与下载回验尚待完成；本段将在实际完成后追加源 SHA、摘要及资产证据。
+- 未为本机安装、未改当前 Profile/共享 SDK、未重启服务、未 npm publish。没有图形浏览器像素/窄屏验收或真实声音/OS 送达证明；实际 alpha.2 二进制不可用，不把声明兼容门禁说成该版本 runtime 实测。
+
 ## 0.13.0 原生 cwd 退役（2026-11-05，已发布；未为本机安装）
 
 本 lane 在隔离 worktree 中删除 0.2.1-alpha.1 兼容桥、旧 SDK 补丁、启动设置／UI／Remote、旧 CLI 与相关包面，最低宿主改为 `~0.2.1-alpha.2`，版本 0.13.0。集成分支在完整的 0.2.2-alpha.3 fixture 宿主根（`DSH_CONTROLS_HOST_ROOT=<fixture-dsh-root>`）上验证：

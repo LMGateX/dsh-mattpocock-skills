@@ -1,7 +1,7 @@
 # 裁决交互偏好、用户提醒与原生设置页整理
 
 - 日期：2026-11-06。
-- 状态：所有者已认可并授权先固定文档，再由 subagents 在隔离环境开发、测试、push 与发布；目标 0.14.0，隔离开发与回归中，尚未集成验收/发布。
+- 状态：所有者已认可并授权先固定文档，再由 subagents 在隔离环境开发、测试、push 与发布；目标 0.14.0，源码已集成；制品与发布门禁实况见[验证摘要](<VERIFICATION.md>)。
 - 权威入口：[DESIGN.md](<DESIGN.md>)；阶段门禁：[IMPLEMENTATION_PLAN.md](<IMPLEMENTATION_PLAN.md>)。
 - 不为本机安装，不改当前 Profile/共享 SDK，不重启服务，不 npm publish。不修改 vendored Skills、渠道/provider 优先级或宿主消息机制。
 
