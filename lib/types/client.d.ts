@@ -145,8 +145,9 @@ export declare class SummaryScheduler {
     private publish;
     private run;
 }
+type PolicyLeafValue = boolean | number | EffectivePolicy['pendingDecisions']['interactionMode'] | undefined;
 /** Changes a draft only. undefined deletes a leaf and restores inheritance. */
-export declare function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField, value: boolean | number | undefined): PolicyIntent;
+export declare function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField, value: PolicyLeafValue): PolicyIntent;
 export declare function savePolicyDraft(remote: Pick<ControlsRemote, 'savePolicy'>, draft: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot>;
 /** Policy-only impact snapshot: never an invented execution or convergence receipt. */
 export declare function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIntent, workspaceId: string | null, verified: boolean): {
@@ -194,6 +195,26 @@ export declare function compactInstrumentSummary(view: ClientSessionSnapshot): {
 export declare function HeaderEntry(props: HeaderProps): ReactElement | null;
 export declare function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.header.utilities'> & SessionFace): ReactElement | null;
 export declare function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null;
+interface NotificationReadingValue {
+    readonly sessionId: string | null;
+    readonly scope: string | null;
+    readonly key: string | null;
+}
+interface NotificationReading {
+    readonly getSnapshot: () => NotificationReadingValue;
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly select: (sessionId: string | null, scope: string | null, key: string | null) => void;
+}
+/** Independent native header lifetime; no policy display gate or automatic navigation. */
+export declare function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & {
+    readonly observer: SessionObservation;
+    readonly reading: NotificationReading;
+}): ReactElement;
+/** Reuse the native input dock, not a custom overlay or a second composer. */
+export declare function DecisionNotificationReader(props: PropsRuntime<'conversation.input.dock'> & {
+    readonly observer: SessionObservation;
+    readonly reading: NotificationReading;
+}): ReactElement | null;
 export declare function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null;
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
 export declare function decisionAnswerCommand(records: InstrumentSnapshot, decision: DecisionRecord, answer: string, status: string, pending: boolean, awaitingImplementation: boolean, operationId: string): InstrumentCommand;

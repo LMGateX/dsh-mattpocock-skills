@@ -1,6 +1,10 @@
 export interface FeaturePatch {
     readonly enabled?: boolean;
 }
+export type DecisionInteractionMode = 'native-question' | 'async-decision';
+export interface PendingDecisionsPatch extends FeaturePatch {
+    readonly interactionMode?: DecisionInteractionMode;
+}
 export interface WindowPatch extends FeaturePatch {
     readonly ticketWindowSize?: number;
     readonly runningSubagentLimit?: number;
@@ -21,7 +25,7 @@ export interface WorkspacePolicyPatch {
     readonly lifecycle?: FeaturePatch;
     readonly windows?: WindowPatch;
     readonly ticketProgress?: FeaturePatch;
-    readonly pendingDecisions?: FeaturePatch;
+    readonly pendingDecisions?: PendingDecisionsPatch;
     readonly display?: DisplayPatch;
 }
 export interface PolicyIntent {
@@ -36,7 +40,7 @@ export declare const FEATURE_NAMES: readonly ["binding", "lifecycle", "windows",
 export declare const DISPLAY_NAMES: readonly ["header", "inputSummary", "rightPanel", "sessionList", "timeline"];
 export type FeatureName = typeof FEATURE_NAMES[number];
 export type PolicySource = 'workspace' | 'global' | 'safe-initial';
-export type PolicyField = 'workspace.enabled' | 'skills.enabled' | 'binding.enabled' | 'lifecycle.enabled' | 'windows.enabled' | 'ticketProgress.enabled' | 'pendingDecisions.enabled' | 'windows.ticketWindowSize' | 'windows.runningSubagentLimit' | 'display.header' | 'display.inputSummary' | 'display.rightPanel' | 'display.sessionList' | 'display.timeline';
+export type PolicyField = 'workspace.enabled' | 'skills.enabled' | 'binding.enabled' | 'lifecycle.enabled' | 'windows.enabled' | 'ticketProgress.enabled' | 'pendingDecisions.enabled' | 'pendingDecisions.interactionMode' | 'windows.ticketWindowSize' | 'windows.runningSubagentLimit' | 'display.header' | 'display.inputSummary' | 'display.rightPanel' | 'display.sessionList' | 'display.timeline';
 export interface EffectivePolicy {
     readonly configurationRevision: number;
     readonly controlWorkspaceId: string;
@@ -55,6 +59,9 @@ export interface EffectivePolicy {
     readonly windows: {
         readonly ticketWindowSize: number | null;
         readonly runningSubagentLimit: number | null;
+    };
+    readonly pendingDecisions: {
+        readonly interactionMode: DecisionInteractionMode;
     };
     readonly display: Required<DisplayPatch>;
     readonly sources: Readonly<Record<PolicyField, PolicySource>>;

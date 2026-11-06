@@ -106,6 +106,8 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             workspaceEnabled: unknown;
             features: unknown;
             windows: unknown;
+            pendingDecisions: unknown;
+            sources: unknown;
             detail: {
                 tool: string;
                 action: string;
@@ -148,6 +150,8 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             workspaceEnabled: unknown;
             features: unknown;
             windows: unknown;
+            pendingDecisions: unknown;
+            sources: unknown;
             detail: {
                 tool: string;
                 action: string;

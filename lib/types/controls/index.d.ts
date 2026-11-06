@@ -2,7 +2,7 @@ import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js'
 import type { InstrumentInstance, SessionAssociation } from './state.js';
 import type { ControlsStorage } from './storage.js';
 export { INITIAL_POLICY, parsePolicyIntent, parsePolicySnapshot, resolvePolicy } from './policy.js';
-export type { PolicyIntent, PolicySnapshot, WorkspacePolicyPatch, EffectivePolicy, PolicySource, PolicyField, FeatureName, FeaturePatch, WindowPatch, DisplayPatch } from './policy.js';
+export type { PolicyIntent, PolicySnapshot, WorkspacePolicyPatch, EffectivePolicy, PolicySource, PolicyField, FeatureName, FeaturePatch, PendingDecisionsPatch, DecisionInteractionMode, WindowPatch, DisplayPatch } from './policy.js';
 export { INITIAL_DOCUMENT, parseControlsDocument } from './state.js';
 export type { ControlsDocument, InstrumentInstance, SessionAssociation } from './state.js';
 export { MemoryControlsStorage, createDomainControlsStorage } from './storage.js';
