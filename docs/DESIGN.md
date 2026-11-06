@@ -12,6 +12,14 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可；先文档，待实施）
+
+详细契约见 [DECISION_INTERACTION_AND_SETTINGS.md](<DECISION_INTERACTION_AND_SETTINGS.md>)。两种偏好共用最小裁决引导模板，只替换提出渠道/等待方式，不增裁决内容必填规范。原生提问优先与异步裁决优先沿用全局默认/工作区覆盖；异步答复完全走 DSH 原生输入框及原生消息机制，插件不增加输入框、队列或自动裁决器。
+
+浏览器个人声音/持续时长/音量、页面内/桌面通知独立于业务策略和 notifyOwner；仅覆盖已挂载的会话，能力/权限与去重限制如实说明。用户打开的裁决详情在输入、失焦、刷新和事项解决时不突然消失，Session/授权隔离仍优先。设置页优先复用原生 UI/主题，整理范围、总闸、功能、显示、个人提醒、进阶监督和会话查看，保留 CAS/稀疏继承/独立保存语义。
+
+所有者授权先独立文档提交，再在隔离工作树由 subagents 开发、测试、双轴复核、push 与 0.14.0 tag/GitHub Release；**暂不为本机安装，不改当前 Profile/共享 SDK，不重启服务，不 npm publish**。不改 vendor、不替宿主补问答/通知/排队机制。
+
 ## 输入区协作摘要与文字展开（2026-11-04，所有者认可；0.12.0 已发布、未为本机安装）
 
 详细契约见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>)：常驻待裁决/T/S 提醒与可滚动工作流、就地单类别只读详情分区；T 蓝色、S 青紫、待你裁决红系、待落实琥珀，差额正文色；确定零值的超出/票状态省略，未知不隐藏。直接点击文字，不新增占位按钮；鼠标/键盘可达，刷新不抢焦点，Session/实例切换隔离，rightPanel 关闭不影响就地查看。

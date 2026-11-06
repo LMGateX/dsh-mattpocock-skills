@@ -6,6 +6,19 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可）
+
+唯一详细契约见 [DECISION_INTERACTION_AND_SETTINGS.md](<DECISION_INTERACTION_AND_SETTINGS.md>)。只在隔离环境实施，不为本机安装。
+
+| 阶段 | 内容 | 状态/门禁 |
+|---|---|---|
+| A 文档 | 固定同模板两态引导、DSH原生输入/排队不改、浏览器提醒/范围、详情保持、原生设置页与验收 | 已固定；本次提交仅含设计/计划文档，实施在其后开始 |
+| B 策略与消费 | 隔离子代理实现interactionMode、来源/继承、公共引导与OFF/CAS/真实消费回归 | 待开始 |
+| C 用户提醒 | 隔离子代理实现个人设置、可配声长/音量、popup/desktop、去重/能力/生命周期与测试 | 待开始 |
+| D 客户端 | 隔离子代理实现持久详情、原生风格设置页整理及真实React测试 | 待开始 |
+| E 集成 | TS、完整suite、精确制品、双宿主headless与独立Standards/Spec复核修复 | 待开始 |
+| F 发布 | 非force push、新annotated tag/Release、五资产下载strict回验；当前Profile/SDK/服务不变更 | 待开始；已获授权 |
+
 ## 0.12.0 输入区摘要与就地详情（2026-11-04，A–F 已完成，已发布未安装）
 
 唯一详细契约与验收矩阵见 [INPUT_SUMMARY_DISCLOSURES.md](<INPUT_SUMMARY_DISCLOSURES.md>)。
