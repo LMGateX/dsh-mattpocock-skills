@@ -27,7 +27,7 @@ export function clientPrimitives(react) {
   const CodeBlock = props => h('pre', { 'data-code-block': props.lang ?? 'text' }, props.code)
   const JsonBlock = props => h('details', { 'data-json-block': props.label, open: props.defaultOpen === true },
     h('summary', null, props.label), h('pre', null, JSON.stringify(props.payload, null, 2)))
-  const Button = ({ variant: _variant, size: _size, icon, children, ...props }) => h('button', { ...props, type: props.type ?? 'button', 'data-native-primitive': 'Button' }, icon, children)
+  const Button = ({ variant: _variant, size: _size, icon, children, ...props }) => h('button', { ...props, type: props.type ?? 'button', 'data-native-primitive': 'Button', 'data-native-variant': _variant ?? 'ghost' }, icon, children)
   const Input = props => h('input', { ...props, 'data-native-primitive': 'Input' })
   const Checkbox = ({ label, checked, onChange, disabled, title, className }) => h('label', { title, className, 'data-native-primitive': 'Checkbox' }, h('input', { type: 'checkbox', 'aria-label': label, checked, disabled, onChange: event => onChange(event.target.checked) }), label)
   return { Button, Input, Checkbox, CodeBlock, DisclosureRow, IconSparkleRegular, JsonBlock }

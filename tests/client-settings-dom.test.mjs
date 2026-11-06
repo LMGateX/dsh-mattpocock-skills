@@ -636,3 +636,48 @@ test('badge policy gate stays idle at the same committed revision and resumes on
   assert.equal(container.textContent, '?', 'missing records are unknown, never a fabricated zero')
   assert.equal(fullReads, 0)
 })
+
+test('settings visual hierarchy distinguishes scope, draft, grouped controls and primary policy save', async t => {
+  const f = fixture(), { container } = await mount(t, client.SettingsPage, f.props)
+  assert.equal(container.querySelector('h2')?.textContent, '协作与提醒')
+  const scope = named(container, '范围与总闸')
+  assert(scope.contains(named(container, '配置编辑范围')))
+  assert(scope.contains(named(container, '协作管理总闸（全局）')))
+  assert.match(scope.textContent, /切换范围保留草稿，保存会提交全部策略更改/)
+  for (const title of ['协作功能', '参考上限', '界面显示位置']) {
+    const legend = [...container.querySelectorAll('legend')].find(node => node.textContent === title)
+    assert(legend, title)
+    assert.equal(legend.parentElement.tagName, 'FIELDSET')
+    assert(legend.style.fontWeight >= '600')
+  }
+  const preview = named(container, '保存前预览')
+  assert.match(preview.textContent, /与已保存配置一致/)
+  await click(named(container, '协作管理总闸（全局）'))
+  assert.match(preview.textContent, /待保存草稿/)
+  const save = button(container, '保存并启用协作管理')
+  assert.equal(save.dataset.nativeVariant, 'primary')
+  assert.equal(button(preview, '放弃未保存更改').dataset.nativeVariant, 'ghost')
+  assert.match(named(container, '工作区协作管理').textContent, /草稿有效值/)
+  assert.equal(f.calls.policy.length, 0, 'visual changes never auto-save')
+  await click(save)
+  assert.match(preview.textContent, /与已保存配置一致/)
+  assert.equal(f.calls.policy[0].revision, 42)
+})
+
+
+test('browser reminders group native controls by channel and retain a separate primary save area', async t => {
+  const f = fixture(), { container } = await mount(t, client.SettingsPage, f.props)
+  const reminders = named(container, '本浏览器提醒')
+  for (const [legendText, checkbox] of [['声音提醒', '声音通知'], ['页面内提醒', '页面内通知'], ['桌面提醒', '桌面通知']]) {
+    const legend = [...reminders.querySelectorAll('legend')].find(node => node.textContent === legendText)
+    assert(legend, legendText)
+    assert(legend.closest('fieldset').contains(named(reminders, checkbox)))
+  }
+  assert.equal(button(reminders, '保存本浏览器提醒').dataset.nativeVariant, 'primary')
+  assert.equal(button(reminders, '恢复当前提醒设置').dataset.nativeVariant, 'outline')
+  assert(button(reminders, '保存本浏览器提醒').closest('footer'))
+  assert.equal(reminders.querySelectorAll('[role="status"]').length, 2)
+  assert.match(reminders.textContent, /开启开关不代表已获权限或通知已送达/)
+  assert.equal(f.calls.policy.length, 0)
+  assert.equal(f.calls.supervision.length, 0)
+})

@@ -1304,10 +1304,26 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
     props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('h4', null, '能力、健康观测与有效策略'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health, policy: view.policy }))
 }
-const settingsCard = { border: 0, borderTop: '1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.25))', padding: '16px 0', minWidth: 0, overflowWrap: 'anywhere' as const }
-const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px', minWidth: 0 }
+// Settings-only composition: public primitives keep their native control/focus styling.
+const settingsBorder = '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.22))'
+const settingsSecondary = 'var(--dsw-alias-label-secondary, #61666b)'
+const settingsAccent = 'color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 85%, var(--dsw-alias-label-primary, CanvasText))'
+const settingsWarning = 'color-mix(in srgb, var(--dsw-alias-state-warn-label, #dd8629) 65%, var(--dsw-alias-label-primary, CanvasText))'
+const settingsCard = { border: 0, borderTop: settingsBorder, padding: '20px 0', minWidth: 0, overflowWrap: 'anywhere' as const }
+const settingsGroup = { border: settingsBorder, borderRadius: '12px', padding: '16px 20px', margin: 0, minWidth: 0, background: 'var(--dsw-alias-bg-base, Canvas)' }
+const settingsLegend = { padding: '0 8px', fontSize: '15px', fontWeight: 650 }
+const settingsHint = { color: settingsSecondary, fontSize: '13px', lineHeight: 1.6, margin: '8px 0 12px' }
+const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '20px', minWidth: 0, alignItems: 'start' }
 const settingsActions = { display: 'flex', flexWrap: 'wrap' as const, gap: '8px', marginTop: '16px' }
-const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '12px 0', minWidth: 0 }
+const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '6px 12px', padding: '12px 0', margin: 0, minWidth: 0, borderBottom: settingsBorder }
+const settingsSelect = { font: 'inherit', color: 'var(--dsw-alias-label-primary, CanvasText)', background: 'var(--dsw-alias-bg-base, Canvas)', border: settingsBorder, borderRadius: '8px', minHeight: '36px', padding: '6px 28px 6px 10px', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' as const }
+function settingsHeading(title: string, detail: string): ReactElement {
+  return h('header', { style: { marginBottom: '20px', borderLeft: '3px solid ' + settingsAccent, paddingLeft: '12px' } },
+    h('h3', { style: { margin: 0, fontSize: '18px', fontWeight: 650 } }, title), h('p', { style: { ...settingsHint, margin: '4px 0 0' } }, detail))
+}
+function settingsState(text: string, tone: 'accent' | 'warning' | 'muted' = 'muted'): ReactElement {
+  return h('span', { style: { fontWeight: 600, color: tone === 'warning' ? settingsWarning : tone === 'accent' ? settingsAccent : settingsSecondary } }, text)
+}
 const FEATURE_LABELS = { binding: '工作树绑定', lifecycle: '子代理生命周期观测', windows: '任务与子代理参考窗口', ticketProgress: '任务票进度', pendingDecisions: '待裁决事项' } satisfies Record<typeof FEATURE_NAMES[number], string>
 const DISPLAY_LABELS = { header: '会话标题栏', inputSummary: '输入区摘要', rightPanel: '右侧协作面板', sessionList: '会话列表提醒', timeline: '工具记录标注' } satisfies Record<typeof DISPLAY_NAMES[number], string>
 const CAPACITY_LABELS = { ticketWindowSize: '任务票参考上限（T）', runningSubagentLimit: '运行中子代理参考上限（S）' }
@@ -1367,7 +1383,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
     return () => { active = false }
   }, [props.remote, reload])
   if (saved === null || draft === null) return h('section', { 'aria-label': '交付监督配置', style: settingsCard },
-    h('h3', { style: { marginTop: 0 } }, '交付监督'), diagnostic('读取交付监督配置…'), message === null ? null : diagnostic(message),
+    settingsHeading('交付监督', '进阶设置 · 独立于协作策略保存'), diagnostic('读取交付监督配置…'), message === null ? null : diagnostic(message),
     h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督配置'))
   const scope = props.workspace === null ? '全局默认' : '本工作区覆盖'
   const inheritLabel = props.workspace === null ? '未设置（安全初始值）' : '继承全局'
@@ -1391,7 +1407,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
     const raw = own(field)
     return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } },
       h('span', { style: { flex: '1 1 180px' } }, label),
-      h('select', { 'aria-label': label, value: raw === undefined ? 'inherit' : raw === true ? 'on' : 'off', disabled: busy,
+      h('select', { style: settingsSelect, 'aria-label': label, value: raw === undefined ? 'inherit' : raw === true ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => update(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
         h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
       h('small', { style: { flexBasis: '100%' } }, '有效值：' + (value ? '启用' : '禁用')))
@@ -1419,7 +1435,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
   const selectField = (field: SupervisionField, label: string, value: string, options: readonly [string, string][]): ReactElement => {
     const raw = own(field)
     return h('label', { key: field, style: settingsField }, h('span', null, label),
-      h('select', { 'aria-label': label, value: typeof raw === 'string' ? raw : '__unset__', disabled: busy,
+      h('select', { style: settingsSelect, 'aria-label': label, value: typeof raw === 'string' ? raw : '__unset__', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => update(field, event.target.value === '__unset__' ? undefined : event.target.value) },
         h('option', { value: '__unset__' }, inheritLabel), ...options.map(([option, text]) => h('option', { key: option, value: option }, text))),
       h('small', { style: { flexBasis: '100%' } }, '有效值：' + (options.find(([option]) => option === value)?.[1] ?? value)))
@@ -1438,10 +1454,10 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
   const route = effective.reviewer.routeMode
   const softBudget = own('softBudgetHours')
   return h('section', { 'aria-label': '交付监督配置', style: settingsCard },
-    h('h3', { style: { marginTop: 0 } }, '交付监督'),
+    settingsHeading('交付监督', '进阶设置 · 独立于协作策略保存'),
     h('p', null, '当前编辑范围：' + scope + '。监督配置由宿主运行时读取；定期/嫌疑审计与 LLM reviewer 受两级总闸、监督开关、活动和预算等条件约束，保存不代表必定启动模型调用。'),
     h('div', { style: settingsGrid },
-      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '开关与模型路由'), h('p', null, '父代理与子代理共用这条轻量 reviewer 路由；周期性审计和嫌疑审计共用。继承主路由时，owner 不活跃即审计不可用（失败关闭），不回退到旧路由。'), boolField('enabled', '请求启用交付监督', effective.enabled),
+      h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '开关与模型路由'), h('p', null, '父代理与子代理共用这条轻量 reviewer 路由；周期性审计和嫌疑审计共用。继承主路由时，owner 不活跃即审计不可用（失败关闭），不回退到旧路由。'), boolField('enabled', '请求启用交付监督', effective.enabled),
         selectField('reviewer.routeMode', '模型路由', route, [['inherit', SUPERVISION_ROUTE_LABELS.inherit], ['explicit', SUPERVISION_ROUTE_LABELS.explicit]]),
         textField('reviewer.provider', '显式 provider', effective.reviewer.provider), textField('reviewer.model', '显式 model', effective.reviewer.model),
         textField('reviewer.reasoningEffort', 'reasoning effort（可选）', effective.reviewer.reasoningEffort),
@@ -1450,14 +1466,14 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
         numberField('reviewer.toolRounds', '只读工具轮数', effective.reviewer.toolRounds, 0, 2, 1),
         route === 'explicit' ? diagnostic('显式路由会把审计所需的路径/摘要发送给指定的 provider，可能不同于主模型；请确认这是你要的隐私边界。') : null,
         route === 'explicit' && (effective.reviewer.provider.length === 0 || effective.reviewer.model.length === 0) ? diagnostic('显式路由还缺 provider/model；保存会被拒绝，不会静默回退。') : null),
-      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '定期审计'), h('p', null, '定期审计是底线；程序嫌疑只提前/加深。无新活动时跳过模型调用。'),
+      h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '定期审计'), h('p', null, '定期审计是底线；程序嫌疑只提前/加深。无新活动时跳过模型调用。'),
         numberField('scheduledIntervalMinutes', '间隔（分钟）', effective.scheduledIntervalMinutes, 15, 240, 5),
         numberField('scheduledMaxPerHour', '每小时最多调用', effective.scheduledMaxPerHour, 1, 4, 1),
         numberField('scheduledMaxPerDay', '每日最多调用', effective.scheduledMaxPerDay, 1, 24, 1),
         numberField('scheduledDailyTokenBudget', '每日 token 预算', effective.scheduledDailyTokenBudget, 1000, 1000000, 1000),
         numberField('rollingSummaryHours', '滚动摘要回看（小时）', effective.rollingSummaryHours, 1, 72, 1),
         numberField('scheduledSummaryTopLanes', 'owner 摘要活跃 lane 上限', effective.scheduledSummaryTopLanes, 1, 20, 1)),
-      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '嫌疑与停滞巡检'), h('p', null, '程序信号只决定是否更深地看；研究/评审票可使用票级 off，定期审计仍按条件运行。'),
+      h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '嫌疑与停滞巡检'), h('p', null, '程序信号只决定是否更深地看；研究/评审票可使用票级 off，定期审计仍按条件运行。'),
         selectField('suspicionStartMode', '开始方式', effective.suspicionStartMode, [['ticket-held', SUPERVISION_START_LABELS['ticket-held']], ['first-support-surge', SUPERVISION_START_LABELS['first-support-surge']]]),
         selectField('suspicionMode', '程序嫌疑模式', effective.suspicionMode, [['auto', SUPERVISION_SUSPICION_LABELS.auto], ['off', SUPERVISION_SUSPICION_LABELS.off]]),
         numberField('checkIntervalMinutes', '检查间隔（分钟）', effective.checkIntervalMinutes, 5, 60, 1),
@@ -1471,7 +1487,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
         boolField('lazyCheck', '懒检查（不后台唤醒）', effective.lazyCheck), boolField('dryRun', 'dry-run（只记录不投递）', effective.dryRun),
         numberField('episodeRetentionDays', '审计 episode 保留天数', effective.episodeRetentionDays, 1, 365, 1),
         numberField('episodeMaxEntries', '每 owner episode 上限', effective.episodeMaxEntries, 100, 10000, 100)),
-      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '投递与预算'), h('p', null, 'info 只写日志；concern 默认只出卡片；alert 还需 noProductGap 与 supportFiles 门槛才自动注入 agent。'),
+      h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '投递与预算'), h('p', null, 'info 只写日志；concern 默认只出卡片；alert 还需 noProductGap 与 supportFiles 门槛才自动注入 agent。'),
         selectField('delivery.concern', 'concern 档', effective.delivery.concern, [['card', SUPERVISION_DELIVERY_LABELS.card], ['card+agent-check', SUPERVISION_DELIVERY_LABELS['card+agent-check']]]),
         selectField('delivery.alert', 'alert 档', effective.delivery.alert, [['card', SUPERVISION_DELIVERY_LABELS.card], ['card+agent-check', SUPERVISION_DELIVERY_LABELS['card+agent-check']]]),
         numberField('delivery.alertMinNoProductHours', 'alert：无产品写入小时', effective.delivery.alertMinNoProductHours, 1, 24, 1),
@@ -1486,11 +1502,11 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
             } }),
           h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, h(Input, { type: 'checkbox', checked: softBudget === null, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => update('softBudgetHours', event.target.checked ? null : undefined) }), '关闭'),
           h('small', { style: { flexBasis: '100%' } }, '有效值：' + (effective.softBudgetHours === null ? '关闭（仅人工提醒）' : effective.softBudgetHours + ' 小时')))),
-      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '交付路径'), h('p', null, '产品/支撑根用于区分交付写入与支撑写入；空表示未配置。这里只保存，不改变任何文件或票。'),
+      h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '交付路径'), h('p', null, '产品/支撑根用于区分交付写入与支撑写入；空表示未配置。这里只保存，不改变任何文件或票。'),
         listField('deliverableRoots', '产品根（每行/逗号一项）', effective.deliverableRoots, '留空继承。'),
         listField('supportRoots', '支撑根（每行/逗号一项）', effective.supportRoots, '留空继承。'),
         listField('excludeGlobs', '排除 glob（每行/逗号一项）', effective.excludeGlobs, '留空继承。'))),
-    h('div', { style: settingsActions }, h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, busy ? '正在保存…' : '保存监督配置'),
+    h('div', { style: settingsActions }, h(Button, { type: 'button', variant: 'primary', disabled: busy || !dirty, onClick: () => { void save() } }, busy ? '正在保存…' : '保存监督配置'),
       h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(supervisionIntentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
       h(Button, { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取监督配置')),
     h('p', null, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。保存只写独立 supervision 配置，不写入协作 PolicySnapshot。'),
@@ -1542,9 +1558,9 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
     return () => { active = false }
   }, [props.remote, reload])
   if (props.view === 'summary') return h('span', null, '协作管理、交付监督与会话仪器；配置分别保存。')
-  const pageStyle = { display: 'grid', gap: '24px', minWidth: 0, width: '100%', maxWidth: '1080px', margin: '0 auto', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
+  const pageStyle = { display: 'grid', gap: '28px', minWidth: 0, width: '100%', maxWidth: '1040px', margin: '0 auto', color: 'var(--dsw-alias-label-primary, CanvasText)', fontSize: '14px', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
   if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle },
-    h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0 }, '进阶交付监督（独立保存）'),
+    h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0, style: { cursor: 'pointer', fontSize: '16px', fontWeight: 600 } }, '进阶交付监督（独立保存）'),
       h(SupervisionSettingsPanel, { remote: props.remote, workspace: null })),
     h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
   const selected = workspaces.find(row => row.workspaceId === workspace)
@@ -1567,83 +1583,92 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
   const inheritLabel = globalScope ? '未设置（用安全初始值）' : '继承全局'
   const scopeWord = globalScope ? '所有工作区默认' : '本工作区'
   const gateReason = (value: { readonly reason: string | null }): boolean => value.reason === 'extension-disabled' || value.reason === 'workspace-disabled'
-  const stateText = (text: string): ReactElement => h('span', null, text)
   const booleanField = (field: PolicyField, label: string, effective: string, alert = false): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
-    return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 180px' } }, label),
-      h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
+    return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 170px', fontWeight: 550 } }, label),
+      h('select', { style: settingsSelect, 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
         h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
-      h('small', { style: { flexBasis: '100%' } }, alert ? '总闸未开 · ' : null, '草稿有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
+      h('small', { style: { flexBasis: '100%', color: settingsSecondary, fontSize: '12px' } },
+        settingsState((alert ? '总闸未开 · ' : '') + '草稿有效值：' + effective, alert ? 'warning' : 'muted'),
+        h('span', { style: { display: 'block', marginTop: '2px' } }, '来源：' + SOURCE_LABELS[preview.sources[field]])))
   }
   const gateField = (field: PolicyField, label: string, open: boolean, effectiveText: string): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
-    return h('div', { key: field, style: { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '10px 0', minWidth: 0 } },
-      h('span', { style: { fontWeight: 600, minWidth: '9em' } }, label),
-      h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
+    return h('div', { key: field, style: settingsField },
+      h('span', { style: { fontWeight: 600, flex: '1 1 180px' } }, label),
+      h('select', { style: settingsSelect, 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
         h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
-      stateText(effectiveText),
-      h('small', { style: { flexBasis: '100%' } }, '来源：' + SOURCE_LABELS[preview.sources[field]]))
+      settingsState(effectiveText, open ? 'accent' : 'muted'),
+      h('small', { style: { flexBasis: '100%', color: settingsSecondary } }, '来源：' + SOURCE_LABELS[preview.sources[field]]))
   }
-  const gatePanel = h('div', { style: { minWidth: 0, marginBottom: '16px' } },
-    h('div', { style: { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '12px', marginBottom: '8px' } },
-      h(Checkbox, { label: '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (checked: boolean) => { setDraft({ ...draft, extensionEnabled: checked }); setMessage(null) } }),
-      stateText(draft.extensionEnabled ? '已开启' : '已关闭'),
-      stateText(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开')),
-    h('p', { style: { margin: '0 0 8px' } }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发。'),
-    h('label', { style: settingsField }, h('span', { style: { fontWeight: 600 } }, '配置编辑范围'),
-      h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
+  const gatePanel = h('section', { 'aria-label': '范围与总闸', style: { ...settingsGroup, background: 'var(--dsw-alias-bg-module-platform, Canvas)', marginBottom: '20px' } },
+    h('h4', { style: { margin: '0 0 12px', fontSize: '15px', fontWeight: 650 } }, '编辑范围与总闸'),
+    h('p', { style: settingsHint }, '总闸为全局设置；其余字段按所选范围编辑。切换范围保留草稿，保存会提交全部策略更改。'),
+    h('label', { style: { ...settingsField, paddingTop: 0 } }, h('span', { style: { fontWeight: 600, flex: '1 1 170px' } }, '配置编辑范围'),
+      h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { ...settingsSelect, flex: '1 1 240px' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
         ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
+    h('div', { style: { ...settingsField, gap: '12px', borderBottom: 0 } },
+      h(Checkbox, { label: '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (checked: boolean) => { setDraft({ ...draft, extensionEnabled: checked }); setMessage(null) } }),
+      settingsState(draft.extensionEnabled ? '草稿：已开启' : '草稿：已关闭', draft.extensionEnabled ? 'accent' : 'warning'),
+      settingsState(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开', preview.workspaceEnabled ? 'accent' : 'warning')),
+    h('p', { style: settingsHint }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发。'),
     gateField('workspace.enabled', scopeWord + '总闸', preview.workspaceEnabled, preview.workspaceEnabled ? '已启用' : '未启用'),
     gateField('skills.enabled', scopeWord + '技能分发', preview.skillsEnabled, preview.skillsEnabled ? '启用' : '禁用'),
-    h('p', { style: { margin: '6px 0 0' } }, globalScope
+    h('p', { style: { ...settingsHint, marginBottom: 0 } }, globalScope
       ? '当前编辑的是「全局默认」：选「未设置（用安全初始值）」表示没有默认值，该叶子回落到安全初始值（本工作区总闸＝关闭，技能分发＝开启）。'
       : '选「继承全局」表示删除本工作区的覆盖，回落到上面的全局默认；参考上限留空同理。'))
-  const gateRow = h('div', null,
+  const gateRow = h('div', { style: { color: settingsWarning, borderLeft: !draft.extensionEnabled ? '3px solid ' + settingsWarning : undefined, paddingLeft: '12px', marginBottom: '20px' } },
     !draft.extensionEnabled ? diagnostic('全局总闸当前为关闭：下面各范围的「协作功能」「参考上限」都不会生效，只有「界面显示位置」与技能分发不受影响。') : null)
   const featureField = (name: typeof FEATURE_NAMES[number]): ReactElement => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name]), gateReason(preview.features[name]))
   const interactionField = 'pendingDecisions.interactionMode' as PolicyField
   const interactionMode = preview.pendingDecisions.interactionMode
   // No public Select export on the supported baseline: use native semantic HTML.
-  const interaction = h('label', { style: settingsField }, h('span', null, '裁决交互偏好'),
-    h('select', { 'aria-label': '裁决交互偏好', value: ownLeaf(draft, workspace, interactionField) ?? '__unset__', disabled: busy,
+  const interaction = h('label', { style: settingsField }, h('span', { style: { fontWeight: 600, flex: '1 1 170px' } }, '裁决交互偏好'),
+    h('select', { style: settingsSelect, 'aria-label': '裁决交互偏好', value: ownLeaf(draft, workspace, interactionField) ?? '__unset__', disabled: busy,
       onChange: (event: ChangeEvent<HTMLSelectElement>) => change(interactionField, event.target.value === '__unset__' ? undefined : event.target.value as 'native-question' | 'async-decision') },
       h('option', { value: '__unset__' }, inheritLabel), h('option', { value: 'native-question' }, '原生提问优先'), h('option', { value: 'async-decision' }, '异步裁决优先')),
-    h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + policyImpactText(interactionMode) + ' · 来源：' + (SOURCE_LABELS[preview.sources[interactionField]] ?? '安全初始值') + ' · ' + policyFeatureText(preview.features.pendingDecisions)))
+    h('small', { style: { flexBasis: '100%', color: settingsSecondary, fontSize: '12px' } }, '草稿有效值：' + policyImpactText(interactionMode) + ' · 来源：' + (SOURCE_LABELS[preview.sources[interactionField]] ?? '安全初始值') + ' · ' + policyFeatureText(preview.features.pendingDecisions)))
   const dirty = JSON.stringify(draft) !== JSON.stringify(intentOf(saved))
   const saveLabel = busy ? '正在保存…' : saved.extensionEnabled !== draft.extensionEnabled ? draft.extensionEnabled ? '保存并启用协作管理' : '保存并关闭协作管理' : '保存并应用配置'
   return h('section', { 'aria-label': '插件配置', style: pageStyle },
-    h('section', { 'aria-label': '工作区协作管理', style: settingsCard },
-      h('h3', { style: { marginTop: 0 } }, '协作管理'),
+    h('header', null, h('p', { style: { ...settingsHint, margin: '0 0 4px', color: settingsAccent, fontWeight: 600 } }, 'Matt Pocock Skills · 插件设置'),
+      h('h2', { style: { margin: 0, fontSize: '26px', lineHeight: 1.4, fontWeight: 650 } }, '协作与提醒'),
+      h('p', { style: { ...settingsHint, marginBottom: 0 } }, '服务器策略控制协作行为；个人提醒只保存在本浏览器。两者分别保存。')),
+    h('section', { 'aria-label': '工作区协作管理', style: { minWidth: 0 } },
+      settingsHeading('协作管理', '服务器策略 · 配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致')),
       gatePanel,
       gateRow,
       h('div', { style: settingsGrid },
-        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '协作功能'), h('p', null, '每个功能仍受两级总闸约束。'), FEATURE_NAMES.map(name => featureField(name)), interaction,
+        h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '协作功能'), h('p', { style: settingsHint }, '选择需要的协作能力；每个功能仍受两级总闸约束。'), FEATURE_NAMES.map(name => featureField(name)), interaction,
           h('details', null, h('summary', null, '交互偏好说明'), h('p', null, '原生提问优先沿用可用的原生问答；异步裁决优先使用裁决仪器，由你通过下方原生会话消息答复，agent 可继续不依赖该裁决的工作。偏好不越过明确的等待确认或宿主权限，关闭功能时不激活该引导。'))),
-        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '参考上限'), h('p', null, 'T/S 仅提供规模参考，不是硬名额；留空继承，不猜测默认数值。'),
+        h('div', { style: { display: 'grid', gap: '20px', minWidth: 0 } },
+        h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '参考上限'), h('p', { style: settingsHint }, 'T/S 仅提供规模参考，不是硬名额；留空继承，不猜测默认数值。'),
           (['ticketWindowSize', 'runningSubagentLimit'] as const).map(name => { const field = ('windows.' + name) as PolicyField; return h('label', { key: name, style: settingsField },
-            h('span', null, CAPACITY_LABELS[name]), h(Input, { 'aria-label': CAPACITY_LABELS[name], type: 'number', min: 1, step: 1, style: { width: '100px', maxWidth: '100%' }, value: String(ownLeaf(draft, workspace, field) ?? ''),
+            h('span', { style: { flex: '1 1 200px', fontWeight: 550, color: name === 'ticketWindowSize' ? settingsAccent : 'var(--dsh-color-accent, #7460c8)' } }, CAPACITY_LABELS[name]), h(Input, { 'aria-label': CAPACITY_LABELS[name], type: 'number', min: 1, step: 1, style: { width: '100px', maxWidth: '100%' }, value: String(ownLeaf(draft, workspace, field) ?? ''),
               onChange: (event: ChangeEvent<HTMLInputElement>) => change(field, event.target.value === '' ? undefined : Number(event.target.value)) }),
-            h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + (preview.windows[name] ?? '未配置') + ' · 来源：' + SOURCE_LABELS[preview.sources[field]])) })),
-        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '界面显示位置'), h('p', null, '只控制入口显示；隐藏不关闭功能，不删除记录，也不免除现有义务。'), DISPLAY_NAMES.map(name => booleanField(('display.' + name) as PolicyField, DISPLAY_LABELS[name], preview.display[name] ? '显示' : '隐藏')))),
+            h('small', { style: { flexBasis: '100%', color: settingsSecondary, fontSize: '12px' } }, '草稿有效值：' + (preview.windows[name] ?? '未配置') + ' · 来源：' + SOURCE_LABELS[preview.sources[field]])) })),
+        h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '界面显示位置'), h('p', { style: settingsHint }, '只控制入口显示；隐藏不关闭功能，不删除记录，也不免除现有义务。'), DISPLAY_NAMES.map(name => booleanField(('display.' + name) as PolicyField, DISPLAY_LABELS[name], preview.display[name] ? '显示' : '隐藏'))))),
       !Object.values(preview.display).some(Boolean) ? diagnostic('全部显示入口已关闭；本浏览器个人提醒独立于这些显示设置。') : null,
-      h('section', { 'aria-label': '保存前预览', style: { marginTop: '20px' } },
-        h('h4', null, '保存前预览'), h('p', null, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。预览仅代表配置意图，不代表执行结果。'),
+      h('section', { 'aria-label': '保存前预览', style: { ...settingsGroup, marginTop: '24px', borderLeft: '3px solid ' + (dirty ? settingsWarning : settingsAccent), background: 'var(--dsw-alias-bg-module-platform, Canvas)' } },
+        h('div', { style: { display: 'flex', flexWrap: 'wrap' as const, justifyContent: 'space-between', gap: '8px' } },
+          h('h4', { style: { margin: 0, fontSize: '15px' } }, '保存前预览'), settingsState(dirty ? '待保存草稿' : '与已保存配置一致', dirty ? 'warning' : 'muted')),
+        h('p', { style: settingsHint }, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。预览仅代表配置意图，不代表执行结果。'),
         impact.changes.length === 0 ? h('p', null, dirty ? '保存将更新稀疏覆盖；当前编辑范围的有效值未改变。' : '没有待保存的更改。') : h('ul', null, impact.changes.map(row => h('li', { key: row.field }, (POLICY_FIELD_LABELS[row.field as keyof typeof POLICY_FIELD_LABELS] ?? '未知配置项') + '：' + policyImpactText(row.before) + ' → ' + policyImpactText(row.after)))),
-        h('p', null, '缩小参考上限不会释放正在执行的子代理；已有事实和义务保留，实际执行状态以会话观测为准。'),
-        h('div', { style: settingsActions }, h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, saveLabel),
+        h('p', { style: settingsHint }, '缩小参考上限不会释放正在执行的子代理；已有事实和义务保留，实际执行状态以会话观测为准。'),
+        h('div', { style: settingsActions }, h(Button, { type: 'button', variant: 'primary', disabled: busy || !dirty, onClick: () => { void save() } }, saveLabel),
           h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(intentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
           h(Button, { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取协作配置（丢弃草稿）')),
         message === null ? null : diagnostic(message)),
       h('details', { style: { marginTop: '16px' } }, h('summary', null, '技术详情（原始有效策略与变更）'), pretty(preview), pretty(impact)),
       unsupportedSeatsDetails()),
     h(BrowserNotificationPreferencesPanel),
-    h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0 }, '进阶交付监督（独立保存）'),
+    h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0, style: { cursor: 'pointer', fontSize: '16px', fontWeight: 600 } }, '进阶交付监督（独立保存）'),
       h(SupervisionSettingsPanel, { remote: props.remote, workspace })),
     h('details', { 'aria-label': '会话状态查看', style: settingsCard },
-      h('summary', { tabIndex: 0 }, '会话状态查看'), h('p', null, '仅查看已存在会话，不修改草稿、不授予权限、不唤醒模型，也不自动打开侧栏。'),
-      h('label', { style: settingsField }, '选择会话', h('select', { 'aria-label': '选择查看会话', value: selectedInspection ?? '', style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => setInspection(event.target.value || null) },
+      h('summary', { tabIndex: 0, style: { cursor: 'pointer', fontSize: '16px', fontWeight: 600 } }, '会话状态查看'), h('p', { style: settingsHint }, '仅查看已存在会话，不修改草稿、不授予权限、不唤醒模型，也不自动打开侧栏。'),
+      h('label', { style: settingsField }, '选择会话', h('select', { 'aria-label': '选择查看会话', value: selectedInspection ?? '', style: settingsSelect, onChange: (event: ChangeEvent<HTMLSelectElement>) => setInspection(event.target.value || null) },
         h('option', { value: '' }, '选择会话查看'), ...sessionChoices.ids.map(id => h('option', { key: id, value: id }, id)))),
       sessionChoices.unknown ? diagnostic('会话导航未知或不完整；不能据此断言没有会话。') : sessionChoices.ids.length === 0 ? h('p', null, '当前导航没有列出的会话（不是实例或权限结论）。') : null,
       selectedInspection === null ? null : h(SettingsInspection, { key: selectedInspection, sessionId: selectedInspection, observer: props.observe(selectedInspection), remote: props.remote }),

@@ -1,5 +1,5 @@
 import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import type { ChangeEvent, ReactElement } from 'react'
+import type { ChangeEvent, CSSProperties, ReactElement } from 'react'
 import { Button, Checkbox, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientSessionSnapshot, SessionObservation } from './client.js'
 import type { DecisionValue } from './controls/instrument-state.js'
@@ -272,30 +272,56 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
   const [message, setMessage] = useState('个人提醒独立保存，不修改协作策略或所有者通知配置')
   const preview = useMemo(() => new MountedNotificationDelivery(center), [center])
   useEffect(() => { preview.mount(); return () => preview.dispose() }, [preview])
-  const number = (key: 'soundSeconds' | 'volume' | 'toastSeconds', label: string, min: number, max: number): ReactElement => h('label', null, label,
+  const accent = 'var(--dsw-alias-state-business-primary, #4176e6)'
+  const accentText = 'color-mix(in srgb, ' + accent + ' 85%, var(--dsw-alias-label-primary, CanvasText))'
+  const description: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 13, lineHeight: 1.6 }
+  const channel: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, margin: 0, padding: '16px 20px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, background: 'var(--dsw-alias-bg-layer-1)' }
+  const legend: CSSProperties = { padding: '0 6px', fontSize: 15, fontWeight: 650, color: accentText }
+  const actions: CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }
+  const number = (key: 'soundSeconds' | 'volume' | 'toastSeconds', label: string, min: number, max: number): ReactElement => h('label', { style: { display: 'grid', gap: 6, width: '16rem', maxWidth: '100%', minWidth: 0, fontSize: 13 } }, label,
     h(Input, { 'aria-label': label, type: 'number', min, max, step: 1, value: Number.isNaN(draft[key]) ? '' : draft[key], onChange: (event: ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, [key]: event.target.value === '' ? NaN : Number(event.target.value) }) }))
   const caps = saved.capabilities
-  return h('section', { 'aria-label': '本浏览器提醒', style: { minWidth: 0 } },
-    h('h3', null, '本浏览器提醒'),
-    h('p', null, '仅当前同源浏览器环境 保存，不承诺账号隔离、跨设备同步。只覆盖宿主仍挂载的会话（包括保留挂载的后台标签）；未打开、取消挂载或关闭网页不覆盖。与所有显示位置开关无关。'),
-    h(Checkbox, { label: '声音通知', checked: draft.sound, onChange: sound => setDraft({ ...draft, sound }) }),
-    number('soundSeconds', '铃声持续秒数', 1, 60),
-    h('span', null, ...[3, 5, 10, 30].map(soundSeconds => h(Button, { key: soundSeconds, type: 'button', size: 'sm', onClick: () => setDraft({ ...draft, soundSeconds }) }, soundSeconds + ' 秒'))),
-    number('volume', '音量百分比', 0, 100),
-    h(Button, { type: 'button', onClick: () => { try { preview.preview(parseBrowserNotificationPreferences(draft)) } catch (error) { setMessage(String(error)) } } }, '试听'),
-    h(Button, { type: 'button', onClick: () => center.stopAllSounds() }, '停止当前铃声'),
-    h(Checkbox, { label: '页面内通知', checked: draft.toast, onChange: toast => setDraft({ ...draft, toast }) }),
-    number('toastSeconds', '页面通知关闭秒数（0 为手动）', 0, 60),
-    h(Checkbox, { label: '桌面通知', checked: draft.desktop, onChange: desktop => setDraft({ ...draft, desktop }) }),
-    h(Button, { type: 'button', onClick: () => { void center.requestDesktopPermission() } }, '请求桌面通知权限'),
-    h('p', null, '桌面通知只发送泛化标题与数量，不含裁决正文；时长由浏览器/操作系统 控制。不提供关闭浏览器后的后台推送。'),
-    h(Button, { type: 'button', onClick: () => { try { const persisted = center.save(draft); setMessage(persisted ? '本浏览器提醒已独立保存' : '保存失败；仅本页内存生效') } catch (error) { setMessage(String(error)) } } }, '保存本浏览器提醒'),
-    h(Button, { type: 'button', onClick: () => { setDraft(saved.preferences); setMessage('已恢复当前本浏览器设置') } }, '恢复当前提醒设置'),
-    h('p', { role: 'status' }, message), h('p', { role: 'status' }, saved.storage),
-    h('details', null, h('summary', null, '提醒能力与限制'),
-      h(Button, { type: 'button', onClick: () => center.report(saved.delivery) }, '重新检查提醒能力'),
-      h('p', null, '上次检查：安全环境：' + caps.secure + '；AudioContext：' + caps.audio + '；桌面权限：' + caps.desktop + '；后台：' + caps.hidden + '（隐藏页面/OS 可能节流）'),
-      h('p', null, saved.delivery), h('p', null, saved.coordination), h('p', null, '有界去重保存最近 256 个尝试身份，最长 24 小时，不存业务正文；过期、清存储、崩溃或能力降级都不承诺 exactly-once。')))
+  return h('section', { 'aria-label': '本浏览器提醒', style: { display: 'grid', gap: 16, minWidth: 0, color: 'var(--dsw-alias-label-primary)', overflowWrap: 'anywhere' } },
+    h('header', { style: { display: 'grid', gap: 8 } },
+      h('h3', { style: { margin: 0, paddingLeft: 10, borderLeft: '3px solid ' + accent, color: accentText, fontSize: 18, fontWeight: 650 } }, '本浏览器提醒'),
+      h('p', { style: description }, '仅当前同源浏览器环境保存，不承诺账号隔离、跨设备同步。只覆盖宿主仍挂载的会话（包括保留挂载的后台标签）；未打开、取消挂载或关闭网页不覆盖。与所有显示位置开关无关。')),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', alignItems: 'start', gap: 16, minWidth: 0 } },
+      h('fieldset', { style: channel },
+        h('legend', { style: legend }, '声音提醒'),
+        h(Checkbox, { label: '声音通知', checked: draft.sound, onChange: sound => setDraft({ ...draft, sound }) }),
+        h('p', { style: description }, '有限时长铃声；可先试听，停止铃声不改变提醒设置。'),
+        h('div', { style: { ...actions, alignItems: 'flex-start', gap: 16 } },
+          h('div', { style: { display: 'grid', gap: 8, minWidth: 0, maxWidth: '100%' } },
+            number('soundSeconds', '铃声持续秒数', 1, 60),
+            h('div', { style: actions }, ...[3, 5, 10, 30].map(soundSeconds => h(Button, { key: soundSeconds, type: 'button', variant: 'outline', size: 'sm', onClick: () => setDraft({ ...draft, soundSeconds }) }, soundSeconds + ' 秒')))),
+          number('volume', '音量百分比', 0, 100)),
+        h('div', { style: actions },
+          h(Button, { type: 'button', variant: 'outline', onClick: () => { try { preview.preview(parseBrowserNotificationPreferences(draft)) } catch (error) { setMessage(String(error)) } } }, '试听'),
+          h(Button, { type: 'button', variant: 'ghost', onClick: () => center.stopAllSounds() }, '停止当前铃声'))),
+      h('fieldset', { style: channel },
+        h('legend', { style: legend }, '页面内提醒'),
+        h(Checkbox, { label: '页面内通知', checked: draft.toast, onChange: toast => setDraft({ ...draft, toast }) }),
+        h('p', { style: description }, '页面内显示非模态提醒，不抢焦点；0 秒表示手动关闭。'),
+        number('toastSeconds', '页面通知关闭秒数（0 为手动）', 0, 60)),
+      h('fieldset', { style: channel },
+        h('legend', { style: legend }, '桌面提醒'),
+        h(Checkbox, { label: '桌面通知', checked: draft.desktop, onChange: desktop => setDraft({ ...draft, desktop }) }),
+        h('p', { style: description }, '需显式请求浏览器权限；开启开关不代表已获权限或通知已送达。'),
+        h('div', { style: actions }, h(Button, { type: 'button', variant: 'outline', onClick: () => { void center.requestDesktopPermission() } }, '请求桌面通知权限')))),
+    h('footer', { style: { display: 'grid', gap: 8, paddingTop: 16, borderTop: '1px solid var(--dsw-alias-border-l2)' } },
+      h('p', { style: description }, '个人提醒独立保存，仅影响本浏览器，不修改协作策略或所有者通知配置。'),
+      h('div', { style: actions },
+        h(Button, { type: 'button', variant: 'primary', onClick: () => { try { const persisted = center.save(draft); setMessage(persisted ? '本浏览器提醒已独立保存' : '保存失败；仅本页内存生效') } catch (error) { setMessage(String(error)) } } }, '保存本浏览器提醒'),
+        h(Button, { type: 'button', variant: 'outline', onClick: () => { setDraft(saved.preferences); setMessage('已恢复当前本浏览器设置') } }, '恢复当前提醒设置')),
+      h('p', { role: 'status', style: { ...description, color: 'var(--dsw-alias-label-primary)' } }, message),
+      h('p', { role: 'status', style: description }, saved.storage)),
+    h('details', { style: { fontSize: 13, lineHeight: 1.6 } }, h('summary', { style: { cursor: 'pointer', color: 'var(--dsw-alias-label-secondary)' } }, '提醒能力与限制'),
+      h('div', { style: { display: 'grid', gap: 12, minWidth: 0, paddingTop: 12 } },
+        h('div', { style: actions }, h(Button, { type: 'button', variant: 'outline', size: 'sm', onClick: () => center.report(saved.delivery) }, '重新检查提醒能力')),
+        h('p', { style: description }, '上次检查：安全环境：' + caps.secure + '；AudioContext：' + caps.audio + '；桌面权限：' + caps.desktop + '；后台：' + caps.hidden + '（隐藏页面/OS 可能节流）'),
+        h('p', { style: description }, saved.delivery), h('p', { style: description }, saved.coordination),
+        h('p', { style: description }, '桌面通知只发送泛化标题与数量，不含裁决正文；时长由浏览器/操作系统控制。不提供关闭浏览器后的后台推送。'),
+        h('p', { style: description }, '有界去重保存最近 256 个尝试身份，最长 24 小时，不存业务正文；过期、清存储、崩溃或能力降级都不承诺 exactly-once。'))))
 }
 
 /** Mount in an independent strict Session utility seat; never under display-policy gates. */
