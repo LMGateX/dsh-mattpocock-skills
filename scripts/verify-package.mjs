@@ -525,7 +525,7 @@ export async function compareCommittedBuild(root) {
       compilerOptions: { paths, typeRoots: (sourceConfig.compilerOptions.typeRoots ?? ['node_modules/@types']).map(path => resolve(root, path)),
         outDir: builtRoot, declarationDir: join(builtRoot, 'types') },
       include: [join(root, 'src/**/*.ts')],
-      exclude: [join(root, 'src/client.ts')],
+      exclude: [join(root, 'src/client.ts'), join(root, 'src/client-notifications.ts')],
     }))
     const previousUmask = process.umask(0o022)
     try {
