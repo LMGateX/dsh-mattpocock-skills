@@ -82,7 +82,7 @@ test('native Client teardown removes all namespace-owned UI and permits a clean 
   for (let turn = 0; turn < 2; turn++) {
     const fiber = f.ctx.plugin(f.plugin); await fiber
     assert.equal(fiber.state, 2)
-    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : 1, seat)
+    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : ['conversation.session.header.utilities', 'conversation.input.dock'].includes(seat) ? 2 : 1, seat)
     assert.equal(f.tabs.length, 1)
     await fiber.dispose()
     for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, 0, seat)
@@ -155,7 +155,7 @@ test('native browser graph removal and re-add replace the fiber without leaked o
   const seats = ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
     'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview']
   const registered = () => {
-    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : 1, seat)
+    for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : ['conversation.session.header.utilities', 'conversation.input.dock'].includes(seat) ? 2 : 1, seat)
     assert.equal(f.tabs.length, 1)
   }
   registered()

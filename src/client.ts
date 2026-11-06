@@ -12,6 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { BrowserNotificationPreferencesPanel, DecisionNotifications, notificationScope } from './client-notifications.js'
 import { parsePolicyIntent, parsePolicySnapshot, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js'
 import { ownSupervisionLeaf, parseSupervisionConfigSnapshot, resolveSupervisionSettings, setSupervisionLeaf, supervisionIntentOf } from './controls/supervision-config.js'
@@ -679,6 +680,39 @@ function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' |
         technicalDetails(decision))
     }))
 }
+// One explicit navigation selection per plugin activation; no business content, polling or Session retention.
+interface NotificationReadingValue { readonly sessionId: string | null; readonly scope: string | null; readonly key: string | null }
+interface NotificationReading { readonly getSnapshot: () => NotificationReadingValue; readonly subscribe: (listener: () => void) => () => void; readonly select: (sessionId: string | null, scope: string | null, key: string | null) => void }
+function createNotificationReading(): NotificationReading {
+  let value: NotificationReadingValue = { sessionId: null, scope: null, key: null }
+  const listeners = new Set<() => void>()
+  return { getSnapshot: () => value, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener) } },
+    select: (sessionId, scope, key) => { if (value.sessionId === sessionId && value.scope === scope && value.key === key) return; value = { sessionId, scope, key }; for (const listener of listeners) listener() } }
+}
+/** Independent native header lifetime; no policy display gate or automatic navigation. */
+export function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement {
+  return h(DecisionNotifications, { sessionId: props.sessionId, observer: props.observer, onOpenDecision: (workflowId, decisionId) => {
+    const latest = props.observer.getSnapshot()
+    if (latest.status !== 'ready' || props.observer.sessionId !== props.sessionId || latest.value.sessionId !== props.sessionId || inputRecords(latest.value) === null) return
+    const scope = notificationScope(latest.value), row = latest.value.records?.decisions.find(row => row.workflowId === workflowId && row.decisionId === decisionId)
+    if (scope !== null && row !== undefined && isPendingUserDecision(row)) props.reading.select(props.sessionId, scope, decisionRecordKey(row))
+  } })
+}
+/** Reuse the native input dock, not a custom overlay or a second composer. */
+export function DecisionNotificationReader(props: PropsRuntime<'conversation.input.dock'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement | null {
+  const observation = useObservation(props.observer), store = props.reading
+  const selection = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+  const view = observation.status === 'ready' && props.observer.sessionId === props.sessionId && observation.value.sessionId === props.sessionId && inputRecords(observation.value) !== null ? observation.value : null
+  const scope = view === null ? null : notificationScope(view)
+  const present = view?.records?.decisions.some(row => decisionRecordKey(row) === selection.key) === true
+  const valid = selection.sessionId === props.sessionId && scope !== null && scope === selection.scope && selection.key !== null && present
+  useEffect(() => { if (selection.sessionId === props.sessionId && !valid && selection.key !== null) store.select(null, null, null) }, [store, valid, selection, props.sessionId])
+  useEffect(() => () => { if (store.getSnapshot().sessionId === props.sessionId) store.select(null, null, null) }, [store, props.sessionId])
+  if (!valid || view === null) return null
+  return h('section', { 'aria-label': '通知裁决阅读', style: { boxSizing: 'border-box', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', maxHeight: '50vh', overflow: 'auto', overflowWrap: 'anywhere' } },
+    h(Button, { type: 'button', onClick: () => store.select(null, null, null) }, '关闭通知阅读'), inputDecisionDetails(view, 'pending', [selection.key!]))
+}
+
 function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {
   const windows = inputWindows(view)
   const failure = inputReadFailure(view, 'native-executions')
@@ -1560,8 +1594,8 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
   const featureField = (name: typeof FEATURE_NAMES[number]): ReactElement => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name]), gateReason(preview.features[name]))
   const interactionField = 'pendingDecisions.interactionMode' as PolicyField
   const interactionMode = preview.pendingDecisions.interactionMode
+  // No public Select export on the supported baseline: use native semantic HTML.
   const interaction = h('label', { style: settingsField }, h('span', null, '裁决交互偏好'),
-    // No public Select export on the supported baseline: use native semantic HTML.
     h('select', { 'aria-label': '裁决交互偏好', value: ownLeaf(draft, workspace, interactionField) ?? '__unset__', disabled: busy,
       onChange: (event: ChangeEvent<HTMLSelectElement>) => change(interactionField, event.target.value === '__unset__' ? undefined : event.target.value as 'native-question' | 'async-decision') },
       h('option', { value: '__unset__' }, inheritLabel), h('option', { value: 'native-question' }, '原生提问优先'), h('option', { value: 'async-decision' }, '异步裁决优先')),
@@ -1593,7 +1627,7 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
         message === null ? null : diagnostic(message)),
       h('details', { style: { marginTop: '16px' } }, h('summary', null, '技术详情（原始有效策略与变更）'), pretty(preview), pretty(impact)),
       unsupportedSeatsDetails()),
-    // Integration seat: BrowserNotificationPreferencesPanel goes here (independent browser-only save).
+    h(BrowserNotificationPreferencesPanel),
     h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0 }, '进阶交付监督（独立保存）'),
       h(SupervisionSettingsPanel, { remote: props.remote, workspace })),
     h('details', { 'aria-label': '会话状态查看', style: settingsCard },
@@ -1829,6 +1863,7 @@ export async function apply(ctx: Context): Promise<void> {
   await ctx.inject(['remote.mattpocockControls'], (ctx) => {
     const remote = (ctx.remote as typeof ctx.remote & { readonly mattpocockControls: ControlsRemote }).mattpocockControls
     const observers = new SessionObserverCache((id, signal) => remote.readSession(id, signal))
+    const notificationReading = createNotificationReading()
     const observe = (sessionId: string): SessionObservation => observers.observe(sessionId)
     const summaries = new SummaryScheduler((request, signal) => remote.readSummaries(request, signal))
     const observeSummary = (sessionId: string): SummaryObserver => summaries.observe(sessionId)
@@ -1850,6 +1885,10 @@ export async function apply(ctx: Context): Promise<void> {
       inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
       id: TAB_ID + ':header', order: 100, inject: face }, HeaderEntry))
+    ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
+      id: TAB_ID + ':notifications', order: 110, inject: (sessionId) => ({ observer: observe(sessionId), reading: notificationReading }) }, DecisionNotificationSeat))
+    ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
+      id: TAB_ID + ':notification-reader', order: 110, inject: (sessionId) => ({ observer: observe(sessionId), reading: notificationReading }) }, DecisionNotificationReader))
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
       id: TAB_ID + ':input', order: 100, inject: face }, InputSummary))
     ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID,

@@ -220,6 +220,12 @@ test('summary-only and mismatched snapshot identities remain unknown, never zero
   const wrong = put(snapshot(), 'hidden'); wrong.records.instance = { ...wrong.instance, instrumentInstanceId: 'other' }; assert.equal(tracker.update(wrong).pendingCount, null)
   const malformed = put(snapshot(), 'hidden'); malformed.records.decisions[0].history = null; assert.equal(tracker.update(malformed).pendingCount, null)
 })
+test('featureless browser embedding reports unsupported capabilities instead of throwing', () => {
+  const ports = n.createBrowserNotificationPorts()
+  assert.deepEqual(ports.capabilities(), { secure: false, audio: false, desktop: 'unsupported', hidden: false })
+  assert.equal(ports.onStorage, undefined)
+})
+
 test('native browser adapter only touches fake audio/Notification and preserves scheduled stop semantics', async () => {
   const contexts = [], osNotices = [], data = new Map(), storageEvents = new Set(); let permissions = 0, locked = 0
   class AudioContext {

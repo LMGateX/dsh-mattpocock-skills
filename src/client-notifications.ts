@@ -117,12 +117,12 @@ export function createBrowserNotificationPorts(): BrowserNotificationPorts {
   let storage: BrowserNotificationPorts['storage']
   try { storage = w?.localStorage } catch { /* denied storage is diagnosed below */ }
   const notification = w?.Notification, audio = w?.AudioContext
-  const locks = w?.navigator.locks
+  const locks = w?.navigator?.locks
   return {
     ...(storage ? { storage } : {}),
     ...(locks ? { withLock: async (name: string, operation: () => Promise<boolean>) => await locks.request(name, operation) } : {}),
-    ...(w ? { onStorage: (listener: () => void) => { const handler = (event: StorageEvent) => { if (event.key === NOTIFICATION_PREFS_KEY || event.key === null) listener() }; w.addEventListener('storage', handler); return () => w.removeEventListener('storage', handler) } } : {}),
-    capabilities: () => ({ secure: w?.isSecureContext === true, audio: !!audio, desktop: notification ? notification.permission : 'unsupported', hidden: w?.document.visibilityState === 'hidden' }),
+    ...(w && typeof w.addEventListener === 'function' && typeof w.removeEventListener === 'function' ? { onStorage: (listener: () => void) => { const handler = (event: StorageEvent) => { if (event.key === NOTIFICATION_PREFS_KEY || event.key === null) listener() }; w.addEventListener('storage', handler); return () => w.removeEventListener('storage', handler) } } : {}),
+    capabilities: () => ({ secure: w?.isSecureContext === true, audio: !!audio, desktop: notification ? notification.permission : 'unsupported', hidden: w?.document?.visibilityState === 'hidden' }),
     ...(audio ? { createSound: () => {
       const context = new audio(), oscillator = context.createOscillator(), gain = context.createGain()
       let stopped = false
@@ -148,7 +148,7 @@ export class BrowserNotificationCenter {
   registerSoundStop(stop: () => void): () => void { this.soundStops.add(stop); return () => { this.soundStops.delete(stop) } }
   stopAllSounds(): void { for (const stop of this.soundStops) stop(); this.report('已停止本浏览器当前铃声；未改变业务或已读状态') }
   constructor(readonly ports: BrowserNotificationPorts) {
-    this.state = { preferences: DEFAULT_BROWSER_NOTIFICATION_PREFERENCES, storage: '仅本浏览器同源/Profile；不跨设备同步', delivery: '开关不是送达证明', coordination: ports.withLock && ports.storage ? 'Web Locks + 有界本地去重；仅协调尝试，不承诺送达 exactly-once' : '跨标签 best-effort：缺少 Web Locks 或持久存储，可能重复', capabilities: ports.capabilities() }
+    this.state = { preferences: DEFAULT_BROWSER_NOTIFICATION_PREFERENCES, storage: '仅本浏览器同源环境；不跨设备同步', delivery: '开关不是送达证明', coordination: ports.withLock && ports.storage ? 'Web Locks + 有界本地去重；仅协调尝试，不承诺送达 exactly-once' : '跨标签 best-effort：缺少 Web Locks 或持久存储，可能重复', capabilities: ports.capabilities() }
     this.load()
   }
   getSnapshot = (): CenterState => this.state
@@ -163,12 +163,12 @@ export class BrowserNotificationCenter {
     try {
       if (!this.ports.storage) throw new Error('不可用')
       const raw = this.ports.storage.getItem(NOTIFICATION_PREFS_KEY)
-      this.patch({ preferences: raw === null ? DEFAULT_BROWSER_NOTIFICATION_PREFERENCES : parseBrowserNotificationPreferences(JSON.parse(raw)), storage: '设置仅保存在本浏览器同源/Profile；不跨设备同步' })
+      this.patch({ preferences: raw === null ? DEFAULT_BROWSER_NOTIFICATION_PREFERENCES : parseBrowserNotificationPreferences(JSON.parse(raw)), storage: '设置仅保存在本浏览器同源环境；不跨设备同步' })
     } catch { this.patch({ preferences: DEFAULT_BROWSER_NOTIFICATION_PREFERENCES, storage: '存储损坏或不可用；使用非持久安全初值，尚未保存' }) }
   }
   save(raw: unknown): boolean {
     const preferences = parseBrowserNotificationPreferences(raw)
-    try { if (!this.ports.storage) throw new Error('不可用'); this.ports.storage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(preferences)); this.patch({ preferences, storage: '已保存到本浏览器同源/Profile（不跨设备同步）' }); return true }
+    try { if (!this.ports.storage) throw new Error('不可用'); this.ports.storage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(preferences)); this.patch({ preferences, storage: '已保存到本浏览器同源环境（不跨设备同步）' }); return true }
     catch { this.patch({ preferences, storage: '保存失败；当前设置仅内存生效，刷新可能丢失', coordination: '持久存储不可用；跨标签 best-effort，可能重复' }); return false }
   }
   /** Call ONLY in the explicit permission button handler; mount/save/delivery never call it. */
@@ -239,7 +239,7 @@ export class MountedNotificationDelivery {
       const sound = ports.createSound(); this.sound = sound
       this.soundTimer = ports.later(() => this.stopSound(), preferences.soundSeconds * 1000)
       const playing = sound.start(preferences.soundSeconds, preferences.volume)
-      this.center.report(sound.state() === 'running' ? '声音已启动；浏览器/OS 静音仍可能阻止听见' : '声音被挂起或自动播放受限；请显式试听，后台也可能节流')
+      this.center.report(sound.state() === 'running' ? '声音已启动；浏览器/操作系统 静音仍可能阻止听见' : '声音被挂起或自动播放受限；请显式试听，后台也可能节流')
       void playing.then(() => { if (this.sound === sound && !this.disposed) this.center.report(sound.state() === 'running' ? '声音已启动；不代表用户已听见' : '声音仍被挂起或不可用') }, () => { if (this.sound === sound) { this.stopSound(); this.center.report('声音启动失败或自动播放被拒绝') } })
     } catch { this.stopSound(); this.center.report('声音启动失败或浏览器拒绝') }
   }
@@ -269,7 +269,7 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
   const center = useMemo(() => props.center ?? defaultCenter(), [props.center])
   const saved = useSyncExternalStore(center.subscribe, center.getSnapshot, center.getSnapshot)
   const [draft, setDraft] = useState(saved.preferences)
-  const [message, setMessage] = useState('个人提醒独立保存，不修改服务器策略或 notifyOwner')
+  const [message, setMessage] = useState('个人提醒独立保存，不修改协作策略或所有者通知配置')
   const preview = useMemo(() => new MountedNotificationDelivery(center), [center])
   useEffect(() => { preview.mount(); return () => preview.dispose() }, [preview])
   const number = (key: 'soundSeconds' | 'volume' | 'toastSeconds', label: string, min: number, max: number): ReactElement => h('label', null, label,
@@ -277,7 +277,7 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
   const caps = saved.capabilities
   return h('section', { 'aria-label': '本浏览器提醒', style: { minWidth: 0 } },
     h('h3', null, '本浏览器提醒'),
-    h('p', null, '仅当前同源浏览器/Profile 保存，不承诺账号隔离、跨设备同步。只覆盖宿主仍挂载的会话（包括保留挂载的后台标签）；未打开、取消挂载或关闭网页不覆盖。与所有显示位置开关无关。'),
+    h('p', null, '仅当前同源浏览器环境 保存，不承诺账号隔离、跨设备同步。只覆盖宿主仍挂载的会话（包括保留挂载的后台标签）；未打开、取消挂载或关闭网页不覆盖。与所有显示位置开关无关。'),
     h(Checkbox, { label: '声音通知', checked: draft.sound, onChange: sound => setDraft({ ...draft, sound }) }),
     number('soundSeconds', '铃声持续秒数', 1, 60),
     h('span', null, ...[3, 5, 10, 30].map(soundSeconds => h(Button, { key: soundSeconds, type: 'button', size: 'sm', onClick: () => setDraft({ ...draft, soundSeconds }) }, soundSeconds + ' 秒'))),
@@ -288,7 +288,7 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
     number('toastSeconds', '页面通知关闭秒数（0 为手动）', 0, 60),
     h(Checkbox, { label: '桌面通知', checked: draft.desktop, onChange: desktop => setDraft({ ...draft, desktop }) }),
     h(Button, { type: 'button', onClick: () => { void center.requestDesktopPermission() } }, '请求桌面通知权限'),
-    h('p', null, '桌面通知只发送泛化标题与数量，不含裁决正文；时长由浏览器/OS 控制。无 Service Worker，不承诺关闭浏览器后送达。'),
+    h('p', null, '桌面通知只发送泛化标题与数量，不含裁决正文；时长由浏览器/操作系统 控制。不提供关闭浏览器后的后台推送。'),
     h(Button, { type: 'button', onClick: () => { try { const persisted = center.save(draft); setMessage(persisted ? '本浏览器提醒已独立保存' : '保存失败；仅本页内存生效') } catch (error) { setMessage(String(error)) } } }, '保存本浏览器提醒'),
     h(Button, { type: 'button', onClick: () => { setDraft(saved.preferences); setMessage('已恢复当前本浏览器设置') } }, '恢复当前提醒设置'),
     h('p', { role: 'status' }, message), h('p', { role: 'status' }, saved.storage),

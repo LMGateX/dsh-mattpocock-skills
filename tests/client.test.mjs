@@ -206,7 +206,8 @@ test('actual installed SlotCore accepts native contribution options and unloads 
     register: (options, component) => core.register(options, component) }
   await client.apply(fixture.ctx)
   assert.equal(core.entriesOfSlot('plugins.bundle.config').length, 1)
-  assert.equal(core.entriesOfSlot('conversation.session.header.utilities').length, 1)
+  assert.equal(core.entriesOfSlot('conversation.session.header.utilities').length, 2)
+  assert.equal(core.entriesOfSlot('conversation.input.dock').length, 2)
   for (const dispose of disposers.reverse()) dispose()
   for (const cleanup of fixture.effects.reverse()) cleanup?.()
   assert.equal(core.entriesOfSlot('conversation.session.header.utilities').length, 0)
