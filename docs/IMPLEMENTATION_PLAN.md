@@ -14,7 +14,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 - 最终代码 58b966b：根/Client 严格类型、闭合构建/生成物同步通过；完整源码 916 项（907 pass / 0 fail / 9 skip：3 项未提供上游源，6 项宿主无可装配 UI-slots）；另以已有原生 Client fixture 运行这 6 项为 6/6 pass。浏览器 fixture 使用实际 DSH 0.2.2-alpha.3 shell React/控件与原主题，真实插件 SettingsPage + 受控 Remote；1440/390 宽度 × 明/暗主题覆盖常态、草稿/总闸关闭、提醒未保存、进阶展开及键盘焦点；无横向溢出、无页面异常、无 Remote 写入。不是当前 GUI 安装或真实声音/OS 投递验收。
 - 精确本地候选（**不是已发布的 0.14.0 归档**）：prepack 与严格 tarball 检查通过，161 个普通文件/0 目录/0 symlink，451121 B，SHA-256 `1e782d467a92b10770327ad2d2f1e140582eba56eca57d4301aa0c143473f465`，source 58b966b。pnpm 11.8.0 默认 pack 会移除 packageManager，首个候选被严格检查拒绝；保留失败件，以 `--skip-manifest-obfuscation` 重新打包验证通过，不放宽验证器。原始脚本、截图、测试/制品回执留在忽略的本地研究目录；后续文档提交不改变冻结源码/候选。
 - 初轮交付边界：隔离分支与证据保留供审阅；当时没有 merge/push/tag/发版或安装，已有 0.14.0 Release 不变。
-- 0.14.1 发布（所有者后续授权，进行中）：先固定本授权，再同步包版本/验证器/断言与使用说明，完整 source/精确归档、隔离双宿主 headless，非 force push main + 新 annotated tag/Release，五资产下载 strict 回验并追加公开证据。**不为本机安装、不改当前 Profile/共享 SDK、不重启服务、不 npm publish**。
+- 0.14.1 发布（所有者后续授权，已完成）：授权先在 39f3351 固定；clean source 08fd9b2 同步包版本/验证器/断言与使用说明，source/显式精确归档全套各 916 项（907 pass / 0 fail / 9 已知环境 skip），另 native 6/6、双宿主 headless、strict original/downloaded 均通过。唯一归档 451846 B，SHA-256 `3b6d2aab4a5e2ca3f3d27ca9cffc7c0a5277ddcac9538500c969ae24ab37365d`；非 force atomic push main + 新 annotated v0.14.1/GitHub Release，五资产 API digest 与下载逐字节一致，旧 tags/0.14.0 未变。当前 Profile/SDK 六项摘要及原 Web listener 未变。**未为本机安装、未改当前 Profile/共享 SDK、未重启服务、未 npm publish**。公开证据见[验证摘要](<VERIFICATION.md>)与[机器摘要](<../dist/verification-0.14.1.json>)；tag/source/制品保持冻结，后续 main 仅补文档证据。
 
 ## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可）
 

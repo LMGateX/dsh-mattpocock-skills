@@ -2,6 +2,21 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.14.1 设置页视觉层次（2026-11-06，已发布并下载回验；未为本机安装）
+
+本轮在 0.14.0 之后仅改客户端视觉层次、主题语义色、响应式分组、保存动作与提醒未保存反馈；来源、稀疏继承、CAS、授权与通知投递语义不变。初轮未授权发布，后续所有者明确要求 push/发版并继续禁止本机安装；授权先于版本准备在 39f3351 固定。最终运行时、测试与 Client bundle 为 **58b966bdf330950839f7d34486b271c169f8e575**；加入版本/断言/使用说明后的唯一 clean source 为 **08fd9b21005b7d24ce12b1849f5d613c116752d9**。后续 main 仅补文档证据，不冒充制品源。
+
+- 根 / Client 严格类型、闭合构建与 prepack 通过；Client **329028 B / 8 私有模块**，externals 仍仅 React 与公开 UI primitives。**76 fixed / 85 vendor / 161 packed expected / 62 JS+DTS**，vendor 与双渠道未变。
+- clean source 和显式 accepted archive 模式的全套各 **916 tests / 907 pass / 0 fail / 9 skip**。3 项因未提供上游源、6 项因 canonical 宿主无可装配 native UI-slots；这 6 项另在既有 alpha.3 native Client fixture **6/6 pass / 0 skip**。归档模式中的 PluginManager 显式消费 accepted tgz；仅源码 seams 仍测源码，不泛称每一项都直接读取归档。
+- Standards 无未关闭发现；Spec 初审两个 P2（暗色 S 标签对比度、个人提醒草稿残留旧保存反馈）已修复，后者有真实 React RED→GREEN，独立增量复审关闭。版本准备只同步发行元数据/断言/使用说明，没有追加运行时变更。
+- 实际 DSH **0.2.2-alpha.3** 控件与主题、真实 SettingsPage + 受控 Remote 的 Chromium fixture：明/暗 × **1440/390** 共四 case，覆盖正常/关闭总闸/未保存/提醒/进阶展开与可见键盘焦点；无横向溢出、页面异常或 Remote 写入。该证据绑定上述最终运行时，不代表当前 GUI 安装、广泛无障碍认证或真实声音/OS 投递验收。
+- **唯一新 0.14.1 归档**：pnpm **11.8.0**，pack 使用 `--skip-manifest-obfuscation` 保留精确 manifest；**451846 B**，SHA-256 **`3b6d2aab4a5e2ca3f3d27ca9cffc7c0a5277ddcac9538500c969ae24ab37365d`**，161 regular / 0 directory / 0 symlink。tgz + 四 sidecars 均只读，验证前后 dev/ino/mode/size/mtime/ctime 不变。只 pack 一次；封存脚本首次语法错误发生在 pack 之后，修正身份记录步骤时沿用原 tgz、没有重打包。旧视觉试验的 0.14.0 本地候选不是此次制品。
+- source + 同一归档 × **DSH 0.2.1-alpha.4 / 0.2.2-alpha.3** × stable/beta 隔离 headless 全通过，source/archive registry 逐字节一致，modelInvoked=false / webStarted=false；未启动替代服务，实际 alpha.2 二进制未实测。
+- 非 force **atomic main + 新 annotated v0.14.1** 已 push；tag object **4e9d1eca9c8cca4415943e3d7069b036a15489e6**，peeled=上述 clean source。[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.14.1) id **436518958**，published_at **2026-11-06T13:15:00Z**，draft=false / prerelease=false。五资产 API size/digest 全匹配，下载 **5/5 逐字节一致**，在冻结源码上 downloaded strict 再通过。所有旧 tags、v0.14.0 body 与资产 id/size/digest 未变。草稿查询先走 tags endpoint 得到 404，随后从 release list 找回原草稿 id 校验并发布，没有重复创建或重传资产。
+- 当前 Profile manifest/lock/patch/base、已装插件及共享 SDK manifest **6/6 SHA-256 不变**，原 Web listener PID/FD 不变，本机仍 **插件 0.10.2 / DSH 0.2.2-alpha.3**。**未为本机安装、未改当前 Profile/共享 SDK、未重启服务、未 npm publish**；当前 GUI 未加载本次设置页优化。隔离检出与忽略的本地原始证据有意保留供复验。
+
+公开资产身份与机械结果见[机器摘要](<../dist/verification-0.14.1.json>)；原始测试日志、环境路径与截图仅本地保留。
+
 ## 0.14.0 裁决交互、个人提醒与原生设置（2026-11-06，已发布并下载回验；未为本机安装）
 
 先独立提交[已认可契约](<DECISION_INTERACTION_AND_SETTINGS.md>)（c6480d5），再由三个隔离子代理实施策略/消费、提醒、设置/阅读；运行时与生成物修复冻结于 c6a72ee；最终 clean source 为 **d0fce8a73dbcbba72d0deb07d6d062940f9502be**。后续 main 文档提交只补公开完成证据，不冒充制品源。

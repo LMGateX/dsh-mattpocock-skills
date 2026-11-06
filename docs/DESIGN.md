@@ -12,11 +12,11 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 0.14.1 设置页视觉层级增量（2026-11-06，所有者要求；隔离验证完成，已授权 push/发版，暂不安装本机）
+## 0.14.1 设置页视觉层级增量（2026-11-06，所有者要求；已发布并下载回验，未为本机安装）
 
 所有者反馈设置页配色单调、样式原始，内容缺少层次与重点。本增量只改客户端呈现：建立页面/分区/字段/辅助说明四级层次；编辑范围与两级总闸先于功能，状态与未保存草稿以文字配合主题语义色；协作策略、显示、浏览器提醒和进阶查看明确分区，主保存与次要操作区分。优先复用原生 Button/Input/Checkbox 和真实 DSH token；允许克制的主题底色、分隔、边框与小面积强调，不增加全局 CSS、私有 UI 库、彩色大卡片或导航框架。
 
-原有稀疏继承、来源、两级总闸、原修订 CAS、独立保存、错误保留草稿、通知与授权契约不变。验证包含真实浏览器明/暗主题、窄屏溢出与键盘可达性；fixture 截图与当前 GUI 生效严格区分。初轮仅授权隔离实现与验证；所有者随后明确要求 push/发版，作为新补丁版本 0.14.1 发布，不能覆盖已有 0.14.0 tag/Release。发布门禁包括同步版本断言、clean-source 构建与完整 suite、唯一精确归档、隔离 headless、非 force push/新 annotated tag/GitHub Release、五资产下载 strict 回验。**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**；保留隔离分支与本地验证证据。
+原有稀疏继承、来源、两级总闸、原修订 CAS、独立保存、错误保留草稿、通知与授权契约不变。验证包含真实浏览器明/暗主题、窄屏溢出与键盘可达性；fixture 截图与当前 GUI 生效严格区分。初轮仅授权隔离实现与验证；所有者随后明确要求 push/发版，作为新补丁版本 0.14.1 发布，不能覆盖已有 0.14.0 tag/Release。发布门禁包括同步版本断言、clean-source 构建与完整 suite、唯一精确归档、隔离 headless、非 force push/新 annotated tag/GitHub Release、五资产下载 strict 回验。**暂不为本机安装，不改当前 Profile/共享 SDK、不重启服务、不 npm publish**；保留隔离分支与本地验证证据。0.14.1 已以 clean source 08fd9b2 完成非 force atomic main + annotated tag、新 [GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.14.1) 与五资产下载 strict 回验；当前 Profile/SDK 六项摘要及原 Web listener 未变，本机仍 0.10.2，详见[验证摘要](<VERIFICATION.md>)与[机器摘要](<../dist/verification-0.14.1.json>)。
 
 ## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可；文档先行，已发布/未安装本机）
 
