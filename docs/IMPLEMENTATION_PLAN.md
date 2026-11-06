@@ -16,8 +16,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | B 策略与消费 | 隔离子代理实现interactionMode、来源/继承、公共引导与OFF/CAS/真实消费回归 | 已独立实现并合入；完整源码门禁通过，详见验证摘要 |
 | C 用户提醒 | 隔离子代理实现个人设置、可配声长/音量、popup/desktop、去重/能力/生命周期与测试 | 已独立实现并合入；完整源码门禁通过，详见验证摘要 |
 | D 客户端 | 隔离子代理实现持久详情、原生风格设置页整理及真实React测试 | 已独立实现并合入；完整源码门禁通过，详见验证摘要 |
-| E 集成 | TS、完整suite、精确制品、双宿主headless与独立Standards/Spec复核修复 | 源码/TS/双轴复核通过；精确制品与双宿主门禁进行中 |
-| F 发布 | 非force push、新annotated tag/Release、五资产下载strict回验；当前Profile/SDK/服务不变更 | 待开始；已获授权 |
+| E 集成 | TS、完整suite、精确制品、双宿主headless与独立Standards/Spec复核修复 | 已完成：913/907/0/6、native fixture 6/6、TS、双轴复审关闭、精确包 strict 与双宿主 source/archive headless 通过 |
+| F 发布 | 非force push、新annotated tag/Release、五资产下载strict回验；当前Profile/SDK/服务不变更 | 已完成：非 force atomic push、新 annotated v0.14.0、五资产发布/下载逐字节及 strict 回验；未安装本机 |
 
 ## 0.12.0 输入区摘要与就地详情（2026-11-04，A–F 已完成，已发布未安装）
 

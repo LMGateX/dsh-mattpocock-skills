@@ -2,15 +2,18 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 0.14.0 裁决交互、个人提醒与原生设置（2026-11-06，源码门禁通过；制品/发布进行中）
+## 0.14.0 裁决交互、个人提醒与原生设置（2026-11-06，已发布并下载回验；未为本机安装）
 
-先独立提交[已认可契约](<DECISION_INTERACTION_AND_SETTINGS.md>)（c6480d5），再由三个隔离子代理实施策略/消费、提醒、设置/阅读；运行时与生成物修复冻结于 c6a72ee。本段不把源码接受冒充已发布或本机已安装。
+先独立提交[已认可契约](<DECISION_INTERACTION_AND_SETTINGS.md>)（c6480d5），再由三个隔离子代理实施策略/消费、提醒、设置/阅读；运行时与生成物修复冻结于 c6a72ee；最终 clean source 为 **d0fce8a73dbcbba72d0deb07d6d062940f9502be**。后续 main 文档提交只补公开完成证据，不冒充制品源。
 
 - 完整源码 suite：**913 tests / 907 pass / 0 fail / 6 skip**，显式完整 canonical SDK `0.2.2-alpha.3` 与本地固定上游源；六 skip 均为 canonical 根缺少 native UI-slots fixture。另用具备该公开包的隔离 native Client loader/activation fixture **6/6 pass，0 skip**，没有隐藏这些门禁。
 - Host/Client 严格构建、独立真实 alpha.3 UI primitives 声明检查与 clean-source prepack 通过；仍为 **76 fixed / 85 vendor / 161 packed expected / 62 JS+DTS**，外部依赖仍仅 React 与公开 UI primitives；新提醒模块只内嵌现有闭合 Client，不增加 standalone 包面。vendor、渠道及 provider precedence 未变。
 - 真实 React/Happy DOM 覆盖已注册原生 header → input-dock 只读阅读、全 display=false、原生输入框 stand-in 的 DOM/焦点/文字保持、提醒关闭/新事项/已解决、unknown 隐藏正文并恢复同授权选择、身份/授权变化清理；不等于真实 GUI 或桌面通知/扬声器实测。
 - 独立 Standards 初审与修复复审均 0 未关闭规则/实质 heuristic；Spec 初审 1 个 P2（临时 unknown 永久丢阅读选择），经 RED→GREEN、仅保存选择身份/不存业务正文修复并复审关闭；最终 0 未关闭 Spec finding。
-- 精确唯一制品、双宿主 source/archive headless、packed Manager/native、远端发布与下载回验尚待完成；本段将在实际完成后追加源 SHA、摘要及资产证据。
+- 唯一 accepted tgz：**446743 B**，SHA-256 **`a0f56d68c6104c527fbdd9d29b755ffad2950f578bcdc055a1b9904b3d74bb0d`**，source 为上述 d0fce8a，pnpm **11.8.0**；161 regular / 0 directory / 0 symlink。仅 pack 一次，tgz + 四 sidecars 均 0444；验证前后 dev/ino/mode/size/mtime/ctime 不变，未重打包。精确 original strict 与下载件 strict 均在该 clean source 通过。
+- 最终 frozen source/archive 模式完整 suite 仍 **913 / 907 pass / 0 fail / 6 skip**，显式 accepted archive 进入 PluginManager 探针；仅源码 seams 仍测源码，不泛称每项直接读 tgz。source + 同一 archive × **DSH 0.2.1-alpha.4 / 0.2.2-alpha.3** × stable/beta headless 全通过，各 27 Skills，source/archive registry 逐字节相同，modelInvoked=false / webStarted=false。Client 为 **320376 B / 8 私有模块**。
+- 非 force atomic main + annotated **v0.14.0** 已 push：tag object **ac62d1a10a7a3b880e66a977bf3a587c10b2246c**，peeled=上述精确 source；[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.14.0) id **436396747**、published_at **2026-11-06T11:02:41Z**、draft=false / prerelease=false。五资产 API size/digest 全匹配，下载后 **5/5 逐字节相同**并完成 source-bound strict 回验；旧 tags、前一 Release body 与资产身份/摘要未变。公开字段见[机器摘要](<../dist/verification-0.14.0.json>)，不附本机路径/原始日志。
+- 封存前→发布后核对当前 Profile manifest/lock/patch/base、已装插件与共享 SDK manifest：**6/6 SHA-256 不变**，原 Web listener 的 PID/FD 不变；本机仍 **0.10.2 / DSH 0.2.2-alpha.3**，当前 GUI 未加载本次改动。隔离检出与私有证据有意保留用于复验，未触碰其他历史树。
 - 未为本机安装、未改当前 Profile/共享 SDK、未重启服务、未 npm publish。没有图形浏览器像素/窄屏验收或真实声音/OS 送达证明；实际 alpha.2 二进制不可用，不把声明兼容门禁说成该版本 runtime 实测。
 
 ## 0.13.0 原生 cwd 退役（2026-11-05，已发布；未为本机安装）

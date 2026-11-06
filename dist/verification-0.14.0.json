@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "version": "0.14.0",
+  "status": "published-and-download-verified",
+  "source": {
+    "commit": "d0fce8a73dbcbba72d0deb07d6d062940f9502be",
+    "runtimeFixCommit": "c6a72eedabc8d265290b5bf4e67d82dfa3afc163",
+    "documentFirstCommit": "c6480d563cf662c03331db76d6f541a4744774c9",
+    "cleanAtPack": true
+  },
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.14.0.tgz",
+    "sha256": "a0f56d68c6104c527fbdd9d29b755ffad2950f578bcdc055a1b9904b3d74bb0d",
+    "bytes": 446743,
+    "pnpm": "11.8.0",
+    "acceptedPackCount": 1,
+    "readOnly": true,
+    "strictOriginalPassed": true,
+    "strictDownloadedPassed": true,
+    "downloadedByteIdentical": true,
+    "regularMembers": 161,
+    "directories": 0,
+    "symlinks": 0,
+    "fixedFiles": 76,
+    "vendorFiles": 85,
+    "buildFiles": 62,
+    "originalFileIdentitiesUnchanged": true
+  },
+  "tests": {
+    "source": {
+      "tests": 913,
+      "pass": 907,
+      "fail": 0,
+      "skipped": 6
+    },
+    "operatorArchive": {
+      "tests": 913,
+      "pass": 907,
+      "fail": 0,
+      "skipped": 6,
+      "coverage": "Exact accepted operator archive is supplied to PluginManager probes; source-only seams remain source tests."
+    },
+    "nativeClientFixture": {
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skipped": 0
+    },
+    "strictHostAndClientTypes": true,
+    "actualAlpha3UiDeclarationTypes": true,
+    "sourceLibScratchByteIdentical": true,
+    "clientBytes": 320376,
+    "clientPrivateModules": 8,
+    "externals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "vendorAndChannelsUnchanged": true
+  },
+  "headless": [
+    {
+      "dsh": "0.2.1-alpha.4",
+      "sourceCommit": "d0fce8a73dbcbba72d0deb07d6d062940f9502be",
+      "sha256": "a0f56d68c6104c527fbdd9d29b755ffad2950f578bcdc055a1b9904b3d74bb0d",
+      "channels": {
+        "beta": {
+          "count": 27
+        },
+        "stable": {
+          "count": 27
+        }
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false
+    },
+    {
+      "dsh": "0.2.2-alpha.3",
+      "sourceCommit": "d0fce8a73dbcbba72d0deb07d6d062940f9502be",
+      "sha256": "a0f56d68c6104c527fbdd9d29b755ffad2950f578bcdc055a1b9904b3d74bb0d",
+      "channels": {
+        "beta": {
+          "count": 27
+        },
+        "stable": {
+          "count": 27
+        }
+      },
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false
+    }
+  ],
+  "independentReviews": {
+    "baseline": "331c4d03460f879b5ab31065468ca86fb1679fea",
+    "initialTip": "790c8dd959775273a53b8a8059b5a2564a63899c",
+    "finalRuntimeTip": "c6a72eedabc8d265290b5bf4e67d82dfa3afc163",
+    "standardsOpen": 0,
+    "materialHeuristicsOpen": 0,
+    "specInitialP2": 1,
+    "specOpen": 0,
+    "fix": "Unknown reader observations retain only selected identity metadata, hide unverified business body, show a diagnostic and resume on identical authorized recovery; proven identity/scope/unmount fences still discard.",
+    "specReviewerFocusedTests": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0
+    }
+  },
+  "release": {
+    "id": 436396747,
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.14.0",
+    "publishedAt": "2026-11-06T11:02:41Z",
+    "draft": false,
+    "prerelease": false,
+    "targetCommitish": "d0fce8a73dbcbba72d0deb07d6d062940f9502be",
+    "tag": "v0.14.0",
+    "annotatedTagObject": "ac62d1a10a7a3b880e66a977bf3a587c10b2246c",
+    "peeledSource": "d0fce8a73dbcbba72d0deb07d6d062940f9502be",
+    "nonForceAtomicSourceAndTagPush": true,
+    "oldTagsUnchanged": true,
+    "previousReleaseBodyAndAssetIdentitiesUnchanged": true,
+    "assets": [
+      {
+        "id": 716864653,
+        "name": "lmgatex-dsh-mattpocock-skills-0.14.0.tgz",
+        "size": 446743,
+        "digest": "sha256:a0f56d68c6104c527fbdd9d29b755ffad2950f578bcdc055a1b9904b3d74bb0d",
+        "state": "uploaded",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.14.0/lmgatex-dsh-mattpocock-skills-0.14.0.tgz"
+      },
+      {
+        "id": 716864654,
+        "name": "lmgatex-dsh-mattpocock-skills-0.14.0.tgz.pnpm-version",
+        "size": 7,
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "state": "uploaded",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.14.0/lmgatex-dsh-mattpocock-skills-0.14.0.tgz.pnpm-version"
+      },
+      {
+        "id": 716864659,
+        "name": "lmgatex-dsh-mattpocock-skills-0.14.0.tgz.sha256",
+        "size": 107,
+        "digest": "sha256:cca21152a86567aa820ee051bbd91a24c021e43ece598e141a075462e1fa5821",
+        "state": "uploaded",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.14.0/lmgatex-dsh-mattpocock-skills-0.14.0.tgz.sha256"
+      },
+      {
+        "id": 716864656,
+        "name": "lmgatex-dsh-mattpocock-skills-0.14.0.tgz.size",
+        "size": 7,
+        "digest": "sha256:87c2552ab39e85980d7265be0a9be087c60ab33d022ec6ccff32dda2d3a8e497",
+        "state": "uploaded",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.14.0/lmgatex-dsh-mattpocock-skills-0.14.0.tgz.size"
+      },
+      {
+        "id": 716864668,
+        "name": "lmgatex-dsh-mattpocock-skills-0.14.0.tgz.source-commit",
+        "size": 41,
+        "digest": "sha256:1402c30f6cf387e3c8a326e44151693b44ee78470e66ff44d10c133595873f52",
+        "state": "uploaded",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.14.0/lmgatex-dsh-mattpocock-skills-0.14.0.tgz.source-commit"
+      }
+    ]
+  },
+  "noLocalInstall": {
+    "installedPluginVersion": "0.10.2",
+    "installedDshVersion": "0.2.2-alpha.3",
+    "preSealToPostPublicationHashChecks": 6,
+    "allComparedHashesUnchanged": true,
+    "existingWebListenerUnchanged": true,
+    "profileModified": false,
+    "sharedSdkModified": false,
+    "serviceRestarted": false,
+    "npmPublished": false
+  },
+  "limits": [
+    "No graphical browser pixel/narrow-screen acceptance or real sound/OS delivery proof; React/Happy DOM and browser effects are controlled fixtures.",
+    "Native composer is a DOM stand-in in plugin focus-preservation tests; native queue/steer are not intercepted or reimplemented.",
+    "Actual DSH alpha.2 binary unavailable; engine/type compatibility is not an alpha.2 runtime claim.",
+    "Notification coverage is only native-mounted Sessions, including background tabs retained mounted; not unopened/unmounted Sessions or closed browsers.",
+    "Cross-tab notification coordination is bounded best-effort, not exactly-once delivery.",
+    "Implementation/review worktrees and private evidence retained for audit; unrelated historical resources not removed."
+  ]
+}
