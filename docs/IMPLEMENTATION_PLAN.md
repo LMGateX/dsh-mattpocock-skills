@@ -6,6 +6,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 设置页视觉层级增量（2026-11-06）
+
+- 范围：见 [DESIGN.md](<DESIGN.md>) 同名节；仅客户端视觉与布局，不安装、不发布。
+- 进行中：隔离工作树检查原生主题/组件，调整范围与总闸、功能/显示分组、个人提醒和保存区层级。
+- 待验收：行为回归、严格类型/闭合构建与生成物同步、精确包检查，真实浏览器明暗/窄屏/键盘检查、独立复核。
+
 ## 0.14.0 裁决交互偏好、用户提醒与设置页整理（2026-11-06，所有者认可）
 
 唯一详细契约见 [DECISION_INTERACTION_AND_SETTINGS.md](<DECISION_INTERACTION_AND_SETTINGS.md>)。只在隔离环境实施，不为本机安装。
