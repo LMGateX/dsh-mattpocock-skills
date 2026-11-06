@@ -1,6 +1,10 @@
-import { boolean, capacity, freeze, id, record, revision } from './validation.js'
+import { boolean, capacity, freeze, id, invalid, record, revision } from './validation.js'
 
 export interface FeaturePatch { readonly enabled?: boolean }
+export type DecisionInteractionMode = 'native-question' | 'async-decision'
+export interface PendingDecisionsPatch extends FeaturePatch {
+  readonly interactionMode?: DecisionInteractionMode
+}
 export interface WindowPatch extends FeaturePatch {
   readonly ticketWindowSize?: number
   readonly runningSubagentLimit?: number
@@ -21,7 +25,7 @@ export interface WorkspacePolicyPatch {
   readonly lifecycle?: FeaturePatch
   readonly windows?: WindowPatch
   readonly ticketProgress?: FeaturePatch
-  readonly pendingDecisions?: FeaturePatch
+  readonly pendingDecisions?: PendingDecisionsPatch
   readonly display?: DisplayPatch
 }
 export interface PolicyIntent {
@@ -38,7 +42,7 @@ export type PolicySource = 'workspace' | 'global' | 'safe-initial'
 export type PolicyField =
   | 'workspace.enabled' | 'skills.enabled'
   | 'binding.enabled' | 'lifecycle.enabled' | 'windows.enabled'
-  | 'ticketProgress.enabled' | 'pendingDecisions.enabled'
+  | 'ticketProgress.enabled' | 'pendingDecisions.enabled' | 'pendingDecisions.interactionMode'
   | 'windows.ticketWindowSize' | 'windows.runningSubagentLimit'
   | 'display.header' | 'display.inputSummary' | 'display.rightPanel' | 'display.sessionList' | 'display.timeline'
 
@@ -58,6 +62,7 @@ export interface EffectivePolicy {
     readonly reason: 'extension-disabled' | 'workspace-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null
   }>>
   readonly windows: { readonly ticketWindowSize: number | null; readonly runningSubagentLimit: number | null }
+  readonly pendingDecisions: { readonly interactionMode: DecisionInteractionMode }
   readonly display: Required<DisplayPatch>
   readonly sources: Readonly<Record<PolicyField, PolicySource>>
 }
@@ -68,17 +73,24 @@ export const INITIAL_POLICY: PolicySnapshot = freeze({
 })
 const DISPLAY_INITIAL = { header: true, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } as const
 
+function parseInteractionMode(value: unknown, where: string): DecisionInteractionMode {
+  if (value !== 'native-question' && value !== 'async-decision') invalid(where + ' must be native-question or async-decision')
+  return value
+}
+
 function parsePatch(value: unknown, where: string): WorkspacePolicyPatch {
   const raw = record(value, where, [...FEATURE_NAMES, 'workspace', 'skills', 'display'])
   const result: Record<string, unknown> = {}
   for (const feature of FEATURE_NAMES) {
     if (!Object.hasOwn(raw, feature)) continue
-    const keys = feature === 'windows' ? ['enabled', 'ticketWindowSize', 'runningSubagentLimit'] : ['enabled']
+    const keys = feature === 'windows' ? ['enabled', 'ticketWindowSize', 'runningSubagentLimit']
+      : feature === 'pendingDecisions' ? ['enabled', 'interactionMode'] : ['enabled']
     const group = record(raw[feature], where + '.' + feature, keys)
     const parsed: Record<string, unknown> = {}
     for (const key of keys) {
       if (!Object.hasOwn(group, key)) continue
       parsed[key] = key === 'enabled' ? boolean(group[key], where + '.' + feature + '.' + key)
+        : key === 'interactionMode' ? parseInteractionMode(group[key], where + '.' + feature + '.' + key)
         : capacity(group[key], where + '.' + feature + '.' + key)
     }
     if (Object.keys(parsed).length > 0) result[feature] = parsed
@@ -124,12 +136,12 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
   boolean(workspaceVerified, 'workspaceVerified')
   const override = Object.hasOwn(parsed.workspaceOverrides, workspaceId) ? parsed.workspaceOverrides[workspaceId]! : {}
   const sources = {} as Record<PolicyField, PolicySource>
-  const choose = (group: keyof WorkspacePolicyPatch, key: string, initial: boolean | number | null): boolean | number | null => {
+  const choose = (group: keyof WorkspacePolicyPatch, key: string, initial: boolean | number | DecisionInteractionMode | null): boolean | number | DecisionInteractionMode | null => {
     const workspace = override[group] as Record<string, unknown> | undefined
     const global = parsed.defaults[group] as Record<string, unknown> | undefined
     const field = (group + '.' + key) as PolicyField
-    if (workspace && Object.hasOwn(workspace, key)) { sources[field] = 'workspace'; return workspace[key] as boolean | number }
-    if (global && Object.hasOwn(global, key)) { sources[field] = 'global'; return global[key] as boolean | number }
+    if (workspace && Object.hasOwn(workspace, key)) { sources[field] = 'workspace'; return workspace[key] as boolean | number | DecisionInteractionMode }
+    if (global && Object.hasOwn(global, key)) { sources[field] = 'global'; return global[key] as boolean | number | DecisionInteractionMode }
     sources[field] = 'safe-initial'
     return initial
   }
@@ -137,6 +149,7 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
     ticketWindowSize: choose('windows', 'ticketWindowSize', null) as number | null,
     runningSubagentLimit: choose('windows', 'runningSubagentLimit', null) as number | null,
   }
+  const pendingDecisions = { interactionMode: choose('pendingDecisions', 'interactionMode', 'native-question') as DecisionInteractionMode }
   const workspaceEnabled = choose('workspace', 'enabled', false) as boolean
   const skillsEnabled = choose('skills', 'enabled', true) as boolean
   const features = {} as Record<FeatureName, EffectivePolicy['features'][FeatureName]>
@@ -150,5 +163,5 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
   }
   const display = Object.fromEntries(DISPLAY_NAMES.map(key => [key, choose('display', key, DISPLAY_INITIAL[key])])) as Required<DisplayPatch>
   return freeze({ configurationRevision: parsed.revision, controlWorkspaceId: workspaceId, workspaceVerified,
-    extensionEnabled: parsed.extensionEnabled, workspaceEnabled, skillsEnabled, features, windows, display, sources })
+    extensionEnabled: parsed.extensionEnabled, workspaceEnabled, skillsEnabled, features, windows, pendingDecisions, display, sources })
 }

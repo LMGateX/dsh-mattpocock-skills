@@ -107,7 +107,8 @@ function provenance(row: { readonly provenance: InstrumentCurrentProvenance } | 
   return last ? { author: last.author, references: last.references, ...(last.recordedAt === undefined ? {} : { recordedAt: last.recordedAt }) } : null
 }
 // Mechanical representation budgets (UTF-16 characters), never business/capacity limits.
-const CATEGORY_TEXT_BUDGET = 2000
+// Reserve space for the shared decision protocol within the existing overall text bound.
+const CATEGORY_TEXT_BUDGET = 1850
 const FIELD_TEXT_BUDGET = 384
 interface QueryLocator { readonly [key: string]: unknown }
 // Only these categories are actually captured as history rows; other briefed fields must not
@@ -191,7 +192,8 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
   return {
     sessionId: snapshot.sessionId, instance: snapshot.instance, delegateRegistered: snapshot.delegateRegistered === true,
     policy: brief({ configRevision: snapshot.policy.configurationRevision, extensionEnabled: snapshot.policy.extensionEnabled,
-      workspaceVerified: snapshot.policy.workspaceVerified, features: snapshot.policy.features, windows: snapshot.policy.windows }, { kind: 'configuration' }),
+      workspaceVerified: snapshot.policy.workspaceVerified, features: snapshot.policy.features, windows: snapshot.policy.windows,
+      pendingDecisions: snapshot.policy.pendingDecisions, sources: snapshot.policy.sources }, { kind: 'configuration' }),
     records: records === null ? null : { scope: brief(records.scope, { kind: 'records' }),
       summary: { ...records.summary, statusCounts: category(records.summary.statusCounts, { kind: 'status-summary' }) },
       workflows: category(sorted<InstrumentSnapshot['workflows'][number] | InstrumentCurrentSnapshot['workflows'][number]>(records.workflows, row => row.workflowId).map(row => ({ workflowId: row.workflowId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'workflows' }),
@@ -242,15 +244,39 @@ function nativeOutcomeText(row: NativeStopRow): string {
     : 'ended with ' + row.outcome
   return where + ' — ' + outcome + lane
 }
+/** One common decision protocol; only the presentation/wait fragments differ by preference. */
+function decisionGuidance(snapshot: ConsumptionSnapshot): string {
+  const p = snapshot.policy
+  const mode = p.pendingDecisions.interactionMode
+  const active = p.extensionEnabled && p.workspaceEnabled !== false && p.features.pendingDecisions.status === 'configured'
+  if (!active) return 'Decision interaction preference: ' + mode + ' (inactive). Management or pending-decisions is not configured: do not initiate new decision registration or follow an earlier interaction-mode protocol. Preserve existing records, unresolved obligations and necessary closeout; this does not authorize enabling the feature.'
+  const child = snapshot.sessionId !== snapshot.instance.ownerSessionId
+  const channel = mode === 'async-decision'
+    ? 'prefer presenting it through the decision instrument for the user to answer through DSH native session messages'
+    : child ? 'hand the user question back to the main agent under host restrictions; do not call a user-question tool forbidden to an owned child'
+    : 'prefer an available native user-question tool'
+  const waiting = mode === 'async-decision'
+    ? 'do not wait in place: continue work that does not depend on that decision, without calling a blocking question tool to wait for the reply'
+    : child ? 'let the main agent receive the answer through its permitted native question flow'
+    : 'receive the answer through the native question flow'
+  return 'Decision interaction preference: ' + mode + ' (active). When a user decision is needed, follow the existing decision agreements and register or update the corresponding decision; '
+    + channel + '; ' + waiting + '. '
+    + 'An unanswered, skipped or dismissed question is not permission; do not decide for the user. Block only actions that actually depend on the decision. If no independent work remains, end the current turn normally while keeping the unresolved matter explicit; do not claim overall completion. '
+    + 'If native questioning is unavailable or cancelled, do not retry in a loop: retain the unresolved decision and explain the fallback. Owned children hand user questions back to the main agent under host restrictions. '
+    + 'Interpret the reply and explicitly update the original decision; chat text is not an automatic ledger update. Never claim registration after a failed write or silently enable a feature. '
+    + 'This preference is guidance, not a hard gate: higher-priority instructions, explicit confirmation waits, host permissions and task agreements still apply.'
+}
+
 function protocol(snapshot: ConsumptionSnapshot): string {
   const p = snapshot.policy
   const lines = ['Instrument state: current effective policy supersedes earlier instrument instructions.',
-    'Business records are author reports, not program execution/S receipts or physical resource proof. Skills, user agreements and task documents govern completion, delivery, pause, cancellation, reopening and questions. Register pending decisions when you judge them necessary.',
+    'Business records are author reports, not program execution/S receipts or physical resource proof. Skills, user agreements and task documents govern completion, delivery, pause, cancellation, reopening and questions.',
     'T and S are this session\'s configured limits; S is the host\'s live run status (descendant Agents currently running; an idle resident child is not running), and countKnown false means S.used is a stated lower bound with the total unknown. S.depth structures that count by edge distance from this session: direct (distance 1), deeper (distance 2 and below) and unknown when the live parent chain cannot be measured — the three always sum to S.used — with S.depth.levels holding the exact count per distance and S.depth null when the source cannot measure depth at all. The host pools one active-child capacity per continuable lineage, so a grandchild consumes the same capacity as a direct child and every depth belongs in S. Limits, registered usage and program-fact coverage are reported below; null means unknown, never zero. Native host permissions still apply.',
     'mattpocock_record records business progress and decisions; execution facts come from native subagent lifecycle observation, never from model reports. Capability/health facts below state actual coverage. Display preferences do not erase obligations.',
     'Worktree relationships record the actual child/worktree binding and your authored use and cleanup reports; worktreeObservations record every native create_worktree this instrument observed, with its creator, the creator\'s live activity and the verified Git identity. They never claim who uses a directory. A worktree observation lane is inferred from assignment/binding at read time; cleaned/notes are authored, and created-tree only proves that child created the tree. A tree you detached but did not clean up still needs a disposition.']
   // Management ON adds action guidance. Management OFF keeps existing records, obligations and source
   // limits visible, but does not command new managed trees, bindings or reservations.
+  lines.push(decisionGuidance(snapshot))
   const managementOn = p.extensionEnabled && p.workspaceEnabled !== false
   if (managementOn) {
     lines.push('Only prepare a tree with the host\'s create_worktree when the task requires write isolation; read-only research/review may share a stable checkout. Use the host\'s working_directory to enter or leave a directory; this instrument does not create or delete trees. Ordinary lanes use native subagent({cwd}) + mattpocock_assign, and a native tree observation never becomes a strong binding. Mark an observed tree cleaned with mattpocock_worktree update-observation only when you decided it needs no further attention.')

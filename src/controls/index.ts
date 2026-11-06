@@ -8,7 +8,7 @@ import { boolean, ControlsError, freeze, id, increment, invalid, memoized, recor
 
 export { INITIAL_POLICY, parsePolicyIntent, parsePolicySnapshot, resolvePolicy } from './policy.js'
 export type { PolicyIntent, PolicySnapshot, WorkspacePolicyPatch, EffectivePolicy, PolicySource,
-  PolicyField, FeatureName, FeaturePatch, WindowPatch, DisplayPatch } from './policy.js'
+  PolicyField, FeatureName, FeaturePatch, PendingDecisionsPatch, DecisionInteractionMode, WindowPatch, DisplayPatch } from './policy.js'
 export { INITIAL_DOCUMENT, parseControlsDocument } from './state.js'
 export type { ControlsDocument, InstrumentInstance, SessionAssociation } from './state.js'
 export { MemoryControlsStorage, createDomainControlsStorage } from './storage.js'

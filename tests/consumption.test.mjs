@@ -31,7 +31,7 @@ function snapshot() {
     sessionId: identity.sessionId, instance: { ...instance },
     policy: { configurationRevision: 1, controlWorkspaceId: 'workspace', workspaceVerified: true, extensionEnabled: true,
       features: Object.fromEntries(['binding', 'lifecycle', 'windows', 'ticketProgress', 'pendingDecisions'].map(key => [key, { requested: true, status: 'configured', reason: null }])),
-      windows: { ticketWindowSize: 2, runningSubagentLimit: 2 },
+      windows: { ticketWindowSize: 2, runningSubagentLimit: 2 }, pendingDecisions: { interactionMode: 'native-question' },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: true, timeline: true }, sources: {} },
     records: { instance: { ...instance }, revision: 1, businessRevision: 1, viewerRevision: 0,
       scope: { kind: 'coordinator' }, focusedWorkflowId: null,
@@ -107,7 +107,7 @@ test('current records and minimal protocol append independently without touching
   assert.equal(messages[1].source.kind, 'host-plugin')
   assert.match(result.text, /author reports, not program execution/)
   assert.match(result.text, /Skills, user agreements and task documents/)
-  assert.match(result.text, /Register pending decisions when you judge them necessary/)
+  assert.match(result.text, /When a user decision is needed, follow the existing decision agreements and register or update the corresponding decision/)
   assert.match(result.text, /mattpocock_record/); assert.match(result.text, /native subagent lifecycle observation/); assert.doesNotMatch(result.text, /mattpocock_execute/); assert.match(result.text, /mattpocock_window/)
   assert.match(result.text, /Only prepare a tree with the host's create_worktree when the task requires write isolation; read-only research\/review may share a stable checkout/)
   assert.match(result.text, /Use the host's working_directory to enter or leave a directory; this instrument does not create or delete trees/)
