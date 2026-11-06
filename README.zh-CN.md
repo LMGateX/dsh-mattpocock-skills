@@ -23,6 +23,10 @@
 
 **升级须知：** 上游 v1.3 把 `CONTEXT.md` 改名为 `GLOSSARY.md`，且**没有旧名回退**；技能在旧名缺失时**不会报错**，只会静默新建一份空的 `GLOSSARY.md`。已有仓库请先读 [MIGRATION.md](MIGRATION.md)。
 
+## 0.14.1 设置页视觉层次
+
+设置页区分标题、字段、来源与辅助说明，优先展示范围与两级总闸；协作功能、参考上限、显示位置分别分组，使用主题语义色与 DSH 原生主保存按钮突出重点，不增加自制 UI 框架。声音、页面、桌面提醒采用响应式分组，并明确标示未保存草稿。保留稀疏继承、CAS、独立保存、通知授权与投递语义。详见[使用指南](<CONTROLS.md>)和[验证摘要](<docs/VERIFICATION.md>)；本轮不为本机安装、不重启服务。
+
 ## 0.13.0 只保留原生 cwd（破坏性变更）
 
 0.13.0 删除 0.2.1-alpha.1 兼容桥与 `startupCwdEnabled` 下次启动请求。包内不再有固定的子代理 provider、旧 SDK 补丁、cwd CLI、`./compatibility`、`./native-subagent` 或 worktree-bridge locale 导出；`cordis.patch.yml` 只插入 Skills provider，不再禁用或替换 stock 原生子代理。

@@ -169,7 +169,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'locale/zh.json',
 ])
 
-const EXPECTED_VERSION = '0.14.0'
+const EXPECTED_VERSION = '0.14.1'
 // DSH 0.2.1-alpha.4 judges a plugin by `engines.dsh` alone and falls back to the dsh
 // peers declared below only when it is absent. The declared range excludes the retired
 // 0.2.1-alpha.1 cwd bridge host and accepts the native activation seam, measured with the
