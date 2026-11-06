@@ -342,7 +342,7 @@ function historyPage(rows, extra = {}) {
 function decisionRecord(workflowId, decisionId, value = {}) {
   return { workflowId, decisionId, revision: 2, value: { question: '事项-' + decisionId, status: '任务状态', ...value }, history: [] }
 }
-function button(tree, label) { return treeRows(tree).find(row => row.type === 'button' && row.props.children.includes(label)) }
+function button(tree, label) { return treeRows(tree).find(row => (row.type === 'button' || row.type === primitives.Button) && row.props.children.includes(label)) }
 function hookFixture() {
   const state = []
   const effects = []
@@ -460,10 +460,10 @@ test('settings selects and inspects a cached Session on-page without sidebar/mod
   assert.match(JSON.stringify(projectedB), /所选会话 B/)
   assert(!JSON.stringify(projectedB).includes('所选会话 A'))
   assert.deepEqual(reads, ['A', 'B']); assert.equal(fixture.opens.length, 0)
-  const rootToggle = treeRows(tree).find(row => row.type === 'input' && row.props.type === 'checkbox')
-  rootToggle.props.onChange({ target: { checked: false } })
+  const rootToggle = treeRows(tree).find(row => row.type === primitives.Checkbox && row.props.label === '协作管理总闸（全局）')
+  rootToggle.props.onChange(false)
   tree = page.render(client.SettingsPage, props)
-  treeRows(tree).find(row => row.type === 'button' && row.props.children.includes('保存并关闭协作管理')).props.onClick()
+  button(tree, '保存并关闭协作管理').props.onClick()
   await settle()
   assert.equal(savedArgs[1], 4, 'inspecting revision 99 does not upgrade the policy draft fence')
   inspectingB.unmount(); page.unmount(); for (const effect of fixture.effects.reverse()) effect?.()
@@ -765,8 +765,8 @@ test('mounted detail editors retain Session-qualified identities and reject an u
   assert.equal(other.props.open, undefined, 'the other queue is collapsed by default')
   assert.match(JSON.stringify(other), /其他裁决记录（含 agent 内部，不是待你裁决）/)
   assert.match(JSON.stringify(other), /沿任务约定裁决/)
-  const editor = treeRows(other).find(row => row.type?.name === 'DecisionEditor')
-  assert.equal(editor.props.key, 'A:wf:choice', 'same business IDs across Sessions cannot reuse a pending old editor')
+  const entry = treeRows(other).find(row => row.props?.['data-decision-key'])
+  assert.equal(entry.props['data-decision-key'], 'A:wf:choice', 'queue entrances retain Session-qualified business identities')
   const delegation = treeRows(tree).find(row => row.type?.name === 'PolicyDelegation')
   assert.equal(delegation.props.key, 'A:policy-grants')
   const roleKeys = treeRows(tree).filter(row => ['WorktreeBindingsPanel', 'HistoryPanel', 'PolicyDelegation'].includes(row.type?.name)).map(row => row.props.key)
@@ -798,40 +798,41 @@ test('sidebar decision projections keep pending-user, awaiting and collapsed oth
   const injected = registration.options.inject('A'); const release = injected.observer.retain(); t.after(release); await settle()
   const props = { sessionId: 'A', useTabInfo: () => ({ tab: { visible: true } }), ...injected }
   const section = (tree, label) => treeRows(tree).find(row => row.type === 'section' && row.props?.['aria-label'] === label)
-  const editors = node => treeRows(node).filter(row => row.type?.name === 'DecisionEditor')
+  const entries = node => treeRows(node).filter(row => row.props?.['data-decision-key'])
   // Rendered element text; editor props still carry the whole authorized ledger, so rows are
   // asserted through each editor's own decision body rather than a serialized subtree.
   const text = node => typeof node === 'string' || typeof node === 'number' ? String(node)
     : Array.isArray(node) ? node.map(text).join(' ')
     : node === null || typeof node !== 'object' ? ''
     : text(node.props?.children)
-  const rowText = node => text(node) + ' ' + editors(node).map(row => JSON.stringify(row.props.decision)).join(' ')
+  const rowText = node => text(node)
   const tree = client.Details(props)
   const pending = section(tree, '待你裁决'), awaiting = section(tree, '待落实')
   const other = treeRows(tree).find(row => row.type === 'details' && row.props?.['aria-label'] === '其他裁决记录')
   assert(pending && awaiting && other, 'all three decision projections are mounted')
   assert.match(text(pending), /待你裁决 2/)
-  assert.deepEqual(editors(pending).map(row => row.props.key), ['A:wf:pending-user', 'A:wf:both'])
+  assert.deepEqual(entries(pending).map(row => row.props['data-decision-key']), ['A:wf:pending-user', 'A:wf:both'])
   for (const leak of ['agent内部-事项', '缺省addressee-事项', '已结束-user事项', '已结束-agent事项', '仅待落实-agent事项', '未指定-事项', '重复-事项']) {
     assert(!rowText(pending).includes(leak), '待你裁决 leaked ' + leak)
   }
   assert.match(text(awaiting), /待落实 2/)
   assert.match(text(awaiting), /不区分裁决者/)
-  assert.deepEqual(editors(awaiting).map(row => row.props.key), ['A:wf:both', 'A:wf:awaiting-only'])
+  assert.deepEqual(entries(awaiting).map(row => row.props['data-decision-key']), ['A:wf:both', 'A:wf:awaiting-only'])
   assert.match(text(awaiting), /裁决者：agent · agent:worker/)
   assert.match(text(awaiting), /裁决者：user · 你/)
   assert(!rowText(awaiting).includes('agent内部-事项'))
   assert(!rowText(awaiting).includes('已结束-user事项'))
   assert.equal(other.props.open, undefined, 'other records are collapsed by native details')
   assert.match(text(other), /其他裁决记录（含 agent 内部，不是待你裁决）/)
-  assert.deepEqual(editors(other).map(row => row.props.key), ['A:wf:pending-agent', 'A:wf:pending-none', 'A:wf:resolved-user', 'A:wf:resolved-agent', 'A:wf:unspecified'])
-  for (const key of ['A:wf:pending-user', 'A:wf:both', 'A:wf:awaiting-only']) assert(!editors(other).some(row => row.props.key === key))
+  assert.deepEqual(entries(other).map(row => row.props['data-decision-key']), ['A:wf:pending-agent', 'A:wf:pending-none', 'A:wf:resolved-user', 'A:wf:resolved-agent', 'A:wf:unspecified'])
+  for (const key of ['A:wf:pending-user', 'A:wf:both', 'A:wf:awaiting-only']) assert(!entries(other).some(row => row.props['data-decision-key'] === key))
   assert(!rowText(other).includes('重复-事项'), 'duplicate workflowId+decisionId rows render once')
   assert.match(text(other), /裁决者：缺省（未指定）/)
   const mounted = hookFixture(); t.after(() => mounted.unmount())
-  const editor = editors(other).find(row => row.props.key === 'A:wf:pending-agent')
-  const form = mounted.render(editor.type, editor.props); mounted.mountEffects()
-  assert(button(form, '按明确选择记录裁决'), 'collapsed other records still preserve the explicit editor')
+  let selected = mounted.render(client.Details, props); mounted.mountEffects()
+  button(selected, '阅读 / 编辑：agent内部-事项').props.onClick()
+  selected = mounted.render(client.Details, props)
+  assert(treeRows(selected).some(row => row.type?.name === 'DecisionEditor'), 'collapsed other records retain an explicit stable editor entrance')
   const nextInstance = { ...instance, instrumentInstanceId: 'i-two' }
   const nextRecords = { instance: nextInstance, businessRevision: 10, workflows: [], tickets: [],
     decisions: [decisionRecord('wf', 'fresh-user', { question: '刷新后-新事项', pending: true, addressee: { kind: 'user' } })],

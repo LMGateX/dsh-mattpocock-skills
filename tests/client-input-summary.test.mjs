@@ -277,14 +277,16 @@ test('pending is strictly user-addressed, awaiting independent, and inline decis
   assert.match(visibleText(pending), /事项-both|事项-user-only/, 'first screen is readable, not raw JSON')
   for (const expected of ['事项-both', '事项-user-only', 'decision-flow', 'linked-ticket', '任务自定状态', '背景事实', '选项甲', '建议甲', '影响说明', '已有结果不清旗标']) assert(pending.textContent.includes(expected), expected)
   assert.doesNotMatch(pending.textContent, /事项-agent-pending|事项-unspecified|事项-no-addressee|事项-await-only|事项-status-is-not-flag/)
-  assert.equal(pending.querySelectorAll('input,textarea,select,button').length, 0, 'no editor, save, mark-read or hidden writes')
+  assert.equal(pending.querySelectorAll('input,textarea,select').length, 0, 'no editor, save, mark-read or hidden writes')
+  assert.deepEqual([...pending.querySelectorAll('button')].map(row => row.textContent), ['关闭详情'])
   for (const details of pending.querySelectorAll('details')) await React.act(async () => { details.open = true; details.dispatchEvent(new details.ownerDocument.defaultView.Event('toggle')) })
   await click(entry(container, 'awaiting'))
   const awaiting = region(container, 'awaiting')
   assert.match(awaiting.textContent, /事项-both/)
   assert.match(awaiting.textContent, /事项-await-only/)
   assert.doesNotMatch(awaiting.textContent, /事项-user-only|事项-agent-pending|事项-status-is-not-flag/)
-  assert.equal(awaiting.querySelectorAll('input,textarea,select,button').length, 0)
+  assert.equal(awaiting.querySelectorAll('input,textarea,select').length, 0)
+  assert.deepEqual([...awaiting.querySelectorAll('button')].map(row => row.textContent), ['关闭详情'])
 })
 
 test('T uses only held leases, keeps unmatched identity and instance total while assigned details remain a subset', async t => {
@@ -364,6 +366,39 @@ test('equal observed and host S counts still never certify a complete roster', a
   assert.doesNotMatch(region(container, 'S').textContent, /明细完整|完整名册|全部在跑/)
 })
 
+test('opened decisions coexist with native composer focus, copying and resolution without following new items', async t => {
+  const view = snapshot(); view.records.decisions = [decision('reading', { pending: true, addressee: { kind: 'user' }, context: '可复制背景' })]
+  const f = await mount(t, view)
+  await click(entry(f.container, 'pending'))
+  const detail = region(f.container, 'pending'); detail.scrollTop = 17
+  const nativeInput = f.window.document.createElement('input'); f.window.document.body.append(nativeInput)
+  nativeInput.focus(); nativeInput.value = '原生输入'
+  nativeInput.dispatchEvent(new f.window.Event('input', { bubbles: true }))
+  assert.equal(region(f.container, 'pending'), detail)
+  const composer = f.window.document.createElement('textarea'); f.window.document.body.append(composer)
+  composer.focus(); composer.value = '原生消息答复'
+  composer.dispatchEvent(new f.window.Event('input', { bubbles: true }))
+  const range = f.window.document.createRange(); range.selectNodeContents(detail.querySelector('h4'))
+  f.window.document.getSelection().addRange(range)
+  detail.dispatchEvent(new f.window.Event('copy', { bubbles: true }))
+  const next = structuredClone(view); next.records.businessRevision++
+  next.records.summary.pendingUserDecisionCount = 1
+  next.records.decisions[0].value.pending = false; next.records.decisions[0].value.status = '已解决'
+  next.records.decisions.push(decision('new-arrival', { pending: true, addressee: { kind: 'user' } }))
+  await f.refresh(next)
+  assert.equal(region(f.container, 'pending'), detail)
+  assert.equal(f.window.document.activeElement, composer)
+  assert.equal(detail.scrollTop, 17)
+  assert.match(detail.textContent, /事项-reading/)
+  assert.match(detail.textContent, /已更新|已解决/)
+  assert.doesNotMatch(detail.textContent, /事项-new-arrival/)
+  next.records.summary.pendingUserDecisionCount = 0; next.records.decisions[1].value.pending = false
+  await f.refresh(next)
+  assert.equal(region(f.container, 'pending'), detail, 'zero pending never dismisses deliberate reading')
+  await click(named(detail, '关闭详情'))
+  assertClosed(f.container)
+})
+
 test('same-instance refresh preserves selected category and focused entry without auto-opening anything', async t => {
   const view = snapshot(); view.records.decisions = [decision('before', { pending: true, addressee: { kind: 'user' } })]
   const f = await mount(t, view)
@@ -375,15 +410,15 @@ test('same-instance refresh preserves selected category and focused entry withou
   await f.refresh(next)
   assert.equal(f.window.document.activeElement, focused)
   assert.equal(focused, entry(f.container, 'pending'))
-  assert.match(region(f.container, 'pending').textContent, /事项-after/)
-  assert.doesNotMatch(region(f.container, 'pending').textContent, /事项-before/)
+  assert.doesNotMatch(region(f.container, 'pending').textContent, /事项-after|事项-before/, 'a removed identity is neither retained without authorization nor replaced with a new item')
+  assert.match(region(f.container, 'pending').textContent, /未返回/)
   assert.equal(entry(f.container, 'pending').getAttribute('aria-expanded'), 'true')
   await click(entry(f.container, 'pending'))
   await f.refresh(view)
   assertClosed(f.container)
 })
 
-for (const change of ['session', 'instance', 'unreadable', 'display-off', 'zero', 'records-unknown', 'windows-unknown']) {
+for (const change of ['session', 'instance', 'caller', 'scope', 'unreadable', 'display-off', 'records-unknown', 'windows-unknown']) {
   test('local selection is immediately fenced and never restored after ' + change, async t => {
     const view = snapshot(); view.records.decisions = [decision('old-private-body', { pending: true, addressee: { kind: 'user' } })]
     const f = await mount(t, view)
@@ -394,7 +429,8 @@ for (const change of ['session', 'instance', 'unreadable', 'display-off', 'zero'
     if (change === 'instance') { next.instance.instrumentInstanceId = 'other-instance'; next.records.decisions = []; await f.refresh(next) }
     if (change === 'unreadable') await f.unreadable()
     if (change === 'display-off') { next.policy.display.inputSummary = false; await f.refresh(next) }
-    if (change === 'zero') { next.records.summary.pendingUserDecisionCount = 0; await f.refresh(next) }
+    if (change === 'caller') { next.caller.principalId = 'different-user'; next.records.decisions = []; await f.refresh(next) }
+    if (change === 'scope') { next.records.scope = { kind: 'assigned', workflowId: 'restricted', ticketIds: [] }; next.records.decisions = []; await f.refresh(next) }
     if (change === 'records-unknown') { next.records = null; next.health.push({ scope: 'records', status: 'unknown', reason: 'revoked' }); await f.refresh(next) }
     if (change === 'windows-unknown') { next.windows = null; next.health.push({ scope: 'windows', status: 'unknown', reason: 'unavailable' }); await f.refresh(next) }
     assertClosed(f.container)

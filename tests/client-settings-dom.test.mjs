@@ -89,6 +89,54 @@ test('DOM saves management policy under revision forty-two and preserves the sav
   assert.equal(f.calls.policy[1].intent.extensionEnabled, false)
 })
 
+test('sidebar deliberate reading keeps the same editor, draft CAS and focus when an item changes category', async t => {
+  const instance = { instrumentInstanceId: 'reading-instance', ownerSessionId: 'reading-owner', controlWorkspaceId: 'work-one' }
+  let view = { sessionId: 'reading-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true,
+      features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
+    records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, workflows: [], tickets: [], decisions: [{ workflowId: 'wf', decisionId: 'd', revision: 1, history: [], value: { question: '保持阅读的事项', status: '待确认', pending: true, addressee: { kind: 'user' } } }], summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingUserDecisionCount: 1, awaitingImplementationCount: 0 } }, windows: null, resources: [], capabilities: [], health: [] }
+  const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (...args) => { calls.push(args); return ok({}) } }
+  const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
+  const props = { sessionId: view.sessionId, observer, remote, useTabInfo: () => ({ tab: { visible: true } }) }
+  const { container, window, root } = await mount(t, client.Details, props)
+  await click(button(container, '阅读 / 编辑：保持阅读的事项'))
+  const reading = named(container, '裁决阅读与编辑'), textarea = reading.querySelector('textarea')
+  await React.act(async () => { Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, '还没发送的草稿'); textarea.dispatchEvent(new window.Event('input', { bubbles: true })) })
+  textarea.focus()
+  view = copy(view); view.records.businessRevision = 8; view.records.decisions[0].value.pending = false; view.records.decisions[0].value.awaitingImplementation = true
+  view.records.summary.pendingUserDecisionCount = 0; view.records.summary.awaitingImplementationCount = 1
+  await React.act(async () => observer.refresh())
+  assert.equal(named(container, '裁决阅读与编辑').querySelector('textarea'), textarea)
+  assert.equal(textarea.value, '还没发送的草稿')
+  assert.equal(window.document.activeElement, textarea)
+  assert.match(reading.textContent, /草稿业务修订 7/)
+  assert.match(reading.textContent, /已更新|待落实/)
+  assert.doesNotMatch(named(container, '待你裁决').textContent, /保持阅读的事项/)
+  await click(button(reading, '按明确选择记录裁决'))
+  assert.equal(calls[0][1].expectedRevision, 7, 'background update never upgrades the editor draft CAS')
+  await click(button(reading, '关闭阅读'))
+  assert.equal(container.querySelector('[aria-label="裁决阅读与编辑"]'), null)
+  const authorized = copy(view)
+  for (const change of ['instance', 'caller', 'scope', 'display', 'revoked', 'unknown', 'session']) {
+    await click(button(container, '阅读 / 编辑：保持阅读的事项'))
+    assert(named(container, '裁决阅读与编辑').querySelector('textarea'))
+    view = copy(authorized)
+    if (change === 'instance') view.instance.instrumentInstanceId = 'new-reading-instance'
+    if (change === 'caller') view.caller.principalId = 'other-principal'
+    if (change === 'scope') view.records.scope = { kind: 'assigned', workflowId: 'other', ticketIds: [] }
+    if (change === 'display') view.policy.display.rightPanel = false
+    if (change === 'revoked') { view.records = null; view.health = [{ scope: 'records', status: 'restricted', reason: 'revoked' }] }
+    if (change === 'unknown') view = null
+    if (change === 'session') await React.act(async () => root.render(React.createElement(client.Details, { ...props, sessionId: 'unrelated' })))
+    else await React.act(async () => observer.refresh())
+    assert.equal(container.querySelector('[aria-label="裁决阅读与编辑"]'), null, change + ' clears the reader synchronously')
+    assert.equal(container.querySelector('textarea'), null, change + ' clears all editor drafts')
+    view = copy(authorized)
+    await React.act(async () => { await observer.refresh(); root.render(React.createElement(client.Details, props)) })
+    assert.equal(container.querySelector('[aria-label="裁决阅读与编辑"]'), null, change + ' recovery never resurrects selection or draft')
+  }
+})
+
 test('DOM saves supervision route and switch under its own revision, leaving policy untouched', async t => {
   const f = fixture(), { container, window } = await mount(t, client.SettingsPage, f.props)
   await React.act(async () => {})
@@ -108,6 +156,50 @@ test('DOM saves supervision route and switch under its own revision, leaving pol
   assert.equal(f.calls.supervision[0].revision, 0)
   assert.deepEqual(f.calls.supervision[0].intent, { defaults: { enabled: true, reviewer: { routeMode: 'explicit', provider: 'fixture-provider', model: 'fixture-model' } }, workspaceOverrides: {} })
   assert.equal(f.calls.policy.length, 0)
+})
+
+test('supervision route supports unset, explicit main-route inheritance, and explicit provider override independently', async t => {
+  const original = { schemaVersion: 1, revision: 9, defaults: { reviewer: { routeMode: 'explicit', provider: 'global-provider', model: 'global-model' } }, workspaceOverrides: {} }
+  const f = fixture({ readSupervisionConfig: async () => ok(copy(original)) })
+  const { container } = await mount(t, client.SupervisionSettingsPanel, { remote: f.remote, workspace: 'work-one' })
+  const route = named(container, '模型路由')
+  assert.equal(route.value, '__unset__')
+  assert.match(route.closest('label').textContent, /有效值：显式/)
+  await select(route, 'inherit')
+  assert.equal(route.value, 'inherit', 'wire inherit is a real override, not delete')
+  assert.match(route.closest('label').textContent, /有效值：继承主路由/)
+  await click(button(container, '保存监督配置'))
+  assert.deepEqual(f.calls.supervision.at(-1).intent.workspaceOverrides, { 'work-one': { reviewer: { routeMode: 'inherit' } } })
+  await select(route, 'explicit'); await click(button(container, '保存监督配置'))
+  assert.deepEqual(f.calls.supervision.at(-1).intent.workspaceOverrides, { 'work-one': { reviewer: { routeMode: 'explicit' } } })
+  await select(route, '__unset__'); await click(button(container, '保存监督配置'))
+  assert.deepEqual(f.calls.supervision.at(-1).intent.workspaceOverrides, {})
+  assert.equal(f.calls.policy.length, 0)
+})
+
+test('decision interaction enum preserves sparse inheritance, scope drafts, sources, and original save revision', async t => {
+  const policy = { revision: 42, extensionEnabled: true, defaults: { workspace: { enabled: true }, pendingDecisions: { enabled: true, interactionMode: 'async-decision' } }, workspaceOverrides: {} }
+  const f = fixture({ readPolicy: async () => ok(copy(policy)) })
+  const { container } = await mount(t, client.SettingsPage, f.props)
+  const mode = () => named(container, '裁决交互偏好')
+  assert.equal(mode().value, '__unset__')
+  assert.match(mode().closest('label').textContent, /草稿有效值：异步裁决优先.*来源：全局默认/)
+  await select(mode(), 'native-question')
+  assert.match(mode().closest('label').textContent, /来源：工作区覆盖/)
+  await select(named(container, '配置编辑范围'), '')
+  assert.equal(mode().value, 'async-decision')
+  await select(mode(), 'native-question')
+  await select(named(container, '配置编辑范围'), 'work-one')
+  assert.equal(mode().value, 'native-question', 'scope change retains unsaved workspace draft')
+  await click(button(container, '保存并应用配置'))
+  assert.equal(f.calls.policy[0].revision, 42)
+  assert.deepEqual(f.calls.policy[0].intent.workspaceOverrides, { 'work-one': { pendingDecisions: { interactionMode: 'native-question' } } })
+  assert.equal(f.calls.policy[0].intent.defaults.pendingDecisions.interactionMode, 'native-question')
+  await select(mode(), '__unset__')
+  await click(button(container, '保存并应用配置'))
+  assert.equal(f.calls.policy[1].revision, 43)
+  assert.deepEqual(f.calls.policy[1].intent.workspaceOverrides, {})
+  assert.equal(f.calls.supervision.length, 0)
 })
 
 test('Chinese field controls preserve raw wire names, explicit false and sparse inheritance', async t => {
@@ -325,6 +417,21 @@ test('input summary shows a ticketless workflow compactly and never hides rows w
   assert.match(text, /old-flow/)
   assert.match(text, /active-flow/)
   assert.doesNotMatch(text, /其余 \d+ 个工作流|查看详情/)
+})
+
+test('settings use native primitives with reachable collapsed advanced sections and truthful runtime wording', async t => {
+  const f = fixture(), { container } = await mount(t, client.SettingsPage, f.props)
+  const advanced = named(container, '进阶交付监督'), inspection = named(container, '会话状态查看')
+  assert.equal(advanced.tagName, 'DETAILS'); assert.equal(advanced.open, false)
+  assert.equal(inspection.tagName, 'DETAILS'); assert.equal(inspection.open, false)
+  for (const node of [advanced, inspection]) { assert.equal(node.querySelector('summary').tabIndex, 0); await click(node.querySelector('summary')) }
+  assert.equal(advanced.open, true); assert.equal(inspection.open, true)
+  assert(container.querySelector('[data-native-primitive="Checkbox"]'))
+  assert(container.querySelector('[data-native-primitive="Input"]'))
+  assert(container.querySelector('[data-native-primitive="Button"]'))
+  assert.doesNotMatch(container.textContent, /运行时尚需后续阶段接入|本阶段只保存配置|不启动审计、不注册工具、不产生模型调用/)
+  assert.match(container.textContent, /保存不代表.*模型|不保证.*模型/)
+  assert.equal(named(container, '协作管理总闸（全局）').closest('label').style.background, '')
 })
 
 test('settings DOM separates Chinese configuration groups and collapsed technical diagnostics', async t => {

@@ -2,7 +2,7 @@ import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore 
 import type { ReactElement, ChangeEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { Button, CodeBlock, DisclosureRow, IconSparkleRegular, JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Checkbox, Input, CodeBlock, DisclosureRow, IconSparkleRegular, JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -353,8 +353,9 @@ export class SummaryScheduler {
   }
 }
 
+type PolicyLeafValue = boolean | number | EffectivePolicy['pendingDecisions']['interactionMode'] | undefined
 /** Changes a draft only. undefined deletes a leaf and restores inheritance. */
-export function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField, value: boolean | number | undefined): PolicyIntent {
+export function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField, value: PolicyLeafValue): PolicyIntent {
   const [group, key] = field.split('.')
   if (group === undefined || key === undefined) throw new Error('Invalid policy field')
   const current = workspaceId === null ? intent.defaults : intent.workspaceOverrides[workspaceId] ?? {}
@@ -366,12 +367,12 @@ export function setPolicyLeaf(intent: PolicyIntent, workspaceId: string | null, 
   if (workspaceId !== null) { if (Object.keys(patch).length) Object.defineProperty(overrides, workspaceId, { value: patch, enumerable: true, configurable: true }); else delete overrides[workspaceId] }
   return parsePolicyIntent({ extensionEnabled: intent.extensionEnabled, defaults: workspaceId === null ? patch : intent.defaults, workspaceOverrides: overrides })
 }
-function ownLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField): boolean | number | undefined {
+function ownLeaf(intent: PolicyIntent, workspaceId: string | null, field: PolicyField): PolicyLeafValue {
   const [group, key] = field.split('.')
   const patch = workspaceId === null ? intent.defaults : intent.workspaceOverrides[workspaceId] ?? {}
   if (group === undefined || key === undefined) return undefined
   const row = object(patch)[group]
-  return row === undefined ? undefined : object(row)[key] as boolean | number | undefined
+  return row === undefined ? undefined : object(row)[key] as PolicyLeafValue
 }
 export async function savePolicyDraft(remote: Pick<ControlsRemote, 'savePolicy'>, draft: PolicyIntent, expectedRevision: number): Promise<PolicySnapshot> {
   return parsePolicySnapshot(remoteValue(await remote.savePolicy(parsePolicyIntent(draft), expectedRevision)))
@@ -386,6 +387,7 @@ export function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIntent, wo
   add('extensionEnabled', old.extensionEnabled, next.extensionEnabled)
   for (const feature of FEATURE_NAMES) add(feature + '.enabled', { value: old.features[feature], source: old.sources[(feature + '.enabled') as PolicyField] }, { value: next.features[feature], source: next.sources[(feature + '.enabled') as PolicyField] })
   for (const key of ['ticketWindowSize', 'runningSubagentLimit'] as const) add('windows.' + key, { value: old.windows[key], source: old.sources[('windows.' + key) as PolicyField] }, { value: next.windows[key], source: next.sources[('windows.' + key) as PolicyField] })
+  add('pendingDecisions.interactionMode', { value: old.pendingDecisions.interactionMode, source: old.sources['pendingDecisions.interactionMode'] }, { value: next.pendingDecisions.interactionMode, source: next.sources['pendingDecisions.interactionMode'] })
   for (const key of DISPLAY_NAMES) add('display.' + key, { value: old.display[key], source: old.sources[('display.' + key) as PolicyField] }, { value: next.display[key], source: next.sources[('display.' + key) as PolicyField] })
   return { readRevision: saved.revision, scope: workspaceId ?? 'global-defaults', changes, executionEffects: 'Intent only. Existing obligations/executions remain; inspect the authorized Session snapshot for actual usage/convergence.' }
 }
@@ -654,10 +656,12 @@ function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
         h('p', null, axis.workflowId + ' / ' + axis.label + '（' + axis.counting + '） · 未报告 ' + countText(axis.unreported)),
         axis.statuses.map(status => h('p', { key: status.statusKey }, status.label + ' [' + status.statusKey + '] ' + countText(status.count) + (status.meaning ? ' · ' + status.meaning : '')))))))
 }
-function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting'): ReactElement {
+function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting', openedKeys: readonly string[]): ReactElement {
   const records = inputRecords(view)
   if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：' + (inputReadFailure(view, 'records') ?? '未返回可读事项'))
-  const decisions: readonly DecisionRecord[] = records.decisions.filter((row: DecisionRecord) => category === 'pending' ? isPendingUserDecision(row) : isAwaitingImplementation(row))
+  // Keep the deliberately opened identities, not a live queue that silently switches the reader.
+  // Always obtain content from the current authorized projection; absent rows are never cached.
+  const decisions = openedKeys.flatMap(key => { const row = records.decisions.find(row => decisionRecordKey(row) === key); return row === undefined ? [] : [row] })
   return h('div', null, diagnostic(countingScopeText(records.summary.countingScope) + '；只读查看，不标记已读或解决事项。可在原聊天中回答。'),
     decisions.length === 0 ? diagnostic('本次授权账本未返回此类事项；不从空明细重算摘要计数。') : null,
     decisions.map(decision => {
@@ -665,7 +669,9 @@ function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' |
       const source = decision.history?.find(row => row.revision === decision.revision)
       const fields = [['背景', value.context], ['建议', value.recommendation], ['影响', value.impact], ['结果', value.result]] as const
       return h('article', { key: decision.workflowId + ':' + decision.decisionId },
-        h('h4', null, value.question), h('p', null, '工作流：' + workflowIdentity(records, decision.workflowId) + ' · 事项 ' + decision.decisionId + ' · 状态：' + value.status),
+        h('h4', null, value.question),
+        (category === 'pending' ? !isPendingUserDecision(decision) : !isAwaitingImplementation(decision)) ? diagnostic('已更新 / 已解决：此事项已不在原分类；保留当前授权内容供阅读。') : null,
+        h('p', null, '工作流：' + workflowIdentity(records, decision.workflowId) + ' · 事项 ' + decision.decisionId + ' · 状态：' + value.status),
         value.ticketIds?.length ? h('p', null, '关联票：' + value.ticketIds.map(id => ticketIdentity(records, decision.workflowId, id)).join('；')) : null,
         ...fields.filter(([, text]) => text !== null && text !== undefined).map(([label, text]) => h('p', { key: label, style: { whiteSpace: 'pre-wrap' } }, label + '：' + text)),
         value.options?.length ? h('div', null, h('p', null, '选项'), h('ul', null, value.options.map(option => h('li', { key: option.key }, option.key + '：' + option.label)))) : null,
@@ -696,14 +702,15 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const shown = view !== null && view.policy.display.inputSummary && props.observer.getDisplay()?.inputSummary !== false
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
-  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance.instrumentInstanceId, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
+  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance, view?.caller, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
     view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
-  const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null }>(() => ({ identity, category: null }))
+  const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null; readonly decisionKeys: readonly string[] }>(() => ({ identity, category: null, decisionKeys: [] }))
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
   const records = view === null ? null : inputRecords(view)
   const pending = records?.summary.pendingUserDecisionCount, awaiting = records?.summary.awaitingImplementationCount
-  const selected = selection.identity === identity && shown && !(selection.category === 'pending' && pending === 0) && !(selection.category === 'awaiting' && awaiting === 0) ? selection.category : null
-  if (selection.identity !== identity || selection.category !== selected) setSelection({ identity, category: selected })
+  const selected = selection.identity === identity && shown ? selection.category : null
+  if (selection.identity !== identity) setSelection({ identity, category: null, decisionKeys: [] })
+  const close = (): void => setSelection({ identity, category: null, decisionKeys: [] })
   if (!shown || view === null) return null
   const inactive = view.policy.extensionEnabled === false ? '全局总闸已关闭' : view.policy.workspaceEnabled === false ? '本工作区总闸已关闭' : null
   const workflows = records === null ? [] : inputSummaryWorkflows(records)
@@ -713,7 +720,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const entrance = (category: InputDisclosure, text: string): ReactElement => h('button', {
     key: category, type: 'button', 'aria-label': INPUT_DISCLOSURES[category].entrance, 'aria-expanded': selected === category,
     'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: INPUT_DISCLOSURES[category].color },
-    onClick: () => setSelection({ identity, category: selected === category ? null : category }),
+    onClick: () => selected === category ? close() : setSelection({ identity, category, decisionKeys: (records?.decisions ?? []).filter(row => category === 'pending' ? isPendingUserDecision(row) : category === 'awaiting' && isAwaitingImplementation(row)).map(decisionRecordKey) }),
   }, text)
   const windows = inputWindows(view)
   const windowEntrance = (category: 'T' | 'S'): ReactElement => {
@@ -744,7 +751,8 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       id: regionPrefix, role: 'region', 'aria-label': selected === null ? undefined : INPUT_DISCLOSURES[selected].region,
       hidden: selected === null, style: { width: '100%', minWidth: 0, maxHeight: 'min(320px, 35vh)', overflowY: 'auto', textAlign: 'left' },
     }, selected === null ? null : h('div', null, h('h3', null, INPUT_DISCLOSURES[selected].region),
-      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view) : inputDecisionDetails(view, selected))))
+      h('button', { type: 'button', 'aria-label': '关闭详情', onClick: close }, '关闭详情'),
+      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view) : inputDecisionDetails(view, selected, selection.decisionKeys))))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
@@ -778,6 +786,8 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
     h('h4', null, props.decision.value.question),
     h('p', null, props.decision.workflowId + ' · ' + props.decision.value.status + (props.decision.value.pending ? ' · 未解决' : '') + (props.decision.value.awaitingImplementation ? ' · 已裁决待落实' : '')),
     props.decision.value.context ? h('p', null, props.decision.value.context) : null,
+    props.decision.value.recommendation ? h('p', null, '建议：' + props.decision.value.recommendation) : null,
+    props.decision.value.impact ? h('p', null, '影响：' + props.decision.value.impact) : null,
     props.decision.value.options?.map(option => h('button', { key: option.key, type: 'button', disabled: busy, onClick: () => setAnswer(option.label) }, option.label)),
     props.decision.value.result ? h('p', null, '已记录结果：' + props.decision.value.result) : null,
     h('label', null, '你的裁决', h('textarea', { value: answer, disabled: busy, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setAnswer(event.target.value) })),
@@ -794,11 +804,16 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
 export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & { readonly remote: ControlsRemote }): ReactElement {
   const observation = useObservation(props.observer)
   const tab = props.useTabInfo()
+  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && props.observer.sessionId === props.sessionId ? observation.value : null
+  const readIdentity = JSON.stringify([props.sessionId, props.observer.sessionId, current?.instance, current?.caller, current?.records?.scope,
+    current?.policy.display.rightPanel, current !== null && inputRecords(current) !== null])
+  const [reading, setReading] = useState<{ readonly identity: string; readonly key: string | null }>({ identity: readIdentity, key: null })
+  if (reading.identity !== readIdentity) setReading({ identity: readIdentity, key: null })
   if (props.observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
   if (observation.status === 'unknown') return h('section', { style: panelStyle }, diagnostic('当前状态未知：' + (observation.error ?? '读取中')), h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取'))
   const view = observation.value
   if (!view.policy.display.rightPanel) return h('section', { style: panelStyle }, diagnostic('右侧显示已关闭；账本和模型消费不受影响。'))
-  const records = view.records
+  const records = inputRecords(view)
   const decisions = records === null ? [] : uniqueDecisionRecords(records.decisions)
   const pendingUser = decisions.filter(isPendingUserDecision)
   const awaiting = decisions.filter(isAwaitingImplementation)
@@ -806,11 +821,18 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
   const other = decisions.filter(decision => !isPendingUserDecision(decision) && !isAwaitingImplementation(decision))
   const pendingUserCount = records?.summary.pendingUserDecisionCount
   const awaitingCount = records?.summary.awaitingImplementationCount
-  const decisionEntry = (decision: DecisionRecord, showAddressee: boolean): ReactElement => {
-    const identity = props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId
-    const editor = h(DecisionEditor, { key: identity, decision, records: records!, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh })
-    return showAddressee ? h('div', { key: identity }, h('p', null, '裁决者：' + decisionAddresseeText(decision)), editor) : editor
-  }
+  const selectedDecision = reading.identity === readIdentity ? decisions.find(row => decisionRecordKey(row) === reading.key) : undefined
+  if (reading.identity === readIdentity && reading.key !== null && selectedDecision === undefined) setReading({ identity: readIdentity, key: null })
+  const decisionEntry = (decision: DecisionRecord, showAddressee: boolean): ReactElement => h('article', { key: decisionRecordKey(decision), 'data-decision-key': props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId },
+    h('button', { type: 'button', onClick: () => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) }, '阅读 / 编辑：' + decision.value.question),
+    h('p', null, decision.value.status), showAddressee ? h('p', null, '裁决者：' + decisionAddresseeText(decision)) : null)
+  // The editor is mounted at one stable location, never moved between queue parents.
+  // Current authorized rows supply the body; scope/identity/read failures unmount all draft content.
+  const reader = selectedDecision === undefined || records === null ? null : h('section', { key: 'decision-reader', 'aria-label': '裁决阅读与编辑' },
+    h('h4', null, '裁决阅读与编辑'),
+    h('button', { type: 'button', onClick: () => setReading({ identity: readIdentity, key: null }) }, '关闭阅读'),
+    diagnostic('当前分类：' + (isPendingUserDecision(selectedDecision) ? '待你裁决' : isAwaitingImplementation(selectedDecision) ? '待落实（已更新）' : '其他 / 已解决（已更新）') + '；分类变化不关闭阅读。'),
+    h(DecisionEditor, { key: readIdentity + ':' + decisionRecordKey(selectedDecision), decision: selectedDecision, records, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))
   return h('section', { style: panelStyle, 'aria-label': '协作详情' },
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Session ' + props.sessionId + (tab.tab.visible ? '' : ' · 非前台')),
@@ -834,6 +856,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
         h('summary', null, '其他裁决记录（含 agent 内部，不是待你裁决） · ' + other.length + ' 条'),
         diagnostic('默认折叠；这些记录不是待你裁决，保留显式编辑。'),
         other.length === 0 ? diagnostic('当前没有其他裁决记录。') : other.map(decision => decisionEntry(decision, true)))),
+    reader,
     h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
     h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
     h(WorktreeObservationsPanel, { key: props.sessionId + ':observations', view, remote: props.remote, refresh: props.observer.refresh }),
@@ -1236,9 +1259,8 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
     props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('h4', null, '能力、健康观测与有效策略'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health, policy: view.policy }))
 }
-const settingsCard = { border: '1px solid rgba(127,127,127,.3)', borderRadius: '12px', padding: '20px', minWidth: 0, overflowWrap: 'anywhere' as const }
+const settingsCard = { border: 0, borderTop: '1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.25))', padding: '16px 0', minWidth: 0, overflowWrap: 'anywhere' as const }
 const settingsGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px', minWidth: 0 }
-const TONE = { open: '#15803d', closed: '#b45309' } as const
 const settingsActions = { display: 'flex', flexWrap: 'wrap' as const, gap: '8px', marginTop: '16px' }
 const settingsField = { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '8px', margin: '12px 0', minWidth: 0 }
 const FEATURE_LABELS = { binding: '工作树绑定', lifecycle: '子代理生命周期观测', windows: '任务与子代理参考窗口', ticketProgress: '任务票进度', pendingDecisions: '待裁决事项' } satisfies Record<typeof FEATURE_NAMES[number], string>
@@ -1247,7 +1269,7 @@ const CAPACITY_LABELS = { ticketWindowSize: '任务票参考上限（T）', runn
 const SOURCE_LABELS = { workspace: '工作区覆盖', global: '全局默认', 'safe-initial': '安全初始值' } satisfies Record<EffectivePolicy['sources'][PolicyField], string>
 const POLICY_FIELD_LABELS: Readonly<Record<PolicyField | 'extensionEnabled', string>> = {
   extensionEnabled: '协作管理总闸（全局）', 'workspace.enabled': '本工作区总闸', 'skills.enabled': '本工作区技能分发', 'binding.enabled': FEATURE_LABELS.binding, 'lifecycle.enabled': FEATURE_LABELS.lifecycle,
-  'windows.enabled': FEATURE_LABELS.windows, 'ticketProgress.enabled': FEATURE_LABELS.ticketProgress, 'pendingDecisions.enabled': FEATURE_LABELS.pendingDecisions,
+  'windows.enabled': FEATURE_LABELS.windows, 'ticketProgress.enabled': FEATURE_LABELS.ticketProgress, 'pendingDecisions.enabled': FEATURE_LABELS.pendingDecisions, 'pendingDecisions.interactionMode': '裁决交互偏好',
   'windows.ticketWindowSize': CAPACITY_LABELS.ticketWindowSize, 'windows.runningSubagentLimit': CAPACITY_LABELS.runningSubagentLimit,
   'display.header': DISPLAY_LABELS.header, 'display.inputSummary': DISPLAY_LABELS.inputSummary, 'display.rightPanel': DISPLAY_LABELS.rightPanel,
   'display.sessionList': DISPLAY_LABELS.sessionList, 'display.timeline': DISPLAY_LABELS.timeline,
@@ -1261,6 +1283,8 @@ function policyImpactText(value: unknown): string {
   if (typeof value === 'boolean') return value ? '启用' : '禁用'
   if (value === null) return '未配置'
   if (typeof value === 'number') return String(value)
+  if (value === 'native-question') return '原生提问优先'
+  if (value === 'async-decision') return '异步裁决优先'
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     const row = value as { readonly value: boolean | number | null | EffectivePolicy['features'][typeof FEATURE_NAMES[number]]; readonly source: EffectivePolicy['sources'][PolicyField] }
     const label = row.value !== null && typeof row.value === 'object' ? policyFeatureText(row.value) : policyImpactText(row.value)
@@ -1299,7 +1323,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
   }, [props.remote, reload])
   if (saved === null || draft === null) return h('section', { 'aria-label': '交付监督配置', style: settingsCard },
     h('h3', { style: { marginTop: 0 } }, '交付监督'), diagnostic('读取交付监督配置…'), message === null ? null : diagnostic(message),
-    h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督配置'))
+    h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督配置'))
   const scope = props.workspace === null ? '全局默认' : '本工作区覆盖'
   const inheritLabel = props.workspace === null ? '未设置（安全初始值）' : '继承全局'
   const effective = resolveSupervisionSettings(draft, props.workspace ?? 'global-preview')
@@ -1314,7 +1338,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
     try {
       const snapshot = parseSupervisionConfigSnapshot(remoteValue(await props.remote.saveSupervisionConfig(draft, saved.revision)))
       setSaved(snapshot); setDraft(supervisionIntentOf(snapshot))
-      setMessage('已保存监督配置（修订 ' + snapshot.revision + '）。本阶段只保存配置：不启动审计、不注册工具、不产生模型调用。')
+      setMessage('已保存监督配置（修订 ' + snapshot.revision + '）。运行时将按两级总闸、监督开关、活动与预算条件读取此配置；保存不代表必定启动模型调用。')
     } catch (error) { setMessage('保存结果未确认：' + errorText(error) + '。请重新读取并核对，草稿未作为成功回执。') }
     finally { setBusy(false) }
   }
@@ -1330,7 +1354,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
   const numberField = (field: SupervisionField, label: string, value: number, minimum: number, maximum: number, step = 1): ReactElement => {
     const raw = supervisionNumber(own(field))
     return h('label', { key: field, style: settingsField }, h('span', null, label),
-      h('input', { 'aria-label': label, type: 'number', min: minimum, max: maximum, step, value: raw === undefined ? '' : String(raw), disabled: busy,
+      h(Input, { 'aria-label': label, type: 'number', min: minimum, max: maximum, step, value: raw === undefined ? '' : String(raw), disabled: busy,
         placeholder: inheritLabel + '：' + value, style: { width: '130px', maxWidth: '100%' },
         onChange: (event: ChangeEvent<HTMLInputElement>) => {
           const text = event.target.value
@@ -1343,16 +1367,16 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
   const textField = (field: SupervisionField, label: string, value: string, placeholder = ''): ReactElement => {
     const raw = own(field)
     return h('label', { key: field, style: settingsField }, h('span', null, label),
-      h('input', { 'aria-label': label, type: 'text', value: typeof raw === 'string' ? raw : '', disabled: busy, placeholder: inheritLabel + '：' + (value || placeholder || '空'), style: { width: '100%', maxWidth: '360px' },
+      h(Input, { 'aria-label': label, type: 'text', value: typeof raw === 'string' ? raw : '', disabled: busy, placeholder: inheritLabel + '：' + (value || placeholder || '空'), style: { width: '100%', maxWidth: '360px' },
         onChange: (event: ChangeEvent<HTMLInputElement>) => update(field, event.target.value === '' ? undefined : event.target.value) }),
       h('small', { style: { flexBasis: '100%' } }, '有效值：' + (value || '空')))
   }
   const selectField = (field: SupervisionField, label: string, value: string, options: readonly [string, string][]): ReactElement => {
     const raw = own(field)
     return h('label', { key: field, style: settingsField }, h('span', null, label),
-      h('select', { 'aria-label': label, value: typeof raw === 'string' ? raw : 'inherit', disabled: busy,
-        onChange: (event: ChangeEvent<HTMLSelectElement>) => update(field, event.target.value === 'inherit' ? undefined : event.target.value) },
-        h('option', { value: 'inherit' }, inheritLabel), ...options.map(([option, text]) => h('option', { key: option, value: option }, text))),
+      h('select', { 'aria-label': label, value: typeof raw === 'string' ? raw : '__unset__', disabled: busy,
+        onChange: (event: ChangeEvent<HTMLSelectElement>) => update(field, event.target.value === '__unset__' ? undefined : event.target.value) },
+        h('option', { value: '__unset__' }, inheritLabel), ...options.map(([option, text]) => h('option', { key: option, value: option }, text))),
       h('small', { style: { flexBasis: '100%' } }, '有效值：' + (options.find(([option]) => option === value)?.[1] ?? value)))
   }
   const listField = (field: SupervisionField, label: string, values: readonly string[], hint: string): ReactElement => {
@@ -1370,7 +1394,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
   const softBudget = own('softBudgetHours')
   return h('section', { 'aria-label': '交付监督配置', style: settingsCard },
     h('h3', { style: { marginTop: 0 } }, '交付监督'),
-    h('p', null, '当前编辑范围：' + scope + '。此面板只保存配置，不启动定期/嫌疑审计、不注册审计工具、不产生模型调用；运行时尚需后续阶段接入。交付监督仍受「协作管理总闸」和「本工作区总闸」约束。'),
+    h('p', null, '当前编辑范围：' + scope + '。监督配置由宿主运行时读取；定期/嫌疑审计与 LLM reviewer 受两级总闸、监督开关、活动和预算等条件约束，保存不代表必定启动模型调用。'),
     h('div', { style: settingsGrid },
       h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '开关与模型路由'), h('p', null, '父代理与子代理共用这条轻量 reviewer 路由；周期性审计和嫌疑审计共用。继承主路由时，owner 不活跃即审计不可用（失败关闭），不回退到旧路由。'), boolField('enabled', '请求启用交付监督', effective.enabled),
         selectField('reviewer.routeMode', '模型路由', route, [['inherit', SUPERVISION_ROUTE_LABELS.inherit], ['explicit', SUPERVISION_ROUTE_LABELS.explicit]]),
@@ -1388,7 +1412,7 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
         numberField('scheduledDailyTokenBudget', '每日 token 预算', effective.scheduledDailyTokenBudget, 1000, 1000000, 1000),
         numberField('rollingSummaryHours', '滚动摘要回看（小时）', effective.rollingSummaryHours, 1, 72, 1),
         numberField('scheduledSummaryTopLanes', 'owner 摘要活跃 lane 上限', effective.scheduledSummaryTopLanes, 1, 20, 1)),
-      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '嫌疑与停滞巡检'), h('p', null, '程序信号只决定是否更深地看；研究/评审票将使用票级 off（本阶段未接入票）。'),
+      h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '嫌疑与停滞巡检'), h('p', null, '程序信号只决定是否更深地看；研究/评审票可使用票级 off，定期审计仍按条件运行。'),
         selectField('suspicionStartMode', '开始方式', effective.suspicionStartMode, [['ticket-held', SUPERVISION_START_LABELS['ticket-held']], ['first-support-surge', SUPERVISION_START_LABELS['first-support-surge']]]),
         selectField('suspicionMode', '程序嫌疑模式', effective.suspicionMode, [['auto', SUPERVISION_SUSPICION_LABELS.auto], ['off', SUPERVISION_SUSPICION_LABELS.off]]),
         numberField('checkIntervalMinutes', '检查间隔（分钟）', effective.checkIntervalMinutes, 5, 60, 1),
@@ -1408,22 +1432,22 @@ export function SupervisionSettingsPanel(props: { readonly remote: ControlsRemot
         numberField('delivery.alertMinNoProductHours', 'alert：无产品写入小时', effective.delivery.alertMinNoProductHours, 1, 24, 1),
         numberField('delivery.alertMinSupportFiles', 'alert：支撑文件数', effective.delivery.alertMinSupportFiles, 1, 100, 1),
         h('label', { style: settingsField }, h('span', null, '软预算（小时）'),
-          h('input', { 'aria-label': '软预算（小时）', type: 'number', min: 1, max: 720, value: typeof softBudget === 'number' ? String(softBudget) : '', disabled: busy, placeholder: inheritLabel + '：' + (effective.softBudgetHours === null ? '关闭' : effective.softBudgetHours), style: { width: '120px' },
+          h(Input, { 'aria-label': '软预算（小时）', type: 'number', min: 1, max: 720, value: typeof softBudget === 'number' ? String(softBudget) : '', disabled: busy, placeholder: inheritLabel + '：' + (effective.softBudgetHours === null ? '关闭' : effective.softBudgetHours), style: { width: '120px' },
             onChange: (event: ChangeEvent<HTMLInputElement>) => {
               const text = event.target.value
               if (text === '') { update('softBudgetHours', undefined); return }
               const number = Number(text)
               if (Number.isFinite(number) && number >= 1 && number <= 720) update('softBudgetHours', number)
             } }),
-          h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, h('input', { type: 'checkbox', checked: softBudget === null, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => update('softBudgetHours', event.target.checked ? null : undefined) }), '关闭'),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, h(Input, { type: 'checkbox', checked: softBudget === null, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => update('softBudgetHours', event.target.checked ? null : undefined) }), '关闭'),
           h('small', { style: { flexBasis: '100%' } }, '有效值：' + (effective.softBudgetHours === null ? '关闭（仅人工提醒）' : effective.softBudgetHours + ' 小时')))),
       h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '交付路径'), h('p', null, '产品/支撑根用于区分交付写入与支撑写入；空表示未配置。这里只保存，不改变任何文件或票。'),
         listField('deliverableRoots', '产品根（每行/逗号一项）', effective.deliverableRoots, '留空继承。'),
         listField('supportRoots', '支撑根（每行/逗号一项）', effective.supportRoots, '留空继承。'),
         listField('excludeGlobs', '排除 glob（每行/逗号一项）', effective.excludeGlobs, '留空继承。'))),
-    h('div', { style: settingsActions }, h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, busy ? '正在保存…' : '保存监督配置'),
-      h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(supervisionIntentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
-      h('button', { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取监督配置')),
+    h('div', { style: settingsActions }, h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, busy ? '正在保存…' : '保存监督配置'),
+      h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(supervisionIntentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
+      h(Button, { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取监督配置')),
     h('p', null, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。保存只写独立 supervision 配置，不写入协作 PolicySnapshot。'),
     message === null ? null : diagnostic(message),
     h('details', { style: { marginTop: '12px' } }, h('summary', null, '技术详情（有效监督配置）'), pretty(effective)))
@@ -1452,7 +1476,7 @@ export function SupervisionHistory(props: { readonly remote: ControlsRemote; rea
         h('strong', null, episode.trigger + ' · ' + episode.severity + ' · ' + episode.verdict + ' · ' + episode.delivery + ' · ' + new Date(episode.at).toISOString() + (episode.ticketId === null ? '' : ' · ' + episode.ticketId) + (episode.research ? ' · 研究/评审标记' : '')),
         h('div', null, '观察：' + episode.observed),
         h('div', null, '可能的问题：' + episode.possibleIssue)))),
-    props.sessionId === null ? null : h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督记录'))
+    props.sessionId === null ? null : h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督记录'))
 }
 export function SettingsPage(props: PluginConfigViewProps & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObservation }): ReactElement {
   const [saved, setSaved] = useState<PolicySnapshot | null>(null)
@@ -1475,14 +1499,15 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
   if (props.view === 'summary') return h('span', null, '协作管理、交付监督与会话仪器；配置分别保存。')
   const pageStyle = { display: 'grid', gap: '24px', minWidth: 0, width: '100%', maxWidth: '1080px', margin: '0 auto', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
   if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle },
-    h(SupervisionSettingsPanel, { remote: props.remote, workspace: null }),
-    h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h('button', { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
+    h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0 }, '进阶交付监督（独立保存）'),
+      h(SupervisionSettingsPanel, { remote: props.remote, workspace: null })),
+    h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
   const selected = workspaces.find(row => row.workspaceId === workspace)
   const sessionChoices = settingsSessionChoices(workspaces, workspace)
   const selectedInspection = inspection !== null && sessionChoices.ids.includes(inspection) ? inspection : null
   const preview = resolvePolicy({ ...draft, workspaceOverrides: workspace === null ? {} : draft.workspaceOverrides, revision: saved.revision }, workspace ?? 'global-preview', workspace === null || selected?.verified === true)
   const impact = policyDraftImpact(saved, draft, workspace, workspace === null || selected?.verified === true)
-  const change = (field: PolicyField, value: boolean | number | undefined): void => {
+  const change = (field: PolicyField, value: PolicyLeafValue): void => {
     try { setDraft(setPolicyLeaf(draft, workspace, field, value)); setMessage(null) } catch (error) { setMessage('配置值无效：' + errorText(error)) }
   }
   const save = async (): Promise<void> => {
@@ -1496,16 +1521,15 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
   const globalScope = workspace === null
   const inheritLabel = globalScope ? '未设置（用安全初始值）' : '继承全局'
   const scopeWord = globalScope ? '所有工作区默认' : '本工作区'
-  const gatesOpen = draft.extensionEnabled && preview.workspaceEnabled
   const gateReason = (value: { readonly reason: string | null }): boolean => value.reason === 'extension-disabled' || value.reason === 'workspace-disabled'
-  const badge = (text: string, tone: string): ReactElement => h('span', { style: { background: tone, color: '#fff', borderRadius: '999px', padding: '1px 10px', fontSize: '12px', lineHeight: '18px', whiteSpace: 'nowrap' as const } }, text)
+  const stateText = (text: string): ReactElement => h('span', null, text)
   const booleanField = (field: PolicyField, label: string, effective: string, alert = false): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
     return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 180px' } }, label),
       h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
         h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
-      h('small', { style: { flexBasis: '100%' } }, alert ? badge('总闸未开', TONE.closed) : null, '草稿有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
+      h('small', { style: { flexBasis: '100%' } }, alert ? '总闸未开 · ' : null, '草稿有效值：' + effective + ' · 来源：' + SOURCE_LABELS[preview.sources[field]]))
   }
   const gateField = (field: PolicyField, label: string, open: boolean, effectiveText: string): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
@@ -1514,16 +1538,14 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       h('select', { 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
         h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
-      badge(effectiveText, open ? TONE.open : TONE.closed),
+      stateText(effectiveText),
       h('small', { style: { flexBasis: '100%' } }, '来源：' + SOURCE_LABELS[preview.sources[field]]))
   }
-  const gatePanel = h('div', { style: { ...settingsCard, borderLeft: '4px solid ' + (gatesOpen ? TONE.open : TONE.closed), background: gatesOpen ? 'rgba(21,128,61,.10)' : 'rgba(180,83,9,.12)', marginBottom: '16px' } },
+  const gatePanel = h('div', { style: { minWidth: 0, marginBottom: '16px' } },
     h('div', { style: { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '12px', marginBottom: '8px' } },
-      h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '15px' } },
-        h('input', { type: 'checkbox', 'aria-label': '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, extensionEnabled: event.target.checked }); setMessage(null) } }),
-        '协作管理总闸（全局）'),
-      badge(draft.extensionEnabled ? '已开启' : '已关闭', draft.extensionEnabled ? TONE.open : TONE.closed),
-      badge(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开', preview.workspaceEnabled ? TONE.open : TONE.closed)),
+      h(Checkbox, { label: '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (checked: boolean) => { setDraft({ ...draft, extensionEnabled: checked }); setMessage(null) } }),
+      stateText(draft.extensionEnabled ? '已开启' : '已关闭'),
+      stateText(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开')),
     h('p', { style: { margin: '0 0 8px' } }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发。'),
     h('label', { style: settingsField }, h('span', { style: { fontWeight: 600 } }, '配置编辑范围'),
       h('select', { 'aria-label': '配置编辑范围', value: workspace ?? '', disabled: busy, style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setWorkspace(event.target.value || null); setInspection(null) } },
@@ -1534,9 +1556,16 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       ? '当前编辑的是「全局默认」：选「未设置（用安全初始值）」表示没有默认值，该叶子回落到安全初始值（本工作区总闸＝关闭，技能分发＝开启）。'
       : '选「继承全局」表示删除本工作区的覆盖，回落到上面的全局默认；参考上限留空同理。'))
   const gateRow = h('div', null,
-    h('p', null, '生效需要两级总闸同时打开：「协作管理总闸（全局）」全局唯一、对所有工作区生效；每个工作区另有自己的总闸且默认关闭。'),
     !draft.extensionEnabled ? diagnostic('全局总闸当前为关闭：下面各范围的「协作功能」「参考上限」都不会生效，只有「界面显示位置」与技能分发不受影响。') : null)
   const featureField = (name: typeof FEATURE_NAMES[number]): ReactElement => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name]), gateReason(preview.features[name]))
+  const interactionField = 'pendingDecisions.interactionMode' as PolicyField
+  const interactionMode = preview.pendingDecisions.interactionMode
+  const interaction = h('label', { style: settingsField }, h('span', null, '裁决交互偏好'),
+    // No public Select export on the supported baseline: use native semantic HTML.
+    h('select', { 'aria-label': '裁决交互偏好', value: ownLeaf(draft, workspace, interactionField) ?? '__unset__', disabled: busy,
+      onChange: (event: ChangeEvent<HTMLSelectElement>) => change(interactionField, event.target.value === '__unset__' ? undefined : event.target.value as 'native-question' | 'async-decision') },
+      h('option', { value: '__unset__' }, inheritLabel), h('option', { value: 'native-question' }, '原生提问优先'), h('option', { value: 'async-decision' }, '异步裁决优先')),
+    h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + policyImpactText(interactionMode) + ' · 来源：' + (SOURCE_LABELS[preview.sources[interactionField]] ?? '安全初始值') + ' · ' + policyFeatureText(preview.features.pendingDecisions)))
   const dirty = JSON.stringify(draft) !== JSON.stringify(intentOf(saved))
   const saveLabel = busy ? '正在保存…' : saved.extensionEnabled !== draft.extensionEnabled ? draft.extensionEnabled ? '保存并启用协作管理' : '保存并关闭协作管理' : '保存并应用配置'
   return h('section', { 'aria-label': '插件配置', style: pageStyle },
@@ -1545,27 +1574,30 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
       gatePanel,
       gateRow,
       h('div', { style: settingsGrid },
-        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '协作功能'), h('p', null, '每个功能仍受两级总闸约束；这里只决定该功能在本范围是否被请求。'), FEATURE_NAMES.map(name => featureField(name))),
+        h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '协作功能'), h('p', null, '每个功能仍受两级总闸约束。'), FEATURE_NAMES.map(name => featureField(name)), interaction,
+          h('details', null, h('summary', null, '交互偏好说明'), h('p', null, '原生提问优先沿用可用的原生问答；异步裁决优先使用裁决仪器，由你通过下方原生会话消息答复，agent 可继续不依赖该裁决的工作。偏好不越过明确的等待确认或宿主权限，关闭功能时不激活该引导。'))),
         h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '参考上限'), h('p', null, 'T/S 仅提供规模参考，不是硬名额；留空继承，不猜测默认数值。'),
           (['ticketWindowSize', 'runningSubagentLimit'] as const).map(name => { const field = ('windows.' + name) as PolicyField; return h('label', { key: name, style: settingsField },
-            h('span', null, CAPACITY_LABELS[name]), h('input', { 'aria-label': CAPACITY_LABELS[name], type: 'number', min: 1, step: 1, style: { width: '100px', maxWidth: '100%' }, value: ownLeaf(draft, workspace, field) ?? '',
+            h('span', null, CAPACITY_LABELS[name]), h(Input, { 'aria-label': CAPACITY_LABELS[name], type: 'number', min: 1, step: 1, style: { width: '100px', maxWidth: '100%' }, value: String(ownLeaf(draft, workspace, field) ?? ''),
               onChange: (event: ChangeEvent<HTMLInputElement>) => change(field, event.target.value === '' ? undefined : Number(event.target.value)) }),
             h('small', { style: { flexBasis: '100%' } }, '草稿有效值：' + (preview.windows[name] ?? '未配置') + ' · 来源：' + SOURCE_LABELS[preview.sources[field]])) })),
         h('fieldset', { disabled: busy, style: settingsCard }, h('legend', null, '界面显示位置'), h('p', null, '只控制入口显示；隐藏不关闭功能，不删除记录，也不免除现有义务。'), DISPLAY_NAMES.map(name => booleanField(('display.' + name) as PolicyField, DISPLAY_LABELS[name], preview.display[name] ? '显示' : '隐藏')))),
-      !Object.values(preview.display).some(Boolean) ? diagnostic('全部入口关闭：待裁决不再有常驻页面提醒；仍可明确保存。') : null,
+      !Object.values(preview.display).some(Boolean) ? diagnostic('全部显示入口已关闭；本浏览器个人提醒独立于这些显示设置。') : null,
       h('section', { 'aria-label': '保存前预览', style: { marginTop: '20px' } },
         h('h4', null, '保存前预览'), h('p', null, '配置修订 ' + saved.revision + ' · ' + (dirty ? '有未保存更改' : '与已保存配置一致') + '。预览仅代表配置意图，不代表执行结果。'),
         impact.changes.length === 0 ? h('p', null, dirty ? '保存将更新稀疏覆盖；当前编辑范围的有效值未改变。' : '没有待保存的更改。') : h('ul', null, impact.changes.map(row => h('li', { key: row.field }, (POLICY_FIELD_LABELS[row.field as keyof typeof POLICY_FIELD_LABELS] ?? '未知配置项') + '：' + policyImpactText(row.before) + ' → ' + policyImpactText(row.after)))),
         h('p', null, '缩小参考上限不会释放正在执行的子代理；已有事实和义务保留，实际执行状态以会话观测为准。'),
-        h('div', { style: settingsActions }, h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, saveLabel),
-          h('button', { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(intentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
-          h('button', { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取协作配置（丢弃草稿）')),
+        h('div', { style: settingsActions }, h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { void save() } }, saveLabel),
+          h(Button, { type: 'button', disabled: busy || !dirty, onClick: () => { setDraft(intentOf(saved)); setMessage(null) } }, '放弃未保存更改'),
+          h(Button, { type: 'button', disabled: busy, onClick: () => setReload(value => value + 1) }, '重新读取协作配置（丢弃草稿）')),
         message === null ? null : diagnostic(message)),
       h('details', { style: { marginTop: '16px' } }, h('summary', null, '技术详情（原始有效策略与变更）'), pretty(preview), pretty(impact)),
       unsupportedSeatsDetails()),
-    h(SupervisionSettingsPanel, { remote: props.remote, workspace }),
-    h('section', { 'aria-label': '会话状态查看', style: settingsCard },
-      h('h3', { style: { marginTop: 0 } }, '会话状态查看'), h('p', null, '仅查看已存在会话，不修改草稿、不授予权限、不唤醒模型，也不自动打开侧栏。'),
+    // Integration seat: BrowserNotificationPreferencesPanel goes here (independent browser-only save).
+    h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0 }, '进阶交付监督（独立保存）'),
+      h(SupervisionSettingsPanel, { remote: props.remote, workspace })),
+    h('details', { 'aria-label': '会话状态查看', style: settingsCard },
+      h('summary', { tabIndex: 0 }, '会话状态查看'), h('p', null, '仅查看已存在会话，不修改草稿、不授予权限、不唤醒模型，也不自动打开侧栏。'),
       h('label', { style: settingsField }, '选择会话', h('select', { 'aria-label': '选择查看会话', value: selectedInspection ?? '', style: { maxWidth: '100%' }, onChange: (event: ChangeEvent<HTMLSelectElement>) => setInspection(event.target.value || null) },
         h('option', { value: '' }, '选择会话查看'), ...sessionChoices.ids.map(id => h('option', { key: id, value: id }, id)))),
       sessionChoices.unknown ? diagnostic('会话导航未知或不完整；不能据此断言没有会话。') : sessionChoices.ids.length === 0 ? h('p', null, '当前导航没有列出的会话（不是实例或权限结论）。') : null,
