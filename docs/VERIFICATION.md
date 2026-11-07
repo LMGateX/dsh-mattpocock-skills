@@ -9,7 +9,7 @@
 - **实际 source × DSH 0.2.1-alpha.4 / 0.2.2-rc.1** 完整套件均 **1014 tests / 1008 pass / 0 fail / 6 skip**；显式提供同一固定上游源，三项上游校验未跳过。六 skip 均因 canonical 安装不提供可装配的 native slots，另在精确 RC1 slots／renderer 的独立 native Client fixture **6/6 pass / 0 skip**；primitives 为既有 stand-in，不冒称视觉／GUI 验收。
 - baseline strict root／Client、真实精确 RC1 root／Client declarations 均零诊断。RC1 临时路径映射显式覆盖 client subpath、缺失 slots／primitives 由精确 npm tarball 提供，并检查没有非目标 DSH 声明回退；不以普通 baseline tsc 冒充新版类型验证。
 - 精确 RC1 的真实 `mountHost`／`createRuntime` 与 Tools／SystemPrompt／executor／pipeline 探针：async resolve 得七固定工具，同 scope executable 可用、外 scope 拒绝，assemble 使用同一 toolSet 声明一致，pipeline prepare→dispatch→complete 成功读取实际 controls（schemaVersion 2／current）。Agent metadata／storage 受控，无模型或生产 Profile，不是原生模型／PTC 全链认证。
-- 旧 alpha.4 完整套件首次因 fixture eager 导入新版独有 executor 失败；改为真实 `setExecutor` capability 后才懒加载，原四项 cwd／header／恢复／非法路径／无模型断言不变，两宿主各 **4/4**，随后原完整套件均通过。插件产品运行时未改，失败日志未伪装成通过。
+- 旧 alpha.4 完整套件首次因 fixture eager 导入新版独有 executor 失败；改为真实 `setExecutor` capability 后才懒加载，原四项相对读／cwd projection与header／prepare前捕获与继承／非法路径及无模型断言不变，两宿主各 **4/4**，随后原完整套件均通过。插件产品运行时未改，失败日志未伪装成通过。
 - 闭合 Client 仍 **357619 B / 8 modules**，SHA-256 **7cad7c50517c3ca6605f56d519ede9031bc2de68e1a8464eb32009fe50d2266c**；externals 仍仅 React／公共 primitives。固定上游 `--check`、85文件 vendor／双渠道、source/lib 字节一致和版本策略回归通过。
 - 独立 Standards／Spec、clean-source prepack／唯一精确归档、双宿主 headless、push／Release／下载回验按本轮计划继续；旧版数字不回填成本次结果。**暂不为本机安装或激活，不改当前 Profile／共享 SDK／服务，不迁移数据、不 npm publish。**
 
