@@ -191,6 +191,7 @@ T1 开工前固定：新 action／字段和最小存储表示、旧 checkpoint �
 ### 11.4 上下文、时间与工具最小改进
 
 - 既有单一owned快照内：稳定指导先于volatile native outcome／pending-release通知，最后仍为原facts marker＋完整JSON。保留同admitted step上限与真实baseline恢复，不拆静态仅一次消息、不改delta-only、不删原生历史。变化检测覆盖完整渲染语义，单独pendingRelease新增／清空也能被消费Interface提供；viewer-only／资源读采样时间仍不构成变化。
+- 权限缓存细化：ConsumptionIdentity可选增加有界scopeFingerprint，Runtime在每次prepare证明当前effective scope后生成；prepared／stale复用按该范围分键，祖先收窄＋源读失败不得重放旧范围正文。无法证明当前身份／权限时仅诊断，不从旧lastIdentity降级正文；durability frontier仍按原instance关联，不把scope token当凭据。
 - RefreshGate构造位置保留，注入clock明确elapsed，默认monotonic performance.now；epoch／scope容量与in-flight失效不变。业务recordedAt／registration／updatedAt、持久监督episode／预算仍用wall。此批不改Host catalog／监督的其他wall退避，也不宣称全宿主时间问题已修复。
 - 纯排序key复用仅限一次投影内decorate／sort／undecorate，经公开消费seam工作计数证明后选择；不缓存任意snapshot／巨型正文，不改model-output权限或locator完整性。测量区分队列等待、冷历史、当前N、正文B、hash估算、写／捕获及消息安装／累计字节，合成计时不作线上SLA。
 - 移除监督固定“插入临时subagents检查任务”的安排，改为主代理按现有任务约定判断；不改监督触发／持久记录／自动模型调用策略。resource／history注册与管理动作本批保持兼容，不借本授权打包全面减面；delegate仍opt-in。真实provider效果测量不在本批，不报告未取得的hit率。
