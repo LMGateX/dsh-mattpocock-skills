@@ -152,6 +152,23 @@ test('host mount derives the same operator principal from the alpha.3+ browserPe
   assert.equal(f.calls[0].principalId, 'user:operator')
   assert.equal((await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() }, load)).isError, false)
 })
+test('mounted record description narrows new questions without rejecting legacy closeout', options, async t => {
+  const f = await assembly(t)
+  const description = f.ctx.tools.get('mattpocock_record').description
+  assert.match(description, /New decisions are only for genuine unresolved user questions: set pending=true and addressee.kind=user/)
+  assert.match(description, /ordinary implementation choices, research and completion reports use existing spec, ADR and task records/)
+  assert.match(description, /same decisionId/)
+  assert.match(description, /actual authenticated author stays agent when an agent records the reply/)
+  assert.match(description, /Partial, skipped, cancelled or silent replies are not approval/)
+  assert.match(description, /pending=false requires an explicit real resolution/)
+  assert.match(description, /preserve existing awaitingImplementation=true/)
+  assert.match(description, /raw compatibility markers needing task-evidence review, not unfinished-task totals/)
+  assert.match(description, /task handoff is not completion/)
+  assert.match(description, /Legacy agent[/]unspecified[/]missing-addressee updates remain legal; OFF permits old-record closeout but no new records/)
+  assert.ok(description.includes('put-decision {question, status, pending?, awaitingImplementation?'))
+  assert.match(description, /Model output schemaVersion 2/)
+})
+
 test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects forged operator/unknown fields', options, async t => {
   const f = await assembly(t)
   assert.equal((await f.invoke('readPolicy')).revision, 0)

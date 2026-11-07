@@ -18,10 +18,121 @@ test('saved interaction mode enters the next real model-consumption request', as
   assert.equal(messages.length, 1)
   const text = messages[0].content[0].text
   assert.ok(text.includes('Decision interaction preference: async-decision (active)'))
-  assert.match(text, /continue work that does not depend on that decision/)
+  assert.match(text, /continue independent work/)
   const facts = factsFrom(text)
   assert.equal(facts.policy.pendingDecisions.interactionMode, 'async-decision')
   assert.equal(facts.policy.sources['pendingDecisions.interactionMode'], 'global')
+})
+
+test('mounted model request limits new decisions to genuine unresolved user questions', async t => {
+  const f = await mountedFixture(t)
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const native = Object.freeze({ role: 'user', content: [{ type: 'text', text: 'Implement the already agreed plan' }] })
+  const request = await f.ctx.waterfall('agent/pre-step', { agent: f.root, messages: [native], turn: 1, step: 1, signal: signal() }, async () => ({ kind: 'enter', messages: [native], startsRequestSeries: true }))
+  assert.equal(request.messages[0], native)
+  const text = textFrom(request.messages.slice(1))
+  assert.match(text, /New decisions: genuine unresolved user questions only/)
+  assert.match(text, /pending=true[/]addressee.kind=user/)
+  assert.match(text, /Implementation[/]research[/]completion: existing spec[/]ADR[/]tasks/)
+  assert.match(text, /no self-question[/]answer ledger/)
+  assert.equal(factsFrom(text).records.summary.pendingDecisionCount, 0, 'guidance never manufactures a question')
+})
+
+test('reply guidance keeps the original decision, actual agent author and existing await marker', async t => {
+  const f = await fixture(t, { initialPolicy: modePolicy('async-decision'), known: true })
+  await f.apply('put-workflow', { value: workflow })
+  const question = 'Choose A or B for the user-facing behavior'
+  await f.apply('put-decision', { decisionId: 'reply', value: { question, status: 'open', pending: true, awaitingImplementation: true, addressee: { kind: 'user' }, context: 'Original constraints' } })
+  const text = textFrom(await f.runtime.preStep(caller('root'), signal()))
+  assert.match(text, /Replies: SAME decisionId [+] source; agent author stays agent/)
+  assert.match(text, /pending=false only for explicit resolution/)
+  assert.match(text, /partial replies stay pending/)
+  assert.match(text, /Skip[/]cancel[/]silence is not approval/)
+  assert.match(text, /Answers preserve awaitingImplementation=true/)
+  await f.apply('put-decision', { decisionId: 'reply', references: ['native-message:partial'], value: { question, status: 'clarifying', result: 'User answered A but has not resolved the constraint' } })
+  let records = (await f.read()).records
+  assert.equal(records.decisions.length, 1)
+  assert.equal(records.decisions[0].value.pending, true)
+  assert.equal(records.decisions[0].value.awaitingImplementation, true)
+  assert.deepEqual(records.decisions[0].history.at(-1).author, caller('root'))
+  assert.equal(factsFrom(textFrom(await f.runtime.preStep(caller('root'), signal()))).records.summary.pendingUserDecisionCount, 1)
+  await f.apply('put-decision', { decisionId: 'reply', references: ['native-message:explicit-answer'], value: { question, status: 'answered', pending: false, result: 'User explicitly chose A with the constraint preserved' } })
+  records = (await f.read()).records
+  assert.equal(records.decisions.length, 1)
+  assert.equal(records.decisions[0].decisionId, 'reply')
+  assert.equal(records.decisions[0].value.awaitingImplementation, true)
+  assert.equal(records.decisions[0].value.context, 'Original constraints')
+  assert.deepEqual(records.decisions[0].history.at(-1).author, caller('root'))
+  assert.deepEqual(records.decisions[0].history.at(-1).references, ['native-message:explicit-answer'])
+  const facts = factsFrom(textFrom(await f.runtime.preStep(caller('root'), signal())))
+  assert.equal(facts.records.summary.pendingUserDecisionCount, 0)
+  assert.equal(facts.records.summary.awaitingImplementationCount, 1)
+  assert.equal(facts.records.decisions.rows[0].decisionId, 'reply', 'await retains actual consumption after the answer')
+})
+
+test('legacy marker review remains in real OFF consumption without becoming an unfinished-task total', async t => {
+  const f = await fixture(t, { initialPolicy: policy(), known: true })
+  await f.apply('put-workflow', { value: workflow })
+  const rows = [
+    { decisionId: 'agent', value: { question: 'Legacy agent matter', status: 'legacy', pending: true, awaitingImplementation: false, addressee: { kind: 'agent' } } },
+    { decisionId: 'unspecified', value: { question: 'Legacy unspecified matter', status: 'legacy', pending: true, awaitingImplementation: true, addressee: { kind: 'unspecified' } } },
+    { decisionId: 'omitted', value: { question: 'Legacy await-only matter', status: 'legacy', pending: false, awaitingImplementation: true, result: 'Original answer', context: 'Original source: native-message:old' } },
+  ]
+  for (const row of rows) await f.apply('put-decision', row)
+  await f.save({ ...policy(), extensionEnabled: false })
+  const text = textFrom(await f.runtime.preStep(caller('root'), signal()))
+  assert.match(text, /awaitingImplementationCount: raw compatibility markers, not unfinished tasks; review task evidence/)
+  assert.match(text, /Handoff is not completion/)
+  assert.match(text, /Never infer clearance from status[/]count[/]hidden[/]links/)
+  assert.match(text, /Old agent[/]unspecified[/]no-addressee updates legal/)
+  assert.doesNotMatch(text, /New decisions:/)
+  const facts = factsFrom(text)
+  assert.equal(facts.records.summary.pendingDecisionCount, 2)
+  assert.equal(facts.records.summary.pendingUserDecisionCount, 0)
+  assert.equal(facts.records.summary.awaitingImplementationCount, 2)
+  assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['agent', 'omitted', 'unspecified'])
+  for (const row of rows) {
+    await f.apply('put-decision', { decisionId: row.decisionId, value: { question: row.value.question, status: 'explicitly reviewed' } })
+  }
+  const records = (await f.read()).records
+  assert.deepEqual(records.decisions.map(row => row.value.awaitingImplementation), [false, true, true], 'omitted fields preserve old flags even while OFF')
+  assert.equal(records.decisions.find(row => row.decisionId === 'omitted').value.result, 'Original answer')
+  await assert.rejects(f.apply('put-decision', { decisionId: 'new', value: { question: 'Not allowed while OFF', status: 'open', pending: true, addressee: { kind: 'user' } } }), { code: 'feature-disabled' })
+})
+
+// Preservation regressions exercise existing public behavior; no business-judgment gate is added.
+test('explicit task handoff preserves original replies, inclusion choices and owner notification without claiming completion', async t => {
+  const f = await fixture(t, { initialPolicy: policy(), known: true })
+  await f.apply('put-workflow', { value: workflow })
+  await f.apply('put-ticket', { localTicketId: 'follow-through', value: { title: 'Implement the remaining commitment from both decisions', statuses: { delivery: ['partial'] }, summary: 'Remaining acceptance constraint and source: native-message:original; decisions flow/included and flow/excluded' } })
+  for (const decisionId of ['included', 'excluded']) {
+    await f.apply('put-decision', { decisionId, value: { question: 'Original ' + decisionId + ' question', status: 'answered', pending: false, awaitingImplementation: true, result: 'Original ' + decisionId + ' reply', context: 'Original source: native-message:original' } })
+    await f.runtime.historyAction(caller('root'), 'root', { action: 'set-context', kind: 'decision', recordId: JSON.stringify(['flow', decisionId]), included: decisionId === 'included' }, signal())
+  }
+  await f.runtime.applyInstrument(caller('root'), 'root', { action: 'set-decision-view', operationId: 'hide-legacy-await', expectedRevision: 0, workflowId: 'flow', decisionId: 'excluded', value: { read: true, hidden: true } }, signal())
+  const before = factsFrom(textFrom(await f.runtime.preStep(caller('root'), signal())))
+  assert.equal(before.records.decisions.total, 2, 'excluded and hidden cannot erase await obligations')
+  f.setNotify(async notice => ({ status: 'accepted', messageId: 'review-notice-' + notice.notificationId }))
+  for (const decisionId of ['included', 'excluded']) {
+    await f.apply('put-decision', { decisionId, references: ['task:flow/follow-through'], value: { question: 'Original ' + decisionId + ' question', status: 'answered', awaitingImplementation: false, ticketIds: ['follow-through'], context: 'Original source: native-message:original; authored review: remaining responsibility handed to flow/follow-through, not a completion declaration' } }, 'root', decisionId === 'included' ? operator : caller('root'))
+  }
+  await new Promise(setImmediate)
+  await f.runtime.serializePolicyPermission(async () => undefined)
+  assert.equal(f.notificationCalls.length, 1, 'explicit user review still uses the existing owner-notification channel')
+  assert.equal(f.notificationCalls[0].authorPrincipalId, operator.principalId)
+  const records = (await f.read()).records
+  assert.equal(records.tickets[0].value.statuses.delivery[0], 'partial', 'handoff did not complete execution')
+  assert.deepEqual(records.decisions.map(row => row.value.result), ['Original included reply', 'Original excluded reply'])
+  assert.equal(records.summary.pendingUserDecisionCount, 0)
+  assert.equal(records.summary.awaitingImplementationCount, 0)
+  let facts = factsFrom(textFrom(await f.runtime.preStep(caller('root'), signal())))
+  assert.equal(facts.records.decisions.total, 0)
+  assert.equal(facts.contextConclusions.total, 1)
+  assert.equal(facts.contextConclusions.rows[0].result, 'Original included reply')
+  assert.deepEqual(facts.contextConclusions.rows[0].source.author, operator)
+  await f.reopen()
+  facts = factsFrom(textFrom(await f.runtime.preStep(caller('root'), signal())))
+  assert.deepEqual(facts.contextConclusions.rows.map(row => row.decisionId), ['included'], 'reopen preserves included/excluded rather than manufacturing general memory')
 })
 
 test('old missing mode stays sparse and resolves native with safe-initial source', () => {
@@ -89,11 +200,15 @@ test('hot native-to-async preference reaches the admitted Host request without r
   assert.equal(second.messages.length, 2)
   const asyncText = second.messages[1].content[0].text
   assert.ok(asyncText.includes('Decision interaction preference: async-decision (active)'))
-  assert.match(asyncText, /user to answer through DSH native session messages/)
+  assert.match(asyncText, /user replies through DSH native session messages/)
   assert.match(asyncText, /without calling a blocking question tool to wait for the reply/)
   assert.equal(factsFrom(asyncText).policy.configRevision, 2)
   assert.equal(factsFrom(asyncText).policy.pendingDecisions.interactionMode, 'async-decision')
-  const commonTail = text => text.slice(text.indexOf('An unanswered, skipped or dismissed question'), text.indexOf('Only prepare a tree'))
+  const commonTail = text => {
+    const start = text.indexOf('Skip/cancel/silence is not approval')
+    assert.ok(start >= 0, 'shared non-approval guidance is present')
+    return text.slice(start, text.indexOf('Only prepare a tree'))
+  }
   assert.equal(commonTail(nativeText), commonTail(asyncText), 'only mode-specific channel/wait fragments differ')
   assert.match(asyncText, /Block only actions that actually depend on the decision/)
   assert.match(asyncText, /end the current turn normally/)
@@ -114,7 +229,7 @@ test('OFF supersedes both interaction protocols while retaining old pending obli
     const text = textFrom(await f.runtime.preStep(caller('root'), signal()))
     assert.ok(text.includes('Decision interaction preference: async-decision (inactive)'))
     assert.match(text, /Preserve existing records, unresolved obligations and necessary closeout/)
-    assert.doesNotMatch(text, /When a user decision is needed|Register pending decisions|prefer presenting it through|prefer an available native user-question tool|continue work that does not depend/)
+    assert.doesNotMatch(text, /When a user decision is needed|Register pending decisions|prefer the decision instrument|prefer an available native user-question tool|continue independent work/)
     assert.match(text, /Keep unresolved obligation/)
     assert.equal(factsFrom(text).records.summary.pendingUserDecisionCount, 1)
   }
@@ -125,12 +240,12 @@ test('OFF supersedes both interaction protocols while retaining old pending obli
 test('owned child receives the shared template without being directed to a forbidden user-question tool', async t => {
   const f = await fixture(t, { initialPolicy: policy(), known: true })
   const text = textFrom(await f.runtime.preStep(caller('old-child'), signal()))
-  assert.match(text, /register or update the corresponding decision; hand the user question back to the main agent/)
+  assert.match(text, /hand the user question back to the main agent/)
   assert.match(text, /do not call a user-question tool forbidden to an owned child/)
   assert.doesNotMatch(text, /prefer an available native user-question tool/)
   await f.save(modePolicy('async-decision'))
   const asyncText = textFrom(await f.runtime.preStep(caller('old-child'), signal()))
-  assert.match(asyncText, /Owned children hand user questions back to the main agent under host restrictions/)
+  assert.match(asyncText, /Owned children hand questions to the main agent/)
   assert.match(asyncText, /without calling a blocking question tool/)
 })
 

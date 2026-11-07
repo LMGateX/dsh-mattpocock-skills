@@ -107,7 +107,7 @@ test('current records and minimal protocol append independently without touching
   assert.equal(messages[1].source.kind, 'host-plugin')
   assert.match(result.text, /author reports, not program execution/)
   assert.match(result.text, /Skills, user agreements and task documents/)
-  assert.match(result.text, /When a user decision is needed, follow the existing decision agreements and register or update the corresponding decision/)
+  assert.match(result.text, /New decisions: genuine unresolved user questions only, pending=true[/]addressee.kind=user/)
   assert.match(result.text, /mattpocock_record/); assert.match(result.text, /native subagent lifecycle observation/); assert.doesNotMatch(result.text, /mattpocock_execute/); assert.match(result.text, /mattpocock_window/)
   assert.match(result.text, /Only prepare a tree with the host's create_worktree when the task requires write isolation; read-only research\/review may share a stable checkout/)
   assert.match(result.text, /Use the host's working_directory to enter or leave a directory; this instrument does not create or delete trees/)
@@ -201,6 +201,33 @@ test('management OFF keeps recorded facts and source limits but adds no new mana
   assert.equal(view.worktreeObservations.total, 1)
   assert.equal(view.worktreeObservations.rows[0].lane.source, 'inferred')
 })
+
+test('decision usage guidance preserves raw flags, hidden obligations and retained conclusions without mutation', async () => {
+  const f = fixture()
+  const row = (decisionId, value) => ({ workflowId: 'old-flow', decisionId, revision: 1, value: { question: decisionId, status: 'custom', ...value }, history: [], view: { read: true, hidden: true } })
+  f.current.records.decisions = [
+    row('agent-pending', { pending: true, addressee: { kind: 'agent' } }),
+    row('await-only', { pending: false, awaitingImplementation: true }),
+    row('both', { pending: true, awaitingImplementation: true, addressee: { kind: 'user' } }),
+    row('ordinary-closed', { pending: false, awaitingImplementation: false, result: 'Not automatically a user conclusion' }),
+  ]
+  Object.assign(f.current.records.summary, { pendingDecisionCount: 2, pendingUserDecisionCount: 1, awaitingImplementationCount: 2 })
+  f.current.contextConclusions = [{ workflowId: 'old-flow', decisionId: 'retained-agent-conclusion', result: 'Explicitly included old conclusion', sourceRevision: 2, source: { author: { kind: 'agent', principalId: 'old-author', sessionId: 'old-agent' } } }]
+  f.current.policy.display = Object.fromEntries(Object.keys(f.current.policy.display).map(key => [key, false]))
+  const before = structuredClone(f.current)
+  const result = await f.feed.readForConsumption(identity)
+  const facts = JSON.parse(result.text.split('Current runtime facts (null means unavailable/unknown, not zero):')[1])
+  assert.match(result.text, /awaitingImplementationCount: raw compatibility markers, not unfinished tasks/)
+  assert.match(result.text, /Handoff is not completion/)
+  assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['agent-pending', 'await-only', 'both'])
+  assert.equal(facts.records.summary.pendingUserDecisionCount, 1)
+  assert.equal(facts.records.summary.pendingDecisionCount, 2)
+  assert.equal(facts.records.summary.awaitingImplementationCount, 2)
+  assert.equal(facts.contextConclusions.rows[0].result, 'Explicitly included old conclusion')
+  assert.equal(facts.contextConclusions.rows[0].source.author.kind, 'agent')
+  assert.deepEqual(f.current, before, 'guidance does not classify business outcomes or clear flags')
+})
+
 test('synchronous producer commit fence reads latest durable state without waiting for running child', async () => {
   const f = fixture()
   const persistence = deferred()
