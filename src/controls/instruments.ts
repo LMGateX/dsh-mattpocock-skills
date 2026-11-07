@@ -14,6 +14,13 @@ export interface InstrumentAuthority {
   resolveAccess(principal: string, sessionId: string, instance: InstrumentInstance, access: 'read' | 'write'): Promise<InstrumentAccess>
 }
 export interface InstrumentFilter { readonly workflowId?: string; readonly afterRevision?: number }
+/** Optional additive READ metadata; absent on older hosts, null when first-version proof/access is unavailable. */
+export interface InstrumentDecisionTime {
+  /** First put: epoch milliseconds and source revision (not a business CAS token). */
+  readonly registration?: { readonly recordedAt: number; readonly revision: number } | null
+  /** Latest business update, never a viewer update or idempotent replay. */
+  readonly updatedAt?: number
+}
 export interface InstrumentSnapshot {
   readonly instance: InstrumentInstance
   readonly revision: number
@@ -24,7 +31,7 @@ export interface InstrumentSnapshot {
   readonly workflows: readonly WorkflowRecord[]
   readonly tickets: readonly TicketRecord[]
   /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */
-  readonly decisions: readonly (DecisionRecord & { readonly view: DecisionViewValue })[]
+  readonly decisions: readonly (DecisionRecord & InstrumentDecisionTime & { readonly view: DecisionViewValue })[]
   readonly changes: readonly InstrumentEvent[]
   readonly historyCoverage?: {readonly checkpointRevision:number;readonly purged:boolean}
   readonly summary: {
@@ -41,7 +48,7 @@ export interface InstrumentSnapshot {
 export type InstrumentCurrentProvenance = Pick<Change<unknown>, 'author' | 'recordedAt' | 'references'>
 export type InstrumentCurrentWorkflow = Omit<WorkflowRecord, 'history'> & { readonly provenance: InstrumentCurrentProvenance }
 export type InstrumentCurrentTicket = Omit<TicketRecord, 'history'> & { readonly provenance: InstrumentCurrentProvenance }
-export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & {
+export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & InstrumentDecisionTime & {
   readonly creator: InstrumentAuthor
   readonly provenance: InstrumentCurrentProvenance
   readonly view: DecisionViewValue
@@ -107,6 +114,51 @@ function decisionAllowed(access: InstrumentAccess, workflowId: string, value: Pi
   if (access.scope.workflowId !== workflowId) return false
   const tickets = value.ticketIds ?? []
   return tickets.length === 0 ? creator === access.author.principalId : tickets.every(ticket => access.scope.kind === 'assigned' && access.scope.ticketIds.includes(ticket))
+}
+
+interface DecisionRegistrationProof {
+  readonly registration: NonNullable<InstrumentDecisionTime['registration']>
+  readonly creator: string
+  readonly ticketIds?: readonly string[]
+}
+// Only load()'s validated immutable source identities enter this cache. It stores
+// first-version authorization facts, not first bodies or principal-specific results.
+const registrationIndexes = new WeakMap<InstrumentDocument, ReadonlyMap<string, DecisionRegistrationProof>>()
+function registrationIndex(document: InstrumentDocument): ReadonlyMap<string, DecisionRegistrationProof> {
+  const known = registrationIndexes.get(document)
+  if (known) return known
+  const proofs = new Map<string, DecisionRegistrationProof>()
+  if (document.schemaVersion === 2) {
+    // Receipts are validated as a complete, ordered source-revision chain. They
+    // survive purge without retaining deleted business bodies. Time need not be monotonic.
+    for (const receipt of document.dedup) {
+      const metadata = receipt.command
+      if (metadata?.action !== 'put-decision' || metadata.target.kind !== 'decision') continue
+      const key = JSON.stringify([metadata.target.workflowId, metadata.target.decisionId])
+      if (!proofs.has(key)) proofs.set(key, { registration: { recordedAt: metadata.recordedAt, revision: receipt.appliedRevision }, creator: receipt.author.principalId })
+    }
+    for (const row of document.checkpoint.state.decisions) {
+      const key = JSON.stringify([row.workflowId, row.decisionId]), proof = proofs.get(key)
+      const firstRetained = row.history[0]
+      // Retained history is only an ACL witness when its revision matches the
+      // independently proven first put. A purged or filtered first version is unknown.
+      if (proof && firstRetained?.revision === proof.registration.revision) proofs.set(key, { ...proof, ticketIds: firstRetained.value.ticketIds ?? [] })
+    }
+  }
+  for (const event of document.events) {
+    const command = event.command
+    if (command.action !== 'put-decision') continue
+    const key = JSON.stringify([command.workflowId, command.decisionId])
+    if (!proofs.has(key)) proofs.set(key, { registration: { recordedAt: event.recordedAt, revision: event.revision },
+      creator: event.author.principalId, ticketIds: command.value.ticketIds ?? [] })
+  }
+  registrationIndexes.set(document, proofs)
+  return proofs
+}
+function registrationFor(document: InstrumentDocument, access: InstrumentAccess, workflowId: string, decisionId: string): Exclude<InstrumentDecisionTime['registration'], undefined> {
+  const proof = registrationIndex(document).get(JSON.stringify([workflowId, decisionId]))
+  if (!proof || (access.scope.kind !== 'coordinator' && (proof.ticketIds === undefined || !decisionAllowed(access, workflowId, proof, proof.creator)))) return null
+  return proof.registration
 }
 
 function selectionsFor(value: TicketValue, axisKey: string): readonly string[] {
@@ -241,7 +293,7 @@ export class SessionInstruments {
     const workflows = state.workflows.filter(row => access.scope.kind === 'coordinator' || row.workflowId === access.scope.workflowId)
     const tickets = state.tickets.filter(row => access.scope.kind === 'coordinator' || (row.workflowId === access.scope.workflowId && access.scope.ticketIds.includes(row.localTicketId)))
     const decisions = state.decisions.filter(row => decisionAllowed(access, row.workflowId, row.value, row.creator.principalId))
-      .map(row => ({ ...row, view: state.decisionViews.find(view => view.workflowId === row.workflowId && view.decisionId === row.decisionId && view.principalId === access.author.principalId)?.value ?? { read: false, hidden: false } }))
+      .map(row => ({ ...row, registration: registrationFor(document, access, row.workflowId, row.decisionId), updatedAt: row.provenance.recordedAt, view: state.decisionViews.find(view => view.workflowId === row.workflowId && view.decisionId === row.decisionId && view.principalId === access.author.principalId)?.value ?? { read: false, hidden: false } }))
     const statusCounts = workflows.flatMap(workflow => workflow.value.axes.map(axis => {
       const scoped = tickets.filter(ticket => ticket.workflowId === workflow.workflowId)
       return { workflowId: workflow.workflowId, axisKey: axis.axisKey, label: axis.label, counting: axis.counting,
@@ -450,7 +502,7 @@ export class SessionInstruments {
     const versions = new Map<number, { readonly value: DecisionValue; readonly creator: string }>()
     for (const row of state.decisions) for (const change of row.history) versions.set(change.revision, { value: change.value, creator: creatorOf(row) })
     const decisions = state.decisions.filter(row => decisionAllowed(access, row.workflowId, row.value, creatorOf(row)))
-      .map(row => ({ ...row, history: row.history.filter(change => decisionAllowed(access, row.workflowId, change.value, creatorOf(row))),
+      .map(row => ({ ...row, registration: registrationFor(document, access, row.workflowId, row.decisionId), updatedAt: row.history.at(-1)!.recordedAt, history: row.history.filter(change => decisionAllowed(access, row.workflowId, change.value, creatorOf(row))),
         view: views.get(keyOf(row.workflowId, row.decisionId)) ?? { read: false, hidden: false } }))
     const visibleDecisions = new Set(decisions.map(row => keyOf(row.workflowId, row.decisionId)))
     const changes = document.events.filter(event => {

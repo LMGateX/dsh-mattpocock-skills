@@ -91,6 +91,8 @@ test('current reads require every associated ticket and preserve ticketless crea
   assert.deepEqual(current.tickets.map(row => row.localTicketId), ['T1'])
   assert.deepEqual(current.decisions.map(row => row.decisionId), ['child-ticketless', 'moved'])
   assert(!JSON.stringify(current).includes('old-private-context'))
+  assert.deepEqual(current.decisions.find(row => row.decisionId === 'child-ticketless').registration, { recordedAt: 12345, revision: 6 })
+  assert.equal(current.decisions.find(row => row.decisionId === 'moved').registration, null)
   assert.deepEqual(current.summary, (await f.read('child', 'child')).summary)
   f.scopes.set('child', { kind: 'assigned', workflowId: 'flow', ticketIds: ['T1', 'T2'] })
   current = await f.instruments.readCurrent('child', 'child')
@@ -156,6 +158,124 @@ test('checkpoint, purge and tail events preserve creator, personal views, merged
   assertNoHistory(current)
 })
 
+test('decision times distinguish first registration from business updates and ignore views and replay', async () => {
+  const f = await ready()
+  let now = 100
+  const instruments = new SessionInstruments(f.controls, f.storage, f.authority, () => now)
+  const create = await f.command('put-decision', { decisionId: 'timed', value: decision })
+  await instruments.apply('A', 'A', create)
+  now = 200
+  await instruments.apply('user', 'A', await f.command('put-decision', { decisionId: 'timed', value: { question: 'Answered', status: 'answered', pending: false } }, 'user', 'A'))
+  now = 300
+  await instruments.apply('user', 'A', await f.command('set-decision-view', { decisionId: 'timed', value: { read: true, hidden: true } }, 'user', 'A'))
+  assert.equal((await instruments.apply('A', 'A', create)).replayed, true)
+  for (const snapshot of [await instruments.read('user', 'A'), await instruments.readCurrent('user', 'A')]) {
+    const row = snapshot.decisions[0]
+    assert.deepEqual(row.registration, { recordedAt: 100, revision: 2 })
+    assert.equal(row.updatedAt, 200)
+    assert.equal(row.value.pending, false)
+    assert.deepEqual(row.view, { read: true, hidden: true })
+    assert.equal(snapshot.businessRevision, 3)
+    assert.equal(snapshot.viewerRevision, 1)
+  }
+  assert.equal((await f.storage.read((await f.read()).instance.instrumentInstanceId)).revision, 4)
+  const savedPolicy = await f.controls.readPolicy('admin')
+  await f.controls.savePolicy('admin', { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, savedPolicy.revision)
+  now = 400
+  const close = await f.command('put-decision', { decisionId: 'timed', value: { question: 'Answered', status: 'closed', awaitingImplementation: false } }, 'user', 'A')
+  const closed = await instruments.apply('user', 'A', close)
+  assert.deepEqual(closed.snapshot.decisions[0].registration, { recordedAt: 100, revision: 2 })
+  assert.equal(closed.snapshot.decisions[0].updatedAt, 400)
+  assert.deepEqual(closed.snapshot.decisions[0].history.at(-1).author, { kind: 'user', principalId: 'user', sessionId: null })
+  assert.equal(closed.snapshot.businessRevision, 4)
+  assert.equal(closed.snapshot.viewerRevision, 1)
+  now = 500
+  await assert.rejects(instruments.apply('user', 'A', { ...close, operationId: 'stale-draft' }), { code: 'revision-conflict' })
+  await assert.rejects(instruments.apply('user', 'A', { ...close, expectedRevision: 4, operationId: 'off-new-decision', decisionId: 'new' }), { code: 'feature-disabled' })
+  const unchanged = await instruments.readCurrent('user', 'A')
+  assert.equal(unchanged.decisions[0].updatedAt, 400)
+  assert.equal(unchanged.summary.pendingUserDecisionCount, 0)
+  assert.equal(unchanged.summary.awaitingImplementationCount, 0)
+  assert.deepEqual((await instruments.readSummary('user', 'A')).summary, { countingScope: 'instance', pendingUserDecisionCount: 0 })
+})
+
+test('compaction preserves first registration using durable proof rather than the earliest retained version', async () => {
+  const f = await ready()
+  await f.apply('put-ticket', { localTicketId: 'T1', value: ticket })
+  let now = 111
+  const instruments = new SessionInstruments(f.controls, f.storage, f.authority, () => now)
+  const put = value => f.command('put-decision', { decisionId: 'timed', value }).then(command => instruments.apply('A', 'A', command))
+  await put({ ...decision, ticketIds: ['T1'] })
+  now = 222
+  await put({ question: 'Updated', status: 'pending' })
+  await instruments.compact('A', 'A', { operationId: 'time-compact', expectedRevision: 4 })
+  for (const principal of ['A', 'child']) {
+    for (const snapshot of [await instruments.read(principal, principal), await instruments.readCurrent(principal, principal)]) {
+      assert.deepEqual(snapshot.decisions[0].registration, { recordedAt: 111, revision: 3 })
+      assert.equal(snapshot.decisions[0].updatedAt, 222)
+    }
+  }
+  now = 333
+  await instruments.apply('A', 'A', await f.command('put-decision', { decisionId: 'tail-new', value: decision }))
+  now = 444
+  await put({ question: 'Tail business update', status: 'still-open' })
+  for (const snapshot of [await instruments.read('A', 'A'), await instruments.readCurrent('A', 'A')]) {
+    assert.deepEqual(snapshot.decisions[0].registration, { recordedAt: 111, revision: 3 })
+    assert.equal(snapshot.decisions[0].updatedAt, 444)
+    assert.deepEqual(snapshot.decisions[1].registration, { recordedAt: 333, revision: 6 })
+    assert.equal(snapshot.decisions[1].updatedAt, 333)
+  }
+})
+
+test('assigned registration remains unknown for an unauthorized first version and after purge, including cold reopen', async () => {
+  const f = await ready()
+  for (const localTicketId of ['T1', 'T2']) await f.apply('put-ticket', { localTicketId, value: ticket })
+  let now = 1000
+  const instruments = new SessionInstruments(f.controls, f.storage, f.authority, () => now)
+  const put = value => f.command('put-decision', { decisionId: 'moved-time', value }).then(command => instruments.apply('A', 'A', command))
+  await put({ ...decision, ticketIds: ['T1', 'T2'], context: 'private-first-body' })
+  now = 900 // A clock rollback must not change which source revision was first.
+  await put({ question: 'Current authorized body', status: 'pending', ticketIds: ['T1'], context: 'safe-current-body' })
+  const check = async (reader, principal, registration) => {
+    for (const snapshot of [await reader.read(principal, principal), await reader.readCurrent(principal, principal)]) {
+      assert.deepEqual(snapshot.decisions[0].registration, registration)
+      assert.equal(snapshot.decisions[0].updatedAt, 900)
+      assert.equal(snapshot.decisions[0].revision, 5)
+      assert.equal(snapshot.summary.pendingUserDecisionCount, 1)
+      if (principal === 'child' && registration === null) {
+        assert.equal(snapshot.decisions[0].history?.length ?? 1, 1)
+        assert(!JSON.stringify(snapshot).includes('private-first-body'))
+      }
+    }
+  }
+  await check(instruments, 'A', { recordedAt: 1000, revision: 4 })
+  await check(instruments, 'child', null)
+  f.scopes.set('child', { kind: 'assigned', workflowId: 'flow', ticketIds: ['T1', 'T2'] })
+  await check(instruments, 'child', { recordedAt: 1000, revision: 4 })
+  await instruments.compact('A', 'A', { operationId: 'moved-time-compact', expectedRevision: 5 })
+  await check(instruments, 'child', { recordedAt: 1000, revision: 4 })
+  f.scopes.set('child', { kind: 'assigned', workflowId: 'flow', ticketIds: ['T1'] })
+  await check(instruments, 'child', null)
+  await instruments.purgeHistory('A', 'A', { operationId: 'moved-time-purge', expectedRevision: 6, throughRevision: 4,
+    targets: [{ kind: 'decision', workflowId: 'flow', decisionId: 'moved-time' }] })
+  const full = await instruments.read('A', 'A')
+  assert.equal(full.decisions[0].history[0].recordedAt, 900)
+  assert.deepEqual(full.decisions[0].registration, { recordedAt: 1000, revision: 4 })
+  f.scopes.set('child', { kind: 'assigned', workflowId: 'flow', ticketIds: ['T1', 'T2'] })
+  await check(instruments, 'child', null)
+  // New storage handle + JSON round trip: no in-memory registration cache is proof.
+  const saved = JSON.stringify(await f.storage.read(full.instance.instrumentInstanceId))
+  assert(!saved.includes('private-first-body'))
+  assert(!saved.includes('registration') && !saved.includes('updatedAt'))
+  const reopened = new SessionInstruments(f.controls, createDomainInstrumentStorage({
+    get() { return JSON.parse(saved) }, async put() { assert.fail('reads must not write') },
+  }), f.authority)
+  await check(reopened, 'A', { recordedAt: 1000, revision: 4 })
+  await check(reopened, 'child', null)
+  f.revoked.add('child')
+  await assert.rejects(reopened.readCurrent('child', 'child'), /permission denied/)
+})
+
 async function historicalFixture(versions) {
   const values = new Map()
   const storage = createDomainInstrumentStorage({ get(key) { return values.get(key) }, async put(key, value) { values.set(key, value) } })
@@ -176,6 +296,9 @@ test('the same current remains small with a 42 MB legacy projection and 300 unch
   const small = await historicalFixture(1), large = await historicalFixture(320)
   const smallCurrent = await small.instruments.readCurrent('A', 'A')
   const full = await large.read()
+  assert.equal((await large.storage.read(full.instance.instrumentInstanceId)).schemaVersion, 1)
+  assert.deepEqual(full.decisions[0].registration, { recordedAt: 12345, revision: 2 })
+  assert.equal(full.decisions[0].updatedAt, 12345)
   const legacyBytes = Buffer.byteLength(JSON.stringify(full))
   assert(legacyBytes > 42_000_000 && legacyBytes < 43_000_000, 'fixture must reproduce the original amplification, not only a large source')
   const current = await large.instruments.readCurrent('A', 'A')
@@ -191,6 +314,7 @@ test('the same current remains small with a 42 MB legacy projection and 300 unch
   for (let i = 0; i < 300; i++) {
     const repeated = await large.instruments.readCurrent('A', 'A')
     assert.equal(repeated.decisions[0].value, current.decisions[0].value, 'reuse the immutable current value, not a history-derived deep copy')
+    assert.equal(repeated.decisions[0].registration, current.decisions[0].registration, 'reuse first-put proof for the same trusted source instead of rescanning history')
     const size = Buffer.byteLength(JSON.stringify(repeated))
     assert.equal(size, currentBytes)
     totalBytes += size
