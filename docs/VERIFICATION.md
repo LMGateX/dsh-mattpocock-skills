@@ -2,7 +2,19 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 0.16.1 DSH 0.2.2-rc.1 兼容补发（发布前门禁记录）
+## 0.16.1 发布与下载回验（2026-11-07，已发布；未为本机安装）
+
+- 唯一 clean source 与 annotated `v0.16.1` 的 peeled commit 为 **0e7b311683541036ae0bc351536fa4a0721ac1c0**，tag object **cbf0b19579227d0176e16cb9c787422c7072e5c9**。本完成记录与机器摘要是发布后 main 的纯文档追加，不改变 tag／运行时／冻结归档；精确包复验须检出该 source/tag。
+- source 与显式 accepted archive × **DSH 0.2.1-alpha.4 / 0.2.2-rc.1** 四次完整套件均 **1014 tests / 1008 pass / 0 fail / 6 skip**；六项 native slots 装配前提另在精确 RC1 Client fixture **6/6** 关闭。PluginManager 显式消费同一只读归档，source-only seams 仍测 source，不将全部测试说成直接从 tgz 执行。
+- 独立 **Standards：0硬性／0可选 smell／0未关闭；Spec：0未关闭**，均绑定上述 source 与 `af5018d` 基线；作者复审不是程序执行／部署回执。baseline与真实RC1 root／Client strict均通过，实际新版内存 emit 的60项Host JS/DTS及1项Client声明与冻结lib逐字节一致；闭合Client／vendor／host range未变。
+- **唯一 accepted tgz：471569 B**，SHA-256 **5df6f0ceff1e92c29720e4b31e377aa3adc3c9346dce0439d35f1fdc1c6def60**，pnpm **11.8.0**，161 regular／0 directory／0 symlink，76 fixed／85 vendor／62 JS+DTS。accepted只pack一次，归档＋四sidecars均只读，dev/ino/mode/size/mtime/ctime前后不变；clean-source prepack、original与downloaded source-bound strict均通过。
+- source＋同归档 × 双宿主 × **stable/beta** 隔离headless均通过，各27 Skills／11 model-visible，source/archive registry逐字节一致；modelInvoked=false／webStarted=false。Skills装载不代替可选控制面：控制面另以真实mounted工具／Remote／native Client／admitted-tool-set探针验证；未新增当前GUI或真实模型/PTC全链验收。
+- 非force **atomic main＋新annotated tag**已push；[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.1) id **437389030**，published_at **2026-11-07T06:31:38Z**，draft=false／prerelease=false。五资产API size/digest全匹配，下载 **5/5逐字节一致**；**96**旧tag refs与v0.16.0正文／五资产id/size/digest未改。
+- 当前Profile／已装插件／共享SDK的 **6项保护文件指纹不变**、原Web listener PID/FD不变；磁盘插件仍 **0.16.0**，没有安装或激活本次0.16.1。指纹只覆盖选定文件，不是整个文件系统快照；不另推断当前进程已加载哪个历史版本。**未为本机安装、未改当前Profile／共享SDK、未重启／替换GUI、未npm publish、未迁移／清理生产记录、未启用管理**。原工作区未提交文档未合入本次发布；隔离工作树与原始本地证据有意保留，所有subagents及其后台任务已收尾。
+
+公开身份与分层结果见[机器摘要](<../dist/verification-0.16.1.json>)；源码阶段记录如下保留，不能把其当时的“后续待执行”误读为本完成记录仍未完成。
+
+## 0.16.1 DSH 0.2.2-rc.1 兼容补发（冻结源中的发布前门禁记录）
 
 本轮基于公开 0.16.0 后的 `af5018d`，由隔离工作树／subagents 完成兼容研究；运行时代码、JS/DTS、vendor／渠道／provider precedence、wire／存储与宿主范围未变。仅更新发行元数据、RC1 engines 断言和旧宿主 native-cwd 测试装配；一手来源见 [RC1 专项记录](<DSH_022_RC1_COMPATIBILITY.md>)。此源码阶段记录不表示已经 push／发布或安装；最终制品与远端身份在后续完成记录中绑定。
 

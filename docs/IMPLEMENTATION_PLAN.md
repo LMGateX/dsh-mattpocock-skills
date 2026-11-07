@@ -6,7 +6,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.16.1 DSH 0.2.2-rc.1 兼容发布
+## 0.16.1 DSH 0.2.2-rc.1 兼容发布（已完成／未为本机安装）
+
+A–D已完成：source/tag **0e7b311683541036ae0bc351536fa4a0721ac1c0**；同归档双宿主完整suite与stable/beta headless、独立Standards/Spec、精确RC1 types和native Client通过；新[v0.16.1](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.1)五资产已发布并下载strict回验。运行时代码与生成物无改动，只有元数据／断言／测试装配及兼容资料；本机未安装，最终身份与边界见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.1.json>)。本状态是发布后main文档，不改变冻结source/tag。
 
 范围以 [DESIGN 的 0.16.1 节](<DESIGN.md>) 为准：隔离环境／subagents 检查与必要适配，验证后 push／Release，不安装本机。
 

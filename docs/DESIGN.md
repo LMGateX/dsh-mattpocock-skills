@@ -12,7 +12,9 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 0.16.1 DSH 0.2.2-rc.1 兼容核对与发布授权（2026-11-07）
+## 0.16.1 DSH 0.2.2-rc.1 兼容核对与发布授权（2026-11-07，已发布／未为本机安装）
+
+交付已完成：唯一source/tag为 **0e7b311683541036ae0bc351536fa4a0721ac1c0**，[v0.16.1五资产](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.1)已发布并逐字节下载strict回验；双宿主source/显式accepted archive各1014项、真实RC1类型／原生Client／公开admitted-tool seams、双轴复审与双渠道headless门禁通过。运行时代码／生成物／vendor／兼容范围不变。此次与下方状态追加只在发布后的main，不移动tag或重pack；详见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.1.json>)。本机未安装或激活0.16.1，Profile／共享SDK／服务及生产数据未改。
 
 所有者要求在隔离环境与 subagents 中检查／适配 [DSH v0.2.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1)，验证后 push 并发版，**暂不为本机安装**。本轮基于最新公开 0.16.0 源码，仅处理新版宿主兼容；若公开 seam、严格类型和真实装载均不要求运行时修改，则以 0.16.1 兼容性补发，不作无依据重构。
 

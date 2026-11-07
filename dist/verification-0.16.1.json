@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "version": "0.16.1",
+  "sourceCommit": "0e7b311683541036ae0bc351536fa4a0721ac1c0",
+  "runtimeAndBundleUnchangedFrom": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.16.1.tgz",
+    "bytes": 471569,
+    "sha256": "5df6f0ceff1e92c29720e4b31e377aa3adc3c9346dce0439d35f1fdc1c6def60",
+    "pnpm": "11.8.0",
+    "members": {
+      "directories": 0,
+      "files": 161,
+      "symlinks": 0,
+      "expectedFiles": 161
+    },
+    "acceptedPackCount": 1,
+    "prepackPassed": true,
+    "strictOriginalPassed": true,
+    "strictDownloadedPassed": true,
+    "fiveOriginalFilesReadOnly": true,
+    "identityMetadataUnchanged": true,
+    "fiveDownloadedAssetsByteIdentical": true
+  },
+  "validation": {
+    "sourceSuites": {
+      "0.2.1-alpha.4": {
+        "tests": 1014,
+        "pass": 1008,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6
+      },
+      "0.2.2-rc.1": {
+        "tests": 1014,
+        "pass": 1008,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6
+      }
+    },
+    "explicitAcceptedArchiveSuites": {
+      "0.2.1-alpha.4": {
+        "tests": 1014,
+        "pass": 1008,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6
+      },
+      "0.2.2-rc.1": {
+        "tests": 1014,
+        "pass": 1008,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6
+      }
+    },
+    "archiveScope": "PluginManager consumes accepted archive; source-only fixtures still test source",
+    "skipReasons": {
+      "canonicalHostNativeUiSlotsNotAssemblable": 6,
+      "upstreamSourceNotSupplied": 0
+    },
+    "nativeClientFixture": {
+      "host": "0.2.2-rc.1",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "primitives": "controlled stand-in",
+      "liveGuiAcceptance": false
+    },
+    "rootStrictTypesPassed": true,
+    "clientStrictTypesPassed": true,
+    "actualPublicRc1Declarations": {
+      "rootDiagnostics": 0,
+      "clientDiagnostics": 0,
+      "nonTargetDshFallbacks": 0,
+      "hostEmitFilesByteIdentical": 60,
+      "clientDeclarationByteIdentical": true
+    },
+    "closedBuildFiles": 62,
+    "clientBundleBytes": 357619,
+    "clientBundleSha256": "7cad7c50517c3ca6605f56d519ede9031bc2de68e1a8464eb32009fe50d2266c",
+    "clientPrivateModules": 8,
+    "clientExternals": [
+      "@deepseek-ai/dsh-client-ui-primitives",
+      "react"
+    ],
+    "vendorFiles": 85,
+    "fixedPackedFiles": 76,
+    "admittedToolSmoke": {
+      "host": "0.2.2-rc.1",
+      "mountedActualPlugin": true,
+      "actualSdkRegistries": true,
+      "controlledAgentMetadata": true,
+      "asyncResolve": true,
+      "sevenUnconditionalTools": true,
+      "assemblySameToolSet": true,
+      "executableSameScope": true,
+      "foreignScopeRejected": true,
+      "pipelineReadSucceeded": true,
+      "resultSchemaVersion": 2,
+      "resultKind": "current",
+      "modelInvoked": false
+    },
+    "reviews": {
+      "sourceCommit": "0e7b311683541036ae0bc351536fa4a0721ac1c0",
+      "baseline": "af5018d3c6e692236e106c68e1af2d3832027918",
+      "evaluationKind": "Independent authored fixed-SHA Standards and Spec review, not execution or deployment receipt",
+      "standards": {
+        "openHardBreaches": 0,
+        "optionalSmells": 0
+      },
+      "spec": {
+        "openFindings": 0
+      }
+    },
+    "headless": [
+      {
+        "dsh": "0.2.1-alpha.4",
+        "sourceAndAcceptedArchive": true,
+        "channels": {
+          "stable": {
+            "skills": 27,
+            "modelVisible": 11
+          },
+          "beta": {
+            "skills": 27,
+            "modelVisible": 11
+          }
+        },
+        "checkoutTarballReportsByteIdentical": true,
+        "modelInvoked": false,
+        "webStarted": false
+      },
+      {
+        "dsh": "0.2.2-rc.1",
+        "sourceAndAcceptedArchive": true,
+        "channels": {
+          "stable": {
+            "skills": 27,
+            "modelVisible": 11
+          },
+          "beta": {
+            "skills": 27,
+            "modelVisible": 11
+          }
+        },
+        "checkoutTarballReportsByteIdentical": true,
+        "modelInvoked": false,
+        "webStarted": false
+      }
+    ]
+  },
+  "release": {
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.1",
+    "id": 437389030,
+    "tag": "v0.16.1",
+    "tagObject": "cbf0b19579227d0176e16cb9c787422c7072e5c9",
+    "peeled": "0e7b311683541036ae0bc351536fa4a0721ac1c0",
+    "publishedAt": "2026-11-07T06:31:38Z",
+    "draft": false,
+    "prerelease": false,
+    "nonForceAtomicMainAndTagPush": true,
+    "assetIds": {
+      "tarball": 719855736,
+      "pnpmVersion": 719855732,
+      "sha256": 719855735,
+      "size": 719855733,
+      "sourceCommit": 719855734
+    },
+    "allFiveApiSizeAndDigestMatched": true,
+    "oldTagRefsUnchanged": 96,
+    "previousReleaseBodyAndAssetIdentitiesUnchanged": true
+  },
+  "localBoundary": {
+    "installed": false,
+    "activated": false,
+    "npmPublished": false,
+    "profileOrSharedSdkChanged": false,
+    "protectedFileFingerprintsUnchanged": 6,
+    "installedPluginVersionUnchanged": "0.16.0",
+    "webListenerIdentityUnchanged": true,
+    "currentGuiAcceptance": false,
+    "productionDataMigrated": false,
+    "worktreeAndEvidenceRetained": true
+  }
+}
