@@ -1,5 +1,5 @@
 import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import type { ReactElement, ChangeEvent } from 'react'
+import type { ReactElement, ChangeEvent, SyntheticEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button, Checkbox, Input, CodeBlock, DisclosureRow, IconSparkleRegular, JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -496,9 +496,9 @@ export function compactInstrumentSummary(view: ClientSessionSnapshot): { readonl
   const ticket = '票 ' + (records === null ? '未知' : countText(records.summary.totalTickets)) + (custom ? ' · ' + custom : '') + (statuses.length > 2 ? ' · 更多 ' + (statuses.length - 2) : '')
   const [T = 'T 未知', S = 'S 未知'] = windowSummary(view.windows, view.health)
   const resource = resourceSummary(view)
-  const parts = ['待用户裁决 ' + (records === null ? '未知' : countText(records.summary.pendingUserDecisionCount)) + ' · 待落实 ' + (records === null ? '未知' : countText(records.summary.awaitingImplementationCount)), ticket, T, S,
+  const parts = ['待用户裁决 ' + (records === null ? '未知' : countText(records.summary.pendingUserDecisionCount)), ticket, T, S,
     bindingSummary(view), observationSummary(view), resource.label]
-  const detail = '实例 ' + view.instance.instrumentInstanceId + ' · ' + (records?.summary.countingScope ?? '统计未知') + ' · ' + parts.join(' · ')
+  const detail = '实例 ' + view.instance.instrumentInstanceId + ' · ' + (records?.summary.countingScope ?? '统计未知') + ' · ' + parts.join(' · ') + (needsRecordCheck(inputRecords(view)) ? ' · 记录核对' : '')
     + (statuses.length ? ' · 完整状态：' + statuses.map(row => row.text).join(' · ') : '') + (resource.reason === null ? '' : ' · 资源读取原因：' + resource.reason)
   return { parts, detail }
 }
@@ -520,7 +520,7 @@ export function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.he
   if (!view.policy.display.header) return null
   const summary = compactInstrumentSummary(view)
   const style = { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', fontSize: '11px' }
-  const content = [h('span', { key: 'identity', style: { flexShrink: 0 } }, '协作'), ...summary.parts.map((part, index) => h('span', { key: index, style: { minWidth: 0, maxWidth: index === 1 ? '220px' : '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, part))]
+  const content = [h('span', { key: 'identity', style: { flexShrink: 0 } }, '协作'), ...summary.parts.map((part, index) => h('span', { key: index, style: { minWidth: 0, maxWidth: index === 1 ? '220px' : '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, part)), needsRecordCheck(inputRecords(view)) ? h('span', { key: 'record-check', style: { color: 'var(--dsw-alias-label-secondary, #61666b)', fontWeight: 400, flexShrink: 0 } }, '记录核对') : null]
   return view.policy.display.rightPanel ? h('button', { type: 'button', onClick: props.openDetails, title: summary.detail, 'aria-label': summary.detail, style }, ...content)
     : h('span', { title: summary.detail + ' · 右侧详情入口已关闭', 'aria-label': summary.detail, style }, ...content)
 }
@@ -579,10 +579,10 @@ function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryF
 }
 type InputDisclosure = 'T' | 'S' | 'pending' | 'awaiting'
 const INPUT_DISCLOSURES = {
-  T: { entrance: '查看 T 票窗口', region: 'T 票窗口详情', color: 'var(--dsh-color-primary, #2563eb)' },
-  S: { entrance: '查看 S 在跑子代理', region: 'S 在跑详情', color: 'var(--dsh-color-accent, #7460c8)' },
-  pending: { entrance: '查看待你裁决事项', region: '待你裁决详情', color: 'var(--dsh-color-danger, #dc4444)' },
-  awaiting: { entrance: '查看待落实事项', region: '待落实详情', color: 'var(--dsh-color-warning, #b7791f)' },
+  T: { entrance: '查看 T 票窗口', region: 'T 票窗口详情', color: 'var(--dsw-alias-state-business-primary, #2563eb)' },
+  S: { entrance: '查看 S 在跑子代理', region: 'S 在跑详情', color: 'var(--dsw-alias-state-done-primary, #7460c8)' },
+  pending: { entrance: '查看待你裁决事项', region: '待你裁决详情', color: 'var(--dsw-alias-state-error-primary, #dc4444)' },
+  awaiting: { entrance: '查看记录核对', region: '记录核对详情', color: 'var(--dsw-alias-label-secondary, #61666b)' },
 } as const
 const inputTextButtonStyle = { background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' } as const
 let nextInputDisclosureId = 0
@@ -596,6 +596,13 @@ function inputWindows(view: ClientSessionSnapshot): WindowSnapshot | null { retu
 /** Strict decision membership: pending-user and business awaiting are independent flags. */
 function isPendingUserDecision(row: DecisionRecord): boolean { return row.value.pending === true && row.value.addressee?.kind === 'user' }
 function isAwaitingImplementation(row: DecisionRecord): boolean { return row.value.awaitingImplementation === true }
+function isNonUserPending(row: DecisionRecord): boolean { return row.value.pending === true && row.value.addressee?.kind !== 'user' }
+function needsRecordCheck(records: InstrumentSnapshot | null): boolean {
+  if (records === null || !Array.isArray(records.decisions)) return true
+  const s = records.summary
+  return s.awaitingImplementationCount !== 0 || records.decisions.some(row => isAwaitingImplementation(row) || isNonUserPending(row))
+    || typeof s.pendingDecisionCount !== 'number' || typeof s.pendingUserDecisionCount !== 'number' || s.pendingDecisionCount !== s.pendingUserDecisionCount
+}
 function decisionRecordKey(row: DecisionRecord): string { return row.workflowId + '\u0000' + row.decisionId }
 /** Duplicate projection rows never become a second editor or a second queue item. */
 function uniqueDecisionRecords(rows: readonly DecisionRecord[]): readonly DecisionRecord[] {
@@ -657,28 +664,89 @@ function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
         h('p', null, axis.workflowId + ' / ' + axis.label + '（' + axis.counting + '） · 未报告 ' + countText(axis.unreported)),
         axis.statuses.map(status => h('p', { key: status.statusKey }, status.label + ' [' + status.statusKey + '] ' + countText(status.count) + (status.meaning ? ' · ' + status.meaning : '')))))))
 }
+const decisionBorder = '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.22))'
+const decisionSecondary = 'var(--dsw-alias-label-secondary, #61666b)'
+const decisionBodyStyle = { margin: '8px 0', whiteSpace: 'pre-wrap' as const, overflowWrap: 'anywhere' as const }
+function DecisionTechnicalDetails(props: { readonly value: unknown; readonly label?: string }): ReactElement {
+  const [open, setOpen] = useState(false)
+  return h('details', { onToggle: (event: SyntheticEvent<HTMLDetailsElement>) => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open) }, style: { borderTop: decisionBorder, padding: '8px 0', minWidth: 0 } },
+    h('summary', { style: { cursor: 'pointer' } }, props.label ?? '技术详情'), open ? pretty(props.value) : null)
+}
+function decisionLongText(label: string, text: string | null | undefined): ReactElement | null {
+  return text ? h('details', { style: { borderTop: decisionBorder, padding: '8px 0' } }, h('summary', { style: { cursor: 'pointer' } }, label), h('p', { style: decisionBodyStyle }, text)) : null
+}
+// Optional authorized READ metadata; not a stored DecisionValue or a creation guess from retained history.
+type DecisionReadingRow = DecisionRecord & {
+  readonly registration?: { readonly recordedAt: number; readonly revision: number } | null
+  readonly updatedAt?: number
+}
+function decisionTime(label: string, value: number | undefined, unknown: string): ReactElement {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || !Number.isFinite(new Date(value).getTime())) return h('span', null, unknown)
+  return h('span', null, label + ' ', h('time', { dateTime: new Date(value).toISOString() }, new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'longOffset',
+  }).format(value)))
+}
+/** Semantic details supports multi-line previews and native keyboard/touch disclosure without truncating the full question. */
+function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; readonly records: InstrumentSnapshot; readonly updated?: boolean; readonly edit?: (() => void) | undefined; readonly onOpen?: (open: boolean) => void }): ReactElement {
+  const row = props.decision, value = row.value
+  const source = row.history?.find(change => change.revision === row.revision)
+  const workflow = props.records.workflows?.find(item => item.workflowId === row.workflowId)?.value.title ?? row.workflowId
+  const preview = Array.from(value.question).slice(0, 96).join('') + (Array.from(value.question).length > 96 ? '…' : '')
+  return h('details', { 'data-decision-item': decisionRecordKey(row), onToggle: (event: SyntheticEvent<HTMLDetailsElement>) => { if (event.target === event.currentTarget) props.onOpen?.(event.currentTarget.open) }, style: { borderTop: decisionBorder, padding: '10px 0', minWidth: 0, color: 'var(--dsw-alias-label-primary, CanvasText)', overflowWrap: 'anywhere' } },
+    h('summary', { style: { cursor: 'pointer', lineHeight: 1.6 } },
+      h('span', { style: { fontWeight: 600 } }, preview),
+      h('span', { style: { display: 'block', color: decisionSecondary, fontSize: '12px' } }, workflow + ' · ' + value.status + ' · ', decisionTime('首次登记', row.registration?.recordedAt, '创建时间未知'), ' · ', decisionTime('业务更新', row.updatedAt, '业务更新时间未知'), props.updated ? ' · 已更新 / 已解决：此事项已不在原分类' : null)),
+    h('div', { style: { padding: '4px 0 0 12px', lineHeight: 1.65, minWidth: 0 } },
+      h('p', { style: { ...decisionBodyStyle, fontWeight: 600 } }, value.question),
+      value.options?.length ? h('div', null, h('strong', null, '选项'), h('ul', { style: { margin: '6px 0', paddingInlineStart: '24px' } }, value.options.map(option => h('li', { key: option.key, style: { whiteSpace: 'pre-wrap' } }, option.key + '：' + option.label)))) : null,
+      value.recommendation ? h('p', { style: decisionBodyStyle }, '建议：' + value.recommendation) : null,
+      value.impact ? h('p', { style: decisionBodyStyle }, '影响：' + value.impact) : null,
+      value.ticketIds?.length ? h('p', { style: decisionBodyStyle }, '关联票：' + value.ticketIds.map(id => ticketIdentity(props.records, row.workflowId, id)).join('；')) : null,
+      decisionLongText('背景', value.context), decisionLongText('已记录结果', value.result),
+      h('details', { style: { borderTop: decisionBorder, padding: '8px 0' } }, h('summary', null, '标识与来源'),
+        h('p', { style: decisionBodyStyle }, '工作流：' + row.workflowId + ' · 事项：' + row.decisionId + ' · 裁决者：' + decisionAddresseeText(row)),
+        source === undefined ? h('p', null, '当前版本来源未知') : h('p', { style: decisionBodyStyle }, '来源（authored）：' + source.author.kind + ' / ' + source.author.principalId + ' · 修订 ' + source.revision + (source.references.length ? ' · 引用：' + source.references.join('；') : ''))),
+      h(DecisionTechnicalDetails, { value: row }),
+      props.edit ? h(Button, { variant: 'ghost', onClick: props.edit, size: 'sm', style: { marginTop: '8px', maxWidth: '100%', height: 'auto', whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' } }, '阅读 / 编辑：' + preview) : null))
+}
+/** Mount with an authorization identity key. Open items retain their original region on classification changes. */
+function DecisionQueues(props: { readonly view: ClientSessionSnapshot; readonly edit?: (row: DecisionRecord) => void }): ReactElement {
+  const records = inputRecords(props.view)
+  const [opened, setOpened] = useState<Record<string, readonly string[]>>({ pending: [], check: [], other: [] })
+  if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：未返回授权事项列表，不作空清单或 0。')
+  const all = uniqueDecisionRecords(records.decisions)
+  const matches = { pending: isPendingUserDecision, check: (row: DecisionRecord) => isAwaitingImplementation(row) || isNonUserPending(row), other: (row: DecisionRecord) => !isPendingUserDecision(row) && !isAwaitingImplementation(row) && !isNonUserPending(row) }
+  const rows = (group: keyof typeof matches): readonly DecisionRecord[] => all.filter(row => matches[group](row) || opened[group]!.includes(decisionRecordKey(row)))
+  const items = (group: keyof typeof matches): readonly ReactElement[] => rows(group).map(row => h('article', { key: decisionRecordKey(row), 'data-decision-key': props.view.sessionId + ':' + row.workflowId + ':' + row.decisionId },
+    h(DecisionReadingItem, { decision: row, records, updated: !matches[group](row), edit: props.edit === undefined ? undefined : () => props.edit!(row),
+      onOpen: (open: boolean) => setOpened(current => { const key = decisionRecordKey(row), keys = current[group]!; return { ...current, [group]: open ? [...new Set([...keys, key])] : keys.filter(item => item !== key) } }) })))
+  return h('div', { style: { minWidth: 0, textAlign: 'left' } },
+    h('section', { 'aria-label': '待你裁决' }, h('h4', { style: { fontSize: '14px', margin: '12px 0 6px' } }, '待你裁决 ' + countText(records.summary.pendingUserDecisionCount)),
+      decisionSummaryMismatch('待你裁决', records.summary.pendingUserDecisionCount, all.filter(isPendingUserDecision).length),
+      rows('pending').length ? items('pending') : h('p', { style: { fontSize: '12px', color: decisionSecondary } }, '本次授权账本未返回待你裁决事项；不从空明细重算摘要计数。')),
+    h('section', { 'aria-label': '记录核对' }, h('h4', { style: { fontSize: '14px', margin: '12px 0 6px' } }, '记录核对'), recordCheckFacts(records), items('check')),
+    h('details', { 'aria-label': '其他裁决记录' }, h('summary', { style: { fontSize: '13px', color: decisionSecondary, cursor: 'pointer' } }, '其他裁决记录（不是待你裁决） · ' + all.filter(matches.other).length + ' 条'), items('other')))
+}
+function decisionReadingIdentity(view: ClientSessionSnapshot): string {
+  return JSON.stringify([view.sessionId, view.instance, view.caller, view.policyGrants.revision, view.records?.scope, inputRecords(view) !== null])
+}
+function recordCheckFacts(records: InstrumentSnapshot): ReactElement {
+  const rows = Array.isArray(records.decisions) ? uniqueDecisionRecords(records.decisions) : null
+  return h('div', { style: { fontSize: '12px', color: decisionSecondary, lineHeight: 1.6 } },
+    h('p', { style: { margin: '6px 0' } }, '原待落实标记 ' + countText(records.summary.awaitingImplementationCount) + '，不等于未完成任务；保留原始兼容标记，需按任务依据核对。'),
+    h('p', { style: { margin: '6px 0' } }, '非用户 pending 记录：' + (rows === null ? '未知' : rows.filter(isNonUserPending).length) + '（当前授权列表）；与原待落实标记可重叠，不能相加。'),
+    rows === null ? diagnostic('核对清单未知：未返回授权事项列表，不作空清单或 0。') : decisionSummaryMismatch('原待落实标记', records.summary.awaitingImplementationCount, rows.filter(isAwaitingImplementation).length))
+}
 function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting', openedKeys: readonly string[]): ReactElement {
   const records = inputRecords(view)
   if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：' + (inputReadFailure(view, 'records') ?? '未返回可读事项'))
-  // Keep the deliberately opened identities, not a live queue that silently switches the reader.
-  // Always obtain content from the current authorized projection; absent rows are never cached.
+  // Keep deliberately opened identities; bodies always come from the current authorized projection.
   const decisions = openedKeys.flatMap(key => { const row = records.decisions.find(row => decisionRecordKey(row) === key); return row === undefined ? [] : [row] })
-  return h('div', null, diagnostic(countingScopeText(records.summary.countingScope) + '；只读查看，不标记已读或解决事项。可在原聊天中回答。'),
+  return h('div', null, h('p', { style: { color: decisionSecondary, margin: '6px 0', fontSize: '12px' } }, countingScopeText(records.summary.countingScope) + '；只读查看，不标记已读或解决事项。可在原聊天中回答。'),
     decisions.length === 0 ? diagnostic('本次授权账本未返回此类事项；不从空明细重算摘要计数。') : null,
-    decisions.map(decision => {
-      const value = decision.value
-      const source = decision.history?.find(row => row.revision === decision.revision)
-      const fields = [['背景', value.context], ['建议', value.recommendation], ['影响', value.impact], ['结果', value.result]] as const
-      return h('article', { key: decision.workflowId + ':' + decision.decisionId },
-        h('h4', null, value.question),
-        (category === 'pending' ? !isPendingUserDecision(decision) : !isAwaitingImplementation(decision)) ? diagnostic('已更新 / 已解决：此事项已不在原分类；保留当前授权内容供阅读。') : null,
-        h('p', null, '工作流：' + workflowIdentity(records, decision.workflowId) + ' · 事项 ' + decision.decisionId + ' · 状态：' + value.status),
-        value.ticketIds?.length ? h('p', null, '关联票：' + value.ticketIds.map(id => ticketIdentity(records, decision.workflowId, id)).join('；')) : null,
-        ...fields.filter(([, text]) => text !== null && text !== undefined).map(([label, text]) => h('p', { key: label, style: { whiteSpace: 'pre-wrap' } }, label + '：' + text)),
-        value.options?.length ? h('div', null, h('p', null, '选项'), h('ul', null, value.options.map(option => h('li', { key: option.key }, option.key + '：' + option.label)))) : null,
-        source === undefined ? null : h('p', null, '来源（authored）：' + source.author.kind + ' / ' + source.author.principalId + ' · 修订 ' + source.revision + (source.references.length ? ' · 引用：' + source.references.join('；') : '')),
-        technicalDetails(decision))
-    }))
+    category === 'awaiting' ? recordCheckFacts(records) : decisionSummaryMismatch('待你裁决', records.summary.pendingUserDecisionCount, uniqueDecisionRecords(records.decisions).filter(isPendingUserDecision).length),
+    decisions.map(decision => h(DecisionReadingItem, { key: decisionRecordKey(decision), decision, records,
+      updated: category === 'pending' ? !isPendingUserDecision(decision) : !(isAwaitingImplementation(decision) || isNonUserPending(decision)) })))
 }
 // One explicit navigation selection per plugin activation; no business content, polling or Session retention.
 interface NotificationReadingValue { readonly sessionId: string | null; readonly scope: string | null; readonly key: string | null; readonly identity: string | null }
@@ -747,7 +815,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const shown = view !== null && view.policy.display.inputSummary && props.observer.getDisplay()?.inputSummary !== false
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
-  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance, view?.caller, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
+  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance, view?.caller, view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
     view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
   const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null; readonly decisionKeys: readonly string[] }>(() => ({ identity, category: null, decisionKeys: [] }))
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
@@ -765,7 +833,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const entrance = (category: InputDisclosure, text: string): ReactElement => h('button', {
     key: category, type: 'button', 'aria-label': INPUT_DISCLOSURES[category].entrance, 'aria-expanded': selected === category,
     'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: INPUT_DISCLOSURES[category].color },
-    onClick: () => selected === category ? close() : setSelection({ identity, category, decisionKeys: (records?.decisions ?? []).filter(row => category === 'pending' ? isPendingUserDecision(row) : category === 'awaiting' && isAwaitingImplementation(row)).map(decisionRecordKey) }),
+    onClick: () => selected === category ? close() : setSelection({ identity, category, decisionKeys: uniqueDecisionRecords(records?.decisions ?? []).filter(row => category === 'pending' ? isPendingUserDecision(row) : category === 'awaiting' && (isAwaitingImplementation(row) || isNonUserPending(row))).map(decisionRecordKey) }),
   }, text)
   const windows = inputWindows(view)
   const windowEntrance = (category: 'T' | 'S'): ReactElement => {
@@ -776,7 +844,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       unknownTotal ? '（下界；总数未知）' : null,
       depth == null ? null : '（直接 ' + countText(depth.direct) + ' · 更深 ' + countText(depth.deeper) + (depth.unknown === 0 ? '' : ' · 深度未知 ' + countText(depth.unknown)) + '）',
       usage === undefined ? null : h('span', { style: { color: 'inherit' } },
-        usage.overage === 0 ? null : h('span', { style: { color: INPUT_DISCLOSURES.awaiting.color } }, ' · 超出 ' + countText(usage.overage)),
+        usage.overage === 0 ? null : h('span', { style: { color: 'var(--dsw-alias-state-warn-label, #b7791f)' } }, ' · 超出 ' + countText(usage.overage)),
         h('span', { style: { color: 'inherit', fontWeight: 'normal' } }, ' · 差额 ' + signedCountText(usage.gap))))
   }
   return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
@@ -785,7 +853,8 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + countText(records.summary.totalTickets) + ' · ' + countingScopeText(records.summary.countingScope)),
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
         pending === 0 ? null : entrance('pending', '待你裁决 ' + countText(pending)),
-        awaiting === 0 ? null : entrance('awaiting', '待落实 ' + countText(awaiting)), windowEntrance('T'), windowEntrance('S'))),
+        windowEntrance('T'), windowEntrance('S'))),
+    needsRecordCheck(records) ? h('div', { 'aria-label': '次级记录入口', style: { alignSelf: 'flex-end', fontSize: '12px' } }, entrance('awaiting', '记录核对')) : null,
     h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
       ...visible.flatMap(workflow => workflow.ticketCount === 0
         ? [h('div', { key: workflow.workflowId + ':no-tickets' }, workflow.workflowId + ' / ' + workflow.axes.map(axis => axis.label).join(' / ') + ' · 暂无票')]
@@ -795,8 +864,10 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
     h('section', {
       id: regionPrefix, role: 'region', 'aria-label': selected === null ? undefined : INPUT_DISCLOSURES[selected].region,
       hidden: selected === null, style: { width: '100%', minWidth: 0, maxHeight: 'min(320px, 35vh)', overflowY: 'auto', textAlign: 'left' },
-    }, selected === null ? null : h('div', null, h('h3', null, INPUT_DISCLOSURES[selected].region),
-      h('button', { type: 'button', 'aria-label': '关闭详情', onClick: close }, '关闭详情'),
+    }, selected === null ? null : h('div', null,
+      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', borderBottom: decisionBorder, padding: '4px 0' } },
+        h('h3', { style: { fontSize: '14px', margin: 0, fontWeight: 600 } }, INPUT_DISCLOSURES[selected].region),
+        h(Button, { variant: 'ghost', 'aria-label': '关闭详情', onClick: close }, '关闭详情')),
       selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view) : inputDecisionDetails(view, selected, selection.decisionKeys))))
 }
 
@@ -829,28 +900,28 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
   }
   return h('article', { style: { borderBottom: '1px solid currentColor', padding: '12px 0' } },
     h('h4', null, props.decision.value.question),
-    h('p', null, props.decision.workflowId + ' · ' + props.decision.value.status + (props.decision.value.pending ? ' · 未解决' : '') + (props.decision.value.awaitingImplementation ? ' · 已裁决待落实' : '')),
-    props.decision.value.context ? h('p', null, props.decision.value.context) : null,
+    h('p', null, props.decision.workflowId + ' · ' + props.decision.value.status + (props.decision.value.pending ? ' · 未解决' : '') + (props.decision.value.awaitingImplementation ? ' · 原待落实标记' : '')),
+    decisionLongText('背景', props.decision.value.context),
     props.decision.value.recommendation ? h('p', null, '建议：' + props.decision.value.recommendation) : null,
     props.decision.value.impact ? h('p', null, '影响：' + props.decision.value.impact) : null,
     props.decision.value.options?.map(option => h('button', { key: option.key, type: 'button', disabled: busy, onClick: () => setAnswer(option.label) }, option.label)),
-    props.decision.value.result ? h('p', null, '已记录结果：' + props.decision.value.result) : null,
+    decisionLongText('已记录结果', props.decision.value.result),
     h('label', null, '你的裁决', h('textarea', { value: answer, disabled: busy, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setAnswer(event.target.value) })),
     h('label', null, '保存状态（任务自定义）', h('input', { value: status, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setStatus(event.target.value) })),
     h('label', null, h('input', { type: 'checkbox', checked: pending, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setPending(event.target.checked) }), '仍 pending'),
-    h('label', null, h('input', { type: 'checkbox', checked: awaiting, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setAwaiting(event.target.checked) }), '已裁决，仍待落实'),
+    h('label', null, h('input', { type: 'checkbox', checked: awaiting, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setAwaiting(event.target.checked) }), '保留原待落实标记（不代表已经用户裁决）'),
     h('button', { type: 'button', disabled: busy || !answer.trim() || !status.trim(), onClick: () => { void save() } }, '按明确选择记录裁决'),
     h('button', { type: 'button', disabled: busy, onClick: () => { setBase({ records: props.records, decision: props.decision }); setAnswer(''); setStatus(props.decision.value.status); setPending(props.decision.value.pending ?? false); setAwaiting(props.decision.value.awaitingImplementation ?? false); setMessage(null) } }, '重新读取事项（丢弃草稿）'),
     diagnostic('草稿业务修订 ' + base.records.businessRevision + '；背景刷新不会升级保存修订。'),
     message === null ? null : diagnostic(message),
-    h('details', null, h('summary', null, '来源历史（不是当前状态）'), pretty(props.decision.history)))
+    h(DecisionTechnicalDetails, { label: '来源历史（不是当前状态）', value: props.decision.history }))
 }
 
 export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & { readonly remote: ControlsRemote }): ReactElement {
   const observation = useObservation(props.observer)
   const tab = props.useTabInfo()
   const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && props.observer.sessionId === props.sessionId ? observation.value : null
-  const readIdentity = JSON.stringify([props.sessionId, props.observer.sessionId, current?.instance, current?.caller, current?.records?.scope,
+  const readIdentity = JSON.stringify([props.sessionId, props.observer.sessionId, current?.instance, current?.caller, current?.policyGrants.revision, current?.records?.scope,
     current?.policy.display.rightPanel, current !== null && inputRecords(current) !== null])
   const [reading, setReading] = useState<{ readonly identity: string; readonly key: string | null }>({ identity: readIdentity, key: null })
   if (reading.identity !== readIdentity) setReading({ identity: readIdentity, key: null })
@@ -859,24 +930,17 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
   const view = observation.value
   if (!view.policy.display.rightPanel) return h('section', { style: panelStyle }, diagnostic('右侧显示已关闭；账本和模型消费不受影响。'))
   const records = inputRecords(view)
-  const decisions = records === null ? [] : uniqueDecisionRecords(records.decisions)
-  const pendingUser = decisions.filter(isPendingUserDecision)
-  const awaiting = decisions.filter(isAwaitingImplementation)
-  // A pending-user + awaiting item intentionally appears once in each queue, never in "other".
-  const other = decisions.filter(decision => !isPendingUserDecision(decision) && !isAwaitingImplementation(decision))
-  const pendingUserCount = records?.summary.pendingUserDecisionCount
-  const awaitingCount = records?.summary.awaitingImplementationCount
+  const decisions = records === null || !Array.isArray(records.decisions) ? [] : uniqueDecisionRecords(records.decisions)
+
   const selectedDecision = reading.identity === readIdentity ? decisions.find(row => decisionRecordKey(row) === reading.key) : undefined
   if (reading.identity === readIdentity && reading.key !== null && selectedDecision === undefined) setReading({ identity: readIdentity, key: null })
-  const decisionEntry = (decision: DecisionRecord, showAddressee: boolean): ReactElement => h('article', { key: decisionRecordKey(decision), 'data-decision-key': props.sessionId + ':' + decision.workflowId + ':' + decision.decisionId },
-    h('button', { type: 'button', onClick: () => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) }, '阅读 / 编辑：' + decision.value.question),
-    h('p', null, decision.value.status), showAddressee ? h('p', null, '裁决者：' + decisionAddresseeText(decision)) : null)
+
   // The editor is mounted at one stable location, never moved between queue parents.
   // Current authorized rows supply the body; scope/identity/read failures unmount all draft content.
   const reader = selectedDecision === undefined || records === null ? null : h('section', { key: 'decision-reader', 'aria-label': '裁决阅读与编辑' },
-    h('h4', null, '裁决阅读与编辑'),
-    h('button', { type: 'button', onClick: () => setReading({ identity: readIdentity, key: null }) }, '关闭阅读'),
-    diagnostic('当前分类：' + (isPendingUserDecision(selectedDecision) ? '待你裁决' : isAwaitingImplementation(selectedDecision) ? '待落实（已更新）' : '其他 / 已解决（已更新）') + '；分类变化不关闭阅读。'),
+    h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' } }, h('h4', { style: { fontSize: '14px', margin: 0 } }, '裁决阅读与编辑'),
+      h(Button, { variant: 'ghost', size: 'sm', onClick: () => setReading({ identity: readIdentity, key: null }) }, '关闭阅读')),
+    diagnostic('当前分类：' + (isPendingUserDecision(selectedDecision) ? '待你裁决' : isAwaitingImplementation(selectedDecision) || isNonUserPending(selectedDecision) ? '记录核对（已更新）' : '其他 / 已解决（已更新）') + '；分类变化不关闭阅读。'),
     h(DecisionEditor, { key: readIdentity + ':' + decisionRecordKey(selectedDecision), decision: selectedDecision, records, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))
   return h('section', { style: panelStyle, 'aria-label': '协作详情' },
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
@@ -888,19 +952,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
       records.workflows.map(workflow => h('section', { key: workflow.workflowId }, h('h4', null, workflow.value.title),
         workflow.value.axes.map(axis => h('div', { key: axis.axisKey }, h('p', null, axis.label + ' · ' + axis.counting), axis.statuses.map(status => h('span', { key: status.statusKey, title: status.meaning ?? undefined }, status.label + ' ')))),
         records.tickets.filter(ticket => ticket.workflowId === workflow.workflowId).map(ticket => h('article', { key: ticket.localTicketId }, h('strong', null, ticket.value.title), pretty(ticket.value))))),
-      h('section', { 'aria-label': '待你裁决' },
-        h('h4', null, '待你裁决 ' + countText(pendingUserCount)),
-        decisionSummaryMismatch('待你裁决', pendingUserCount, pendingUser.length),
-        pendingUser.length === 0 ? diagnostic('本次授权账本未返回待你裁决事项；不从空明细重算摘要计数。') : pendingUser.map(decision => decisionEntry(decision, false))),
-      h('section', { 'aria-label': '待落实' },
-        h('h4', null, '待落实 ' + countText(awaitingCount)),
-        diagnostic('此类为业务待落实，不区分裁决者（user/agent/unspecified）。'),
-        decisionSummaryMismatch('待落实', awaitingCount, awaiting.length),
-        awaiting.length === 0 ? diagnostic('本次授权账本未返回待落实事项；不从空明细重算摘要计数。') : awaiting.map(decision => decisionEntry(decision, true))),
-      h('details', { 'aria-label': '其他裁决记录' },
-        h('summary', null, '其他裁决记录（含 agent 内部，不是待你裁决） · ' + other.length + ' 条'),
-        diagnostic('默认折叠；这些记录不是待你裁决，保留显式编辑。'),
-        other.length === 0 ? diagnostic('当前没有其他裁决记录。') : other.map(decision => decisionEntry(decision, true)))),
+      h(DecisionQueues, { key: readIdentity, view, edit: (decision: DecisionRecord) => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) })),
     reader,
     h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
     h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
@@ -1290,6 +1342,7 @@ export function SettingsInspection(props: { readonly sessionId: string; readonly
 }
 export function ObservedSettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly remote?: ControlsRemote }): ReactElement {
   const observation = useObservation(props.observer)
+  if (props.observer.sessionId !== props.sessionId || (observation.status === 'ready' && observation.value.sessionId !== props.sessionId)) return diagnostic('会话选择与观察归属不一致；状态未知。')
   if (observation.status !== 'ready') return h('section', { 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取所选会话'))
   const view = observation.value
@@ -1297,7 +1350,9 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
     h('h4', null, '所选会话 ' + props.sessionId + ' · 当前投影与显式登记'),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · 主会话 ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新所选会话'),
-    h('h4', null, '票进度与待裁决'), view.records === null ? diagnostic('票/事项账本未知') : pretty(view.records),
+    h('h4', null, '票进度与裁决记录'),
+    h('section', { 'aria-label': '设置页裁决记录' }, h(DecisionQueues, { key: decisionReadingIdentity(view), view })),
+    h(DecisionTechnicalDetails, { key: decisionReadingIdentity(view) + ':raw', label: '票与事项账本技术数据', value: inputRecords(view) }),
     h('h4', null, '独立 T/S（观测）'), h(WindowProjection, { view }),
     props.remote ? h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }) : null,
     h('details', null, h('summary', null, '旧资源记录（仅只读）'), ResourceProjection({ view })),

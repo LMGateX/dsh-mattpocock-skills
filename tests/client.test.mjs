@@ -386,7 +386,7 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   const rendered = client.ObservedHeaderEntry({ observer, openDetails: () => { throw new Error('automatic open') } })
   const text = JSON.stringify(rendered)
   assert.match(text, /票 7/); assert.match(text, /部分接口可评审 3/)
-  assert.match(text, /待用户裁决 2/); assert.match(text, /待落实 1/)
+  assert.match(text, /待用户裁决 2/); assert.match(text, /记录核对/); assert.doesNotMatch(text, /待落实 1/)
   assert.match(text, /T 2\/4/); assert.match(text, /S 在跑 0\/3.*（下界）.*总数未知/); assert.match(text, /资源 1/)
   assert(!text.includes('S 0/3')); assert(!text.includes('%')); assert(!text.includes('in_progress'))
   assert.equal(view.policy.display.inputSummary, false)
@@ -757,17 +757,7 @@ test('mounted detail editors retain Session-qualified identities and reject an u
   const injected = registration.options.inject('A'); const release = injected.observer.retain(); t.after(release); await settle()
   const props = { sessionId: 'A', useTabInfo: () => ({ tab: { visible: true } }), ...injected }
   const tree = client.Details(props)
-  const pending = treeRows(tree).find(row => row.type === 'section' && row.props?.['aria-label'] === '待你裁决')
-  assert(pending, 'the user queue is explicitly present')
-  assert.equal(treeRows(pending).filter(row => row.type?.name === 'DecisionEditor').length, 0, 'a pending without a user addressee is not in 待你裁决')
-  assert.match(JSON.stringify(pending), /待你裁决 0/)
-  const other = treeRows(tree).find(row => row.type === 'details' && row.props?.['aria-label'] === '其他裁决记录')
-  assert(other, 'the no-addressee pending record stays reachable in the other queue')
-  assert.equal(other.props.open, undefined, 'the other queue is collapsed by default')
-  assert.match(JSON.stringify(other), /其他裁决记录（含 agent 内部，不是待你裁决）/)
-  assert.match(JSON.stringify(other), /沿任务约定裁决/)
-  const entry = treeRows(other).find(row => row.props?.['data-decision-key'])
-  assert.equal(entry.props['data-decision-key'], 'A:wf:choice', 'queue entrances retain Session-qualified business identities')
+  // Queue/body/classification behavior is exercised at the actual React DOM seam in client-settings-dom.test.mjs.
   const delegation = treeRows(tree).find(row => row.type?.name === 'PolicyDelegation')
   assert.equal(delegation.props.key, 'A:policy-grants')
   const roleKeys = treeRows(tree).filter(row => ['WorktreeBindingsPanel', 'HistoryPanel', 'PolicyDelegation'].includes(row.type?.name)).map(row => row.props.key)
@@ -776,85 +766,6 @@ test('mounted detail editors retain Session-qualified identities and reject an u
   const mismatched = client.Details({ ...props, sessionId: 'B' })
   assert.match(JSON.stringify(mismatched), /归属不一致/)
   assert(!treeRows(mismatched).some(row => row.type?.name === 'DecisionEditor'))
-})
-
-test('sidebar decision projections keep pending-user, awaiting and collapsed other records separate without leakage', async t => {
-  const fixture = contextFixture()
-  const decisions = [
-    decisionRecord('wf', 'pending-user', { question: '待你裁决-用户', pending: true, addressee: { kind: 'user' } }),
-    decisionRecord('wf', 'both', { question: '双旗-用户', pending: true, awaitingImplementation: true, addressee: { kind: 'user', label: '你' } }),
-    decisionRecord('wf', 'pending-agent', { question: 'agent内部-事项', pending: true, addressee: { kind: 'agent', principalId: 'agent:worker' } }),
-    decisionRecord('wf', 'pending-none', { question: '缺省addressee-事项', pending: true }),
-    decisionRecord('wf', 'resolved-user', { question: '已结束-user事项', pending: false, addressee: { kind: 'user' }, status: '已完成', result: '已记录结果' }),
-    decisionRecord('wf', 'resolved-agent', { question: '已结束-agent事项', pending: false, addressee: { kind: 'agent' }, status: '已完成' }),
-    decisionRecord('wf', 'awaiting-only', { question: '仅待落实-agent事项', pending: false, awaitingImplementation: true, addressee: { kind: 'agent', principalId: 'agent:worker' } }),
-    decisionRecord('wf', 'unspecified', { question: '未指定-事项', pending: true, addressee: { kind: 'unspecified' } }),
-    decisionRecord('wf', 'pending-agent', { question: '重复-事项', pending: true, addressee: { kind: 'agent' } }),
-  ]
-  const records = { instance, businessRevision: 9, workflows: [], tickets: [], decisions,
-    summary: { countingScope: 'instance', totalTickets: 0, pendingUserDecisionCount: 2, awaitingImplementationCount: 2, statusCounts: [] } }
-  fixture.ctx.remote.mattpocockControls.readSession = async id => ok(snapshot(id, { records }))
-  await client.apply(fixture.ctx); t.after(() => { for (const effect of fixture.effects.reverse()) effect?.() })
-  const registration = fixture.entries.find(row => row.options?.name === 'sidebar.right.pane.tab')
-  const injected = registration.options.inject('A'); const release = injected.observer.retain(); t.after(release); await settle()
-  const props = { sessionId: 'A', useTabInfo: () => ({ tab: { visible: true } }), ...injected }
-  const section = (tree, label) => treeRows(tree).find(row => row.type === 'section' && row.props?.['aria-label'] === label)
-  const entries = node => treeRows(node).filter(row => row.props?.['data-decision-key'])
-  // Rendered element text; editor props still carry the whole authorized ledger, so rows are
-  // asserted through each editor's own decision body rather than a serialized subtree.
-  const text = node => typeof node === 'string' || typeof node === 'number' ? String(node)
-    : Array.isArray(node) ? node.map(text).join(' ')
-    : node === null || typeof node !== 'object' ? ''
-    : text(node.props?.children)
-  const rowText = node => text(node)
-  const tree = client.Details(props)
-  const pending = section(tree, '待你裁决'), awaiting = section(tree, '待落实')
-  const other = treeRows(tree).find(row => row.type === 'details' && row.props?.['aria-label'] === '其他裁决记录')
-  assert(pending && awaiting && other, 'all three decision projections are mounted')
-  assert.match(text(pending), /待你裁决 2/)
-  assert.deepEqual(entries(pending).map(row => row.props['data-decision-key']), ['A:wf:pending-user', 'A:wf:both'])
-  for (const leak of ['agent内部-事项', '缺省addressee-事项', '已结束-user事项', '已结束-agent事项', '仅待落实-agent事项', '未指定-事项', '重复-事项']) {
-    assert(!rowText(pending).includes(leak), '待你裁决 leaked ' + leak)
-  }
-  assert.match(text(awaiting), /待落实 2/)
-  assert.match(text(awaiting), /不区分裁决者/)
-  assert.deepEqual(entries(awaiting).map(row => row.props['data-decision-key']), ['A:wf:both', 'A:wf:awaiting-only'])
-  assert.match(text(awaiting), /裁决者：agent · agent:worker/)
-  assert.match(text(awaiting), /裁决者：user · 你/)
-  assert(!rowText(awaiting).includes('agent内部-事项'))
-  assert(!rowText(awaiting).includes('已结束-user事项'))
-  assert.equal(other.props.open, undefined, 'other records are collapsed by native details')
-  assert.match(text(other), /其他裁决记录（含 agent 内部，不是待你裁决）/)
-  assert.deepEqual(entries(other).map(row => row.props['data-decision-key']), ['A:wf:pending-agent', 'A:wf:pending-none', 'A:wf:resolved-user', 'A:wf:resolved-agent', 'A:wf:unspecified'])
-  for (const key of ['A:wf:pending-user', 'A:wf:both', 'A:wf:awaiting-only']) assert(!entries(other).some(row => row.props['data-decision-key'] === key))
-  assert(!rowText(other).includes('重复-事项'), 'duplicate workflowId+decisionId rows render once')
-  assert.match(text(other), /裁决者：缺省（未指定）/)
-  const mounted = hookFixture(); t.after(() => mounted.unmount())
-  let selected = mounted.render(client.Details, props); mounted.mountEffects()
-  button(selected, '阅读 / 编辑：agent内部-事项').props.onClick()
-  selected = mounted.render(client.Details, props)
-  assert(treeRows(selected).some(row => row.type?.name === 'DecisionEditor'), 'collapsed other records retain an explicit stable editor entrance')
-  const nextInstance = { ...instance, instrumentInstanceId: 'i-two' }
-  const nextRecords = { instance: nextInstance, businessRevision: 10, workflows: [], tickets: [],
-    decisions: [decisionRecord('wf', 'fresh-user', { question: '刷新后-新事项', pending: true, addressee: { kind: 'user' } })],
-    summary: { countingScope: 'instance', totalTickets: 0, pendingUserDecisionCount: 1, awaitingImplementationCount: 0, statusCounts: [] } }
-  const emptyRecords = { instance, businessRevision: 0, workflows: [], tickets: [], decisions: [],
-    summary: { countingScope: 'instance', totalTickets: 0, pendingUserDecisionCount: 0, awaitingImplementationCount: 0, statusCounts: [] } }
-  fixture.ctx.remote.mattpocockControls.readSession = async id => id === 'B'
-    ? ok(snapshot('B', { records: emptyRecords }))
-    : ok(snapshot(id, { instance: nextInstance, records: nextRecords }))
-  await injected.observer.refresh(); await settle()
-  const refreshed = client.Details(props)
-  assert.match(text(refreshed), /实例 i-two/)
-  assert.match(text(section(refreshed, '待你裁决')), /待你裁决 1/)
-  assert(rowText(refreshed).includes('刷新后-新事项'))
-  for (const old of ['待你裁决-用户', 'agent内部-事项', '缺省addressee-事项', '已结束-user事项', '仅待落实-agent事项']) {
-    assert(!rowText(refreshed).includes(old), 'refresh leaked ' + old)
-  }
-  const injectedB = registration.options.inject('B'); const releaseB = injectedB.observer.retain(); t.after(releaseB); await settle()
-  const switched = client.Details({ sessionId: 'B', useTabInfo: () => ({ tab: { visible: true } }), ...injectedB })
-  assert(!rowText(switched).includes('刷新后-新事项'), 'Session/instance switch never shows the previous queue')
-  assert.match(text(section(switched, '待你裁决')), /待你裁决 0/)
 })
 
 test('mounted history source cleanup uses source document CAS and row cut while preserving current and separate copy actions', async t => {

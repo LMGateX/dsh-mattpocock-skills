@@ -17,8 +17,8 @@ const client = registration.factory(name => {
   if (name === PRIMITIVES_ID) return primitives
   throw new Error('Unexpected runtime dependency ' + name)
 })
-const labels = { T: '查看 T 票窗口', S: '查看 S 在跑子代理', pending: '查看待你裁决事项', awaiting: '查看待落实事项' }
-const regions = { T: 'T 票窗口详情', S: 'S 在跑详情', pending: '待你裁决详情', awaiting: '待落实详情' }
+const labels = { T: '查看 T 票窗口', S: '查看 S 在跑子代理', pending: '查看待你裁决事项', awaiting: '查看记录核对' }
+const regions = { T: 'T 票窗口详情', S: 'S 在跑详情', pending: '待你裁决详情', awaiting: '记录核对详情' }
 const author = { kind: 'user', principalId: 'user:test', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'inline-instance', ownerSessionId: 'inline-owner', controlWorkspaceId: 'inline-workspace' }
@@ -96,12 +96,24 @@ function visibleText(container) {
   return clone.textContent
 }
 
-test('historical regression: actual ObservedInputSummary exposes pendingUser 3 and awaiting 2', async t => {
-  const { container } = await mount(t)
-  assert.match(container.textContent, /待你裁决\s*3/, 'authorized pendingUserDecisionCount=3 must reach the real input dock')
-  assert.match(container.textContent, /待落实\s*2/, 'independent awaitingImplementationCount=2 must reach the real input dock')
-  assert.equal(entry(container, 'pending').tagName, 'BUTTON')
-  assert.equal(entry(container, 'awaiting').tagName, 'BUTTON')
+test('record check is secondary and keeps raw markers with a unique non-user pending union', async t => {
+  const view = snapshot(); view.policy.display.rightPanel = false
+  view.records.decisions = [decision('both', { pending: true, awaitingImplementation: true, addressee: { kind: 'agent' } }), decision('await-only', { awaitingImplementation: true }), decision('agent', { pending: true, addressee: { kind: 'agent' } }), decision('user', { pending: true, addressee: { kind: 'user' } })]
+  view.records.decisions.push(structuredClone(view.records.decisions[0]))
+  const f = await mount(t, view), main = named(f.container, '常驻协作提醒')
+  assert.match(main.textContent, /待你裁决\s*3/)
+  assert.doesNotMatch(main.textContent, /待落实|记录核对\s*\d/)
+  const check = named(f.container, '查看记录核对')
+  assert.equal(check.textContent, '记录核对')
+  await click(check)
+  const detail = named(f.container, '记录核对详情')
+  assert.match(detail.textContent, /原待落实标记 2.*不等于未完成任务/)
+  assert.match(detail.textContent, /非用户 pending.*2/)
+  assert.equal(detail.querySelectorAll('details[data-decision-item]').length, 3, 'union excludes user-only and deduplicates overlap and repeated rows')
+  assert.doesNotMatch(detail.textContent, /事项-user/)
+  const refreshed = structuredClone(view); refreshed.records.summary.awaitingImplementationCount = 9
+  await f.refresh(refreshed)
+  assert.match(detail.textContent, /摘要计数 9.*列表 2.*不一致/)
 })
 
 function assertClosed(container) {
@@ -120,6 +132,66 @@ function decision(id, value = {}, workflowId = 'decision-flow') {
   return { decisionId: id, workflowId, revision: 3, creator: author, view: { read: false, hidden: false }, history: [{ revision: 3, recordedAt: 1234, author, references: ['evidence-ref'], value }],
     value: { question: '事项-' + id, status: '任务自定状态', ...value } }
 }
+test('decision raw technical history is materialized only on explicit disclosure and stays lossless', async t => {
+  const view = snapshot(), row = decision('technical', { pending: true, addressee: { kind: 'user' } })
+  row.history[0].references = ['long-history-source-marker']
+  view.records.decisions = [row]
+  const f = await mount(t, view); await click(entry(f.container, 'pending'))
+  const item = region(f.container, 'pending').querySelector('details[data-decision-item]')
+  assert(!item.querySelector('pre'), 'collapsed technical section does not allocate full history JSON DOM')
+  await React.act(async () => { item.open = true; item.dispatchEvent(new f.window.Event('toggle')) })
+  const technical = [...item.querySelectorAll('details')].find(node => node.firstElementChild.textContent === '技术详情')
+  assert(technical); assert.equal(technical.querySelector('pre'), null)
+  await React.act(async () => { technical.open = true; technical.dispatchEvent(new f.window.Event('toggle')) })
+  assert.deepEqual(JSON.parse(technical.querySelector('pre').textContent), row)
+  await React.act(async () => { technical.open = false; technical.dispatchEvent(new f.window.Event('toggle')) })
+  assert.equal(technical.querySelector('pre'), null)
+})
+
+test('decision timestamps use optional authorized READ metadata with visible absolute timezone and no history fallback', async t => {
+  const view = snapshot(), created = Date.UTC(2026, 10, 6, 8, 9, 10), updated = Date.UTC(2026, 10, 7, 8, 9, 10)
+  const row = decision('timed', { pending: true, addressee: { kind: 'user' } }); row.registration = { recordedAt: created, revision: 1 }; row.updatedAt = updated
+  view.records.decisions = [row]
+  const f = await mount(t, view); await click(entry(f.container, 'pending'))
+  const item = region(f.container, 'pending').querySelector('details[data-decision-item]')
+  const times = [...item.querySelectorAll('summary time')]
+  assert.equal(times.length, 2)
+  assert.equal(times[0].dateTime, '2026-11-06T08:09:10.000Z')
+  assert.equal(times[1].dateTime, '2026-11-07T08:09:10.000Z')
+  assert.match(visibleText(item), /首次登记.*2026.*业务更新.*2026/)
+  assert.match(times[0].textContent, /UTC|GMT|协调世界时/, 'timezone is visible to keyboard and touch, not tooltip-only')
+  const next = structuredClone(view); delete next.records.decisions[0].registration; delete next.records.decisions[0].updatedAt
+  await f.refresh(next)
+  assert.match(visibleText(item), /创建时间未知.*业务更新时间未知/)
+  assert.equal(item.querySelector('time'), null)
+  assert.doesNotMatch(visibleText(item), /1970/, 'retained history time is never inferred to be registration')
+})
+
+test('decision reading starts collapsed and opens full Chinese core before grouped long material', async t => {
+  const view = snapshot(), question = '需要用户明确选择的完整问题'.repeat(24)
+  view.records.workflows = [{ workflowId: 'decision-flow', value: { title: '可读决策工作流', axes: [] }, revision: 1, history: [] }]
+  view.records.decisions = [decision('long', { question, pending: true, addressee: { kind: 'user' }, options: [{ key: 'a', label: '原始选项甲' }], recommendation: '推荐保留甲', impact: '影响完整说明', context: '背景长文'.repeat(80), result: '原始结果'.repeat(80) })]
+  const f = await mount(t, view)
+  await click(entry(f.container, 'pending'))
+  const detail = region(f.container, 'pending'), item = detail.querySelector('details[data-decision-item]')
+  assert(item, 'each item has a native collapsed disclosure')
+  assert.equal(item.open, false)
+  assert.match(visibleText(detail), /可读决策工作流.*任务自定状态/)
+  assert.match(visibleText(detail), /创建时间未知/)
+  assert(!visibleText(detail).includes(question), 'preview does not flood the first screen')
+  assert.doesNotMatch(visibleText(detail), /背景长文|推荐保留甲|原始结果|evidence-ref/)
+  await React.act(async () => { item.open = true; item.dispatchEvent(new f.window.Event('toggle')) })
+  assert(visibleText(item).includes(question), 'full question remains selectable beyond preview')
+  assert.match(visibleText(item), /原始选项甲.*推荐保留甲.*影响完整说明/)
+  assert.doesNotMatch(visibleText(item), /背景长文|原始结果|evidence-ref/)
+  assert.deepEqual([...item.querySelectorAll('details')].map(row => row.firstElementChild.textContent), ['背景', '已记录结果', '标识与来源', '技术详情'])
+  const next = structuredClone(view); next.records.decisions[0].value.pending = false; next.records.summary.pendingUserDecisionCount = 0
+  await f.refresh(next)
+  assert.equal(region(f.container, 'pending').querySelector('details[data-decision-item]'), item)
+  assert.equal(item.open, true)
+  assert.match(visibleText(item), /已更新/)
+})
+
 function nativeRow(sessionId, activity, state = 'running') {
   return { executionId: sessionId, sessionId, parentSessionId: 'inline-owner', instrumentInstanceId: 'inline-instance', provider: 'spawn', runId: sessionId + '-run',
     headerCwd: '/source/header-only', state, activity, outcome: null, observed: 'subagent/start', startedAt: 12, endedAt: null, recordedAt: 13,
@@ -170,11 +242,11 @@ test('sticky reminders, 96px workflow progress and independently scrolling detai
   assert(detail.style.maxHeight && detail.style.maxHeight !== '96px', 'details have their own bounded height')
   assert.equal(detail.style.overflowY, 'auto')
   assert.match(reminders.textContent, /待你裁决\s*3/)
-  assert.match(reminders.textContent, /待落实\s*2/)
+  assert.doesNotMatch(reminders.textContent, /待落实/); assert.match(named(container, '次级记录入口').textContent, /记录核对/)
   assert.match(progress.textContent, /工作进行\s*1/)
 })
 
-test('T S pending awaiting remain distinguishable in both themes while every signed gap inherits neutral body color', async t => {
+test('T S pending and neutral record check remain distinguishable in both themes while every signed gap inherits neutral body color', async t => {
   const view = snapshot(); view.windows.T.gap = -2; view.windows.S.gap = 0
   const { container, window } = await mount(t, view)
   // Resolve author CSS in the DOM, rather than accepting four unequal helper strings.
@@ -187,7 +259,7 @@ test('T S pending awaiting remain distinguishable in both themes while every sig
       assert(colored.some(row => /var\(/.test(row.getAttribute('style'))), kind + ' prefers theme variables with fallback')
       return window.getComputedStyle(colored[0]).color
     })
-    assert.equal(new Set(colors).size, 4, 'T blue, S cyan/purple, pending red and awaiting amber cannot share a color')
+    assert.equal(new Set(colors).size, 4, 'T blue, S purple, pending red and neutral record check cannot share a color')
     for (const text of ['差额 -2', '差额 0']) {
       const gap = [...container.querySelectorAll('*')].find(row => row.textContent.includes(text) && ![...row.children].some(child => child.textContent.includes(text)))
       assert(gap, 'missing signed neutral ' + text)
@@ -239,7 +311,7 @@ test('ticketless and all-zero-with-tickets workflows have honest readable empty 
 })
 
 test('known zero decision entries disappear but unreadable ledgers and malformed counts remain explicitly unknown', async t => {
-  const view = snapshot(); view.records.summary.pendingUserDecisionCount = 0; view.records.summary.awaitingImplementationCount = 0
+  const view = snapshot(); view.records.summary.pendingDecisionCount = 0; view.records.summary.pendingUserDecisionCount = 0; view.records.summary.awaitingImplementationCount = 0
   const f = await mount(t, view)
   assert.equal(f.container.querySelector('[aria-label="' + labels.pending + '"]'), null)
   assert.equal(f.container.querySelector('[aria-label="' + labels.awaiting + '"]'), null)
@@ -247,13 +319,13 @@ test('known zero decision entries disappear but unreadable ledgers and malformed
   const unreadable = structuredClone(view); unreadable.records = null; unreadable.health = [{ scope: 'records', status: 'unknown', reason: 'ledger-read-denied' }]
   await f.refresh(unreadable)
   assert.match(f.container.textContent, /裁决.*未知/)
-  assert.match(f.container.textContent, /待落实.*未知/)
+  assert.match(entry(f.container, 'awaiting').textContent, /记录核对/)
   await click(entry(f.container, 'pending'))
   assert.match(region(f.container, 'pending').textContent, /未知|不可读|不可用/)
   const malformed = structuredClone(view); malformed.records.summary.pendingUserDecisionCount = null; malformed.records.summary.awaitingImplementationCount = 'bad-count'
   await f.refresh(malformed)
   assert.match(entry(f.container, 'pending').textContent, /未知/)
-  assert.match(entry(f.container, 'awaiting').textContent, /未知/)
+  await click(entry(f.container, 'awaiting')); assert.match(region(f.container, 'awaiting').textContent, /原待落实标记 未知/)
   assert.doesNotMatch(entry(f.container, 'pending').textContent, /裁决\s*0/)
 })
 
@@ -284,7 +356,7 @@ test('pending is strictly user-addressed, awaiting independent, and inline decis
   const awaiting = region(container, 'awaiting')
   assert.match(awaiting.textContent, /事项-both/)
   assert.match(awaiting.textContent, /事项-await-only/)
-  assert.doesNotMatch(awaiting.textContent, /事项-user-only|事项-agent-pending|事项-status-is-not-flag/)
+  assert.doesNotMatch(awaiting.textContent, /事项-user-only|事项-status-is-not-flag/); assert.match(awaiting.textContent, /事项-agent-pending|事项-unspecified|事项-no-addressee/)
   assert.equal(awaiting.querySelectorAll('input,textarea,select').length, 0)
   assert.deepEqual([...awaiting.querySelectorAll('button')].map(row => row.textContent), ['关闭详情'])
 })
@@ -378,7 +450,7 @@ test('opened decisions coexist with native composer focus, copying and resolutio
   const composer = f.window.document.createElement('textarea'); f.window.document.body.append(composer)
   composer.focus(); composer.value = '原生消息答复'
   composer.dispatchEvent(new f.window.Event('input', { bubbles: true }))
-  const range = f.window.document.createRange(); range.selectNodeContents(detail.querySelector('h4'))
+  const range = f.window.document.createRange(); range.selectNodeContents(detail.querySelector('summary'))
   f.window.document.getSelection().addRange(range)
   detail.dispatchEvent(new f.window.Event('copy', { bubbles: true }))
   const next = structuredClone(view); next.records.businessRevision++
@@ -418,7 +490,7 @@ test('same-instance refresh preserves selected category and focused entry withou
   assertClosed(f.container)
 })
 
-for (const change of ['session', 'instance', 'caller', 'scope', 'unreadable', 'display-off', 'records-unknown', 'windows-unknown']) {
+for (const change of ['session', 'instance', 'caller', 'scope', 'grant-revision', 'unreadable', 'display-off', 'records-unknown', 'windows-unknown']) {
   test('local selection is immediately fenced and never restored after ' + change, async t => {
     const view = snapshot(); view.records.decisions = [decision('old-private-body', { pending: true, addressee: { kind: 'user' } })]
     const f = await mount(t, view)
@@ -430,6 +502,7 @@ for (const change of ['session', 'instance', 'caller', 'scope', 'unreadable', 'd
     if (change === 'unreadable') await f.unreadable()
     if (change === 'display-off') { next.policy.display.inputSummary = false; await f.refresh(next) }
     if (change === 'caller') { next.caller.principalId = 'different-user'; next.records.decisions = []; await f.refresh(next) }
+    if (change === 'grant-revision') { next.policyGrants.revision++; await f.refresh(next) }
     if (change === 'scope') { next.records.scope = { kind: 'assigned', workflowId: 'restricted', ticketIds: [] }; next.records.decisions = []; await f.refresh(next) }
     if (change === 'records-unknown') { next.records = null; next.health.push({ scope: 'records', status: 'unknown', reason: 'revoked' }); await f.refresh(next) }
     if (change === 'windows-unknown') { next.windows = null; next.health.push({ scope: 'windows', status: 'unknown', reason: 'unavailable' }); await f.refresh(next) }

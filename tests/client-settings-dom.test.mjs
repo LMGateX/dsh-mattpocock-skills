@@ -74,6 +74,61 @@ function normalText(container) {
 async function click(element) { await React.act(async () => element.click()) }
 async function select(element, value) { await React.act(async () => { element.value = value; element.dispatchEvent(new element.ownerDocument.defaultView.Event('change', { bubbles: true })) }) }
 
+test('Settings selected session decisions use structured readonly hierarchy with authorization isolation', async t => {
+  const instance = { instrumentInstanceId: 'inspect-i', ownerSessionId: 'inspect-owner', controlWorkspaceId: 'work-one' }
+  let view = { sessionId: 'inspect-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: false, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: false, inputSummary: false, rightPanel: false, sessionList: false, timeline: false } },
+    records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, workflows: [{ workflowId: 'wf', revision: 1, history: [], value: { title: '设置裁决工作流', axes: [] } }], tickets: [],
+      decisions: [{ workflowId: 'wf', decisionId: 'd', revision: 1, history: [], value: { question: '设置待答问题'.repeat(40), status: '待确认', pending: true, addressee: { kind: 'user' }, options: [{ key: 'a', label: '设置原选项' }], context: '设置长背景'.repeat(80) } }],
+      summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 1, pendingUserDecisionCount: 1, awaitingImplementationCount: 0 } }, windows: null, resources: [], capabilities: [], health: [] }
+  const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
+  const { container, window } = await mount(t, client.SettingsInspection, { sessionId: view.sessionId, observer })
+  const section = named(container, '设置页裁决记录'), item = section.querySelector('details[data-decision-item]')
+  assert(item); assert.equal(item.open, false)
+  assert.match(normalText(section), /设置裁决工作流.*待确认/)
+  assert.doesNotMatch(normalText(section), /设置长背景|设置原选项|"decisions"/)
+  await React.act(async () => { item.open = true; item.dispatchEvent(new window.Event('toggle')) })
+  assert.match(normalText(item), /设置原选项/)
+  assert.doesNotMatch(normalText(item), /设置长背景/)
+  assert.equal(section.querySelector('input,textarea,button'), null, 'Settings reading never mounts authored editor')
+  view = copy(view); view.policyGrants.revision = 1
+  await React.act(async () => observer.refresh())
+  const fresh = named(container, '设置页裁决记录').querySelector('details[data-decision-item]')
+  assert.notEqual(fresh, item, 'authorization revision resets reading without reviving old disclosure')
+  assert.equal(fresh.open, false)
+})
+
+test('sidebar mixed authorized decisions keep user queue strict and compatibility union deduplicated', async t => {
+  const instance = { instrumentInstanceId: 'mixed-i', ownerSessionId: 'mixed-owner', controlWorkspaceId: 'work-one' }
+  const make = (id, value) => ({ workflowId: 'wf', decisionId: id, revision: 1, history: [], value: { question: '原问题-' + id, status: '自定义状态', ...value } })
+  let view = { sessionId: 'mixed-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
+    records: { instance, scope: { kind: 'coordinator' }, businessRevision: 4, workflows: [], tickets: [], decisions: [make('user', { pending: true, addressee: { kind: 'user' } }), make('both', { pending: true, awaitingImplementation: true, addressee: { kind: 'user' } }), make('agent', { pending: true, addressee: { kind: 'agent' } }), make('none', { pending: true }), make('unspecified', { pending: true, addressee: { kind: 'unspecified' } }), make('await', { awaitingImplementation: true, addressee: { kind: 'agent' } }), make('resolved-user', { addressee: { kind: 'user' }, result: '原答复' }), make('resolved-agent', { addressee: { kind: 'agent' } })],
+      summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 5, pendingUserDecisionCount: 2, awaitingImplementationCount: 2 } }, windows: null, resources: [], capabilities: [], health: [] }
+  view.records.decisions.push(copy(view.records.decisions[2]))
+  const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (...args) => { calls.push(args); return ok({}) } }
+  const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
+  const { container } = await mount(t, client.Details, { sessionId: view.sessionId, observer, remote, useTabInfo: () => ({ tab: { visible: true } }) })
+  const keys = section => [...section.querySelectorAll('[data-decision-key]')].map(row => row.getAttribute('data-decision-key'))
+  assert.deepEqual(keys(named(container, '待你裁决')), ['mixed-session:wf:user', 'mixed-session:wf:both'])
+  const checks = named(container, '记录核对')
+  assert.deepEqual(keys(checks), ['mixed-session:wf:both', 'mixed-session:wf:agent', 'mixed-session:wf:none', 'mixed-session:wf:unspecified', 'mixed-session:wf:await'])
+  assert.match(checks.textContent, /原待落实标记 2.*不等于未完成任务/)
+  const other = named(container, '其他裁决记录'); assert.equal(other.open, false)
+  assert.deepEqual(keys(other), ['mixed-session:wf:resolved-user', 'mixed-session:wf:resolved-agent'])
+  const first = checks.querySelector('details[data-decision-item]')
+  await React.act(async () => { first.open = true; first.dispatchEvent(new first.ownerDocument.defaultView.Event('toggle')) })
+  assert.equal(container.querySelector('textarea'), null)
+  await click(button(first, '阅读 / 编辑：原问题-both'))
+  assert(named(container, '裁决阅读与编辑').querySelector('textarea'))
+  assert.deepEqual(calls, [])
+  view = copy(view); view.records.scope = { kind: 'assigned', workflowId: 'wf', ticketIds: [] }; view.records.decisions = []; view.records.summary.pendingUserDecisionCount = 9
+  await React.act(async () => observer.refresh())
+  assert.equal(container.querySelectorAll('[data-decision-key]').length, 0)
+  assert.match(named(container, '待你裁决').textContent, /摘要计数 9.*列表 0.*不一致/)
+  assert(!container.querySelector('textarea'))
+})
+
 test('DOM saves management policy under revision forty-two and preserves the saved state', async t => {
   const f = fixture(), { container } = await mount(t, client.SettingsPage, f.props)
   await click(named(container, '协作管理总闸（全局）'))
@@ -87,6 +142,32 @@ test('DOM saves management policy under revision forty-two and preserves the sav
   await click(button(container, '保存并关闭协作管理'))
   assert.equal(f.calls.policy[1].revision, 43)
   assert.equal(f.calls.policy[1].intent.extensionEnabled, false)
+})
+
+test('sidebar collapsed decision reading survives classification and never claims awaiting means adjudicated', async t => {
+  const instance = { instrumentInstanceId: 'native-i', ownerSessionId: 'native-owner', controlWorkspaceId: 'work-one' }
+  let view = { sessionId: 'native-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
+    records: { instance, scope: { kind: 'coordinator' }, businessRevision: 4, workflows: [], tickets: [], decisions: [{ workflowId: 'wf', decisionId: 'd', revision: 1, history: [], value: { question: '双旗标原生阅读问题', status: '仍需确认', pending: true, awaitingImplementation: true, addressee: { kind: 'user' }, options: [{ key: 'a', label: '选项真实甲' }] } }], summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 1, pendingUserDecisionCount: 1, awaitingImplementationCount: 1 } }, windows: null, resources: [], capabilities: [], health: [] }
+  const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (...args) => { calls.push(args); return ok({}) } }
+  const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
+  const { container, window } = await mount(t, client.Details, { sessionId: view.sessionId, observer, remote, useTabInfo: () => ({ tab: { visible: true } }) })
+  const pending = named(container, '待你裁决'), item = pending.querySelector('details[data-decision-item]')
+  assert(item, 'sidebar uses same native collapsed item hierarchy'); assert.equal(item.open, false)
+  assert.doesNotMatch(normalText(pending), /选项真实甲/)
+  await React.act(async () => { item.open = true; item.dispatchEvent(new window.Event('toggle')) })
+  assert.match(normalText(item), /选项真实甲/)
+  await click(button(item, '阅读 / 编辑：双旗标原生阅读问题'))
+  assert.doesNotMatch(named(container, '裁决阅读与编辑').textContent, /已裁决待落实|已裁决，仍待落实/)
+  view = copy(view); view.records.decisions[0].value.pending = false; view.records.summary.pendingUserDecisionCount = 0
+  await React.act(async () => observer.refresh())
+  assert.equal(named(container, '待你裁决').querySelector('details[data-decision-item]'), item)
+  assert.equal(item.open, true); assert.match(normalText(item), /已更新/)
+  assert.deepEqual(calls, [])
+  view = copy(view); view.policyGrants.revision = 2
+  await React.act(async () => observer.refresh())
+  assert.equal(container.contains(item), false)
+  assert.equal(container.querySelector('textarea'), null, 'authorization revision clears editor draft')
 })
 
 test('sidebar deliberate reading keeps the same editor, draft CAS and focus when an item changes category', async t => {
@@ -117,13 +198,14 @@ test('sidebar deliberate reading keeps the same editor, draft CAS and focus when
   await click(button(reading, '关闭阅读'))
   assert.equal(container.querySelector('[aria-label="裁决阅读与编辑"]'), null)
   const authorized = copy(view)
-  for (const change of ['instance', 'caller', 'scope', 'display', 'revoked', 'unknown', 'session']) {
+  for (const change of ['instance', 'caller', 'scope', 'grant-revision', 'display', 'revoked', 'unknown', 'session']) {
     await click(button(container, '阅读 / 编辑：保持阅读的事项'))
     assert(named(container, '裁决阅读与编辑').querySelector('textarea'))
     view = copy(authorized)
     if (change === 'instance') view.instance.instrumentInstanceId = 'new-reading-instance'
     if (change === 'caller') view.caller.principalId = 'other-principal'
     if (change === 'scope') view.records.scope = { kind: 'assigned', workflowId: 'other', ticketIds: [] }
+    if (change === 'grant-revision') view.policyGrants.revision++
     if (change === 'display') view.policy.display.rightPanel = false
     if (change === 'revoked') { view.records = null; view.health = [{ scope: 'records', status: 'restricted', reason: 'revoked' }] }
     if (change === 'unknown') view = null
