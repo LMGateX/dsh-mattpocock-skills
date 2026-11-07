@@ -6,6 +6,25 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.15.0 当前交付计划（2026-11-07，已获实施/push/发布/本机安装授权）
+
+以 [DESIGN.md](<DESIGN.md>) 的 0.15.0 授权节为当前范围，后文“仅研究/待授权”是前序阶段历史。先固定文档提交，再建隔离 integration 与独立 child 工作树：A 可信时间只读投影与授权/清理回归；B 原生逐项阅读/记录核对入口/设置会话展示与真实 React 回归；C 工具说明与实际消费指导/真实答复兼容回归。每树一名 writer、各自依赖/生成物；主代理串行集成，不共享生成目录并行构建。
+
+集成后独立双轴复核，关闭发现，再执行完整 source/type/client/build/vendor/精确归档与隔离双宿主/浏览器门禁；冻结 clean source 与唯一 0.15.0 tgz，非 force 推送 main、新 annotated tag/GitHub Release、五资产下载回验；最后将该精确下载制品安装到本机现有 Web Profile，并分别记录安装与激活边界。不改共享 SDK/生产记录，不重启当前服务，不 npm publish。所有完成证据须来自实际执行，目标 88 未实核不变。
+
+## 仪器 UI 文档固定与领域研究（2026-11-07）
+
+详细 UI 契约与验收见 [INSTRUMENT_UI_HIERARCHY.md](<INSTRUMENT_UI_HIERARCHY.md>)；自裁决/待落实职责研究见 [DECISION_LEDGER_RESEARCH.md](<DECISION_LEDGER_RESEARCH.md>)；具体兼容、记录核对入口、上下文移交与恢复推荐见 [DECISION_LEDGER_COMPATIBILITY.md](<DECISION_LEDGER_COMPATIBILITY.md>)。本轮仅研究与文档，未获实现/提交/发布/安装/重启/存量清理授权。
+
+| 阶段 | 内容 | 状态/门禁 |
+|---|---|---|
+| A 文档与研究 | 固定已认可裁决阅读层次/原生主题/可信时间，检查所有仪器区域，核对上游记录职责 | 本轮交付；仅文档与只读源码研究，不冒称目标会话逐条核账或当前 GUI 像素验收 |
+| B 裁决阅读 | 原生逐项展开、紧凑操作条、长内容/来源/技术分层 | 待实现授权；保持阅读生命周期与只读/授权/CAS |
+| C 时间 | 先选首次登记来源与最小公开投影/兼容方案，再展示创建/业务更新时间 | 待契约与实现授权；源清理/assigned 子集不伪造创建时间 |
+| D 其他仪器 UI | 根据全域矩阵逐项确认范围与优先级 | 本轮只列审查发现与候选；不自行全面重构 |
+| E 裁决领域收窄 | 方案 B：用户裁决为核心、技术选择回文档、落实回任务，保留决定→任务引用 | **方向已认可、未实现**；已形成兼容/核账具体推荐，见兼容草案 C0–C5；先保留 wire/storage、收窄新流程并提供兼容记录核对，再按目标会话实际依据逐项移交，不维护第二套完成状态。目标 88 未实核；实现与数据处置另行授权 |
+| F 集成与交付 | 真实导出 React 回归、原生公共 types、真浏览器明暗/窄屏/键盘与精确制品 | 实施后再执行，独立复核；push/发版/安装/重启分别取得授权 |
+
 ## 设置页视觉层级增量（2026-11-06）
 
 - 范围：见 [DESIGN.md](<DESIGN.md>) 同名节；仅客户端视觉与布局。初轮不安装/发布；随后所有者明确授权 push/发版，目标新补丁版本 0.14.1，暂不为本机安装。

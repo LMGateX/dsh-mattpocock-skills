@@ -1,5 +1,7 @@
 # Native client integration
 
+> 2026-11-07：输入区裁决阅读优化已获方案认可，其他仪器区域扩大只读审查；后续权威 UI 契约与矩阵见 [INSTRUMENT_UI_HIERARCHY.md](<INSTRUMENT_UI_HIERARCHY.md>)。本轮仅研究/文档，不表示客户端已更新；旧章节的版本与安装说明为各自历史。领域收窄的方案 B 方向已认可，见 [DECISION_LEDGER_RESEARCH.md](<DECISION_LEDGER_RESEARCH.md>)与 [DESIGN.md](<DESIGN.md>)；具体兼容/迁移与实现仍待明确，不混作视觉补丁。
+
 > 公开资料边界：带日期的原始研究、工具/测试日志和本机快照仅在本地保留，不随公开仓库分发，也不充当可公开复核的原始证明。当前状态及历史证据范围见 [公开验证说明](<VERIFICATION.md>)。SDK 包相对路径仅定位当时核验的 DSH 0.2.1-alpha.1 安装产物，不保留本机路径或旧行号；[宿主固定源码基线](https://github.com/deepseek-ai/deepseek-harness/tree/5badb15009ae1756c3afe0ae0cef1faafc290ccc)提供版本来源，不将编译产物路径伪装为公共源码 URL。
 
 This optional client is plugin-repository engineering, not an installation or live-GUI change. Its authoritative business sources are the existing revisioned policy, owner-instance registry, instrument records, reference windows, durable worktree bindings and session history. Legacy resource data remains a read-only observation. UI drafts and observations are transient projections, never additional persistent ledgers. The unchanged Skill provider is not rewritten.
