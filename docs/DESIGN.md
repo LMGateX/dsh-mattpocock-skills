@@ -18,6 +18,7 @@ This document is the authoritative implementation contract. A later implementati
 
 - 范围：输入区、右侧裁决详情、设置页所选会话的原生阅读层次与逐项折叠；可信首次登记/业务更新时间；主摘要不再将兼容 await 视为执行待办，保留就地“记录核对”及真实原始计数；工具说明和有效模型指导收窄新登记用途。实施细节依 [UI 契约](<INSTRUMENT_UI_HIERARCHY.md>)与[兼容契约](<DECISION_LEDGER_COMPATIBILITY.md>)。
 - 保持：原生消息/提问入口、不增聊天框；pending-user/原始计数/个人偏好/通知、真实作者、授权隔离、原修订草稿 CAS、幂等、OFF 旧对象收尾、活动义务和 contextConclusions 兼容。存储与模型工具请求格式不变；可信时间只做授权只读投影，不能证明就显示未知，不从 history[0] 猜创建时间。
+- 可信时间 Interface 已选定：只在授权完整/current 决策行增加可选只读 registration（{recordedAt,revision} 或 null）和 updatedAt，不写入 DecisionValue/持久文档、不加 command 字段。首次登记按已验证 V1 事件或 V2 完整技术回执的最早源 revision 取 recordedAt，按可信不可变源建立索引；assigned 仅在首次版本仍可证明且属于其授权历史时可见，否则 null。最新业务版本取 updatedAt；旧宿主缺字段显示未知，不扫全历史或泄露无权首版。轻量 summary 与模型 preview 保持原有有界口径，实际正文 detail 可带授权 current 元数据。
 - 测试沿用已认可契约的公开 seams：SessionInstruments 的授权完整/current/summary 与清理/reopen、mounted Remote 和真实 Runtime 消费/工具描述、实际导出 React 的只读/编辑/阅读生命周期、精确制品与隔离宿主。它们分别验证领域/权限、装配/消费、用户交互、发布安装；合成/浏览器 fixture 不冒充生产模型或当前 GUI 验收。各切片保留真实 RED→GREEN 过程与针对性回归。
 - 开发/测试由独立工作树子代理完成；独立 Standards/Spec 双轴复核，源与精确归档完整测试、受支持双宿主/原生 UI/浏览器明暗窄屏键盘及新 annotated tag/五资产下载回验后发布 0.15.0；不覆盖 0.14.x tag/Release、不 force push、不 npm publish。主代理串行集成、冻结制品与交付核验。
 - 安装授权限现有 Web Profile 插件，由下载回验的同一制品安装并核对文件/锁定版本；不改共享 SDK、不开管理功能、不清那 88 项记录、不覆盖工作区设置、不擅自中断承载当前会话的服务。安装与运行生效分别报告；无安全热加载证据则不冒称 GUI 已加载新版本。
