@@ -3,8 +3,10 @@ import type { WorkspaceControls, SessionControlsView } from './index.js'
 import type { InstrumentInstance } from './state.js'
 import type { InstrumentStorage } from './instrument-storage.js'
 import { initialInstrumentDocument, parseAuthor, parseInstrumentCommand, parseInstrumentDocument, projectInstrumentDocument, upgradeInstrumentDocument, parseInstrumentHistoryTarget, instrumentCommandMetadata } from './instrument-state.js'
-import type { InstrumentAuthor, InstrumentCommand, InstrumentDocument, InstrumentEvent, InstrumentState, WorkflowRecord, TicketRecord, TicketValue, DecisionRecord, DecisionViewValue, DecisionValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, InstrumentDocumentV2, InstrumentDedup, InstrumentHistoryTarget, Change } from './instrument-state.js'
+import type { InstrumentAuthor, InstrumentCommand, InstrumentDocument, InstrumentEvent, InstrumentState, WorkflowRecord, TicketRecord, TicketValue, TaskReferenceRecord, DecisionRecord, DecisionViewValue, DecisionValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, InstrumentDocumentV2, InstrumentDocumentV3, InstrumentDedup, InstrumentHistoryTarget, Change } from './instrument-state.js'
 import { array, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
+
+const RECORD_CAPABILITIES = freeze({ taskReferences: true as const, storageVersions: [1, 2, 3] as const })
 
 export type InstrumentScope = { readonly kind: 'coordinator' }
   | { readonly kind: 'assigned'; readonly workflowId: string | null; readonly ticketIds: readonly string[] }
@@ -30,6 +32,8 @@ export interface InstrumentSnapshot {
   readonly focusedWorkflowId: string | null
   readonly workflows: readonly WorkflowRecord[]
   readonly tickets: readonly TicketRecord[]
+  readonly taskReferences: readonly TaskReferenceRecord[]
+  readonly capabilities: { readonly taskReferences: true; readonly storageVersions: readonly [1, 2, 3] }
   /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */
   readonly decisions: readonly (DecisionRecord & InstrumentDecisionTime & { readonly view: DecisionViewValue })[]
   readonly changes: readonly InstrumentEvent[]
@@ -37,6 +41,7 @@ export interface InstrumentSnapshot {
   readonly summary: {
     readonly countingScope: 'instance' | 'assignment'
     readonly totalTickets: number
+    readonly totalTaskReferences: number
     readonly statusCounts: readonly { readonly workflowId: string; readonly axisKey: string; readonly label: string; readonly counting: 'exclusive' | 'overlapping'; readonly unreported: number; readonly statuses: readonly { readonly statusKey: string; readonly label: string; readonly count: number; readonly meaning: string | null; readonly summaryPriority?: number }[] }[]
     readonly pendingDecisionCount: number
     readonly pendingUserDecisionCount: number
@@ -48,6 +53,7 @@ export interface InstrumentSnapshot {
 export type InstrumentCurrentProvenance = Pick<Change<unknown>, 'author' | 'recordedAt' | 'references'>
 export type InstrumentCurrentWorkflow = Omit<WorkflowRecord, 'history'> & { readonly provenance: InstrumentCurrentProvenance }
 export type InstrumentCurrentTicket = Omit<TicketRecord, 'history'> & { readonly provenance: InstrumentCurrentProvenance }
+export type InstrumentCurrentTaskReference = Omit<TaskReferenceRecord, 'history'> & { readonly provenance: InstrumentCurrentProvenance }
 export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & InstrumentDecisionTime & {
   readonly creator: InstrumentAuthor
   readonly provenance: InstrumentCurrentProvenance
@@ -56,9 +62,10 @@ export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creato
 /** Authorized current bodies for model projection/detail; never contains histories or changes.
  * Bodies are intentionally complete here: the model adapter owns its byte budget and locators.
  */
-export interface InstrumentCurrentSnapshot extends Omit<InstrumentSnapshot, 'workflows' | 'tickets' | 'decisions' | 'changes' | 'historyCoverage'> {
+export interface InstrumentCurrentSnapshot extends Omit<InstrumentSnapshot, 'workflows' | 'tickets' | 'taskReferences' | 'decisions' | 'changes' | 'historyCoverage'> {
   readonly workflows: readonly InstrumentCurrentWorkflow[]
   readonly tickets: readonly InstrumentCurrentTicket[]
+  readonly taskReferences: readonly InstrumentCurrentTaskReference[]
   readonly decisions: readonly InstrumentCurrentDecision[]
 }
 /** Current authorized badge facts; no retained versions, changes or decision bodies. */
@@ -90,10 +97,14 @@ function purgeInput(value:unknown):InstrumentPurgeHistoryInput {
   if(targets.length===0 || targets.length>100 || new Set(targets.map(t=>JSON.stringify(t))).size!==targets.length) invalid('source purge requires 1..100 unique explicit targets')
   return freeze({operationId:id(p.operationId,'operationId'),expectedRevision:revision(p.expectedRevision,'expected document revision'),throughRevision:revision(p.throughRevision,'throughRevision'),targets})
 }
-function targetMatches(target:InstrumentHistoryTarget,kind:'workflow'|'ticket'|'decision',row:WorkflowRecord|TicketRecord|DecisionRecord):boolean {
+function checkpointPayload(document:InstrumentDocumentV2|InstrumentDocumentV3,state:InstrumentState):InstrumentState|Omit<InstrumentState,'taskReferences'> {
+  const {taskReferences:_references,...legacy}=state
+  return document.schemaVersion===3 ? state : legacy
+}
+function targetMatches(target:InstrumentHistoryTarget,kind:'workflow'|'ticket'|'task-reference'|'decision',row:WorkflowRecord|TicketRecord|TaskReferenceRecord|DecisionRecord):boolean {
   if(target.kind!==kind || target.workflowId!==row.workflowId) return false
   if(target.kind==='workflow') return true
-  if(target.kind==='ticket') return 'localTicketId' in row && target.localTicketId===row.localTicketId
+  if(target.kind==='ticket' || target.kind==='task-reference') return 'localTicketId' in row && target.localTicketId===row.localTicketId
   return 'decisionId' in row && target.decisionId===row.decisionId
 }
 function parseAccess(value: unknown, principal: string, sessionId: string): InstrumentAccess {
@@ -128,7 +139,7 @@ function registrationIndex(document: InstrumentDocument): ReadonlyMap<string, De
   const known = registrationIndexes.get(document)
   if (known) return known
   const proofs = new Map<string, DecisionRegistrationProof>()
-  if (document.schemaVersion === 2) {
+  if (document.schemaVersion !== 1) {
     // Receipts are validated as a complete, ordered source-revision chain. They
     // survive purge without retaining deleted business bodies. Time need not be monotonic.
     for (const receipt of document.dedup) {
@@ -183,7 +194,7 @@ const currentDecisionIndexes = new WeakMap<InstrumentDocument, CurrentDecisionIn
 function currentDecisionIndex(document: InstrumentDocument): CurrentDecisionIndex {
   const known = currentDecisionIndexes.get(document)
   if (known !== undefined) return known
-  const base = document.schemaVersion === 2 ? document.checkpoint.state : undefined
+  const base = document.schemaVersion !== 1 ? document.checkpoint.state : undefined
   let businessRevision = base?.businessRevision ?? 0
   const viewerRevisions = new Map(Object.entries(base?.viewerRevisions ?? {}))
   const decisions = new Map<string, CurrentDecision>()
@@ -219,6 +230,7 @@ interface InstrumentCurrentIndex {
   readonly viewerRevisions: Readonly<Record<string, number>>
   readonly workflows: readonly InstrumentCurrentWorkflow[]
   readonly tickets: readonly InstrumentCurrentTicket[]
+  readonly taskReferences: readonly InstrumentCurrentTaskReference[]
   readonly decisions: readonly Omit<InstrumentCurrentDecision, 'view'>[]
   readonly decisionViews: InstrumentState['decisionViews']
 }
@@ -226,11 +238,12 @@ const currentIndexes = new WeakMap<InstrumentDocument, InstrumentCurrentIndex>()
 function currentIndex(document: InstrumentDocument): InstrumentCurrentIndex {
   const known = currentIndexes.get(document)
   if (known !== undefined) return known
-  const base = document.schemaVersion === 2 ? document.checkpoint.state : undefined
+  const base = document.schemaVersion !== 1 ? document.checkpoint.state : undefined
   let businessRevision = base?.businessRevision ?? 0
   const viewerRevisions = new Map(Object.entries(base?.viewerRevisions ?? {}))
   const workflows = new Map<string, InstrumentCurrentWorkflow>()
   const tickets = new Map<string, InstrumentCurrentTicket>()
+  const taskReferences = new Map<string, InstrumentCurrentTaskReference>()
   const decisions = new Map<string, Omit<InstrumentCurrentDecision, 'view'>>()
   const views = new Map<string, InstrumentState['decisionViews'][number]>()
   const key = (...ids: string[]): string => JSON.stringify(ids)
@@ -241,6 +254,8 @@ function currentIndex(document: InstrumentDocument): InstrumentCurrentIndex {
   for (const row of base?.workflows ?? []) workflows.set(row.workflowId, {
     workflowId: row.workflowId, revision: row.revision, value: row.value, provenance: provenance(row.history.at(-1)!) })
   for (const row of base?.tickets ?? []) tickets.set(key(row.workflowId, row.localTicketId), {
+    workflowId: row.workflowId, localTicketId: row.localTicketId, revision: row.revision, value: row.value, provenance: provenance(row.history.at(-1)!) })
+  for (const row of document.schemaVersion === 3 ? document.checkpoint.state.taskReferences : []) taskReferences.set(key(row.workflowId, row.localTicketId), {
     workflowId: row.workflowId, localTicketId: row.localTicketId, revision: row.revision, value: row.value, provenance: provenance(row.history.at(-1)!) })
   for (const row of base?.decisions ?? []) decisions.set(key(row.workflowId, row.decisionId), {
     workflowId: row.workflowId, decisionId: row.decisionId, revision: row.revision, value: row.value,
@@ -262,6 +277,9 @@ function currentIndex(document: InstrumentDocument): InstrumentCurrentIndex {
     else if (command.action === 'put-ticket') {
       const target = key(workflowId, command.localTicketId), previous = tickets.get(target)
       tickets.set(target, { workflowId, localTicketId: command.localTicketId, ...metadata, value: { ...previous?.value, ...command.value } })
+    } else if (command.action === 'put-task-reference') {
+      const target = key(workflowId, command.localTicketId), previous = taskReferences.get(target)
+      taskReferences.set(target, { workflowId, localTicketId: command.localTicketId, ...metadata, value: { ...previous?.value, ...command.value } })
     } else {
       const target = key(workflowId, command.decisionId), previous = decisions.get(target)
       decisions.set(target, { workflowId, decisionId: command.decisionId, ...metadata,
@@ -269,7 +287,7 @@ function currentIndex(document: InstrumentDocument): InstrumentCurrentIndex {
     }
   }
   const current = freeze({ businessRevision, viewerRevisions: Object.fromEntries(viewerRevisions),
-    workflows: [...workflows.values()], tickets: [...tickets.values()], decisions: [...decisions.values()], decisionViews: [...views.values()] })
+    workflows: [...workflows.values()], tickets: [...tickets.values()], taskReferences: [...taskReferences.values()], decisions: [...decisions.values()], decisionViews: [...views.values()] })
   currentIndexes.set(document, current)
   return current
 }
@@ -292,6 +310,7 @@ export class SessionInstruments {
     const state = currentIndex(document), access = context.access
     const workflows = state.workflows.filter(row => access.scope.kind === 'coordinator' || row.workflowId === access.scope.workflowId)
     const tickets = state.tickets.filter(row => access.scope.kind === 'coordinator' || (row.workflowId === access.scope.workflowId && access.scope.ticketIds.includes(row.localTicketId)))
+    const taskReferences = state.taskReferences.filter(row => access.scope.kind === 'coordinator' || (row.workflowId === access.scope.workflowId && access.scope.ticketIds.includes(row.localTicketId)))
     const decisions = state.decisions.filter(row => decisionAllowed(access, row.workflowId, row.value, row.creator.principalId))
       .map(row => ({ ...row, registration: registrationFor(document, access, row.workflowId, row.decisionId), updatedAt: row.provenance.recordedAt, view: state.decisionViews.find(view => view.workflowId === row.workflowId && view.decisionId === row.decisionId && view.principalId === access.author.principalId)?.value ?? { read: false, hidden: false } }))
     const statusCounts = workflows.flatMap(workflow => workflow.value.axes.map(axis => {
@@ -304,8 +323,8 @@ export class SessionInstruments {
     }))
     return freeze({ instance: context.controls.instance, revision: document.revision, businessRevision: state.businessRevision,
       viewerRevision: Object.hasOwn(state.viewerRevisions, access.author.principalId) ? state.viewerRevisions[access.author.principalId]! : 0,
-      scope: access.scope, focusedWorkflowId: null, workflows, tickets, decisions,
-      summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', totalTickets: tickets.length, statusCounts,
+      scope: access.scope, focusedWorkflowId: null, capabilities: RECORD_CAPABILITIES, workflows, tickets, taskReferences, decisions,
+      summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', totalTickets: tickets.length, totalTaskReferences: taskReferences.length, statusCounts,
         pendingDecisionCount: decisions.filter(row => row.value.pending).length,
         pendingUserDecisionCount: decisions.filter(row => row.value.pending && row.value.addressee?.kind === 'user').length,
         pendingForPrincipalCount: decisions.filter(row => row.value.pending && row.value.addressee?.principalId === access.author.principalId).length,
@@ -333,7 +352,7 @@ export class SessionInstruments {
       const current = await this.load(context.controls.instance)
       const state = projectInstrumentDocument(current)
       this.checkChange(state, command, context.access)
-      const receipt=current.schemaVersion===2 ? current.dedup.find(d=>d.operationId===command.operationId) : undefined
+      const receipt=current.schemaVersion!==1 ? current.dedup.find(d=>d.operationId===command.operationId) : undefined
       if(receipt) {
         if(receipt.kind!=='command' || receipt.digest!==digest(command,context.access.author)) throw new ControlsError('operation-conflict','operationId already belongs to another author or payload')
         return freeze({appliedRevision:receipt.appliedRevision,replayed:true,snapshot:this.snapshot(current,context.access,{})})
@@ -346,7 +365,7 @@ export class SessionInstruments {
       const targetRevision = command.action === 'set-decision-view' ? this.viewerRevision(state, principal) : state.businessRevision
       if (targetRevision !== command.expectedRevision) throw new ControlsError('revision-conflict', 'instrument business/viewer revision changed; reload before updating')
       this.checkFeature(context.controls, state, command)
-      const candidate: InstrumentDocument = { ...upgradeInstrumentDocument(current), revision: increment(current.revision),
+      const candidate: InstrumentDocument = { ...upgradeInstrumentDocument(current, command.action === 'put-task-reference'), revision: increment(current.revision),
         events: [...current.events, { revision: increment(current.revision), recordedAt, author: context.access.author, command }] }
       projectInstrumentDocument(candidate) // malformed references are input errors, not business rulings
       const next = parseInstrumentDocument(candidate)
@@ -381,7 +400,7 @@ export class SessionInstruments {
       const receipt:InstrumentDedup={operationId:command.operationId,author:context.access.author,digest:hash,kind:'compact',appliedRevision}
       const coverage:InstrumentCleanupCoverage={operationId:command.operationId,action:'compact',appliedRevision,author:context.access.author,recordedAt,throughRevision:current.revision,targets:[],removedVersions:0,removedRevisions:[]}
       const dedup=[...current.dedup,...current.events.map((event):InstrumentDedup=>({operationId:event.command.operationId,author:event.author,digest:digest(event.command,event.author),kind:'command',appliedRevision:event.revision,command:instrumentCommandMetadata(event)})),receipt]
-      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointState},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2
+      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointPayload(current,checkpointState)},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2 | InstrumentDocumentV3
       signal?.throwIfAborted()
       // CAS has begun: cancellation cannot turn a durable acknowledgement into rollback.
       const committed=await this.storage.compareAndSwap(current.instrumentInstanceId,current.revision,next)
@@ -411,21 +430,22 @@ export class SessionInstruments {
       if(command.expectedRevision!==current.revision) throw new ControlsError('revision-conflict','source document changed; reload before cleanup')
       if(command.throughRevision>current.revision) invalid('source purge throughRevision exceeds saved source revision')
       const state=projectInstrumentDocument(current)
-      if(command.targets.some(t=>!(t.kind==='workflow' ? state.workflows : t.kind==='ticket' ? state.tickets : state.decisions).some(row=>targetMatches(t,t.kind,row)))) invalid('source purge target is not recorded in scoped owner')
+      if(command.targets.some(t=>!(t.kind==='workflow' ? state.workflows : t.kind==='ticket' ? state.tickets : t.kind==='task-reference' ? state.taskReferences : state.decisions).some(row=>targetMatches(t,t.kind,row)))) invalid('source purge target is not recorded in scoped owner')
       let removedVersions=0
       const removedRevisions:number[]=[]
-      const history=<T>(kind:'workflow'|'ticket'|'decision',row:WorkflowRecord|TicketRecord|DecisionRecord,versions:readonly Change<T>[]):readonly Change<T>[]=>{
+      const history=<T>(kind:'workflow'|'ticket'|'task-reference'|'decision',row:WorkflowRecord|TicketRecord|TaskReferenceRecord|DecisionRecord,versions:readonly Change<T>[]):readonly Change<T>[]=>{
         if(!command.targets.some(t=>targetMatches(t,kind,row))) return versions
         return versions.filter(version=>{const keep=version.revision===row.revision || version.revision>command.throughRevision;if(!keep) {removedVersions++;removedRevisions.push(version.revision)}return keep})
       }
       const checkpointState={...state,
         workflows:state.workflows.map(row=>({...row,history:history('workflow',row,row.history)})),
         tickets:state.tickets.map(row=>({...row,history:history('ticket',row,row.history)})),
+        taskReferences:state.taskReferences.map(row=>({...row,history:history('task-reference',row,row.history)})),
         decisions:state.decisions.map(row=>({...row,creator:row.creator??row.history[0]!.author,history:history('decision',row,row.history)}))}
       const appliedRevision=increment(current.revision),receipt:InstrumentDedup={operationId:command.operationId,author:context.access.author,digest:hash,kind:'purge-history',appliedRevision}
       const coverage:InstrumentCleanupCoverage={operationId:command.operationId,action:'purge-history',appliedRevision,author:context.access.author,recordedAt,throughRevision:command.throughRevision,targets:command.targets,removedVersions,removedRevisions:removedRevisions.sort((a,b)=>a-b)}
       const dedup=[...current.dedup,...current.events.map((event):InstrumentDedup=>({operationId:event.command.operationId,author:event.author,digest:digest(event.command,event.author),kind:'command',appliedRevision:event.revision,command:instrumentCommandMetadata(event)})),receipt]
-      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointState},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2
+      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointPayload(current,checkpointState)},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2 | InstrumentDocumentV3
       signal?.throwIfAborted()
       // CAS has begun: cancellation cannot turn a durable acknowledgement into rollback.
       const committed=await this.storage.compareAndSwap(current.instrumentInstanceId,current.revision,next)
@@ -437,7 +457,7 @@ export class SessionInstruments {
   private cleanupAccess(context:{controls:SessionControlsView;access:InstrumentAccess},sessionId:string):void {
     if(context.access.scope.kind!=='coordinator' || sessionId!==context.controls.instance.ownerSessionId) throw new ControlsError('access-denied','source cleanup requires authenticated owner coordinator context')
   }
-  private cleanupResult(document:InstrumentDocumentV2,access:InstrumentAccess,appliedRevision:number,replayed:boolean,removedVersions:number):InstrumentCleanupResult {
+  private cleanupResult(document:InstrumentDocumentV2|InstrumentDocumentV3,access:InstrumentAccess,appliedRevision:number,replayed:boolean,removedVersions:number):InstrumentCleanupResult {
     return freeze({appliedRevision,replayed,removedVersions,checkpointRevision:document.checkpoint.throughRevision,coverage:document.coverage,snapshot:this.snapshot(document,access,{})})
   }
   private async context(principal: string, sessionId: string, mode: 'read' | 'write', signal?:AbortSignal): Promise<{ controls: SessionControlsView; access: InstrumentAccess }> {
@@ -465,7 +485,7 @@ export class SessionInstruments {
     if (access.scope.kind === 'coordinator') return
     const denied = (): never => { throw new ControlsError('access-denied', 'change exceeds authenticated assignment') }
     if (command.workflowId !== access.scope.workflowId || command.action === 'put-workflow') denied()
-    if (command.action === 'put-ticket') {
+    if (command.action === 'put-ticket' || command.action === 'put-task-reference') {
       if (!access.scope.ticketIds.includes(command.localTicketId)) denied()
       return
     }
@@ -476,7 +496,8 @@ export class SessionInstruments {
   }
   private checkFeature(controls: SessionControlsView, state: InstrumentState, command: InstrumentCommand): void {
     let allowed = true
-    if (command.action === 'put-workflow' && !state.workflows.some(row => row.workflowId === command.workflowId)) allowed = controls.policy.features.ticketProgress.status === 'configured' || controls.policy.features.pendingDecisions.status === 'configured'
+    if (command.action === 'put-workflow' && !state.workflows.some(row => row.workflowId === command.workflowId)) allowed = controls.policy.features.ticketProgress.status === 'configured' || controls.policy.features.pendingDecisions.status === 'configured' || command.value.axes.length === 0 && controls.policy.features.windows?.status === 'configured'
+    if (command.action === 'put-task-reference' && !state.taskReferences.some(row => row.workflowId === command.workflowId && row.localTicketId === command.localTicketId)) allowed = controls.policy.features.ticketProgress.status === 'configured' || controls.policy.features.pendingDecisions.status === 'configured' || controls.policy.features.windows?.status === 'configured'
     if (command.action === 'put-ticket' && !state.tickets.some(row => row.workflowId === command.workflowId && row.localTicketId === command.localTicketId)) allowed = controls.policy.features.ticketProgress.status === 'configured'
     if (command.action === 'put-decision' && !state.decisions.some(row => row.workflowId === command.workflowId && row.decisionId === command.decisionId)) allowed = controls.policy.features.pendingDecisions.status === 'configured'
     if (!allowed) throw new ControlsError('feature-disabled', 'new instrument records require the corresponding configured feature; retained records remain available')
@@ -494,6 +515,7 @@ export class SessionInstruments {
     const withinTicket = (workflowId: string, ticketId: string): boolean => withinWorkflow(workflowId) && (access.scope.kind === 'coordinator' || access.scope.ticketIds.includes(ticketId))
     const workflows = state.workflows.filter(row => withinWorkflow(row.workflowId))
     const tickets = state.tickets.filter(row => withinTicket(row.workflowId, row.localTicketId))
+    const taskReferences = state.taskReferences.filter(row => withinTicket(row.workflowId, row.localTicketId))
     const keyOf = (workflowId: string, decisionId: string): string => JSON.stringify([workflowId, decisionId])
     const views = new Map(state.decisionViews.filter(view => view.principalId === access.author.principalId)
       .map(view => [keyOf(view.workflowId, view.decisionId), view.value]))
@@ -509,7 +531,7 @@ export class SessionInstruments {
       if (event.revision <= (filter.afterRevision ?? 0)) return false
       const command = event.command
       if (!withinWorkflow(command.workflowId)) return false
-      if (command.action === 'put-ticket') return withinTicket(command.workflowId, command.localTicketId)
+      if (command.action === 'put-ticket' || command.action === 'put-task-reference') return withinTicket(command.workflowId, command.localTicketId)
       if (command.action === 'put-decision') {
         const version = versions.get(event.revision)
         return !!version && visibleDecisions.has(keyOf(command.workflowId, command.decisionId)) && decisionAllowed(access, command.workflowId, version.value, version.creator)
@@ -527,10 +549,10 @@ export class SessionInstruments {
     }))
     return freeze({ instance: { instrumentInstanceId: document.instrumentInstanceId, ownerSessionId: document.ownerSessionId, controlWorkspaceId: document.controlWorkspaceId },
       revision: document.revision, businessRevision: state.businessRevision, viewerRevision: this.viewerRevision(state, access.author.principalId), scope: access.scope,
-      focusedWorkflowId: filter.workflowId ?? null, workflows: workflows.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId),
-      tickets: tickets.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId), decisions, changes,
-      ...(document.schemaVersion===2 && document.checkpoint.throughRevision>0 ? {historyCoverage:{checkpointRevision:document.checkpoint.throughRevision,purged:document.coverage.some(c=>c.removedVersions>0)}} : {}),
-      summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', totalTickets: tickets.length, statusCounts,
+      capabilities: RECORD_CAPABILITIES, focusedWorkflowId: filter.workflowId ?? null, workflows: workflows.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId),
+      tickets: tickets.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId), taskReferences: taskReferences.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId), decisions, changes,
+      ...(document.schemaVersion!==1 && document.checkpoint.throughRevision>0 ? {historyCoverage:{checkpointRevision:document.checkpoint.throughRevision,purged:document.coverage.some(c=>c.removedVersions>0)}} : {}),
+      summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', totalTickets: tickets.length, totalTaskReferences: taskReferences.length, statusCounts,
         pendingDecisionCount: decisions.filter(row => row.value.pending).length,
         pendingUserDecisionCount: decisions.filter(row => row.value.pending && row.value.addressee?.kind === 'user').length,
         pendingForPrincipalCount: decisions.filter(row => row.value.pending && row.value.addressee?.principalId === access.author.principalId).length,

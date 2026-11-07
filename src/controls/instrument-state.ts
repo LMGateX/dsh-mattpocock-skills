@@ -14,6 +14,11 @@ export interface TicketValue {
   /** Ticket-level supervision override: off disables program suspicion, not periodic audit. */
   readonly suspicionMode?: 'auto' | 'off'
 }
+/** Authored identity and navigation only; never a source authorization or status receipt. */
+export type TaskReferenceSource = { readonly kind: 'external'; readonly instance: string; readonly project: string; readonly taskId: string }
+  | { readonly kind: 'repository'; readonly repositoryAnchor: string; readonly relativePath: string; readonly anchor?: string }
+  | { readonly kind: 'unverified' }
+export interface TaskReferenceValue { readonly source: TaskReferenceSource; readonly locator: string; readonly label?: string }
 export interface DecisionValue {
   readonly question: string
   readonly status: string
@@ -32,6 +37,7 @@ interface CommandBase { readonly operationId: string; readonly expectedRevision:
 export type InstrumentCommand = CommandBase & (
   | { readonly action: 'put-workflow'; readonly value: WorkflowValue }
   | { readonly action: 'put-ticket'; readonly localTicketId: string; readonly value: TicketValue }
+  | { readonly action: 'put-task-reference'; readonly localTicketId: string; readonly value: TaskReferenceValue }
   | { readonly action: 'put-decision'; readonly decisionId: string; readonly value: DecisionValue }
   | { readonly action: 'set-decision-view'; readonly decisionId: string; readonly value: DecisionViewValue }
 )
@@ -39,10 +45,14 @@ export interface InstrumentEvent { readonly revision: number; readonly recordedA
 export interface InstrumentDocumentV1 extends InstrumentInstance { readonly schemaVersion: 1; readonly revision: number; readonly events: readonly InstrumentEvent[] }
 export interface InstrumentDocumentV2 extends InstrumentInstance {
   readonly schemaVersion: 2; readonly revision: number; readonly events: readonly InstrumentEvent[]
-  readonly checkpoint: { readonly throughRevision: number; readonly state: InstrumentState }
+  readonly checkpoint: { readonly throughRevision: number; readonly state: Omit<InstrumentState, 'taskReferences'> }
   readonly dedup: readonly InstrumentDedup[]; readonly coverage: readonly InstrumentCleanupCoverage[]
 }
-export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2
+export interface InstrumentDocumentV3 extends Omit<InstrumentDocumentV2, 'schemaVersion' | 'checkpoint'> {
+  readonly schemaVersion: 3
+  readonly checkpoint: { readonly throughRevision: number; readonly state: InstrumentState }
+}
+export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3
 export interface InstrumentDedup {
   readonly operationId:string; readonly author:InstrumentAuthor; readonly digest:string
   readonly appliedRevision:number; readonly kind:'command'|'compact'|'purge-history'
@@ -54,11 +64,12 @@ export interface InstrumentCommandMetadata {
 }
 export function instrumentCommandMetadata(event:InstrumentEvent):InstrumentCommandMetadata {
   const c=event.command,workflowId=c.workflowId
-  const target:InstrumentHistoryTarget=c.action==='put-workflow' ? {kind:'workflow',workflowId} : c.action==='put-ticket' ? {kind:'ticket',workflowId,localTicketId:c.localTicketId} : {kind:'decision',workflowId,decisionId:c.decisionId}
+  const target:InstrumentHistoryTarget=c.action==='put-workflow' ? {kind:'workflow',workflowId} : c.action==='put-ticket' || c.action==='put-task-reference' ? {kind:c.action==='put-ticket'?'ticket':'task-reference',workflowId,localTicketId:c.localTicketId} : {kind:'decision',workflowId,decisionId:c.decisionId}
   return {action:c.action,target,expectedRevision:c.expectedRevision,recordedAt:event.recordedAt}
 }
 export type InstrumentHistoryTarget = {readonly kind:'workflow';readonly workflowId:string}
   | {readonly kind:'ticket';readonly workflowId:string;readonly localTicketId:string}
+  | {readonly kind:'task-reference';readonly workflowId:string;readonly localTicketId:string}
   | {readonly kind:'decision';readonly workflowId:string;readonly decisionId:string}
 export interface InstrumentCleanupCoverage {
   readonly operationId:string; readonly action:'compact'|'purge-history'; readonly appliedRevision:number
@@ -67,17 +78,20 @@ export interface InstrumentCleanupCoverage {
 }
 export interface InstrumentCompactInput {readonly operationId:string;readonly expectedRevision:number}
 export interface InstrumentPurgeHistoryInput extends InstrumentCompactInput {readonly throughRevision:number;readonly targets:readonly InstrumentHistoryTarget[]}
-const EMPTY_INSTRUMENT_STATE: InstrumentState = freeze({businessRevision:0,viewerRevisions:{},workflows:[],tickets:[],decisions:[],decisionViews:[]})
-export function upgradeInstrumentDocument(document: InstrumentDocument): InstrumentDocumentV2 {
-  if(document.schemaVersion===2) return document
-  return freeze({...document,schemaVersion:2,checkpoint:{throughRevision:0,state:EMPTY_INSTRUMENT_STATE},dedup:[],coverage:[]})
+const EMPTY_INSTRUMENT_STATE: InstrumentState = freeze({businessRevision:0,viewerRevisions:{},workflows:[],tickets:[],taskReferences:[],decisions:[],decisionViews:[]})
+export function upgradeInstrumentDocument(document: InstrumentDocument, references = false): InstrumentDocumentV2 | InstrumentDocumentV3 {
+  if (document.schemaVersion === 3) return document
+  const { taskReferences: _references, ...legacyEmpty } = EMPTY_INSTRUMENT_STATE
+  const current: InstrumentDocumentV2 = document.schemaVersion === 2 ? document : freeze({...document,schemaVersion:2,checkpoint:{throughRevision:0,state:legacyEmpty},dedup:[],coverage:[]})
+  return references ? freeze({...current,schemaVersion:3,checkpoint:{...current.checkpoint,state:{...current.checkpoint.state,taskReferences:[]}}}) : current
 }
 export interface Change<T> { readonly revision: number; readonly recordedAt: number; readonly author: InstrumentAuthor; readonly references: readonly string[]; readonly value: T }
 export interface WorkflowRecord { readonly workflowId: string; readonly revision: number; readonly value: WorkflowValue; readonly history: readonly Change<WorkflowValue>[] }
 export interface TicketRecord { readonly workflowId: string; readonly localTicketId: string; readonly revision: number; readonly value: TicketValue; readonly history: readonly Change<TicketValue>[] }
+export interface TaskReferenceRecord { readonly workflowId: string; readonly localTicketId: string; readonly revision: number; readonly value: TaskReferenceValue; readonly history: readonly Change<TaskReferenceValue>[] }
 export interface DecisionRecord { readonly workflowId: string; readonly decisionId: string; readonly revision: number; readonly value: DecisionValue; readonly history: readonly Change<DecisionValue>[]; readonly creator?: InstrumentAuthor }
 export interface DecisionViewRecord { readonly workflowId: string; readonly decisionId: string; readonly principalId: string; readonly revision: number; readonly value: DecisionViewValue }
-export interface InstrumentState { readonly businessRevision: number; readonly viewerRevisions: Readonly<Record<string, number>>; readonly workflows: readonly WorkflowRecord[]; readonly tickets: readonly TicketRecord[]; readonly decisions: readonly DecisionRecord[]; readonly decisionViews: readonly DecisionViewRecord[] }
+export interface InstrumentState { readonly businessRevision: number; readonly viewerRevisions: Readonly<Record<string, number>>; readonly workflows: readonly WorkflowRecord[]; readonly tickets: readonly TicketRecord[]; readonly taskReferences: readonly TaskReferenceRecord[]; readonly decisions: readonly DecisionRecord[]; readonly decisionViews: readonly DecisionViewRecord[] }
 
 function text(value: unknown, where: string): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > 65536 || value.includes('\0')) invalid(where + ' must be non-empty text, at most 65536 characters')
@@ -138,6 +152,24 @@ function ticketValue(value: unknown): TicketValue {
     ...(Object.hasOwn(raw, 'disposition') ? { disposition: nullableText(raw.disposition, 'ticket disposition') } : {}),
     ...(Object.hasOwn(raw, 'suspicionMode') ? (raw.suspicionMode === 'auto' || raw.suspicionMode === 'off' ? { suspicionMode: raw.suspicionMode } : invalid('ticket suspicionMode must be auto or off')) : {}) }
 }
+function taskReferenceValue(value: unknown): TaskReferenceValue {
+  const raw = record(value, 'task reference', ['source', 'locator', 'label'])
+  const input = record(raw.source, 'task reference source')
+  let source: TaskReferenceSource
+  if (input.kind === 'external') {
+    record(input, 'external source', ['kind', 'instance', 'project', 'taskId'])
+    source = { kind: 'external', instance: id(input.instance, 'source instance'), project: id(input.project, 'source project'), taskId: id(input.taskId, 'source taskId') }
+  } else if (input.kind === 'repository') {
+    record(input, 'repository source', ['kind', 'repositoryAnchor', 'relativePath', 'anchor'])
+    const relativePath = text(input.relativePath, 'source relativePath')
+    if (/^(?:[\\/]|[a-z]:)/iu.test(relativePath) || relativePath.split(/[\\/]/u).some(part => part === '..')) invalid('source relativePath must stay within its repository')
+    source = { kind: 'repository', repositoryAnchor: id(input.repositoryAnchor, 'repositoryAnchor'), relativePath,
+      ...(Object.hasOwn(input, 'anchor') ? { anchor: text(input.anchor, 'source anchor') } : {}) }
+  } else if (input.kind === 'unverified') {
+    record(input, 'unverified source', ['kind']); source = { kind: 'unverified' }
+  } else return invalid('task reference source kind must be external, repository or unverified')
+  return { source, locator: text(raw.locator, 'task reference locator'), ...(Object.hasOwn(raw, 'label') ? { label: text(raw.label, 'task reference label') } : {}) }
+}
 function decisionValue(value: unknown): DecisionValue {
   const raw = record(value, 'decision', ['question', 'status', 'pending', 'awaitingImplementation', 'ticketIds', 'context', 'options', 'recommendation', 'impact', 'addressee', 'result'])
   const optional: Record<string, unknown> = {}
@@ -169,13 +201,14 @@ export function parseInstrumentCommand(value: unknown): InstrumentCommand {
   switch (raw.action) {
     case 'put-workflow': record(raw, 'command', baseKeys); return freeze({ ...base, action: raw.action, value: shape('workflow value', WORKFLOW_VALUE_SHAPE, () => workflowValue(raw.value)) })
     case 'put-ticket': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: shape('ticket value', TICKET_VALUE_SHAPE, () => ticketValue(raw.value)) })
+    case 'put-task-reference': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: shape('task reference value', '{source, locator, label?}', () => taskReferenceValue(raw.value)) })
     case 'put-decision': record(raw, 'command', [...baseKeys, 'decisionId']); return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: shape('decision value', DECISION_VALUE_SHAPE, () => decisionValue(raw.value)) })
     case 'set-decision-view': {
       record(raw, 'command', [...baseKeys, 'decisionId'])
       const view = shape('decision view value', '{read, hidden}', () => record(raw.value, 'decision view', ['read', 'hidden']))
       return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: { read: boolean(view.read, 'read'), hidden: boolean(view.hidden, 'hidden') } })
     }
-    default: return invalid('unknown instrument action; accepted actions: put-workflow, put-ticket, put-decision, set-decision-view')
+    default: return invalid('unknown instrument action; accepted actions: put-workflow, put-ticket, put-task-reference, put-decision, set-decision-view')
   }
 }
 
@@ -193,16 +226,16 @@ export function parseInstrumentHistoryTarget(value: unknown): InstrumentHistoryT
   const r=record(value,'history target')
   const workflowId=id(r.workflowId,'workflowId')
   if(r.kind==='workflow') {record(value,'workflow target',['kind','workflowId']);return {kind:'workflow',workflowId}}
-  if(r.kind==='ticket') {record(value,'ticket target',['kind','workflowId','localTicketId']);return {kind:'ticket',workflowId,localTicketId:id(r.localTicketId,'localTicketId')}}
+  if(r.kind==='ticket' || r.kind==='task-reference') {record(value,'ticket/reference target',['kind','workflowId','localTicketId']);return {kind:r.kind,workflowId,localTicketId:id(r.localTicketId,'localTicketId')}}
   if(r.kind==='decision') {record(value,'decision target',['kind','workflowId','decisionId']);return {kind:'decision',workflowId,decisionId:id(r.decisionId,'decisionId')}}
-  return invalid('unknown instrument history target kind; accepted kinds: workflow, ticket, decision')
+  return invalid('unknown instrument history target kind; accepted kinds: workflow, ticket, task-reference, decision')
 }
-function checkpointState(value: unknown, cut: number): InstrumentState {
-  const s=record(value,'checkpoint state',['businessRevision','viewerRevisions','workflows','tickets','decisions','decisionViews'])
+function checkpointState(value: unknown, cut: number, references: boolean): InstrumentState {
+  const s=record(value,'checkpoint state',['businessRevision','viewerRevisions','workflows','tickets','decisions','decisionViews',...(references ? ['taskReferences'] : [])])
   const viewers=record(s.viewerRevisions,'viewer revisions')
   const viewerRevisions=Object.fromEntries(Object.entries(viewers).map(([key,value])=>[id(key,'viewer'),revision(value,'viewer revision')]))
-  const parseRows=<T>(input:unknown,kind:'workflow'|'ticket'|'decision',parse:(value:unknown)=>T) => array(input,kind+' checkpoint rows').map(value=>{
-    const key=kind==='workflow' ? undefined : kind==='ticket' ? 'localTicketId' : 'decisionId'
+  const parseRows=<T>(input:unknown,kind:'workflow'|'ticket'|'task-reference'|'decision',parse:(value:unknown)=>T) => array(input,kind+' checkpoint rows').map(value=>{
+    const key=kind==='workflow' ? undefined : kind==='ticket' || kind==='task-reference' ? 'localTicketId' : 'decisionId'
     const r=record(value,'checkpoint record',['workflowId',...(key ? [key] : []),'revision','value','history',...(kind==='decision' ? ['creator'] : [])])
     const history=array(r.history,'retained history').map(value=>{
       const h=record(value,'history version',['revision','recordedAt','author','references','value'])
@@ -214,29 +247,42 @@ function checkpointState(value: unknown, cut: number): InstrumentState {
   })
   const workflows=parseRows(s.workflows,'workflow',workflowValue) as unknown as readonly WorkflowRecord[]
   const tickets=parseRows(s.tickets,'ticket',ticketValue) as unknown as readonly TicketRecord[]
+  const taskReferences=references ? parseRows(s.taskReferences,'task-reference',taskReferenceValue) as unknown as readonly TaskReferenceRecord[] : []
   const decisions=parseRows(s.decisions,'decision',decisionValue) as unknown as readonly DecisionRecord[]
   const decisionViews=array(s.decisionViews,'decision views').map(value=>{
     const v=record(value,'decision view',['workflowId','decisionId','principalId','revision','value']),payload=record(v.value,'view value',['read','hidden'])
     return {workflowId:id(v.workflowId,'workflowId'),decisionId:id(v.decisionId,'decisionId'),principalId:id(v.principalId,'principalId'),revision:revision(v.revision,'view revision'),value:{read:boolean(payload.read,'read'),hidden:boolean(payload.hidden,'hidden')}}
   })
-  for(const rows of [workflows,tickets,decisions,decisionViews]) {
+  for(const rows of [workflows,tickets,taskReferences,decisions,decisionViews]) {
     const identities=rows.map(row=>JSON.stringify([row.workflowId,'localTicketId' in row ? row.localTicketId : 'decisionId' in row ? row.decisionId : null,'principalId' in row ? row.principalId : null]))
     if(new Set(identities).size!==identities.length) invalid('duplicate checkpoint record identity')
   }
   const workflowIndex=new Map(workflows.map(row=>[row.workflowId,row]))
   const ticketIndex=new Set(tickets.map(row=>entityKey(row.workflowId,row.localTicketId)))
+  const referenceIndex=new Set(taskReferences.map(row=>entityKey(row.workflowId,row.localTicketId)))
   const decisionIndex=new Set(decisions.map(row=>entityKey(row.workflowId,row.decisionId)))
   for(const row of tickets) {const workflow=workflowIndex.get(row.workflowId);if(!workflow) invalid('checkpoint ticket has no workflow');validateTicket(row.value,workflow.value)}
-  for(const row of decisions) if(!workflowIndex.has(row.workflowId) || (row.value.ticketIds??[]).some(id=>!ticketIndex.has(entityKey(row.workflowId,id)))) invalid('checkpoint decision references unknown records')
+  const declaredSources=new Set<string>()
+  for(const row of taskReferences) {
+    if(!workflowIndex.has(row.workflowId) || ticketIndex.has(entityKey(row.workflowId,row.localTicketId))) invalid('checkpoint task reference has no workflow or collides with legacy ticket')
+    const identity=JSON.stringify(row.value.source)
+    if(row.history.some(change=>JSON.stringify(change.value.source)!==identity)) invalid('checkpoint task reference changed source identity')
+    if(row.value.source.kind!=='unverified') {
+      const key=JSON.stringify([row.workflowId,row.value.source])
+      if(declaredSources.has(key)) invalid('duplicate declared task reference source')
+      declaredSources.add(key)
+    }
+  }
+  for(const row of decisions) if(!workflowIndex.has(row.workflowId) || (row.value.ticketIds??[]).some(id=>!ticketIndex.has(entityKey(row.workflowId,id)) && !referenceIndex.has(entityKey(row.workflowId,id)))) invalid('checkpoint decision references unknown records')
   for(const view of decisionViews) if(view.revision<1 || view.revision>cut || !decisionIndex.has(entityKey(view.workflowId,view.decisionId))) invalid('checkpoint decision view references unknown records')
   const businessRevision=revision(s.businessRevision,'business revision')
   if(businessRevision+Object.values(viewerRevisions).reduce((sum,n)=>sum+n,0)>cut) invalid('checkpoint business/viewer revision exceeds source cut')
-  return freeze({businessRevision,viewerRevisions,workflows,tickets,decisions,decisionViews})
+  return freeze({businessRevision,viewerRevisions,workflows,tickets,taskReferences,decisions,decisionViews})
 }
 function parseCommandMetadata(value:unknown):InstrumentCommandMetadata {
   const m=record(value,'technical command metadata',['action','target','expectedRevision','recordedAt'])
-  if(m.action!=='put-workflow' && m.action!=='put-ticket' && m.action!=='put-decision' && m.action!=='set-decision-view') invalid('unknown technical command action')
-  const target=parseInstrumentHistoryTarget(m.target),kind=m.action==='put-workflow'?'workflow':m.action==='put-ticket'?'ticket':'decision'
+  if(m.action!=='put-workflow' && m.action!=='put-ticket' && m.action!=='put-task-reference' && m.action!=='put-decision' && m.action!=='set-decision-view') invalid('unknown technical command action')
+  const target=parseInstrumentHistoryTarget(m.target),kind=m.action==='put-workflow'?'workflow':m.action==='put-ticket'?'ticket':m.action==='put-task-reference'?'task-reference':'decision'
   if(target.kind!==kind) invalid('technical command action and target differ')
   return {action:m.action,target,expectedRevision:revision(m.expectedRevision,'expectedRevision'),recordedAt:revision(m.recordedAt,'recordedAt')}
 }
@@ -279,6 +325,7 @@ function validateCheckpointHistory(state:InstrumentState,dedup:readonly Instrume
   const records=new Map<string,{readonly revision:number;readonly history:readonly {readonly revision:number}[]}>()
   for(const row of state.workflows) records.set(JSON.stringify({kind:'workflow',workflowId:row.workflowId}),row)
   for(const row of state.tickets) records.set(JSON.stringify({kind:'ticket',workflowId:row.workflowId,localTicketId:row.localTicketId}),row)
+  for(const row of state.taskReferences) records.set(JSON.stringify({kind:'task-reference',workflowId:row.workflowId,localTicketId:row.localTicketId}),row)
   for(const row of state.decisions) records.set(JSON.stringify({kind:'decision',workflowId:row.workflowId,decisionId:row.decisionId}),row)
   const byTarget=new Map<string,InstrumentDedup[]>()
   for(const d of versions) {const key=JSON.stringify(d.command!.target),group=byTarget.get(key)??[];group.push(d);byTarget.set(key,group)}
@@ -313,9 +360,9 @@ function validateCheckpointAuthors(state:InstrumentState,dedup:readonly Instrume
     const key=JSON.stringify(receipt.command!.target)
     if(!firstCreators.has(key)) firstCreators.set(key,receipt.author)
   }
-  const groups:{kind:'workflow'|'ticket'|'decision';rows:readonly (WorkflowRecord|TicketRecord|DecisionRecord)[]}[]=[{kind:'workflow',rows:state.workflows},{kind:'ticket',rows:state.tickets},{kind:'decision',rows:state.decisions}]
+  const groups:{kind:'workflow'|'ticket'|'task-reference'|'decision';rows:readonly (WorkflowRecord|TicketRecord|TaskReferenceRecord|DecisionRecord)[]}[]=[{kind:'workflow',rows:state.workflows},{kind:'ticket',rows:state.tickets},{kind:'task-reference',rows:state.taskReferences},{kind:'decision',rows:state.decisions}]
   for(const group of groups) for(const row of group.rows) {
-    const target:InstrumentHistoryTarget=group.kind==='workflow' ? {kind:'workflow',workflowId:row.workflowId} : group.kind==='ticket' && 'localTicketId' in row ? {kind:'ticket',workflowId:row.workflowId,localTicketId:row.localTicketId} : 'decisionId' in row ? {kind:'decision',workflowId:row.workflowId,decisionId:row.decisionId} : invalid('invalid checkpoint object target')
+    const target:InstrumentHistoryTarget=group.kind==='workflow' ? {kind:'workflow',workflowId:row.workflowId} : (group.kind==='ticket' || group.kind==='task-reference') && 'localTicketId' in row ? {kind:group.kind,workflowId:row.workflowId,localTicketId:row.localTicketId} : 'decisionId' in row ? {kind:'decision',workflowId:row.workflowId,decisionId:row.decisionId} : invalid('invalid checkpoint object target')
     if(group.kind==='decision') {
       const first=firstCreators.get(JSON.stringify(target)),creator='creator' in row ? row.creator : undefined
       if(!first || JSON.stringify(first)!==JSON.stringify(creator)) invalid('checkpoint decision creator differs from first source target receipt')
@@ -346,9 +393,13 @@ function deeplyFrozenData(value: unknown, seen = new WeakSet<object>()): boolean
 export function projectInstrumentDocument(document: InstrumentDocument): InstrumentState {
   const known = validatedDocuments.get(document)
   if (known) return known.state
-  const base = document.schemaVersion === 2 ? document.checkpoint.state : EMPTY_INSTRUMENT_STATE
+  const base = document.schemaVersion !== 1 ? document.checkpoint.state : EMPTY_INSTRUMENT_STATE
   const workflows = new Map(base.workflows.map(row => [row.workflowId, row]))
   const tickets = new Map(base.tickets.map(row => [entityKey(row.workflowId, row.localTicketId), row]))
+  const taskReferences = new Map((document.schemaVersion === 3 ? document.checkpoint.state.taskReferences : []).map(row => [entityKey(row.workflowId, row.localTicketId), row]))
+  const referenceSources = new Map<string, string>()
+  const sourceKey = (workflowId: string, source: TaskReferenceSource): string => JSON.stringify([workflowId, source])
+  for (const row of taskReferences.values()) if (row.value.source.kind !== 'unverified') referenceSources.set(sourceKey(row.workflowId, row.value.source), row.localTicketId)
   const decisions = new Map(base.decisions.map(row => [entityKey(row.workflowId, row.decisionId), row]))
   const viewKey = (workflowId: string, decisionId: string, principalId: string): string => JSON.stringify([workflowId, decisionId, principalId])
   const decisionViews = new Map(base.decisionViews.map(row => [viewKey(row.workflowId, row.decisionId, row.principalId), row]))
@@ -386,16 +437,31 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
     if (command.action === 'put-ticket') {
       validateTicket(command.value, workflow.value)
       const key = entityKey(command.workflowId, command.localTicketId), previous = tickets.get(key)
+      if (taskReferences.has(key)) invalid('local task handle already has another record kind')
       const value = { ...previous?.value, ...command.value }
       const row = { workflowId: command.workflowId, localTicketId: command.localTicketId, revision: event.revision, value,
         history: append('ticket' + key, previous?.history ?? [], change(value)) }
       tickets.set(key, row)
       const group = workflowTickets.get(command.workflowId) ?? new Map<string, TicketRecord>()
       group.set(command.localTicketId, row); workflowTickets.set(command.workflowId, group)
+    } else if (command.action === 'put-task-reference') {
+      if (document.schemaVersion !== 3) invalid('task references require instrument schemaVersion 3')
+      const key = entityKey(command.workflowId, command.localTicketId), previous = taskReferences.get(key)
+      if (tickets.has(key)) invalid('local task handle already has another record kind')
+      if (previous && JSON.stringify(previous.value.source) !== JSON.stringify(command.value.source)) invalid('task reference source identity is immutable')
+      if (command.value.source.kind !== 'unverified') {
+        const identity = sourceKey(command.workflowId, command.value.source), existing = referenceSources.get(identity)
+        // Diagnostics never disclose an unassigned handle or its authored label.
+        if (existing !== undefined && existing !== command.localTicketId) invalid('declared task source already has a local handle')
+        referenceSources.set(identity, command.localTicketId)
+      }
+      const value = { ...previous?.value, ...command.value }
+      taskReferences.set(key, { workflowId: command.workflowId, localTicketId: command.localTicketId, revision: event.revision, value,
+        history: append('task-reference' + key, previous?.history ?? [], change(value)) })
     } else if (command.action === 'put-decision') {
       const key = entityKey(command.workflowId, command.decisionId), previous = decisions.get(key)
       const value = { ...previous?.value, ...command.value }
-      for (const ticketId of value.ticketIds ?? []) if (!tickets.has(entityKey(command.workflowId, ticketId))) invalid('decision refers to unknown ticket')
+      for (const ticketId of value.ticketIds ?? []) if (!tickets.has(entityKey(command.workflowId, ticketId)) && !taskReferences.has(entityKey(command.workflowId, ticketId))) invalid('decision refers to unknown ticket or task reference')
       decisions.set(key, { workflowId: command.workflowId, decisionId: command.decisionId, revision: event.revision, value,
         history: append('decision' + key, previous?.history ?? [], change(value)), ...(previous?.creator ? { creator: previous.creator } : {}) })
     } else {
@@ -404,7 +470,7 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
         { workflowId: command.workflowId, decisionId: command.decisionId, principalId: event.author.principalId, revision: event.revision, value: command.value })
     }
   }
-  return freeze({ businessRevision, viewerRevisions: Object.fromEntries(viewerRevisions), workflows: [...workflows.values()], tickets: [...tickets.values()], decisions: [...decisions.values()], decisionViews: [...decisionViews.values()] })
+  return freeze({ businessRevision, viewerRevisions: Object.fromEntries(viewerRevisions), workflows: [...workflows.values()], tickets: [...tickets.values()], taskReferences: [...taskReferences.values()], decisions: [...decisions.values()], decisionViews: [...decisionViews.values()] })
 }
 
 export function initialInstrumentDocument(instance: InstrumentInstance): InstrumentDocument {
@@ -417,18 +483,21 @@ export function parseInstrumentDocument(value: unknown): InstrumentDocument {
   }
   try {
     const raw=record(value,'instrument document',['schemaVersion','revision','instrumentInstanceId','ownerSessionId','controlWorkspaceId','events','checkpoint','dedup','coverage'])
-    if(raw.schemaVersion!==1 && raw.schemaVersion!==2) invalid('unsupported instrument schemaVersion')
+    if(raw.schemaVersion!==1 && raw.schemaVersion!==2 && raw.schemaVersion!==3) invalid('unsupported instrument schemaVersion')
     if(raw.schemaVersion===1) record(value,'V1 instrument document',['schemaVersion','revision','instrumentInstanceId','ownerSessionId','controlWorkspaceId','events'])
     const docRevision=revision(raw.revision,'instrument revision')
-    let checkpoint:InstrumentDocumentV2['checkpoint']|undefined, dedup:readonly InstrumentDedup[]=[], coverage:readonly InstrumentCleanupCoverage[]=[]
-    if(raw.schemaVersion===2) {
+    let checkpoint:InstrumentDocumentV2['checkpoint']|InstrumentDocumentV3['checkpoint']|undefined, dedup:readonly InstrumentDedup[]=[], coverage:readonly InstrumentCleanupCoverage[]=[]
+    if(raw.schemaVersion!==1) {
       const c=record(raw.checkpoint,'instrument checkpoint',['throughRevision','state']),cut=revision(c.throughRevision,'checkpoint revision')
       if(cut>docRevision) invalid('checkpoint exceeds source revision')
-      checkpoint={throughRevision:cut,state:checkpointState(c.state,cut)}
+      const state=checkpointState(c.state,cut,raw.schemaVersion===3)
+      const {taskReferences: _references,...legacy}=state
+      checkpoint={throughRevision:cut,state:raw.schemaVersion===3 ? state : legacy}
       dedup=dedupRows(raw.dedup,cut);coverage=cleanupCoverage(raw.coverage,dedup)
-      validateCheckpointAuthors(checkpoint.state,dedup)
-      validateCheckpointCounters(checkpoint.state,dedup)
-      validateCheckpointHistory(checkpoint.state,dedup,coverage)
+      if(raw.schemaVersion!==3 && (dedup.some(d=>d.command?.action==='put-task-reference') || coverage.some(c=>c.targets.some(t=>t.kind==='task-reference')))) invalid('task reference receipts require instrument schemaVersion 3')
+      validateCheckpointAuthors(state,dedup)
+      validateCheckpointCounters(state,dedup)
+      validateCheckpointHistory(state,dedup,coverage)
     }
     const cut=checkpoint?.throughRevision??0
     const events=array(raw.events,'instrument events').map((value,index):InstrumentEvent=>{
@@ -439,7 +508,7 @@ export function parseInstrumentDocument(value: unknown): InstrumentDocument {
     const operationIds=[...dedup.map(d=>d.operationId),...events.map(e=>e.command.operationId)]
     if(events.length+cut!==docRevision || new Set(operationIds).size!==operationIds.length) invalid('revision or operation-id index is inconsistent')
     const identity={instrumentInstanceId:id(raw.instrumentInstanceId,'instrumentInstanceId'),ownerSessionId:id(raw.ownerSessionId,'ownerSessionId'),controlWorkspaceId:id(raw.controlWorkspaceId,'controlWorkspaceId'),revision:docRevision,events}
-    const result:InstrumentDocument=checkpoint ? {schemaVersion:2,...identity,checkpoint,dedup,coverage} : {schemaVersion:1,...identity}
+    const result:InstrumentDocument=checkpoint ? raw.schemaVersion===3 ? {schemaVersion:3,...identity,checkpoint:checkpoint as InstrumentDocumentV3['checkpoint'],dedup,coverage} : {schemaVersion:2,...identity,checkpoint,dedup,coverage} : {schemaVersion:1,...identity}
     const state = projectInstrumentDocument(result)
     const document = freeze(result), entry = { document, state }
     validatedDocuments.set(document, entry)
