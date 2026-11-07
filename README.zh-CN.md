@@ -4,6 +4,8 @@
 
 **当前状态：核心插件与历史 Phase 4 制品验证已完成；Phase 5 行为评估已关闭，但未通过。** 三次试验为 2 次通过、1 次硬失败，总体失败。当前协作实现与复审修复已通过机械源码／构建／测试验收；结果及单独保存的 clean-source 制品门禁见[公开验证摘要](<docs/VERIFICATION.md>)。源码公开不授权安装、启用、部署或 npm 发布。
 
+**0.16.1 — DSH 0.2.2-rc.1 兼容补发：** 在隔离 SDK／Profile 中重新核对现有运行时，不修改插件运行时代码、生成的 JS/DTS、Skills、渠道、工具／Remote／存储契约或宿主声明范围。DSH rc.1 自身要求 **Node.js ≥24.9**，插件的 Node 范围不能替代宿主前提。本次**不为当前本机 Profile 安装或激活**；结果与限制见[RC1 兼容记录](<docs/DSH_022_RC1_COMPATIBILITY.md>)及[制品验证](<docs/VERIFICATION.md>)。
+
 - 已有仓库的升级须知：[MIGRATION.md](MIGRATION.md)
 - 权威设计：[docs/DESIGN.md](docs/DESIGN.md)
 - 实施计划：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)

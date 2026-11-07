@@ -4,6 +4,8 @@ Public-source DSH adapter and reproducible distribution bundle for the Matt Poco
 
 **Current status:** The core adapter and historical Phase 4 artifact verification are complete. The Phase 5 behavioral campaign is closed but failed: two trials passed and one had a hard failure. The collaboration implementation and review fixes have passed mechanical source/build/test acceptance; results and separately recorded clean-source artifact gates are described in [the public verification summary](<docs/VERIFICATION.md>). This public repository does not authorize installation, activation, npm publication or deployment.
 
+**0.16.1 — DSH 0.2.2-rc.1 compatibility:** This patch revalidates the existing runtime against the new release candidate; it does not change plugin runtime code, generated JS/DTS, Skills, channels, tool/Remote/storage contracts or the declared host range. DSH rc.1 requires Node.js **24.9 or later** (the plugin’s own Node range is not a replacement for the host prerequisite). Verification uses isolated SDK/Profile installs only; this release is **not installed or activated in the current local Profile**. See the [RC1 compatibility record](<docs/DSH_022_RC1_COMPATIBILITY.md>) and [artifact verification](<docs/VERIFICATION.md>) for results and limits.
+
 - Upgrading a repository that already used these Skills: [MIGRATION.md](MIGRATION.md)
 - Authoritative architecture: [docs/DESIGN.md](docs/DESIGN.md)
 - Implementation sequence and gates: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
