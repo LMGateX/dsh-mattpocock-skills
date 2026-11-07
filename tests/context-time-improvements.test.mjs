@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mountedFixture, operator, caller, policy, signal } from './fixtures/runtime-host.mjs'
+import { mountedFixture, fixture, core, operator, caller, policy, signal } from './fixtures/runtime-host.mjs'
 
 const { InstrumentConsumption } = await import('../src/controls/consumption.ts')
 const identity = { principalId: 'agent:root', sessionId: 'root', instrumentInstanceId: 'I', ownerSessionId: 'root' }
@@ -225,4 +225,155 @@ test('scope-partitioned reads still wait for the same instance durability fronti
   const results = await Promise.all([wide, narrow])
   assert.equal(reads, 2)
   assert.deepEqual(results.map(result => result.freshness), ['current', 'current'])
+})
+
+test('authored task references join held T and pending questions without creating business tickets', async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy() })
+  const view = await f.read()
+  const controls = new core.WorkspaceControls(f.controlsStorage, f.ports.authority)
+  const authority = { async resolveAccess() { return { author: caller('root'), scope: { kind: 'coordinator' } } } }
+  const instruments = new core.SessionInstruments(controls, f.instrumentStorage, authority, () => 1234)
+  let revision = 0
+  async function apply(action, fields) {
+    const result = await instruments.apply('agent:root', 'root', { operationId: 'ref-context-' + revision,
+      expectedRevision: revision, workflowId: 'flow', action, ...fields })
+    revision = result.snapshot.businessRevision
+  }
+  await apply('put-workflow', { value: { title: 'Collaboration group', axes: [] } })
+  await apply('put-task-reference', { localTicketId: 'R1', references: ['native-message:42'], value: {
+    source: { kind: 'external', instance: 'tracker', project: 'project-A', taskId: '42' }, locator: 'https://tracker.example/project-A/42', label: 'Authored last-known label' } })
+  await apply('put-decision', { decisionId: 'D', value: { question: 'Approve this source task?', status: 'open', pending: true,
+    addressee: { kind: 'user' }, ticketIds: ['R1'] } })
+  const windows = new core.SessionWindows(controls, f.windowStorage, authority,
+    { runtimeId: 'reference-context', capability: 'cooperative', bindProgram() {} })
+  await windows.apply('agent:root', 'root', { action: 'reserve', operationId: 'hold-R1', workflowId: 'flow', localTicketId: 'R1' })
+  const records = await instruments.readCurrent('agent:root', 'root')
+  const current = { ...snapshot(), instance: view.instance, policy: view.policy, records, windows: await windows.read('agent:root', 'root') }
+  const who = { ...identity, instrumentInstanceId: view.instance.instrumentInstanceId }
+  const feed = new InstrumentConsumption({ readSnapshot: async () => current })
+  const result = await feed.readForConsumption(who)
+  const facts = JSON.parse(result.text.split(factsMarker)[1])
+  assert.deepEqual(facts.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3] })
+  assert.equal(facts.records.summary.totalTaskReferences, 1)
+  assert.equal(facts.records.summary.totalTickets, 0)
+  assert.equal(facts.records.tickets.total, 0)
+  const reference = facts.records.taskReferences.rows[0]
+  assert.equal(reference.localTicketId, 'R1')
+  assert.equal(reference.sourceState, 'unknown')
+  assert.equal(reference.sourceEvidence, 'authored')
+  assert.equal(reference.source.recordedAt, 1234)
+  assert.equal(reference.value.source.taskId, '42')
+  assert.equal(facts.windows.T.used, 1)
+  assert.equal(facts.windows.tickets.rows[0].localTicketId, 'R1')
+  assert.equal(facts.records.decisions.rows[0].value.ticketIds[0], 'R1')
+  assert.equal(facts.records.summary.pendingUserDecisionCount, 1)
+})
+
+function referenceRecords(rows) {
+  const records = orderedRecords([])
+  return { ...records, capabilities: { taskReferences: true, storageVersions: [1, 2, 3] }, taskReferences: rows,
+    summary: { ...records.summary, totalTaskReferences: rows.length } }
+}
+function referenceRow(index) {
+  return { workflowId: 'flow', localTicketId: 'R' + String(index).padStart(3, '0'), revision: index + 1,
+    value: { source: { kind: 'external', instance: 'tracker', project: 'project-A', taskId: String(index) },
+      label: 'Authored long label '.repeat(200), locator: 'https://tracker.example/' + 'segment/'.repeat(200) + index },
+    provenance: { author: caller('root'), recordedAt: 1234, references: ['message:source'] } }
+}
+
+test('bounded reference omissions keep authorized current locators and unknown source evidence', async () => {
+  const f = consumption()
+  const rows = Array.from({ length: 40 }, (_, index) => referenceRow(index))
+  f.current = { ...f.current, records: referenceRecords(rows) }
+  const first = await f.read()
+  const category = JSON.parse(first.text.split(factsMarker)[1]).records.taskReferences
+  assert.equal(category.total, 40)
+  assert.ok(category.shown > 0 && category.shown < 40)
+  assert.equal(category.more, true)
+  assert.deepEqual(category.query, { tool: 'mattpocock_record', action: 'read', query: { kind: 'task-reference', limit: 20 } })
+  const row = category.rows[0]
+  assert.deepEqual(row.query, { tool: 'mattpocock_record', action: 'read', query: { kind: 'task-reference', recordId: '["flow","R000"]', limit: 20 } })
+  assert.equal(row.sourceEvidence, 'authored')
+  assert.equal(row.sourceState, 'unknown')
+  assert.ok(row.value.label)
+  assert.ok(row.value.locator)
+  assert.ok(first.text.length <= 24000)
+  rows.at(-1).value.label = 'Changed after all shown rows'
+  const changed = await f.read()
+  assert.notEqual(JSON.parse(changed.text.split(factsMarker)[1]).records.taskReferences.currentFactsSignature, category.currentFactsSignature)
+})
+
+test('reference capability gates new guidance and unknown counts never become business-ticket mirrors', async () => {
+  const f = consumption()
+  f.current = { ...f.current, records: orderedRecords([]) }
+  let result = await f.read()
+  let facts = JSON.parse(result.text.split(factsMarker)[1])
+  assert.equal(facts.records.capabilities, null)
+  assert.equal(facts.records.taskReferences, null)
+  assert.equal(facts.records.summary.totalTaskReferences, null)
+  assert.equal(facts.records.summary.totalTickets, 0)
+  assert.match(result.text, /Task-reference capability is unknown or unsupported/)
+  assert.doesNotMatch(result.text, /Record it first with mattpocock_record put-ticket/)
+  f.current = { ...f.current, records: referenceRecords([]) }
+  result = await f.read()
+  facts = JSON.parse(result.text.split(factsMarker)[1])
+  assert.equal(facts.records.taskReferences.total, 0)
+  assert.equal(facts.records.summary.totalTaskReferences, 0)
+  assert.equal(facts.records.summary.totalTickets, 0)
+  assert.match(result.text, /put-task-reference/)
+  assert.match(result.text, /local-current is not source-current/)
+  assert.match(result.text, /source state remains unknown/)
+  assert.match(result.text, /explicit release may mean pause or handoff/)
+  assert.doesNotMatch(result.text, /Take each ticket to its declared delivered state|Record it first with mattpocock_record put-ticket/)
+  const enabled = f.current.policy
+  f.current = { ...f.current, policy: { ...enabled, features: Object.fromEntries(Object.entries(enabled.features).map(([key, value]) => [key, { ...value, requested: false, status: 'disabled' }])) } }
+  result = await f.read()
+  assert.match(result.text, /New task-reference registration is inactive/)
+  assert.doesNotMatch(result.text, /register with mattpocock_record put-task-reference/)
+  f.current = { ...f.current, policy: { ...enabled, extensionEnabled: false } }
+  result = await f.read()
+  assert.match(result.text, /Management feature is OFF/)
+  assert.doesNotMatch(result.text, /register with mattpocock_record put-task-reference/)
+  assert.equal(JSON.parse(result.text.split(factsMarker)[1]).records.summary.totalTaskReferences, 0)
+})
+
+test('reference and legacy categories share the existing snapshot budget without hiding unknown counts', async () => {
+  const f = consumption(), large = 'Long authored report '.repeat(2000)
+  const records = referenceRecords(Array.from({ length: 40 }, (_, n) => referenceRow(n)))
+  const windows = { instance, configurationRevision: 1, status: 'reconciling', reason: null, scope: { kind: 'coordinator' },
+    runtimeKnowledge: { known: false, reason: 'unavailable', runtimeId: null }, T: { used: 40, capacity: null },
+    S: { used: null, capacity: null, byState: { unknown: 40 } }, tickets: [], executions: [] }
+  const resources = [], capabilities = [], health = [], worktreeBindings = [], contextConclusions = []
+  for (let n = 0; n < 40; n++) {
+    const id = String(n).padStart(3, '0')
+    records.workflows.push({ workflowId: id, revision: 1, history: [], value: { title: id, axes: [{ axisKey: 'custom', label: large, counting: 'exclusive', statuses: [] }] } })
+    records.tickets.push({ workflowId: id, localTicketId: id, revision: 1, history: [], value: { title: id, statuses: { custom: ['partial'] }, summary: large } })
+    records.decisions.push({ workflowId: id, decisionId: id, revision: 1, history: [], value: { question: id, status: 'open', context: large, pending: true, awaitingImplementation: true } })
+    records.summary.statusCounts.push({ workflowId: id, axisKey: 'custom', label: large, counting: 'exclusive', statuses: [], unreported: 0 })
+    windows.tickets.push({ workflowId: id, localTicketId: id, held: true, generation: 1 })
+    windows.executions.push({ executionId: id, generation: 1, state: 'unknown', workflowId: id, localTicketId: id })
+    resources.push({ resourceId: id, ownerInstanceId: 'I', identity: { path: '/tree/' + id, ownership: 'borrowed' }, status: 'retained', business: { status: large }, references: [], diagnostic: null, actualCanRetire: { facts: null } })
+    capabilities.push({ key: id, status: 'unsupported', reason: large })
+    health.push({ scope: id, status: 'ready', reason: large })
+    worktreeBindings.push({ bindingId: id, revision: 1, value: { requestedCwd: '/tree/' + id, actualChildSessionId: 'child-' + id, business: { state: 'discarded', notes: large } }, source: 'agent', author: caller('root'), recordedAt: 1, cleanupDue: n === 0 })
+    contextConclusions.push({ workflowId: id, decisionId: id, result: large, sourceRevision: 1, source: { author: 'owner' } })
+  }
+  health.push({ scope: 'zzz-not-shown', status: 'unknown', reason: 'source unavailable' })
+  records.summary.totalTickets = 40
+  records.summary.pendingDecisionCount = 40
+  records.summary.awaitingImplementationCount = 40
+  f.current = { ...f.current, records, windows, resources, capabilities, health, worktreeBindings, contextConclusions }
+  const result = await f.read()
+  assert.ok(result.text.length <= 24000, 'all categories including references: ' + result.text.length)
+  const facts = JSON.parse(result.text.split(factsMarker)[1])
+  assert.equal(facts.records.taskReferences.total, 40)
+  assert.equal(facts.records.tickets.total, 40)
+  assert.equal(facts.records.summary.totalTaskReferences, 40)
+  assert.equal(facts.records.summary.totalTickets, 40)
+  assert.equal(facts.records.summary.awaitingImplementationCount, 40)
+  assert.equal(facts.windows.T.used, 40)
+  assert.equal(facts.windows.S.used, null)
+  assert.equal(facts.health.counts.unknown, 1)
+  assert.equal(facts.worktreeRelations.counts.cleanupDue, 1)
+  assert.ok(facts.records.taskReferences.shown > 0 && facts.records.taskReferences.more)
 })
