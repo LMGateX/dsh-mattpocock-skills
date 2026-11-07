@@ -462,6 +462,7 @@ export function WindowProjection(props: { readonly view: ClientSessionSnapshot }
   const executionHealth = props.view.health.find(row => row.scope === 'native-executions')
   return h('section', { 'aria-label': '窗口观测' },
     diagnostic('T/S 是参考值，不是硬名额；超出或统计未知不拒绝派发，也不要求额外审批。'),
+    h('div', { key: decisionReadingIdentity(props.view), 'aria-label': 'T 占位明细' }, h('h4', null, 'T 占位明细'), inputTicketDetails(props.view)),
     diagnostic('S 是宿主的实时运行状态（当前 Agent.status 为 running 的后代子代理；idle 常驻子代理不算在跑）；countKnown 为 false 时它是明示下界（总数未知），available 只是参考余量，不是全机可派发数量。S.depth 按到本会话的边距分解：direct（1 级）、deeper（2 级及更深）、unknown（父链不可测量），三者恒等于 S.used；depth.levels 给出各层精确计数，depth 为 null 表示来源无法测量深度。宿主的活动子代理名额按 continuable 血缘共用一个池，孙代与直接子代消耗同一个名额。'),
     ...(props.view.nativeCount?.reestablished === true ? [diagnostic('S 计数已由新 runtime 依据实时事实重建（前一个 ' + String(props.view.nativeCount.previousRuntimeId) + '），不是未归因的消失。')] : []),
     ...(stops.length > 0 ? [diagnostic('原生子代理结局待处理：' + stops.map(row => nativeStopText(row)).join('；') + '。每项对应一个子代理回合的宿主公开结局或明示不可观测；子代理重新运行或其结束回执到达后清除。')] : []),

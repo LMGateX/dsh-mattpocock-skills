@@ -291,6 +291,51 @@ test('inline reference disclosure and body are dropped on live task authorizatio
   assert.doesNotMatch(named(f.container, 'T 票窗口详情').textContent, /External task reference|tracker.example/)
 })
 
+for (const entry of ['SettingsInspection', 'Details']) {
+  test(entry + ' window T region resolves held reference and legacy handles without borrowing labels elsewhere on the page', async t => {
+    const view = snapshot()
+    view.records.tickets = [{ workflowId: 'work', localTicketId: 'legacy-window', revision: 2,
+      value: { title: 'Legacy window report', statuses: { phase: ['review'] } }, history: [] }]
+    view.records.summary.totalTickets = 1
+    view.records.workflows[0].value.axes = [{ axisKey: 'phase', label: 'Legacy phase', counting: 'exclusive', statuses: [{ statusKey: 'review', label: 'Under review' }] }]
+    const released = reference('released-ref'); released.value.label = 'Released reference label'
+    view.records.taskReferences.push(released); view.records.summary.totalTaskReferences = 2
+    view.windows.T.used = 2
+    view.windows.scope = { kind: 'assigned', workflowId: 'work', ticketIds: ['source-ref', 'legacy-window'] }
+    view.windows.tickets.push({ workflowId: 'work', localTicketId: 'legacy-window', held: true, generation: 1 },
+      { workflowId: 'work', localTicketId: 'released-ref', held: false, generation: 1 })
+    const f = await mount(t, entry, view)
+    const windowRegion = named(f.container, '窗口观测')
+    const T = named(windowRegion, 'T 占位明细')
+    assert.match(T.textContent, /实例总占用 T 2/)
+    assert.match(T.textContent, /明细只是子集，不能从子集重算实例总数/)
+    assert(T.textContent.includes('work/source-ref'))
+    assert.match(T.textContent, /任务引用.*External task reference/)
+    assert(T.textContent.includes('work/legacy-window'))
+    assert.match(T.textContent, /旧票报告.*Legacy window report/)
+    assert.doesNotMatch(T.textContent, /Released reference label|released-ref/)
+    const ref = [...T.querySelectorAll('article')].find(row => row.textContent.includes('work/source-ref'))
+    const legacy = [...T.querySelectorAll('article')].find(row => row.textContent.includes('work/legacy-window'))
+    assert.match(ref.textContent, /作者报告.*未核验.*未观察源状态/)
+    assert.doesNotMatch(ref.textContent, /未报告状态|Under review/)
+    assert.match(legacy.textContent, /Legacy phase：Under review/)
+    assert.match(windowRegion.textContent, /S 0.*直接 0.*更深 0/)
+    assert([...windowRegion.querySelectorAll('pre')].some(node => node.textContent.includes('"runtimeKnowledge"')), 'original technical window facts remain available')
+    const old = structuredClone(view); delete old.records.capabilities
+    await f.refresh(old)
+    const oldT = named(named(f.container, '窗口观测'), 'T 占位明细')
+    assert.match(oldT.textContent, /任务引用读取能力未知或不支持/)
+    assert.match(oldT.textContent, /Legacy window report/)
+    assert.doesNotMatch(oldT.textContent, /External task reference/)
+    const revoked = structuredClone(view)
+    revoked.health.push({ scope: 'records', status: 'restricted', reason: 'controlled authorization narrowing' })
+    await f.refresh(revoked)
+    const restrictedT = named(named(f.container, '窗口观测'), 'T 占位明细')
+    assert(restrictedT.textContent.includes('work/source-ref'))
+    assert.doesNotMatch(restrictedT.textContent, /External task reference|Legacy window report|Under review/)
+  })
+}
+
 for (const change of ['instance', 'caller', 'scope', 'grant', 'session']) {
   test('settings reference reading fences old bodies and disclosure state after ' + change, async t => {
     const f = await mount(t, 'SettingsInspection')
