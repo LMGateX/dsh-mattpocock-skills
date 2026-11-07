@@ -173,6 +173,10 @@ function currentSignature(rows: readonly unknown[]): string {
 }
 function category(rows: readonly unknown[], location: QueryLocator, counts: unknown = undefined): unknown {
   const kind = String(location.kind)
+  // Keep the prior review allowance: shrinking it can hide a third short legacy
+  // obligation even though its compatibility count is still shown. Other categories
+  // retain the smaller allocation that reserves space for task references.
+  const textBudget = kind === 'decisions' ? 1850 : CATEGORY_TEXT_BUDGET
   const query = historyLocator(kind)
   const shown: unknown[] = []
   const currentFactsSignature = currentSignature(rows)
@@ -196,7 +200,7 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
         ...(locator === undefined ? { truncated: true } : { truncated: true, query: locator }) }
     }
     shown.push(row)
-    if (canonical(envelope()).length > CATEGORY_TEXT_BUDGET) { shown.pop(); break }
+    if (canonical(envelope()).length > textBudget) { shown.pop(); break }
   }
   return envelope()
 }
