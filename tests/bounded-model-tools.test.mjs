@@ -347,6 +347,8 @@ test('detail encoding and a concurrent assignment revocation share the permissio
 test('native recovery discovers more than the injection cap and fences lane and observation association changes', async t => {
   const f=await mountedFixture(t)
   await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.runtime.applyInstrument(caller('root'),'root',{operationId:'seed-flow',expectedRevision:0,workflowId:'flow',action:'put-workflow',value:workflow},signal())
+  await f.runtime.applyInstrument(caller('root'),'root',{operationId:'seed-ticket',expectedRevision:1,workflowId:'flow',action:'put-ticket',localTicketId:'A',value:{title:'A',statuses:{delivery:['partial']}}},signal())
   await f.runtime.assign(caller('root'),{sessionId:'child'},signal())
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
   const old=await f.runtimeStorage.read()

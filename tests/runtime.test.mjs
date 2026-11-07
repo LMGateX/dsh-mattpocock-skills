@@ -381,6 +381,7 @@ test('S-only configured capacity permits ticketless native work with T unset and
 
 test('assignment grant must recheck the direct parent permission after a queued assignment revocation', async t => {
   const f = await ready(t)
+  for (const localTicketId of ['A', 'B']) await f.apply('put-ticket', { localTicketId, value: ticket() })
   await f.assign('old-child', 'flow', ['A'])
   const grandchild = actualAgent('old-grandchild', { parent: 'old-child', managed: true })
   await f.created(grandchild)
@@ -971,7 +972,8 @@ test('a persistent context failure installs one notice with a stable reason', as
   assert.equal(first.length, 1)
   const text = first[0].content.map(part => part.text).join('')
   assert.doesNotMatch(text, /srv\/secret/, 'internal exception text is not injected')
-  assert.match(text, /Instrument state stale: .*failed with internal-error/)
+  assert.match(text, /Instrument context unavailable: internal-error/ )
+  assert.doesNotMatch(text, /Current runtime facts/, 'unproved current identity must not reuse a held body')
   const second = await f.runtime.preStep(caller('root'), signal())
   assert.equal(second.length, 0, 'an identical notice already in context is not repeated')
 })

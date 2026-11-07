@@ -81,6 +81,11 @@ interface Dispatch {
 }
 const NATIVE_TOOLS = new Set(['subagent','subagent_fork','send_message'])
 function denied(message: string): never { throw new ControlsError('access-denied',message) }
+/** This admission read failed before any write; keep the source unknown without inventing
+ * an unacknowledged runtime mutation in the consumption durability frontier. */
+class LocalHandleReadUnavailable extends ControlsError {
+  constructor(){super('storage-uncertain','local task handles unavailable; no referenced admission was granted')}
+}
 function callerFor(principalId: string, sessionId: string, operator: string): HostCaller {
   return {kind:principalId===operator?'user':'agent',principalId,sessionId:principalId===operator?null:sessionId}
 }
@@ -192,7 +197,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const version=businessCaptureVersion(records),consumer=view.association.sessionId
     if(marks.business.get(consumer)===version)return
     const observations:HistoryObservation[]=[]
-    for(const [kind,rows]of [['workflow',records.workflows],['ticket',records.tickets],['decision',records.decisions]] as const){
+    for(const [kind,rows]of [['workflow',records.workflows],['ticket',records.tickets],['task-reference',records.taskReferences],['decision',records.decisions]] as const){
       for(const row of rows){const recordId=kind==='workflow'?row.workflowId:JSON.stringify([row.workflowId,'localTicketId' in row?row.localTicketId:'decisionId' in row?row.decisionId:null])
         for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
       }
@@ -280,9 +285,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   let transitioning:PolicyIntent|null=null
   const mayRequireWindows=(policy:PolicyIntent):boolean=>policy.extensionEnabled&&(policy.defaults.windows?.enabled===true||Object.values(policy.workspaceOverrides).some(patch=>patch.windows?.enabled===true))
   const load=async():Promise<RuntimeDocument>=>{const raw=await storage.read();return raw===undefined?INITIAL_RUNTIME_DOCUMENT:memoized(raw,parseRuntimeDocument)}
-  const update=async(change:(current:RuntimeDocument)=>RuntimeDocument):Promise<RuntimeDocument>=>{
+  const update=async(change:(current:RuntimeDocument)=>RuntimeDocument|Promise<RuntimeDocument>):Promise<RuntimeDocument>=>{
     for(let attempt=0;attempt<32;attempt++){
-      const old=await load(),candidate=change(old)
+      const old=await load(),candidate=await change(old)
       if(candidate===old)return old
       const next=parseRuntimeDocument({...candidate,revision:increment(old.revision)})
       if(await storage.compareAndSwap(old.revision,next)){
@@ -320,10 +325,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     cachedSessions.set(sessionId,view);nativeWindows.set(sessionId,view.policy.extensionEnabled&&view.policy.features.windows.requested)
     signal?.throwIfAborted();return view
   }
-  /** A ticket window may only name tickets this instrument already knows; unverifiable reads never veto work. */
+  /** Referenced admission requires a current local handle; native ticketless work stays unrestricted. */
   /** Registered (workflow, ticket) pairs; a ticket id is only meaningful inside its own workflow. */
   const registeredTickets=async(caller:HostCaller,sessionId:string):Promise<ReadonlySet<string>|null>=>{
-    try{const read=await instruments.read(caller.principalId,sessionId);return new Set(read.tickets.map(row=>row.workflowId+'\u0000'+row.localTicketId))}
+    try{const read=await instruments.read(caller.principalId,sessionId);return new Set([...read.tickets,...read.taskReferences].map(row=>row.workflowId+'\u0000'+row.localTicketId))}
     catch{return null}
   }
   /** Held T slots whose ticket already sits in a terminal status: the agent releases them, nothing else does. */
@@ -364,14 +369,37 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
     const requireRegisteredTicket=async(caller:HostCaller,sessionId:string,workflowId:string,localTicketId:string):Promise<void>=>{
     const known=await registeredTickets(caller,sessionId)
-    if(known===null||known.has(workflowId+'\u0000'+localTicketId))return
-    throw new ControlsError('invalid-input','ticket "'+localTicketId+'" is not registered in workflow "'+workflowId+'"; record it with mattpocock_record put-ticket (workflowId "'+workflowId+'", localTicketId "'+localTicketId+'") first, or omit workflowId for a ticketless research lane')
+    if(known===null)throw new LocalHandleReadUnavailable()
+    if(known.has(workflowId+'\u0000'+localTicketId))return
+    throw new ControlsError('invalid-input','task handle "'+localTicketId+'" is not registered in workflow "'+workflowId+'"; register a minimal mattpocock_record put-task-reference first, or omit workflowId for a ticketless research lane')
+  }
+  /** Raw grants are upper bounds, not independent owner overrides. Verify every real edge
+   * on each read/CAS attempt; restoring a parent scope intentionally restores its raw grants. */
+  const effectiveScope=async(doc:RuntimeDocument,sessionId:string,view:SessionControlsView):Promise<InstrumentScope>=>{
+    const chain:string[]=[],seen=new Set<string>()
+    let cursor=sessionId
+    while(cursor!==view.instance.ownerSessionId){
+      if(seen.has(cursor))denied('cyclic task delegation chain')
+      seen.add(cursor);chain.push(cursor)
+      const fact=await ports.authority.resolveSession(cursor)
+      if(fact?.kind!=='managed-child')denied('task delegation parent chain unavailable')
+      const row=doc.assignments.find(a=>a.sessionId===cursor)
+      if(row&&(row.instrumentInstanceId!==view.instance.instrumentInstanceId||row.parentSessionId!==fact.parentSessionId))denied('task delegation parent or instance conflict')
+      cursor=fact.parentSessionId
+    }
+    let permission:InstrumentScope={kind:'coordinator'}
+    for(const child of chain.reverse()){
+      const row=doc.assignments.find(a=>a.sessionId===child)
+      const workflowId=row?.workflowId??null,ticketIds=row?.ticketIds??[]
+      permission=permission.kind==='coordinator'?{kind:'assigned',workflowId,ticketIds}
+        :permission.workflowId!==workflowId?{kind:'assigned',workflowId:null,ticketIds:[]}
+        :{kind:'assigned',workflowId,ticketIds:ticketIds.filter(ticket=>permission.kind==='assigned'&&permission.ticketIds.includes(ticket))}
+    }
+    return permission
   }
   const scope=async(principal:string,sessionId:string,view:SessionControlsView):Promise<InstrumentScope>=>{
-    if(principal===ports.operatorPrincipal||sessionId===view.instance.ownerSessionId)return {kind:'coordinator'}
-    const row=(await load()).assignments.find(a=>a.sessionId===sessionId)
-    if(row&&row.instrumentInstanceId!==view.instance.instrumentInstanceId)denied('task assignment belongs to another instance')
-    return {kind:'assigned',workflowId:row?.workflowId??null,ticketIds:row?.ticketIds??[]}
+    if(principal===ports.operatorPrincipal)return {kind:'coordinator'}
+    return effectiveScope(await load(),sessionId,view)
   }
   const authority:InstrumentAuthority={async resolveAccess(principal,sessionId,instance){
     const caller=callerFor(principal,sessionId,ports.operatorPrincipal)
@@ -518,6 +546,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const recordSources=(records:InstrumentCurrentSnapshot):ModelRow[]=>[
     ...records.workflows.map(row=>({...modelSource('records',['workflow',row.workflowId],row.revision,row),recordId:row.workflowId,workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,revision:row.revision,title:row.value.title}})),
+    ...records.taskReferences.map(row=>({...modelSource('records',['task-reference',row.workflowId,row.localTicketId],row.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{kind:'task-reference',workflowId:row.workflowId,localTicketId:row.localTicketId,revision:row.revision,label:row.value.label,source:row.value.source,locator:row.value.locator,sourceObservation:'authored-unverified'}})),
     ...records.tickets.map(row=>({...modelSource('records',['ticket',row.workflowId,row.localTicketId],row.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,localTicketId:row.localTicketId,revision:row.revision,title:row.value.title,statuses:row.value.statuses}})),
     ...records.decisions.map(row=>({...modelSource('records',['decision',row.workflowId,row.decisionId],String(row.revision)+':'+records.viewerRevision,row),recordId:JSON.stringify([row.workflowId,row.decisionId]),workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,decisionId:row.decisionId,revision:row.revision,question:row.value.question,status:row.value.status,pending:row.value.pending,awaitingImplementation:row.value.awaitingImplementation,view:row.view}})),
     ...records.summary.statusCounts.map(value=>({...modelSource('records',['status-count',value.workflowId,value.axisKey],records.revision,value),recordId:JSON.stringify([value.workflowId,value.axisKey]),workflowId:value.workflowId,durable:true,preview:{...value}})),
@@ -542,7 +571,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     let records:InstrumentCurrentSnapshot|null=null,windowView:RuntimeSnapshot['windows']=null
     try{records=await instruments.readCurrent(caller.principalId,sessionId,signal)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
     const rows=records===null?[]:recordSources(records)
-    for(const kind of ['workflow','ticket','decision'])add(kind,rows.filter(row=>kind==='workflow'?row.preview.axisKey===undefined&&!(row.preview.localTicketId||row.preview.decisionId):kind==='ticket'?row.preview.localTicketId!==undefined:row.preview.decisionId!==undefined),records===null?null:[records.revision,records.viewerRevision],records===null?'unknown':'current')
+    for(const kind of ['workflow','ticket','task-reference','decision'])add(kind,rows.filter(row=>kind==='workflow'?row.preview.axisKey===undefined&&!(row.preview.localTicketId||row.preview.decisionId):kind==='task-reference'?row.preview.kind==='task-reference':kind==='ticket'?row.preview.localTicketId!==undefined&&row.preview.kind!=='task-reference':row.preview.decisionId!==undefined),records===null?null:[records.revision,records.viewerRevision],records===null?'unknown':'current')
     add('status-count',rows.filter(row=>row.preview.axisKey!==undefined),records?.revision??null,records===null?'unknown':'current')
     try{windowView=await windows.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
     add('window-ticket',windowView?.tickets.map(row=>({...modelSource('windows',['ticket',row.workflowId,row.localTicketId],windowView!.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{...row}}))??[],windowView?.revision??null,windowView===null?'unknown':'current')
@@ -565,7 +594,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     const releases=records===null||windowView===null?[]:pendingReleaseFor(records as unknown as NonNullable<RuntimeSnapshot['records']>,windowView)
     add('pending-release',releases.map(row=>({...modelSource('pending-release',[row.workflowId,row.localTicketId],sourceVersion([records?.revision,windowView?.revision]),row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:false,preview:{...row}})),[records?.revision,windowView?.revision],records===null||windowView===null?'unknown':'current')
-    const stops=windowView===null?[]:(ports.nativeSubagentStops?.(view.instance.ownerSessionId)??[]).map(stop=>{
+    const stops=windowView===null||!coordinator?[]:(ports.nativeSubagentStops?.(view.instance.ownerSessionId)??[]).map(stop=>{
       const managed=managedExecutions.get(stop.sessionId),binding=runtime.bindings.find(row=>row.sessionId===stop.sessionId&&!row.released),lease=binding===undefined?undefined:windowView!.executions.find(row=>row.executionId===binding.executionId&&row.instrumentInstanceId===binding.instrumentInstanceId&&row.generation===binding.generation)
       return {...stop,lane:managed!==undefined?{workflowId:managed.workflowId,localTicketId:managed.ticketIds.length===1?managed.ticketIds[0]!:null}:lease===undefined?null:{workflowId:lease.workflowId,localTicketId:lease.localTicketId},createdWorktrees:observationRows.filter(row=>row.value.creatorSessionId===stop.sessionId).map(row=>({path:row.value.path,branch:row.value.branch,businessState:row.value.business.state}))}
     })
@@ -582,7 +611,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     add('capability',capabilities.map(row=>({...modelSource('capability',[row.key],sourceVersion(row),row),recordId:row.key,durable:false,preview:row})),capabilities)
     add('health',health.map((row,index)=>({...modelSource('health',[row.scope,index],sourceVersion(row),row),recordId:String(index),durable:false,preview:row})),health)
     signal.throwIfAborted()
-    return {...who,policy:view.policy,revisions:{configuration:view.policy.configurationRevision,records:records?.revision??null,business:records?.businessRevision??null,viewer:records?.viewerRevision??null,windows:windowView?.revision??null},records:records===null?null:{revision:records.revision,businessRevision:records.businessRevision,viewerRevision:records.viewerRevision,summary:{...records.summary,statusCounts:undefined}},windows:windowView===null?null:{revision:windowView.revision,configurationRevision:windowView.configurationRevision,status:windowView.status,reason:windowView.reason,runtimeKnowledge:windowView.runtimeKnowledge,T:windowView.T,S:windowView.S},nativeCount:windowView?.nativeBaseline??null,collections}
+    return {...who,policy:view.policy,revisions:{configuration:view.policy.configurationRevision,records:records?.revision??null,business:records?.businessRevision??null,viewer:records?.viewerRevision??null,windows:windowView?.revision??null},records:records===null?null:{capabilities:records.capabilities,localCoverage:'local-current',sourceObservation:'authored-unverified',revision:records.revision,businessRevision:records.businessRevision,viewerRevision:records.viewerRevision,summary:{...records.summary,statusCounts:undefined}},windows:windowView===null?null:{revision:windowView.revision,configurationRevision:windowView.configurationRevision,status:windowView.status,reason:windowView.reason,runtimeKnowledge:windowView.runtimeKnowledge,T:windowView.T,S:windowView.S},nativeCount:windowView?.nativeBaseline??null,collections}
   })
   const modelReadSource=async(caller:HostCaller,sessionId:string,selector:{domain:string;key:string},signal:AbortSignal)=>modelReadOrder(async()=>{
     const {identity:who,view}=await modelIdentity(caller,sessionId,signal),domain=selector.domain,key=selector.key
@@ -602,8 +631,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       for(const row of runtime.assignments){if(row.instrumentInstanceId!==who.instance.instrumentInstanceId||sourceKey(domain,row.sessionId)!==key)continue
         const allowed=row.sessionId===sessionId||row.parentSessionId===sessionId
         if(!allowed)denied('assignment detail requires self or authenticated direct parent')
-        if(who.scope.kind==='assigned'&&(row.workflowId!==who.scope.workflowId||row.ticketIds.some(ticket=>!(who.scope as Extract<InstrumentScope,{kind:'assigned'}>).ticketIds.includes(ticket))))denied('assignment no longer within parent scope')
-        source=modelSource(domain,[row.sessionId],sourceVersion(row),row);break
+        const permission=await effectiveScope(runtime,row.sessionId,view)
+        const effective=permission.kind==='coordinator'?row:{...row,workflowId:permission.workflowId,ticketIds:permission.ticketIds}
+        source=modelSource(domain,[row.sessionId],sourceVersion(effective),effective);break
       }
     }else if(['worktree-binding','observation','resource','history'].includes(domain)){
       if(who.scope.kind!=='coordinator')denied('source requires actual owner coordinator')
@@ -630,7 +660,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // The native running count is derived from live Agents and the counter's state, so both are
     // part of the freshness key: a newly live child rebuilds the projection even with no document
     // write, and a counter stop/degradation is never masked by a cached snapshot.
-    const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length
+    const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length+'|'+sourceVersion(permission)
     const epoch=project.epoch(view.instance.instrumentInstanceId)
     const projection=projectionCache.get(projectionBase)
     if(projection!==undefined&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId))return projection.value
@@ -718,7 +748,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     let nativeStops:NonNullable<RuntimeSnapshot['nativeStops']>=[]
     let nativeCount:RuntimeSnapshot['nativeCount']
     if(windowView!==null){
-      const raw=ports.nativeSubagentStops?.(view.instance.ownerSessionId)??[]
+      const raw=permission.kind==='coordinator'?(ports.nativeSubagentStops?.(view.instance.ownerSessionId)??[]):[]
       if(raw.length>0){
         const doc=runtimeDocument
         nativeStops=raw.map(stop=>{
@@ -736,9 +766,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       health.push({scope:'native-count',status:'current',reason:nativeCount.reestablished?'re-established after runtime '+String(nativeCount.previousRuntimeId):null})
     }
     signal.throwIfAborted()
-    const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId)
+    const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId),assignmentScope=assignment===undefined?null:await effectiveScope(runtimeDocument,sessionId,view)
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...runtimeDocument.assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    const value=freeze({sessionId,caller,delegateRegistered,policyGrants:{...grants,grants:grants.grants.filter(row=>managed.has(row.sessionId))},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
+    const value=freeze({sessionId,caller,delegateRegistered,policyGrants:{...grants,grants:grants.grants.filter(row=>permission.kind==='coordinator'?managed.has(row.sessionId):row.sessionId===sessionId)},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:assignmentScope?.kind==='assigned'?{workflowId:assignmentScope.workflowId,ticketIds:assignmentScope.ticketIds}:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
@@ -751,19 +781,23 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(!records||current.health.some(row=>row.scope==='history'&&row.status==='unknown'))return current
     try{
       const rows=await (await historyFor(view)).activeContext(),included=new Set(rows.map(row=>JSON.stringify([row.kind,row.recordId])))
-      const workflows=records.workflows.filter(row=>included.has(JSON.stringify(['workflow',row.workflowId])))
-      const tickets=records.tickets.filter(row=>included.has(JSON.stringify(['ticket',JSON.stringify([row.workflowId,row.localTicketId])])))
       const decisions=records.decisions.filter(row=>row.value.pending===true||row.value.awaitingImplementation===true)
+      // Context exclusions never swallow the identity of a held T or an active obligation.
+      const required=new Set([...(current.windows?.tickets.filter(row=>row.held).map(row=>JSON.stringify([row.workflowId,row.localTicketId]))??[]),...decisions.flatMap(row=>(row.value.ticketIds??[]).map(ticket=>JSON.stringify([row.workflowId,ticket])))])
+      const requiredFlows=new Set([...(current.windows?.tickets.filter(row=>row.held).map(row=>row.workflowId)??[]),...decisions.map(row=>row.workflowId)])
+      const workflows=records.workflows.filter(row=>requiredFlows.has(row.workflowId)||included.has(JSON.stringify(['workflow',row.workflowId])))
+      const tickets=records.tickets.filter(row=>required.has(JSON.stringify([row.workflowId,row.localTicketId]))||included.has(JSON.stringify(['ticket',JSON.stringify([row.workflowId,row.localTicketId])])) )
+      const taskReferences=records.taskReferences.filter(row=>required.has(JSON.stringify([row.workflowId,row.localTicketId]))||included.has(JSON.stringify(['task-reference',JSON.stringify([row.workflowId,row.localTicketId])])) )
       const contextConclusions=records.decisions.filter(row=>row.value.pending!==true&&row.value.awaitingImplementation!==true&&typeof row.value.result==='string'&&included.has(JSON.stringify(['decision',JSON.stringify([row.workflowId,row.decisionId])]))).map(row=>({decisionId:row.decisionId,workflowId:row.workflowId,result:row.value.result!,sourceRevision:row.revision,source:{kind:'authored',domain:'instruments',author:row.provenance.author,recordedAt:row.provenance.recordedAt}}))
       const statusCounts=records.summary.statusCounts.filter(row=>workflows.some(w=>w.workflowId===row.workflowId)).map(row=>{const active=tickets.filter(ticket=>ticket.workflowId===row.workflowId);return {...row,unreported:active.filter(ticket=>(ticket.value.statuses[row.axisKey]??[]).length===0).length,statuses:row.statuses.map(status=>({...status,count:active.filter(ticket=>ticket.value.statuses[row.axisKey]?.includes(status.statusKey)).length}))}})
-      return {...current,records:{...records,workflows,tickets,decisions,summary:{...records.summary,totalTickets:tickets.length,statusCounts}},contextConclusions}
+      return {...current,records:{...records,workflows,tickets,taskReferences,decisions,summary:{...records.summary,totalTickets:tickets.length,totalTaskReferences:taskReferences.length,statusCounts}},contextConclusions}
     }catch(error){signal.throwIfAborted();return {...current,health:[...current.health,{scope:'active-context',status:'unknown',reason:String(error)}]}}
   }
   const consumption=new InstrumentConsumption({...(options.consumptionTimeoutMs===undefined?{}:{timeoutMs:options.consumptionTimeoutMs}),
     bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>activeSnapshot(callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),signal)})
   // Resource rejections in the tracked paths are raised before any write (unknown or foreign
   // resource, unsupported legacy action), so they settle like other pre-commit rejections.
-  const preCommit=(error:unknown):boolean=>isPreCommitRejection(error)||error instanceof ResourceError
+  const preCommit=(error:unknown):boolean=>isPreCommitRejection(error)||error instanceof ResourceError||error instanceof LocalHandleReadUnavailable
   const track=<T>(instanceId:string,effect:()=>Promise<T>):Promise<T>=>{
     touchState(instanceId)
     // Also invalidate after settlement: an earlier read may still be resolving identity
@@ -775,7 +809,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     consumptionProgram.trackCommit(instanceId,commit.then(()=>undefined,error=>{if(preCommit(error))return;throw error}))
     return commit
   }
-  const consumptionIdentity=(caller:HostCaller,view:SessionControlsView):ConsumptionIdentity=>({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId})
+  const consumptionIdentity=(caller:HostCaller,view:SessionControlsView,permission:InstrumentScope):ConsumptionIdentity=>Object.assign({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId},{scopeFingerprint:sourceVersion(permission)})
   // Creation observation covers only the native create_worktree tool executed through this
   // pipeline (including PTC sub-dispatches). Failed calls write nothing; the tool result itself
   // is never replaced or delayed, and an unparsable value is reported as observation failure.
@@ -1078,26 +1112,23 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     'unavailable|'+caller.principalId+'|'+caller.sessionId)
   const prepare=async(caller:HostCaller,signal:AbortSignal,acceptedMessages:readonly UserMessage[]=[])=>{
     if(caller.sessionId===null)return []
-    let view:SessionControlsView
+    let view:SessionControlsView,permission:InstrumentScope
     try{const saved=await controls.readPolicy(caller.principalId)
       const retained=cachedSessions.get(caller.sessionId)
       if(!saved.extensionEnabled&&!retained)return []
-      view=await identity(caller,caller.sessionId,signal)}catch(error){
+      view=await identity(caller,caller.sessionId,signal);permission=await scope(caller.principalId,caller.sessionId,view)}catch(error){
       signal.throwIfAborted()
-      // A retained association can still serve its last captured snapshot: only the reason changes.
-      const retained=cachedSessions.get(caller.sessionId)
-      const held=retained===undefined?null:consumption.degraded(consumptionIdentity(caller,retained),failureReason(error))
-      if(held!==null)return installSnapshot(caller,acceptedMessages,held,'held|'+caller.principalId+'|'+caller.sessionId)
+      // No current identity/scope proof means no cached body, even as explicitly stale text.
       return deliverFailure(caller,acceptedMessages,error)
     }
-    const key=consumptionIdentity(caller,view)
+    const key=consumptionIdentity(caller,view,permission)
     // Rebuilding the projection re-reads every document, clones it and appends a history
     // observation, per step *and* per tool result (measured: 32 of 41 rebuilds produced no
     // message at all). The gate watches the revisions this projection derives from plus an
     // epoch bumped by every runtime/window mutation; while they are unchanged the verified
     // projection is reused. Delivery is still decided below, so an undelivered snapshot is
     // re-offered exactly as before, and a degraded cache still takes the full read.
-    const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision
+    const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+sourceVersion(permission)
     const refreshEpoch=refresh.epoch(view.instance.instrumentInstanceId)
     const mayReuse=!historyFailures.has(view.instance.instrumentInstanceId)&&!refresh.shouldRefresh(refreshKey,view.instance.instrumentInstanceId)
     // Within the gate window the last prepared projection is reused, including the explicitly
@@ -1114,7 +1145,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const freshness=result===null?(held!.fresh?'current':'stale'):result.freshness
     const text=result===null?held!.text:result.text??(result.freshness==='current'?consumption.cachedText(key):null)
     if(text===null){refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId);return []}
-    const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId])
+    const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId,sourceVersion(permission)])
     try{
       refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId)
       // An identical snapshot that is still visible in the real session, or was already queued
@@ -1205,8 +1236,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         managedExecutions.set(actualAgent.id,dispatch);reattached.set(actualAgent,dispatch)
         await track(dispatch.token.instrumentInstanceId,async()=>{
           const task:TaskAssignment={sessionId:actualAgent.id,parentSessionId:dispatch.caller.sessionId!,instrumentInstanceId:dispatch.token.instrumentInstanceId,workflowId:dispatch.workflowId,ticketIds:dispatch.ticketIds}
-          await update(old=>{
-            const parent=old.assignments.find(row=>row.sessionId===dispatch.caller.sessionId),allowed=dispatch.caller.principalId===ports.operatorPrincipal||dispatch.caller.sessionId===dispatch.instance.instance.ownerSessionId||((parent?.workflowId??null)===task.workflowId&&task.ticketIds.every(ticket=>(parent?.ticketIds??[]).includes(ticket)))
+          await update(async old=>{
+            const parent=await effectiveScope(old,dispatch.caller.sessionId!,dispatch.instance),allowed=parent.kind==='coordinator'||((task.workflowId===null||parent.workflowId===task.workflowId)&&task.ticketIds.every(ticket=>parent.ticketIds.includes(ticket)))
             const granted=allowed?task:{...task,workflowId:null,ticketIds:[]}
             return {...old,assignments:[...old.assignments.filter(a=>a.sessionId!==task.sessionId),granted],bindings:[...old.bindings,{...dispatch.token,sessionId:actualAgent.id,parentSessionId:task.parentSessionId,runtimeId,released:false}]}
           })
@@ -1337,6 +1368,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
             if(r.domain==='windows'&&t.kind==='execution'){record(t,'execution target',['kind','executionId']);return {kind:'execution' as const,executionId:id(t.executionId,'executionId')}}
             const workflowId=id(t.workflowId,'workflowId')
             if(r.domain==='records'&&t.kind==='workflow'){record(t,'workflow target',['kind','workflowId']);return {kind:'workflow' as const,workflowId}}
+            if(r.domain==='records'&&t.kind==='task-reference'){record(t,'task reference target',['kind','workflowId','localTicketId']);return {kind:'task-reference' as const,workflowId,localTicketId:id(t.localTicketId,'localTicketId')}}
             if(t.kind==='ticket'){record(t,'ticket target',['kind','workflowId','localTicketId']);return {kind:'ticket' as const,workflowId,localTicketId:id(t.localTicketId,'localTicketId')}}
             if(r.domain==='records'&&t.kind==='decision'){record(t,'decision target',['kind','workflowId','decisionId']);return {kind:'decision' as const,workflowId,decisionId:id(t.decisionId,'decisionId')}}
             throw new ControlsError('invalid-input','unknown source target')
@@ -1356,8 +1388,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
               if(records===null)throw new ControlsError('storage-uncertain','records source unavailable; no new cleanup plan committed')
               for(const target of targets){
                 if(target.kind==='knowledge'||target.kind==='execution')throw new ControlsError('invalid-input','invalid records target')
-                const recordId=target.kind==='workflow'?target.workflowId:JSON.stringify([target.workflowId,target.kind==='ticket'?target.localTicketId:target.decisionId])
-                const row=target.kind==='workflow'?records.workflows.find(row=>row.workflowId===target.workflowId):target.kind==='ticket'?records.tickets.find(row=>row.workflowId===target.workflowId&&row.localTicketId===target.localTicketId):records.decisions.find(row=>row.workflowId===target.workflowId&&row.decisionId===target.decisionId)
+                const recordId=target.kind==='workflow'?target.workflowId:JSON.stringify([target.workflowId,target.kind==='ticket'||target.kind==='task-reference'?target.localTicketId:target.decisionId])
+                const row=target.kind==='workflow'?records.workflows.find(row=>row.workflowId===target.workflowId):target.kind==='ticket'?records.tickets.find(row=>row.workflowId===target.workflowId&&row.localTicketId===target.localTicketId):target.kind==='task-reference'?records.taskReferences.find(row=>row.workflowId===target.workflowId&&row.localTicketId===target.localTicketId):records.decisions.find(row=>row.workflowId===target.workflowId&&row.decisionId===target.decisionId)
                 if(!row)throw new ControlsError('invalid-input','unknown source target')
                 selected.set(JSON.stringify([target.kind,recordId]),row.revision)
               }
@@ -1450,11 +1482,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const operationId=id(r.operationId??exec.callId,'operationId'),view=await identity(caller,caller.sessionId,exec.signal)
       const workflowId=r.workflowId===undefined?null:id(r.workflowId,'workflowId'),ticketIds=r.ticketIds===undefined?[]:array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
       if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
-      const checkGrant=async()=>{await check(caller,caller.sessionId!,exec.signal);const permission=await scope(caller.principalId,caller.sessionId!,await controls.readSession(caller.principalId,caller.sessionId!));if(permission.kind==='assigned'&&((workflowId!==null&&permission.workflowId!==workflowId)||ticketIds.some(ticket=>!permission.ticketIds.includes(ticket))))denied('delegation exceeds actual parent assignment scope')}
+      const checkGrant=async()=>{await check(caller,caller.sessionId!,exec.signal);const permission=await scope(caller.principalId,caller.sessionId!,await controls.readSession(caller.principalId,caller.sessionId!));if(permission.kind==='assigned'&&((workflowId!==null&&permission.workflowId!==workflowId)||ticketIds.some(ticket=>!permission.ticketIds.includes(ticket))))denied('delegation exceeds actual parent assignment scope');if(workflowId!==null)for(const ticket of ticketIds)await requireRegisteredTicket(caller,caller.sessionId!,workflowId,ticket)}
       await checkGrant()
       if(workflowId!==null){
         if(ticketIds.length===0)throw new ControlsError('invalid-input','delegation on workflow "'+workflowId+'" must name recorded ticketIds; record the ticket first, or omit workflowId for a ticketless research lane')
-        for(const ticket of ticketIds)await requireRegisteredTicket(caller,caller.sessionId!,workflowId,ticket)
       }
       if(!ports.createContinuable)throw new ResourceError('unsupported','native continuable creation is unavailable; no child was requested')
       const cwd=r.worktree===undefined?undefined:typeof r.worktree==='string'&&isAbsolute(r.worktree)&&normalize(r.worktree)===r.worktree&&!r.worktree.includes('\0')?r.worktree:(()=>{throw new ControlsError('invalid-input','worktree must be normalized absolute path')})()
@@ -1555,10 +1586,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         await check(caller,caller.sessionId!,signal);signal.throwIfAborted()
         const currentParent=await controls.readSession(caller.principalId,caller.sessionId!),currentChild=await controls.readSession(ports.operatorPrincipal,target)
         if(currentParent.instance.instrumentInstanceId!==currentChild.instance.instrumentInstanceId)denied('task grant identity changed')
-        return update(old=>{
-          const permission=old.assignments.find(a=>a.sessionId===caller.sessionId)
-          if(caller.principalId!==ports.operatorPrincipal&&caller.sessionId!==currentParent.instance.ownerSessionId&&
-            ((permission?.workflowId??null)!==workflowId||ticketIds.some(t=>!(permission?.ticketIds??[]).includes(t))))denied('delegation exceeds current actual parent assignment')
+        return update(async old=>{
+          const permission=await effectiveScope(old,caller.sessionId!,currentParent)
+          const actual=await ports.sessionFacts(target,signal)
+          if(actual.header.origin!=='subagent'||actual.header.parentSession!==caller.sessionId)denied('task grant parent changed')
+          if(permission.kind==='assigned'&&((workflowId!==null&&permission.workflowId!==workflowId)||ticketIds.some(t=>!permission.ticketIds.includes(t))))denied('delegation exceeds current actual parent assignment')
+          if(workflowId!==null)for(const ticket of ticketIds)await requireRegisteredTicket(caller,caller.sessionId!,workflowId,ticket)
           return {...old,assignments:[...old.assignments.filter(a=>a.sessionId!==target),{sessionId:target,parentSessionId:caller.sessionId!,instrumentInstanceId:currentParent.instance.instrumentInstanceId,workflowId,ticketIds}]}
         })
       })
