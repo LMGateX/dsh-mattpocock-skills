@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "version": "0.16.0",
+  "sourceCommit": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+  "runtimeAndBundleSource": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.16.0.tgz",
+    "bytes": 471194,
+    "sha256": "3056ab0f05fd8440fdbabd302260df2812647cb362a1ced82a56a92f0b6db814",
+    "pnpm": "11.8.0",
+    "members": {
+      "directories": 0,
+      "files": 161,
+      "symlinks": 0,
+      "expectedFiles": 161
+    },
+    "prepackPassed": true,
+    "strictOriginalPassed": true,
+    "strictDownloadedPassed": true,
+    "acceptedPackCount": 1,
+    "fiveOriginalFilesReadOnly": true,
+    "identityMetadataUnchanged": true,
+    "fiveDownloadedAssetsByteIdentical": true
+  },
+  "validation": {
+    "sourceSuite": {
+      "tests": 1014,
+      "pass": 1008,
+      "fail": 0,
+      "cancelled": 0,
+      "skip": 6
+    },
+    "explicitAcceptedArchiveSuite": {
+      "tests": 1014,
+      "pass": 1008,
+      "fail": 0,
+      "cancelled": 0,
+      "skip": 6,
+      "scope": "PluginManager consumes this accepted archive; source-only seams still test source"
+    },
+    "skipReasons": {
+      "upstreamSourceNotSupplied": 0,
+      "canonicalHostNativeUiSlotsNotAssemblable": 6
+    },
+    "nativeClientFixture": {
+      "host": "0.2.2-alpha.3",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skip": 0
+    },
+    "rootStrictTypesPassed": true,
+    "clientStrictTypesPassed": true,
+    "actualPublicAlpha3DeclarationsPassed": true,
+    "closedBuildFiles": 62,
+    "clientBundleBytes": 357619,
+    "clientBundleSha256": "7cad7c50517c3ca6605f56d519ede9031bc2de68e1a8464eb32009fe50d2266c",
+    "clientPrivateModules": 8,
+    "clientExternals": [
+      "react",
+      "@deepseek-ai/dsh-client-ui-primitives"
+    ],
+    "fixedPackedFiles": 76,
+    "vendorFiles": 85,
+    "browserFixture": {
+      "runtimeSource": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+      "host": "0.2.2-alpha.3",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "widths": [
+        1440,
+        390
+      ],
+      "cases": 4,
+      "checks": 1340,
+      "pass": 1340,
+      "fail": 0,
+      "screenshots": 172,
+      "identityStable": true,
+      "unchangedRunnerFromRejectedCandidate": true,
+      "unchangedRuntimeFromRejectedCandidate": true,
+      "runnerSHA256": "e5bfd7058a30eb3f594433469c7f627f4a53cfe553ff4ca8f09c851ce7f1db3b",
+      "runtimeSHA256": "22e8073ceac3e3b9bcb0ae1e6803bfa462c6e3a7729e3bc6b79707b4751be3e8",
+      "settingsTWidths": [
+        {
+          "case": "light-1440",
+          "clientWidth": 1392,
+          "scrollWidth": 1392
+        },
+        {
+          "case": "dark-1440",
+          "clientWidth": 1392,
+          "scrollWidth": 1392
+        },
+        {
+          "case": "light-390",
+          "clientWidth": 366,
+          "scrollWidth": 366
+        },
+        {
+          "case": "dark-390",
+          "clientWidth": 366,
+          "scrollWidth": 366
+        }
+      ],
+      "horizontalOverflow": false,
+      "pageErrors": 0,
+      "consoleErrors": 0,
+      "unexpectedRequests": 0,
+      "remoteWrites": 0,
+      "liveGuiAcceptance": false,
+      "scope": "Controlled exported React and native primitives/theme fixture; actual write/CAS payload tests and package/release gates are separate"
+    },
+    "reviews": {
+      "sourceCommit": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+      "baseline": "558f738cbf6af260665180973ea8df42c8e16028",
+      "evaluationKind": "Independent fixed-SHA authored Standards/Spec review; not a physical execution or deployment receipt",
+      "standards": {
+        "newHardBreaches": 0,
+        "optionalNonblocking": [
+          {
+            "priority": "P3",
+            "issue": "Duplicate legacy/reference label resolution",
+            "disposition": "Explicitly deferred; no observed behavior mismatch; no unrelated resolver refactor"
+          }
+        ]
+      },
+      "spec": {
+        "openConfirmedFindings": 0,
+        "closed": [
+          {
+            "priority": "P1",
+            "issue": "Scope token/body race could cache widened body under narrowed identity"
+          },
+          {
+            "priority": "P2",
+            "issue": "Scope-dependent delivery key allowed duplicate snapshot in one admitted step"
+          }
+        ],
+        "originalUnmodifiedRaceProbes": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0
+        },
+        "publicIncrementalContractRegressions": {
+          "tests": 157,
+          "pass": 157,
+          "fail": 0,
+          "skip": 0
+        }
+      }
+    },
+    "headless": [
+      {
+        "dsh": "0.2.1-alpha.4",
+        "sourceCommit": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+        "sha256": "3056ab0f05fd8440fdbabd302260df2812647cb362a1ced82a56a92f0b6db814",
+        "channels": {
+          "beta": {
+            "skills": 27
+          },
+          "stable": {
+            "skills": 27
+          }
+        },
+        "checkoutTarballReportsByteIdentical": true,
+        "freshHomes": true,
+        "temporaryHomesRemoved": true,
+        "modelInvoked": false,
+        "webStarted": false
+      },
+      {
+        "dsh": "0.2.2-alpha.3",
+        "sourceCommit": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+        "sha256": "3056ab0f05fd8440fdbabd302260df2812647cb362a1ced82a56a92f0b6db814",
+        "channels": {
+          "beta": {
+            "skills": 27
+          },
+          "stable": {
+            "skills": 27
+          }
+        },
+        "checkoutTarballReportsByteIdentical": true,
+        "freshHomes": true,
+        "temporaryHomesRemoved": true,
+        "modelInvoked": false,
+        "webStarted": false
+      }
+    ],
+    "performanceScope": {
+      "sortKeyGetterReads": [
+        {
+          "n": 1,
+          "before": 2,
+          "after": 4
+        },
+        {
+          "n": 32,
+          "before": 796,
+          "after": 128
+        },
+        {
+          "n": 128,
+          "before": 4508,
+          "after": 512
+        },
+        {
+          "n": 512,
+          "before": 16160,
+          "after": 2048
+        }
+      ],
+      "interpretation": "Single-projection sort-key work only, same-input mechanical comparison; not whole-final-snapshot equivalence, total CPU/RSS, production latency or provider cache-hit evidence",
+      "elapsedRefreshClock": "performance.now",
+      "persistentClock": "Date.now"
+    }
+  },
+  "storage": {
+    "instrumentReadVersions": [
+      1,
+      2,
+      3
+    ],
+    "newTaskReferenceWriteVersion": 3,
+    "readMigrationPerformed": false,
+    "oldBinaryCanReadV3": false,
+    "runtimeDocumentSchemaChanged": false,
+    "windowDocumentSchemaChanged": false,
+    "productionDataMigrationPerformed": false
+  },
+  "release": {
+    "id": 437365312,
+    "tag": "v0.16.0",
+    "target": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-07T05:42:47Z",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.0",
+    "assets": [
+      {
+        "id": 719749263,
+        "name": "lmgatex-dsh-mattpocock-skills-0.16.0.tgz",
+        "size": 471194,
+        "digest": "sha256:3056ab0f05fd8440fdbabd302260df2812647cb362a1ced82a56a92f0b6db814",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.16.0/lmgatex-dsh-mattpocock-skills-0.16.0.tgz"
+      },
+      {
+        "id": 719749270,
+        "name": "lmgatex-dsh-mattpocock-skills-0.16.0.tgz.pnpm-version",
+        "size": 7,
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.16.0/lmgatex-dsh-mattpocock-skills-0.16.0.tgz.pnpm-version"
+      },
+      {
+        "id": 719749264,
+        "name": "lmgatex-dsh-mattpocock-skills-0.16.0.tgz.sha256",
+        "size": 107,
+        "digest": "sha256:fbce89f49622264f25d84b460899d031f9ab469c3ee676c6398ed29e7764fb9b",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.16.0/lmgatex-dsh-mattpocock-skills-0.16.0.tgz.sha256"
+      },
+      {
+        "id": 719749256,
+        "name": "lmgatex-dsh-mattpocock-skills-0.16.0.tgz.size",
+        "size": 7,
+        "digest": "sha256:de7b56de0193cafda50560806b922ad820ccd1ec15181bc8b68dbbb356709207",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.16.0/lmgatex-dsh-mattpocock-skills-0.16.0.tgz.size"
+      },
+      {
+        "id": 719749254,
+        "name": "lmgatex-dsh-mattpocock-skills-0.16.0.tgz.source-commit",
+        "size": 41,
+        "digest": "sha256:0e66a6201f0b582a5313bbf9094baeec579259217db5b814aa53b25b982b5c78",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.16.0/lmgatex-dsh-mattpocock-skills-0.16.0.tgz.source-commit"
+      }
+    ],
+    "annotatedTagObject": "797c6f1cc1fada92426649ce559a9cb34e50eb39",
+    "peeledCommit": "78610ef80c3eef377f19d64b17dcbe1123a98652",
+    "nonforceAtomicMainAndNewTagPush": true,
+    "oldTagRefsUnchanged": 94,
+    "previousReleaseBodyAndFiveAssetIdentitiesUnchanged": true,
+    "downloadedAssetsCompared": 5
+  },
+  "protection": {
+    "protectedFileHashesUnchanged": 5,
+    "fingerprintCoverage": "Five saved Profile/SDK files; not a whole-filesystem snapshot",
+    "originalListenerPidAndFdUnchanged": true,
+    "currentProfileInstallationPerformed": false,
+    "currentProfileActivationPerformed": false,
+    "sharedSdkModificationPerformed": false,
+    "serviceRestartPerformed": false,
+    "npmPublishPerformed": false,
+    "managementEnablementPerformed": false,
+    "targetLegacy88RecordsTouched": false,
+    "installedDiskPluginVersion": "0.14.1",
+    "runningLoadedPluginVersionKnown": false
+  },
+  "evidenceBoundary": "Allowlisted public summary of synthetic/isolated checks. Raw local logs, screenshots, absolute paths and original user/session data are not distributed. A later main documentation commit is not the frozen artifact source."
+}

@@ -12,7 +12,9 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 0.16.0 实施与发布授权（2026-11-07，开发中；不为本机安装）
+## 0.16.0 实施与发布授权（2026-11-07，已发布并下载回验；未为本机安装）
+
+交付状态：唯一 clean source/tag 为 **78610ef80c3eef377f19d64b17dcbe1123a98652**，[v0.16.0 五资产](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.0)已发布并逐字节下载回验；source/显式精确归档各1014项、双宿主、原生浏览器1340项与独立双轴复审门禁完成，详见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.0.json>)。本机未安装或激活，生产记录未迁移；本节状态与验证摘要是发布后 main 的纯文档更新，不改变冻结制品源。V3 首次写入与旧二进制不能读 V3 的边界见[迁移说明](<../MIGRATION.md>)。
 
 所有者最新明确“认可，在 subagents 和隔离环境中完成此前几轮所讨论内容的开发和测试；push 发版，暂时不要为本机安装”。此授权覆盖本批已认可方向的最小闭环实现、必要测试／生成物、独立复核、版本准备、非force push与新GitHub Release，取代紧随其后的研究阶段“仅文档／不提交”限制；历史发布及研究结果不改写。
 

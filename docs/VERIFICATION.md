@@ -2,6 +2,25 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.16.0 任务引用与原生协作闭环（2026-11-07，已发布并下载回验；未为本机安装）
+
+最终运行时、测试、生成物与唯一 clean source/tag 为 **78610ef80c3eef377f19d64b17dcbe1123a98652**。独立单writer子代理在各自工作树实施，主代理串行集成；独立 Standards/Spec 初审及该固定 SHA 的增量复审关闭必改项后，封存同一唯一归档。后续 main 本节与状态更新仅为公开安全的完成证据，不是制品源码；精确归档复验应检出该 source/tag。
+
+- 新增独立任务引用，不靠空壳票重复任务生命周期。外部 tracker／仓库任务仍是业务权威，插件保存 authored source、导航 locator 与可选 label，单独计数；引用与旧票共享 workflow 内 handle 命名空间。贯通登记→T reserve→assign／用户问题关联→current／分页／历史／detail／有效上下文与原生只读UI；T release不推断源完成、问题解决或S终止，unverified不会自动按来源去重，旧 externalRef 不升级成来源认证。
+- Instrument 严格读 V1/V2、不因读取重写；首次实际引用写入才在既有 CAS 下原子升级 V3。Runtime/Window 格式不变，旧报告、答复、来源与必要显式收尾保留。**旧二进制不能读 V3，不可用降版写覆盖；使用前须备份并停止旧写者**，详见[迁移说明](<../MIGRATION.md>)。未迁移或清理任何生产记录。
+- 父链授权按实际当前 lineage 求有效交集，缺失／循环／冲突 fail-closed。Spec 的 **P1**（scope token与实际snapshot body交错，宽正文误存窄缓存）及 **P2**（scope变化导致同admitted-step重复注入）均闭合：未改原 probes 独立 **2/2**，另9个公开合同文件 **157/157**；公开 source/mounted 双向外部 CAS 与 model current/source 回归通过。snapshot新读／cache、消费adapter与prepared/stale最终发布均复验真实scope/identity，不将hash当授权。Standards无未关闭硬性项；重复引用／旧票 label resolver 的可选P3明确延后，无已观察行为不一致。
+- 保持一条 owned 消息：稳定协议→易变notices→原JSON最后；真实baseline恢复、pendingRelease-only变化、归零／删除、授权与durability frontier保留。同step安装槽独立于scope/诊断key；类别预算仅恢复旧decision/review的1850，其余1600，整体24000断言未放宽。TTL改elapsed `performance.now()`，持久登记和预算仍wall `Date.now()`。单投影排序键同输入getter工作量N=32/128/512从796/4508/16160降为128/512/2048；N=1为2→4，不宣称全最终快照等价、整体CPU/RSS、生产时延或provider cache-hit收益。
+- clean source与显式accepted archive完整suite各 **1014 tests / 1008 pass / 0 fail / 6 skip**。六项均为canonical宿主缺可装配native UI-slots，另以实际alpha.3 native Client fixture **6/6 pass / 0 skip**关闭；固定上游源校验已执行，未隐藏vendor skip。归档模式PluginManager显式消费该tgz，源码专用seams仍测源码，不泛称每项直接读取归档。
+- 根/Client strict types、实际alpha.3公开声明、闭合build/prepack/vendor均通过；Client **357619 B / 8私有模块**，SHA-256 **7cad7c50517c3ca6605f56d519ede9031bc2de68e1a8464eb32009fe50d2266c**，externals仅React与公开primitives。**76 fixed / 85 vendor / 161 packed / 62 JS+DTS**，渠道/vendor/provider precedence未改。
+- 实际DSH **0.2.2-alpha.3** shell/React/公共控件和主题受控Chromium fixture：明暗×**1440/390，1340/1340**，172截图；0页面／console异常、意外请求／Remote写入或横向溢出。原4项settings T内部宽度断言、runner和runtime不变，从RED到GREEN：1440为1392/1392，390为366/366。本地T根自然换行，不用scroll/clip/truncation或fixture CSS掩盖。真实写入/CAS由独立导出React／受控Remote测试证明，不冒充生产GUI、声音／OS剪贴板或通知投递验收。
+- **唯一accepted tgz：471194 B**，pnpm **11.8.0**、--skip-manifest-obfuscation，SHA-256 **3056ab0f05fd8440fdbabd302260df2812647cb362a1ced82a56a92f0b6db814**；161 regular / 0 directory / 0 symlink。accepted只pack一次，归档和四sidecars均只读，dev/ino/mode/size/mtime/ctime前后不变；original及downloaded source-bound strict均通过。
+- source＋同一归档×**DSH 0.2.1-alpha.4 / 0.2.2-alpha.3**×stable/beta隔离headless全通过，各27 Skills，source/archive registry逐字节相同；fresh DSH_HOME／scrub HOME清理，modelInvoked=false／webStarted=false。实际alpha.2二进制未实测，不将engines门禁当该版本runtime证明。
+- 非force **atomic main＋annotated v0.16.0**已push；tag object **797c6f1cc1fada92426649ce559a9cb34e50eb39**，peeled=上述source。[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.0) id **437365312**，published_at **2026-11-07T05:42:47Z**，draft=false／prerelease=false。五资产API size/digest匹配，下载 **5/5逐字节一致**；**94**旧tag refs与v0.15.0正文／五资产id/size/digest未变。
+- 发行操作中版本guard曾拒绝误选的0.2.1-alpha.3 CLI（制品未挂载），换用既存0.2.2-alpha.3；旧gh不支持--slurp的只读查询改用有显式条数上界检查的列表，找回同一草稿；下载文件初始可写被strict拒绝，设只读后按原验证器通过。失败日志保留，未放宽门禁、重pack、重传资产或重建Release。
+- 当前Profile／SDK的 **5项保护文件指纹不变**、原Web listener PID/FD不变；此指纹覆盖不等同整个文件系统快照。磁盘已装插件仍 **0.14.1**，当前进程实际加载版本未另行证明。**未为本机安装/激活、未改当前Profile/共享SDK、未重启服务、未npm publish、未启用管理、未处理目标88项**。隔离工作树与本机原始日志/截图保留供复验，不随公开仓库分发；交付后等待用户后续讨论，不自行扩展实现。
+
+公开身份、资产与分阶段结果见[机器摘要](<../dist/verification-0.16.0.json>)。
+
 ## 0.15.0 原生裁决阅读、可信时间与兼容核账（2026-11-07，已发布并下载回验；未为本机安装）
 
 所有者认可隔离子代理开发、测试与 push/发布；后续明确暂停本机安装，本轮按最新边界交付。最终运行时、测试、生成物和唯一 clean source 均为 **5e24d574bab4f18a59964184a737e8aec3c3b375**；新 annotated tag 指向该源，后续 main 只补公开验证记录，不冒充制品源。复验精确归档时应检出该 source/tag。

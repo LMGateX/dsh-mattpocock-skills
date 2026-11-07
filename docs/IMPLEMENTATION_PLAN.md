@@ -6,18 +6,20 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.16.0 开发、测试与发布（2026-11-07，已授权；不安装本机）
+## 0.16.0 开发、测试与发布（2026-11-07，已发布并下载回验；未安装本机）
 
 最新授权以[DESIGN的0.16.0节](<DESIGN.md>)为准；下方“仅研究／待实现授权”保留其先前轮次含义，不再阻止本批开发／提交／发布。先完成表示和权限冻结，再派隔离实现，不直接把所有候选视为必做。
 
 | 切片 | 当前状态 | 完成门槛 |
 |---|---|---|
-| A 契约／基线 | 进行中 | 引用wire／存储／旧格式、父链权限、各writer范围固定，文档单独提交 |
-| B 引用闭环／兼容 | 待A | 无业务假票即可走T／assign／decision，模型／历史／消费／原生UI一致，旧报告受权读取／显式收尾不回归 |
-| C 上下文／时间／性能 | 待A | 隔离工作量基线与必要最小实现，程序wall与elapsed分开、实际baseline与frontier不弱化 |
-| D 工具指导／减面 | 待明确窄范围 | 原生流程优先，移除固定调度建议；资源／历史兼容显式，不借机退役所有工具 |
-| E 集成／独立复核 | 待B/C/D | 单writer串行集成；Standards／Spec双轴必改关闭，源码完整suite／types／build／vendor与真实导出UI检查 |
-| F 制品／发布 | 待E | 0.16.0唯一clean source与精确归档／双宿主隔离门禁，非force push＋新tag／五资产Release，下载strict回验 |
+| A 契约／基线 | 已完成 | 引用wire／V3与严格V1/V2读、父链权限、writer范围先冻结并单独提交 |
+| B 引用闭环／兼容 | 已完成 | 无业务假票贯通T／assign／decision／模型与历史／消费／原生UI；旧对象兼容，不迁移生产记录 |
+| C 上下文／时间／性能 | 已完成（限定改进） | 单条消息分区、完整语义baseline与同step上限、elapsed TTL与单次排序键复用；不宣称provider／全局性能收益 |
+| D 工具指导／减面 | 已完成（指导窄范围） | 原生流程优先，移除固定调度建议；legacy resource／history默认面保持，delegate仍opt-in，未全面退役工具 |
+| E 集成／独立复核 | 已完成 | 单writer串行集成；独立Standards／Spec必改关闭；source1014项、实际公开types、build／vendor、原生Client6项与浏览器1340项通过 |
+| F 制品／发布 | 已完成／未安装 | 冻结source78610ef与唯一tgz；同归档1014项／双宿主、非force atomic push、新annotated tag／五资产Release、下载逐字节与source-bound strict回验通过 |
+
+冻结制品源为 **78610ef80c3eef377f19d64b17dcbe1123a98652**；后续 main 只补本状态与公开验证资料，不改变 tag／运行时／制品。结果与限制见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.0.json>)。旧二进制不能读 V3，首次实际引用写入前须按[迁移说明](<../MIGRATION.md>)备份并停止旧写者；读取不自动迁移。
 
 生产记录与之前88项不迁移／清理；当前Profile、共享SDK和服务保持不变。完成后仍未为本机安装／激活，不把隔离headless／browser fixture冒充当前GUI验收。
 
