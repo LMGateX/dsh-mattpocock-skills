@@ -297,3 +297,116 @@ test('one admitted step installs at most one view across scope changes and ident
     assert.doesNotMatch(JSON.stringify(recovered), /PRIVATE-old-scope-B/)
   })
 })
+
+test('external ancestor widening during snapshot reads cannot cache a broad body under an earlier narrow scope', async t => {
+  for (const mounted of [false, true]) for (const widenAt of [1, 3]) await t.test((mounted ? 'mounted' : 'source') + ': widen at read ' + widenAt, async t => {
+    const f = mounted ? await mountedFixture(t) : await fixture(t, { initialPolicy: policy(), known: true })
+    if (mounted) await f.runtime.savePolicy(operator, policy(), 0, signal())
+    const parentId = mounted ? 'child' : 'old-child', grandchildId = 'scope-race-grandchild'
+    let revision = 0
+    const apply = command => f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'scope-race-' + revision, expectedRevision: revision++, workflowId: 'flow', ...command }, signal())
+    await apply({ action: 'put-workflow', value: workflow })
+    for (const id of ['A', 'B']) await apply({ action: 'put-ticket', localTicketId: id, value: { ...ticket(), title: id === 'B' ? 'PRIVATE-raced-B' : 'Allowed-A' } })
+    const assign = (parent, target, ticketIds) => f.runtime.assign(caller(parent), { sessionId: target, workflowId: 'flow', ticketIds }, signal())
+    await assign('root', parentId, ['A', 'B'])
+    const grandchild = actualAgent(grandchildId, { parent: parentId, managed: true })
+    f.agents.set(grandchild.id, grandchild)
+    await f.runtime.created(caller(grandchild.id), signal(), grandchild)
+    await assign(parentId, grandchild.id, ['A', 'B'])
+    await assign('root', parentId, ['A'])
+    const store = mounted ? f.runtimeStorage : f.units.get('runtime_bindings'), read = store.read.bind(store), cas = store.compareAndSwap.bind(store)
+    const changeParent = async ticketIds => {
+      const old = await read()
+      assert.equal(await cas(old.revision, { ...old, revision: old.revision + 1, assignments: old.assignments.map(row => row.sessionId === parentId ? { ...row, ticketIds } : row) }), true)
+    }
+    let calls = 0, fired = false
+    store.read = async () => {
+      const old = await read()
+      if (++calls === widenAt) { fired = true; await changeParent(['A', 'B']) }
+      return old
+    }
+    const first = await f.runtime.preStep(caller(grandchild.id), signal(), [], '1:1')
+    store.read = read
+    assert.equal(fired, true)
+    await changeParent(['A'])
+    const identity = await f.runtime.readModelIdentity(caller(grandchild.id), grandchild.id, signal())
+    assert.deepEqual(identity.scope.ticketIds, ['A'])
+    const ports = mounted ? f.mounted.ports : f.ports
+    ports.readPolicyGrants = async () => { throw new Error('source unavailable after the narrow scope was proved') }
+    const second = await f.runtime.preStep(caller(grandchild.id), signal(), [], '2:1')
+    assert.doesNotMatch(JSON.stringify(first), /PRIVATE-raced-B/, 'a body collected under another scope must not be published under the initial narrow proof')
+    assert.doesNotMatch(JSON.stringify(second), /PRIVATE-raced-B/, 'a mixed authorization cut must never become a fresh or stale narrow-key cache entry')
+  })
+})
+
+test('external ancestor narrowing during a refresh never republishes an earlier verified broader body as stale', async t => {
+  for (const mounted of [false, true]) for (const narrowAt of [1, 3]) await t.test((mounted ? 'mounted' : 'source') + ': narrow at read ' + narrowAt, async t => {
+    const f = mounted ? await mountedFixture(t) : await fixture(t, { initialPolicy: policy(), known: true })
+    if (mounted) await f.runtime.savePolicy(operator, policy(), 0, signal())
+    const parentId = mounted ? 'child' : 'old-child', grandchildId = 'scope-narrow-grandchild'
+    let revision = 0
+    const apply = command => f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'scope-narrow-' + revision, expectedRevision: revision++, workflowId: 'flow', ...command }, signal())
+    await apply({ action: 'put-workflow', value: workflow })
+    for (const id of ['A', 'B']) await apply({ action: 'put-ticket', localTicketId: id, value: { ...ticket(), title: id === 'B' ? 'PRIVATE-before-narrow-B' : 'Allowed-A' } })
+    const assign = (parent, target, ticketIds) => f.runtime.assign(caller(parent), { sessionId: target, workflowId: 'flow', ticketIds }, signal())
+    await assign('root', parentId, ['A', 'B'])
+    const grandchild = actualAgent(grandchildId, { parent: parentId, managed: true })
+    f.agents.set(grandchild.id, grandchild)
+    await f.runtime.created(caller(grandchild.id), signal(), grandchild)
+    await assign(parentId, grandchild.id, ['A', 'B'])
+    const first = await f.runtime.preStep(caller(grandchild.id), signal(), [], '1:1')
+    assert.match(JSON.stringify(first), /PRIVATE-before-narrow-B/)
+    // An actual authored update invalidates the refresh gate without changing any grant.
+    await apply({ action: 'put-ticket', localTicketId: 'A', value: { ...ticket(), title: 'Allowed-A-current' } })
+    const store = mounted ? f.runtimeStorage : f.units.get('runtime_bindings'), read = store.read.bind(store), cas = store.compareAndSwap.bind(store)
+    let calls = 0, fired = false
+    store.read = async () => {
+      const old = await read()
+      if (++calls === narrowAt) {
+        fired = true
+        assert.equal(await cas(old.revision, { ...old, revision: old.revision + 1, assignments: old.assignments.map(row => row.sessionId === parentId ? { ...row, ticketIds: ['A'] } : row) }), true)
+      }
+      return old
+    }
+    const narrowed = await f.runtime.preStep(caller(grandchild.id), signal(), first, '2:1')
+    store.read = read
+    assert.equal(fired, true)
+    assert.doesNotMatch(JSON.stringify(narrowed), /PRIVATE-before-narrow-B/, 'a rejected refresh must not publish the old broad verified body as stale')
+    const identity = await f.runtime.readModelIdentity(caller(grandchild.id), grandchild.id, signal())
+    assert.deepEqual(identity.scope.ticketIds, ['A'])
+    const next = await f.runtime.preStep(caller(grandchild.id), signal(), narrowed, '3:1')
+    assert.doesNotMatch(JSON.stringify(next), /PRIVATE-before-narrow-B/)
+  })
+})
+
+test('model current and record source never return a wider body with an earlier narrower identity', async t => {
+  for (const mounted of [false, true]) for (const mode of ['current', 'source']) await t.test((mounted ? 'mounted' : 'source') + ': ' + mode, async t => {
+    const f = mounted ? await mountedFixture(t) : await fixture(t, { initialPolicy: policy(), known: true })
+    if (mounted) await f.runtime.savePolicy(operator, policy(), 0, signal())
+    const parentId = mounted ? 'child' : 'old-child', grandchildId = 'model-race-grandchild'
+    let revision = 0
+    const apply = command => f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'model-race-' + revision, expectedRevision: revision++, workflowId: 'flow', ...command }, signal())
+    await apply({ action: 'put-workflow', value: workflow })
+    for (const id of ['A', 'B']) await apply({ action: 'put-ticket', localTicketId: id, value: { ...ticket(), title: id === 'B' ? 'PRIVATE-model-B' : 'Allowed-A' } })
+    await f.runtime.assign(caller('root'), { sessionId: parentId, workflowId: 'flow', ticketIds: ['A', 'B'] }, signal())
+    const grandchild = actualAgent(grandchildId, { parent: parentId, managed: true })
+    f.agents.set(grandchild.id, grandchild)
+    await f.runtime.created(caller(grandchild.id), signal(), grandchild)
+    await f.runtime.assign(caller(parentId), { sessionId: grandchild.id, workflowId: 'flow', ticketIds: ['A', 'B'] }, signal())
+    await f.runtime.assign(caller('root'), { sessionId: parentId, workflowId: 'flow', ticketIds: ['A'] }, signal())
+    const store = mounted ? f.runtimeStorage : f.units.get('runtime_bindings'), read = store.read.bind(store), cas = store.compareAndSwap.bind(store)
+    let fired = false
+    store.read = async () => {
+      const old = await read()
+      if (!fired) {
+        fired = true
+        assert.equal(await cas(old.revision, { ...old, revision: old.revision + 1, assignments: old.assignments.map(row => row.sessionId === parentId ? { ...row, ticketIds: ['A', 'B'] } : row) }), true)
+      }
+      return old
+    }
+    const reading = mode === 'current' ? f.runtime.readModelCurrent(caller(grandchild.id), grandchild.id, signal()) : f.runtime.readModelSource(caller(grandchild.id), grandchild.id, { domain: 'records', key: sourceKey('records', 'ticket', 'flow', 'B') }, signal())
+    await assert.rejects(reading, { code: 'revision-conflict' })
+    store.read = read
+    assert.equal(fired, true)
+  })
+})

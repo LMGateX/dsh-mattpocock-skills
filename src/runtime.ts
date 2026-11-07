@@ -544,6 +544,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const view=await identity(caller,sessionId,signal,false)
     return {view,identity:{instance:view.instance,caller,sessionId,scope:await scope(caller.principalId,sessionId,view)}}
   }
+  const validateModelIdentity=async(caller:HostCaller,sessionId:string,expected:ModelIdentity,signal:AbortSignal):Promise<void>=>{
+    const current=(await modelIdentity(caller,sessionId,signal)).identity
+    if(canonical(current)!==canonical(expected))throw new ControlsError('revision-conflict','model identity or authorization changed')
+  }
   const recordSources=(records:InstrumentCurrentSnapshot):ModelRow[]=>[
     ...records.workflows.map(row=>({...modelSource('records',['workflow',row.workflowId],row.revision,row),recordId:row.workflowId,workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,revision:row.revision,title:row.value.title}})),
     ...records.taskReferences.map(row=>({...modelSource('records',['task-reference',row.workflowId,row.localTicketId],row.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{kind:'task-reference',workflowId:row.workflowId,localTicketId:row.localTicketId,revision:row.revision,label:row.value.label,source:row.value.source,locator:row.value.locator,sourceObservation:'authored-unverified'}})),
@@ -611,12 +615,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     add('capability',capabilities.map(row=>({...modelSource('capability',[row.key],sourceVersion(row),row),recordId:row.key,durable:false,preview:row})),capabilities)
     add('health',health.map((row,index)=>({...modelSource('health',[row.scope,index],sourceVersion(row),row),recordId:String(index),durable:false,preview:row})),health)
     signal.throwIfAborted()
+    assertProjectionScope({records,windows:windowView},who.scope)
+    await validateModelIdentity(caller,sessionId,who,signal)
     return {...who,policy:view.policy,revisions:{configuration:view.policy.configurationRevision,records:records?.revision??null,business:records?.businessRevision??null,viewer:records?.viewerRevision??null,windows:windowView?.revision??null},records:records===null?null:{capabilities:records.capabilities,localCoverage:'local-current',sourceObservation:'authored-unverified',revision:records.revision,businessRevision:records.businessRevision,viewerRevision:records.viewerRevision,summary:{...records.summary,statusCounts:undefined}},windows:windowView===null?null:{revision:windowView.revision,configurationRevision:windowView.configurationRevision,status:windowView.status,reason:windowView.reason,runtimeKnowledge:windowView.runtimeKnowledge,T:windowView.T,S:windowView.S},nativeCount:windowView?.nativeBaseline??null,collections}
   })
   const modelReadSource=async(caller:HostCaller,sessionId:string,selector:{domain:string;key:string},signal:AbortSignal)=>modelReadOrder(async()=>{
     const {identity:who,view}=await modelIdentity(caller,sessionId,signal),domain=selector.domain,key=selector.key
     let source:ModelSource|null=null
-    if(domain==='records')source=recordSources(await instruments.readCurrent(caller.principalId,sessionId,signal)).find(row=>row.key===key)??null
+    if(domain==='records'){
+      const current=await instruments.readCurrent(caller.principalId,sessionId,signal)
+      assertProjectionScope({records:current,windows:null},who.scope)
+      source=recordSources(current).find(row=>row.key===key)??null
+    }
     else if(domain==='policy'&&key===sourceKey(domain,'effective',view.instance.controlWorkspaceId))source=modelSource(domain,['effective',view.instance.controlWorkspaceId],view.policy.configurationRevision,view.policy)
     else if(domain==='policy'){
       await ports.authority.authorizePolicy(caller.principalId,'read')
@@ -625,6 +635,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       else for(const [workspace,value]of Object.entries(policy.workspaceOverrides))if(key===sourceKey(domain,'workspace',workspace)){source=modelSource(domain,['workspace',workspace],policy.revision,value);break}
     }else if(domain==='windows'){
       const current=await windows.read(caller.principalId,sessionId)
+      assertProjectionScope({records:null,windows:current},who.scope)
       source=[...current.tickets.map(row=>modelSource(domain,['ticket',row.workflowId,row.localTicketId],current.revision,row)),...current.executions.map(row=>modelSource(domain,['execution',row.executionId],current.revision,row))].find(row=>row.key===key)??null
     }else if(domain==='assignment'){
       const runtime=await load()
@@ -633,6 +644,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(!allowed)denied('assignment detail requires self or authenticated direct parent')
         const permission=await effectiveScope(runtime,row.sessionId,view)
         const effective=permission.kind==='coordinator'?row:{...row,workflowId:permission.workflowId,ticketIds:permission.ticketIds}
+        if(who.scope.kind==='assigned'&&(effective.workflowId!==null&&effective.workflowId!==who.scope.workflowId||effective.ticketIds.some(ticket=>who.scope.kind==='assigned'&&!who.scope.ticketIds.includes(ticket))))throw new ControlsError('revision-conflict','assignment body exceeds model authorization cut')
         source=modelSource(domain,[row.sessionId],sourceVersion(effective),effective);break
       }
     }else if(['worktree-binding','observation','resource','history'].includes(domain)){
@@ -649,8 +661,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         void history
       }
     }else throw new ControlsError('invalid-input','unsupported detail source domain')
+    await validateModelIdentity(caller,sessionId,who,signal)
     signal.throwIfAborted();return {identity:who,source}
   })
+  /** Every body must belong to the same authorization cut as its cache/publication key. */
+  const assertProjectionScope=(value:Pick<ConsumptionSnapshot,'records'|'windows'> & {readonly assignment?:RuntimeSnapshot['assignment']},permission:InstrumentScope):void=>{
+    const token=sourceVersion(permission)
+    if(value.records!==null&&sourceVersion(value.records.scope)!==token||value.windows!==null&&sourceVersion(value.windows.scope)!==token||permission.kind==='assigned'&&value.assignment!==undefined&&sourceVersion({kind:'assigned',...value.assignment})!==token)throw new ControlsError('revision-conflict','snapshot authorization cut changed')
+  }
+  const validateProjection=async(caller:HostCaller,value:RuntimeReadSnapshot,permission:InstrumentScope,signal:AbortSignal):Promise<void>=>{
+    const current=(await modelIdentity(caller,value.sessionId,signal)).identity
+    if(canonical(current.instance)!==canonical(value.instance)||sourceVersion(current.scope)!==sourceVersion(permission))throw new ControlsError('revision-conflict','snapshot identity or authorization changed')
+    assertProjectionScope(value,permission)
+  }
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly?:false):Promise<RuntimeSnapshot>
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly:true):Promise<CurrentRuntimeSnapshot>
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly=false):Promise<RuntimeReadSnapshot>{return queue.run(async()=>{
@@ -663,7 +686,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length+'|'+sourceVersion(permission)
     const epoch=project.epoch(view.instance.instrumentInstanceId)
     const projection=projectionCache.get(projectionBase)
-    if(projection!==undefined&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId))return projection.value
+    if(projection!==undefined&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId)){await validateProjection(caller,projection.value,permission,signal);return projection.value}
     const health: {scope:string;status:string;reason:string|null}[]=[]
     const runtimeDocument=await load()
     let records:ConsumptionSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
@@ -770,6 +793,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...runtimeDocument.assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
     const value=freeze({sessionId,caller,delegateRegistered,policyGrants:{...grants,grants:grants.grants.filter(row=>permission.kind==='coordinator'?managed.has(row.sessionId):row.sessionId===sessionId)},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:assignmentScope?.kind==='assigned'?{workflowId:assignmentScope.workflowId,ticketIds:assignmentScope.ticketIds}:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
+    await validateProjection(caller,value,permission,signal)
     project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
     projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
     while(projectionCache.size>64)projectionCache.delete(projectionCache.keys().next().value as string)
@@ -794,7 +818,13 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }catch(error){signal.throwIfAborted();return {...current,health:[...current.health,{scope:'active-context',status:'unknown',reason:String(error)}]}}
   }
   const consumption=new InstrumentConsumption({...(options.consumptionTimeoutMs===undefined?{}:{timeoutMs:options.consumptionTimeoutMs}),
-    bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>activeSnapshot(callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),signal)})
+    bindProgram:port=>{consumptionProgram=port},readSnapshot:async(caller,signal)=>{
+      const actual=callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),value=await activeSnapshot(actual,signal)
+      const current=(await modelIdentity(actual,caller.sessionId,signal)).identity
+      if(current.instance.instrumentInstanceId!==caller.instrumentInstanceId||current.instance.ownerSessionId!==caller.ownerSessionId||canonical(current.instance)!==canonical(value.instance)||caller.scopeFingerprint!==sourceVersion(current.scope))throw new ControlsError('revision-conflict','consumption authorization binding changed')
+      assertProjectionScope(value,current.scope)
+      return value
+    }})
   // Resource rejections in the tracked paths are raised before any write (unknown or foreign
   // resource, unsupported legacy action), so they settle like other pre-commit rejections.
   const preCommit=(error:unknown):boolean=>isPreCommitRejection(error)||error instanceof ResourceError||error instanceof LocalHandleReadUnavailable
@@ -1150,6 +1180,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const freshness=result===null?(held!.fresh?'current':'stale'):result.freshness
     const text=result===null?held!.text:result.text??(result.freshness==='current'?consumption.cachedText(key):null)
     if(text===null){refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId);return []}
+    // readForConsumption may have degraded an earlier verified body after a raced read.
+    // Re-prove the publication scope even for prepared/stale text; the initial proof is not enough.
+    try{
+      const current=(await modelIdentity(caller,caller.sessionId,signal)).identity
+      if(canonical(current.instance)!==canonical(view.instance)||sourceVersion(current.scope)!==key.scopeFingerprint)throw new ControlsError('revision-conflict','snapshot publication authorization changed')
+    }catch(error){signal.throwIfAborted();return deliverFailure(caller,acceptedMessages,error)}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId,sourceVersion(permission)])
     try{
       refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId)
