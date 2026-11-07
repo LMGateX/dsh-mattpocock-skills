@@ -6,6 +6,19 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.16.1 DSH 0.2.2-rc.1 兼容发布
+
+范围以 [DESIGN 的 0.16.1 节](<DESIGN.md>) 为准：隔离环境／subagents 检查与必要适配，验证后 push／Release，不安装本机。
+
+| 阶段 | 门禁 |
+|---|---|
+| A 版本／接口 | 从最新 origin/main 建隔离树；核对 rc.1 release／npm／公开 source，避免沿用原工作区未提交文档 |
+| B 兼容回归 | baseline 与 rc.1／旧宿主完整套件、真实 rc.1 root／Client strict 声明、public tool／prompt／projection／Skills／Client seams；skip 逐项明示 |
+| C 制品／复核 | 无必要运行时修改则只同步版本／断言／兼容资料；闭合构建与 vendor 不变、独立 Standards／Spec、clean source prepack／一次 accepted pack／source-bound strict |
+| D 发布 | 同一精确归档旧／新 SDK × stable／beta 隔离 headless、非 force push／新 annotated tag／五资产 Release、逐字节下载 strict；本机 Profile／共享 SDK／服务不变 |
+
+当前核对与最终状态统一追加到 [兼容记录](<DSH_022_RC1_COMPATIBILITY.md>) 和 [公开验证](<VERIFICATION.md>)，不将初轮成功当最终制品或现场 GUI 证明。
+
 ## 0.16.0 开发、测试与发布（2026-11-07，已发布并下载回验；未安装本机）
 
 最新授权以[DESIGN的0.16.0节](<DESIGN.md>)为准；下方“仅研究／待实现授权”保留其先前轮次含义，不再阻止本批开发／提交／发布。先完成表示和权限冻结，再派隔离实现，不直接把所有候选视为必做。

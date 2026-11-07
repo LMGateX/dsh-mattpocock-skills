@@ -12,6 +12,14 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.16.1 DSH 0.2.2-rc.1 兼容核对与发布授权（2026-11-07）
+
+所有者要求在隔离环境与 subagents 中检查／适配 [DSH v0.2.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1)，验证后 push 并发版，**暂不为本机安装**。本轮基于最新公开 0.16.0 源码，仅处理新版宿主兼容；若公开 seam、严格类型和真实装载均不要求运行时修改，则以 0.16.1 兼容性补发，不作无依据重构。
+
+- 核对实际 rc.1 公开类型、工具激活／提示词、Session／projection、Skills provider、子代理／工作树及 Client；保留最低宿主 `~0.2.1-alpha.2` 与能力判定，不凭版本号制造能力。必要适配必须先有回归证明；不改业务语义、wire／存储、vendor、渠道或 provider precedence。
+- 允许临时前缀安装 SDK、隔离 Profile、完整 source／精确包回归、公开 API 检查、生成物比对、独立 Standards／Spec 复核、非 force push、新 annotated tag／五资产 Release 与下载 strict 回验；不覆盖旧 tag／资产，不 npm publish。
+- 不安装或激活当前本机插件／DSH，不改当前 Profile、共享 SDK 或管理策略，不重启／替换当前 GUI，不迁移／清理生产数据。临时 Profile 验收不冒充当前 GUI 或模型实测；新结果追加记录，历史数字不改写。
+
 ## 0.16.0 实施与发布授权（2026-11-07，已发布并下载回验；未为本机安装）
 
 交付状态：唯一 clean source/tag 为 **78610ef80c3eef377f19d64b17dcbe1123a98652**，[v0.16.0 五资产](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.0)已发布并逐字节下载回验；source/显式精确归档各1014项、双宿主、原生浏览器1340项与独立双轴复审门禁完成，详见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.0.json>)。本机未安装或激活，生产记录未迁移；本节状态与验证摘要是发布后 main 的纯文档更新，不改变冻结制品源。V3 首次写入与旧二进制不能读 V3 的边界见[迁移说明](<../MIGRATION.md>)。
