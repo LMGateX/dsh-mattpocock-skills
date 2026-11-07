@@ -689,7 +689,7 @@ function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
   const windows = inputWindows(view), records = inputRecords(view)
   if (windows === null) return diagnostic('票窗口未知：' + (inputReadFailure(view, 'windows') ?? '未返回窗口；不是空清单或 0'))
   const held = Array.isArray(windows.tickets) ? windows.tickets.filter(row => row.held === true) : null
-  return h('div', null,
+  return h('div', { style: { minWidth: 0, overflowWrap: 'anywhere' } },
     diagnostic('实例总占用 T ' + countText(windows.T.used) + ' / 参考 ' + capacityText(windows.T.capacity) + '；仅作规模提示，不是硬名额。'),
     diagnostic(windows.scope?.kind === 'assigned' ? '当前可见 scope：分配范围，明细只是子集，不能从子集重算实例总数。' : windows.scope?.kind === 'coordinator' ? '当前可见 scope：协调者实例范围。' : '当前可见 scope 未知，不从明细重算实例总数。'),
     records === null ? diagnostic('票账本未知：' + (inputReadFailure(view, 'records') ?? '未返回账本') + '；保留显式占位身份。') : null,

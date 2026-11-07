@@ -336,6 +336,41 @@ for (const entry of ['SettingsInspection', 'Details']) {
   })
 }
 
+test('settings shared T owns long handle text wrapping instead of relying on sidebar or input ancestors', async t => {
+  // The independent real browser measured T.scrollWidth=3120 at both 1440px and 390px.
+  // Happy DOM does not measure layout: this regression checks the missing local CSS
+  // inheritance and lossless text, not a counterfeit scrollWidth/viewport assertion.
+  const view = snapshot(), row = view.records.taskReferences[0]
+  const handle = 'unbroken-task-handle-'.repeat(6)
+  row.localTicketId = handle
+  row.value.label = 'UnbrokenReferenceLabel'.repeat(24)
+  row.value.locator = 'https://tracker.invalid/' + 'longnavigation'.repeat(80)
+  view.windows.tickets[0].localTicketId = handle
+  view.records.tickets = [{ workflowId: 'work', localTicketId: 'legacy-' + handle, revision: 2,
+    value: { title: 'UnbrokenLegacyTitle'.repeat(24), statuses: {} }, history: [] }]
+  view.windows.tickets.push({ workflowId: 'work', localTicketId: 'legacy-' + handle, held: true, generation: 1 })
+  const f = await mount(t, 'SettingsInspection', view)
+  const T = named(named(f.container, '窗口观测'), 'T 占位明细')
+  const body = T.querySelector(':scope > div')
+  assert(body, 'shared T text body is mounted under its native heading')
+  assert.equal(body.style.overflowWrap, 'anywhere', 'shared module itself owns wrapping without parent layout assumptions')
+  assert.equal(Number.parseFloat(body.style.minWidth), 0)
+  const articles = [...body.querySelectorAll('article')]
+  assert.equal(articles.length, 2)
+  assert(articles[0].querySelector('p').textContent.includes(handle))
+  assert(articles[0].querySelector('p').textContent.includes(row.value.label))
+  assert(articles[1].querySelector('p').textContent.includes(view.records.tickets[0].value.title))
+  await expand(articles[0].querySelector('details'))
+  assert(articles[0].textContent.includes(row.value.locator), 'full navigation is still readable, never truncated')
+  for (const node of [body, ...body.querySelectorAll('article, p')]) {
+    assert.notEqual(node.style.overflow, 'hidden')
+    assert.notEqual(node.style.overflowX, 'auto')
+    assert.notEqual(node.style.overflowX, 'scroll')
+    assert.notEqual(node.style.textOverflow, 'ellipsis')
+    assert.notEqual(node.style.whiteSpace, 'nowrap')
+  }
+})
+
 for (const change of ['instance', 'caller', 'scope', 'grant', 'session']) {
   test('settings reference reading fences old bodies and disclosure state after ' + change, async t => {
     const f = await mount(t, 'SettingsInspection')
