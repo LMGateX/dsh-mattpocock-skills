@@ -24,6 +24,12 @@ This release mirrors upstream **v1.3.2** (commit `d1478fc`). `PROVENANCE.json` r
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.
 
+## 0.15.0 decision reading and compatible record checks
+
+Decision details in the input dock, sidebar and selected-session inspection use native per-item disclosure, readable workflow titles and grouped background/result/source/technical content. First-registration and business-update times are read-only source facts: unavailable or unauthorized creation evidence stays explicitly unknown, never inferred from the earliest retained version. Main attention highlights real pending user questions; the secondary record-check entrance preserves raw legacy flags without claiming they are unfinished-task totals.
+
+New registration guidance is for genuine user questions, not an agent decision diary. Ordinary choices belong in existing specs/ADRs and execution in existing tasks. Existing records, explicit flags, author identity, CAS, history and required model context remain compatible; no automatic legacy clearout or data migration runs. Package installation, runtime activation and browser refresh are separate facts. See the [guide](<CONTROLS.md>), [migration notes](<MIGRATION.md>) and [verification scope](<docs/VERIFICATION.md>).
+
 ## 0.14.1 settings visual hierarchy
 
 The settings page now separates headings, fields, source metadata and hints; scope and gates come first, while collaboration features, reference limits and display locations form clear groups. Theme-aware semantic accents and native primary saves highlight priorities without a custom UI framework. Sound, page and desktop preferences use responsive channel groups and explicit unsaved feedback. Sparse inheritance, CAS, independent saves, notification permissions and delivery semantics are unchanged. See the [shipped guide](<CONTROLS.md>) and [verification scope](<docs/VERIFICATION.md>). Local installation and service restart are not part of this release.

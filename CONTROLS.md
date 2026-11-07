@@ -4,7 +4,7 @@
 
 ## 当前提供什么
 
-协作仪器是不可变 Skills 分发之外的可选扩展。当前源码版本为 0.14.1（机械验收、精确制品与发布状态见[验证摘要](<docs/VERIFICATION.md>)；包版本不代表本机安装版本）：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.10.2 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。0.10.2 只修正模型工具请求描述，不改变运行面。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求。0.10.2 已发布并安装到当前 Web Profile；安装后已正常重启，当前 `dsh web` 新进程已加载 0.10.2。
+协作仪器是不可变 Skills 分发之外的可选扩展。当前源码版本为 0.15.0（机械验收、精确制品与发布状态见[验证摘要](<docs/VERIFICATION.md>)；包版本不代表本机安装版本）：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.10.2 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。0.10.2 只修正模型工具请求描述，不改变运行面。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求。0.10.2 的本机安装/重启为当时历史，不作为当前版本证明；当前安装版本与运行时加载应分别核验。
 
 > **2026-11-04 事实边界（0.9.0 源码实施）：** `headerCwd` 只是 child header 的来源值，不证明实际初始目录、当前目录或目录使用。已接受/不确定的 delegate 操作必须保留已有 child，不应改用 native 重建；必要时对同一真实 child 显式 `mattpocock_assign`。`recording: failed` 不再单独表示“没有创建”，而要与 `creation`/`binding`/`assignment` 分项读取。迟到 end 使用已保存的 owner/session/run 事实处理，旧 run 不会覆盖新 run；无法归属时在既有 health 明示覆盖缺口。详见[事实边界与恢复设计](<docs/INSTRUMENT_FACT_BOUNDARIES.md>)。
 
@@ -33,6 +33,14 @@
 插件不擅自更改 Profile 中手工写入的旧行或旧设置；升级时由维护者按 [MIGRATION.md](MIGRATION.md#plugin-0130-native-cwd-migration) 清理显式覆盖并从备份恢复旧 SDK 补丁。关闭／重装 bundle 不改变已有 child 的 cwd／身份，不删除树、绑定或原生历史；原生 send_message 和只读历史仍可用。插件不负责 Git 工作树的创建、合并和删除，也不扩大原生文件／工具权限。
 
 旧版启动/组合文档保留为历史，不再描述当前运行路径：[启动支持说明](<docs/STARTUP_CWD_SUPPORT.md>)、[插件管理兼容说明](<docs/PLUGIN_MANAGED_COMPATIBILITY.md>)。
+
+## 0.15.0 裁决阅读与记录核对
+
+- 输入区、右侧详情和设置页所选会话使用逐项原生折叠，先显示问题摘要、可读工作流、状态和时间；完整问题/选项/建议/影响可读，长背景/结果/来源/标识/技术原文按需展开。
+- 时间是授权只读元数据：registration.recordedAt/revision 表示可证明的首次登记，updatedAt 来自最新业务版本；旧宿主缺字段、来源证据不足或首次版本无读取权限时显示创建未知，不用 history[0] 猜。个人已读/隐藏与刷新不改变业务更新时间。
+- 常驻关注不再把原 awaiting 标记叫执行待办；“记录核对”保留兼容 awaiting 和非用户 pending 的授权清单，显示原标记数并说明不等于未完成任务数。两种标记可重叠，不合成为一个待办总数。rightPanel 关闭仍可就地阅读；显示偏好不清义务。
+- 新用户问题仍以 pending=true 且 addressee=user 声明，不按 agent 作者过滤。普通技术选择回文档、执行回任务；明确答复更新原事项、保留真实作者与旧标记，不凭文本/票状态自动结束。兼容记录核对不自动转任务、清账或删除历史。
+- 活动消费仍保留 pending 或 awaiting，已决结论仍遵循原显式纳入语义。未来处置旧标记之前需确保任务承接及必要上下文，不把“移交”写成“已完成”。
 
 ## 1. 设置与任务归属
 

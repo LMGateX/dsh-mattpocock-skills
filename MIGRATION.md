@@ -1,5 +1,13 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.15.0 decision-reading migration
+
+This release does not migrate business storage or change model-tool request schemas. Optional read-only registration and update metadata is additive; old hosts/fixtures without trustworthy metadata display creation time as unknown. A retained earliest history entry is not creation proof, and an assigned reader cannot recover an unauthorized first version through the new display.
+
+The former primary awaiting attention is now a secondary record-check entrance, not a new task tracker. Original awaiting/pending fields and raw counts remain readable; old agent/unspecified records retain authorized explicit closeout. No upgrade-time script clears flags, creates tasks, hides records or deletes history. Real user questions still use the existing pending-user predicate; task progress remains in the existing task source.
+
+Use the native Profile plugin update path with a verified artifact. Installation does not itself prove that a running host or browser has loaded new code. Preserve existing configuration and never rewrite business history merely to roll back the UI. Historical version sections below retain their original scope.
+
 ## Plugin 0.13.0 native-cwd migration
 
 0.13.0 is a breaking host-compatibility release: it removes the 0.2.1-alpha.1 cwd bridge, the pinned compatibility provider, the old SDK patch tooling, the cwd CLI, the `./compatibility` and `./native-subagent` exports, the worktree-bridge locale files and the `startupCwdEnabled` next-boot request. The Skills provider, instruments, delegate binding/assignment, native lifecycle/worktree observation and historical data remain.
