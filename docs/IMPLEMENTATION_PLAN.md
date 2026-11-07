@@ -6,6 +6,42 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.16.0 开发、测试与发布（2026-11-07，已授权；不安装本机）
+
+最新授权以[DESIGN的0.16.0节](<DESIGN.md>)为准；下方“仅研究／待实现授权”保留其先前轮次含义，不再阻止本批开发／提交／发布。先完成表示和权限冻结，再派隔离实现，不直接把所有候选视为必做。
+
+| 切片 | 当前状态 | 完成门槛 |
+|---|---|---|
+| A 契约／基线 | 进行中 | 引用wire／存储／旧格式、父链权限、各writer范围固定，文档单独提交 |
+| B 引用闭环／兼容 | 待A | 无业务假票即可走T／assign／decision，模型／历史／消费／原生UI一致，旧报告受权读取／显式收尾不回归 |
+| C 上下文／时间／性能 | 待A | 隔离工作量基线与必要最小实现，程序wall与elapsed分开、实际baseline与frontier不弱化 |
+| D 工具指导／减面 | 待明确窄范围 | 原生流程优先，移除固定调度建议；资源／历史兼容显式，不借机退役所有工具 |
+| E 集成／独立复核 | 待B/C/D | 单writer串行集成；Standards／Spec双轴必改关闭，源码完整suite／types／build／vendor与真实导出UI检查 |
+| F 制品／发布 | 待E | 0.16.0唯一clean source与精确归档／双宿主隔离门禁，非force push＋新tag／五资产Release，下载strict回验 |
+
+生产记录与之前88项不迁移／清理；当前Profile、共享SDK和服务保持不变。完成后仍未为本机安装／激活，不把隔离headless／browser fixture冒充当前GUI验收。
+
+## 任务权威与引用收窄（2026-11-07，仅补研与文档）
+
+所有者已认可职责方向，当前只授权补充研究和固定文档。范围以 [DESIGN](<DESIGN.md>) 最新“任务权威与仪器职责收窄”节为准；细节与情景验收统一维护在[实施前契约](<TASK_REFERENCE_CONTRACT.md>)，证据见[职责研究](<TASK_AUTHORITY_RESEARCH.md>)。后文 0.15.0 的开发／发布授权仅属已完成的上一批，不得继承到本轮。
+
+| 切片 | 状态 | 顺序与门槛 |
+|---|---|---|
+| T0 补研／文档 | 已完成（仅文档） | 证据与现状、认可方向、细化推荐分开；权威入口与领域词已固定，相对链接／引用行范围、文档限定 diff 及独立只读复核通过 |
+| T1 引用闭环 | 待明确实现授权 | 实施前冻结新 action／字段／最小存储与旧格式协商、引用ACL及父链收窄语义；同批闭合T／assign／decision／消费／UI，不造空壳票，不半切换发版 |
+| T2 旧对象兼容 | 待实现；数据处置另行授权 | 旧报告、原handle／历史／来源与有效承诺保留；先真实承接，显式收尾，不自动清账 |
+| T3 来源化只读观察 | 按实际需求另选 | 先选一个可信来源与现有授权seam；无能力保持引用，不新建抓取／同步框架 |
+| T4 其他工具减面 | 后续独立候选 | 监督调度建议、legacy resource、history管理入口逐项定范围，不捆绑全面退役 |
+| T5 集成／交付 | 待后续授权 | 真实seams、独立复核、源／精确包及宿主门禁；提交、push／发布、本机安装分别明确授权 |
+
+本轮不改运行时、测试、生成物、vendor、Profile或SDK，不迁移生产记录、不启用管理、不提交／推送／发布／安装／重启。T0完成不意味着T1–T5已开始或目标会话88项已核账。
+
+## 上下文／性能／时间的预防性复核（2026-11-07）
+
+用户要求先停止残留任务后重新检查，不预设缓存／性能故障。实际证据、可复核命令及后续C0–C4候选统一见[上下文复核](<INSTRUMENT_CONTEXT_CACHE_RESEARCH.md>)：本轮C0已完成源码核对、136/136针对性回归及时间／工具schema探针；不把中止轮回报作为本轮验收。
+
+C1实际seam测量、C2协议／volatile分区、C3被测热成本／elapsed clock、C4真实provider效果均未执行改造或获实现／模型试验授权。先分开queue等待、当前／历史工作、hash字节、写与消息增长；source/auth/latch/frontier/baseline不因优化降低。生产CPU/RSS／实际cache-hit没有取证，不以合成计时宣称收益或缺陷。文档固定不触发任务引用实现、生产迁移、commit/push／发布／安装／重启。
+
 ## 0.15.0 交付完成（2026-11-07，已发布并下载回验；未为本机安装）
 
 最终 source/tag：5e24d574bab4f18a59964184a737e8aec3c3b375。A/B/C、两次 C3 缺口修复与独立复审、937 项源码与精确归档、双宿主/772 项浏览器检查及五资产下载 strict 均完成，详见[验证摘要](<VERIFICATION.md>)。本轮不安装/激活现有 Profile，不中断服务；保留隔离检出/私有证据供复验，停止扩展实现并等待下一轮问题讨论。

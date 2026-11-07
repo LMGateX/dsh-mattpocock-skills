@@ -12,6 +12,37 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.16.0 实施与发布授权（2026-11-07，开发中；不为本机安装）
+
+所有者最新明确“认可，在 subagents 和隔离环境中完成此前几轮所讨论内容的开发和测试；push 发版，暂时不要为本机安装”。此授权覆盖本批已认可方向的最小闭环实现、必要测试／生成物、独立复核、版本准备、非force push与新GitHub Release，取代紧随其后的研究阶段“仅文档／不提交”限制；历史发布及研究结果不改写。
+
+- 主范围：任务引用＋会话协作状态的完整T1路径与T2旧对象兼容；不再要求模型维护第二份任务业务生命周期。具体action／字段、最小存储与旧格式策略、父链授权／旧宿主能力在实施前固定，record/window/assign/decision/消费/UI同批闭合，禁止只换提示或空壳票。
+- 上下文／性能／时间：继承[预防性复核](<INSTRUMENT_CONTEXT_CACHE_RESEARCH.md>)，先在隔离既有seams测工作量；实现有依据的稳定协议／易变尾区与elapsed clock等最小改进，并补缺baseline、归零／删除、权限与持久frontier回归。没有实际provider usage就不宣称cache-hit收益，不擅加真实付费模型试验或生产监控。
+- 其他工具按此前矩阵收窄：优先移除监督固定派发子任务建议；legacy resource默认面与history管理若改动，须有明确兼容入口与独立回归。继续原生派发／消息／问答和公共UI，delegate保持opt-in，不增加并行工具框架或自造调度／聊天／源抓取器。
+- 不包含可选来源B的后台抓取／同步或跨tracker写入，不批量迁移／清理任何生产业务记录（包括此前88项），不自动关闭pending／await或改变included/excluded，不启用管理，不改vendor／provider优先级／渠道或共享SDK。
+- 先提交授权／冻结契约，随后在独立integration及单writer child工作树开发；测试沿用已认可的领域公开Interface、真实Runtime／mounted工具与Remote、导出React、source／精确包和隔离双宿主seams，按竖切保留RED→GREEN。独立Standards／Spec复核关闭必改项后冻结唯一clean source／归档、创建新annotated tag和五资产Release，下载strict回验，不覆盖旧tags/assets、不npm publish。
+- **不为本机安装或激活**，不改当前Web Profile、共享SDK或服务，不启动替代GUI或重启当前服务。隔离临时Profile验收不是本机安装；当前GUI未更新必须如实报告。
+
+## 任务权威与仪器职责收窄（2026-11-07，方向已认可；本轮补研与固定文档）
+
+所有者认可票／工作流及其他工具的职责研究，要求“补充研究完善方案，固定到文档”。已认可方向为 **A：任务业务事实只在项目约定的权威来源维护，插件以任务引用＋会话协作状态为默认定位**；B：来源化只读投影按需另行选择；C：插件成为唯一通用 tracker 不作为当前路线。证据与全工具矩阵见[职责研究](<TASK_AUTHORITY_RESEARCH.md>)；唯一细化入口为[实施前契约](<TASK_REFERENCE_CONTRACT.md>)，其中身份、T 口径、授权／时效、旧对象兼容及验收是推荐，不冒称已实施或逐项获执行授权。
+
+- 不再以仪器新票／状态字典重复维护真实任务正文、验收、依赖、领取和完成状态；workflow 可作协作分组。保留必要 T 占位、assignment、真实执行／工作树观测、个人偏好和历史，不把减账理解成无状态或删除安全保护。
+- 本地 current 只证明仪器当前版本，不证明 tracker current。源身份、稳定本地引用与 URL／路径分开；读取展示来源／时间／覆盖与未知，不以 TTL／hash 或手工状态替代来源与授权。没有可信来源读取 seam 时保持引用，不新增 runtime fetching／后台同步。
+- T 解耦须覆盖实际 record/window/assign/decision 引用、ACL、存储兼容、消费和 UI；不能只删预登记提示、塞 URL 到 ticketIds 或创建空壳票。父授权收窄对后代有效范围列为实施前补验项，不将静态推导当已证实漏洞。
+- 新 decision 仍以真实用户未决问题为核心；旧票、await 与唯一承载任务／承诺的记录保留受权读取和必要显式收尾。任务承接不等完成，不批量清零、隐藏或迁移，不丢原答复／来源与有效上下文。
+- 可选监督的固定调度建议、legacy resource 默认暴露、history 读与破坏性管理分面列为后续独立候选；不捆绑成全面工具退役。继续原生派发、原生交互，delegate 维持 opt-in。
+
+**授权仅为补充研究和文档修改：不改实现、测试、生成物、vendor、Profile、SDK，不建工作树或写生产业务记录，不 commit/push/发版/安装/启用管理/重启。** 下方 0.15.0 实施／发布授权仅描述已完成的上一批交付，不授权本轮续做；实现、目标数据迁移、提交／发布及本机安装仍需各自明确指令。本节作为最新方向覆盖旧文档鼓励重复票业务记账的假设，不追溯判定旧报告非法，不改写既有发布事实。
+
+## 上下文、性能与程序时间预防性检查（2026-11-07，仅检查／文档）
+
+所有者在终止上一轮检查后要求先停残留 subagents、重新检查，强调问题不一定存在。本轮重新核对工具注册／投递、时间来源及性能路径，完成源码直载的136项针对性回归和时间／schema探针；证据、结果限制及最小候选统一见[上下文复核](<INSTRUMENT_CONTEXT_CACHE_RESEARCH.md>)。未发现模型必须提供decision创建时间或普通状态动态重写schema的回归；不据此保证所有provider缓存、线上性能或整个会话零积压。
+
+程序生成持久登记时间，读取不现造创建时间；wall事件时间与elapsed TTL分开。保持工具面稳定、当前快照／实际可见baseline去重、授权／撤权、未知／零值及固定durability frontier。共享FIFO等待、大正文hash、冷验证和累计上下文属于需分层观测的成本，不自动等于事故；wall回拨对同epoch TTL的影响已用注入clock确认，但未证明生产曾发生。
+
+本轮只检查、运行隔离现有测试／一次性内存探针并完善文档；不改代码或测试文件／生成物／Profile／SDK，不读取生产日志，不运行真实模型、不提交／发布／安装／重启。协议分区、纯索引复用、monotonic elapsed及provider效果验证只是候选，不授权改工具注册、拆权限FIFO、删历史或新增观测产品；先测实际工作量，证据不足则保留现状。此前任务引用方向及0.15.0交付边界不变。
+
 ## 0.15.0 实施与发版授权（2026-11-07，已发布并下载回验；未为本机安装）
 
 交付状态：唯一 clean source/tag 为 5e24d574bab4f18a59964184a737e8aec3c3b375，0.15.0 五资产已发布并逐字节下载回验；源码/精确归档、双宿主、原生浏览器与独立复审门禁完成，见[验证摘要](<VERIFICATION.md>)。本机安装/激活依最新要求未执行，交付后等待用户补充讨论，不自行追加实现。

@@ -97,3 +97,7 @@ SessionHistory.activeContext 可按可信不可变 history 文档派生 latest/c
 | F 发布 | 授权 subagent/主代理协调 | 非force push main、新annotated tag/GitHub Release、资产下载逐字节/摘要/strict回验，VERIFICATION记录 |
 
 制品与 tag 指向明确的 clean source；docs-only 完成记录可在其后。不得覆盖旧 tag/资产，不 npm publish，不给本机安装。只有通过实际门禁后才把“待验收”改为完成；任何 source/制品/发布成功都不推断当前 GUI 已更新。
+
+## 2026-11-07 预防性复核（没有新增性能实现）
+
+上文0.11.0的历史实施与门禁保持原义；当前0.15.0的工具／上下文／程序时间复核、实际针对性检查及后续候选见[上下文复核](<INSTRUMENT_CONTEXT_CACHE_RESEARCH.md>)。这次区分provider前缀、内部索引、单次预算和累计历史／FIFO成本，不重开已完成的旧优化，也不以136项合成回归证明线上CPU/RSS、硬CPU截止或真实cache-hit。未来先在既有公开seams测工作量，再按证据选择最小候选；保留本页source-token、授权／撤权、取消、固定frontier与历史恢复约束。
