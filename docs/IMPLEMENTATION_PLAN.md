@@ -6,11 +6,11 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.15.0 当前交付计划（2026-11-07，已获实施/push/发布/本机安装授权）
+## 0.15.0 当前交付计划（2026-11-07，已获实施/push/发布授权；最新要求暂不本机安装）
 
 以 [DESIGN.md](<DESIGN.md>) 的 0.15.0 授权节为当前范围，后文“仅研究/待授权”是前序阶段历史。先固定文档提交，再建隔离 integration 与独立 child 工作树：A 可信时间只读投影与授权/清理回归；B 原生逐项阅读/记录核对入口/设置会话展示与真实 React 回归；C 工具说明与实际消费指导/真实答复兼容回归。每树一名 writer、各自依赖/生成物；主代理串行集成，不共享生成目录并行构建。
 
-集成后独立双轴复核，关闭发现，再执行完整 source/type/client/build/vendor/精确归档与隔离双宿主/浏览器门禁；冻结 clean source 与唯一 0.15.0 tgz，非 force 推送 main、新 annotated tag/GitHub Release、五资产下载回验；最后将该精确下载制品安装到本机现有 Web Profile，并分别记录安装与激活边界。不改共享 SDK/生产记录，不重启当前服务，不 npm publish。所有完成证据须来自实际执行，目标 88 未实核不变。
+集成后独立双轴复核，关闭发现，再执行完整 source/type/client/build/vendor/精确归档与隔离双宿主/浏览器门禁；冻结 clean source 与唯一 0.15.0 tgz，非 force 推送 main、新 annotated tag/GitHub Release、五资产下载回验；最新要求暂不为现有本机 Web Profile 安装或激活，发布后核对现有 Profile/SDK/服务未被改动并交付总结，等待用户补充讨论新问题，不自行扩展实现。不改共享 SDK/生产记录，不重启当前服务，不 npm publish。所有完成证据须来自实际执行，目标 88 未实核不变。
 
 ## 仪器 UI 文档固定与领域研究（2026-11-07）
 
