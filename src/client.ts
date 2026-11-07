@@ -877,10 +877,31 @@ export function decisionAnswerCommand(records: InstrumentSnapshot, decision: Dec
     value: { question: decision.value.question, status, result: answer, pending, awaitingImplementation } }
 }
 
+/** Compatibility disposition is an authored context append, never a synthetic user answer. */
+type DecisionFlagEdit = 'keep' | 'true' | 'false'
+function decisionCloseoutCommand(records: InstrumentSnapshot, decision: DecisionRecord, note: string, references: string,
+  changes: { readonly status: string; readonly pending: DecisionFlagEdit; readonly awaiting: DecisionFlagEdit }, operationId: string): InstrumentCommand {
+  if (!note.trim()) throw new Error('请填写核账说明与任务去向；这不是用户答复或完成证明。')
+  const sources = decision.history?.filter(change => change.references.length > 0).map(change =>
+    '修订 ' + change.revision + ' · 原作者 ' + change.author.kind + ' / ' + change.author.principalId + '\n' + change.references.join('\n')) ?? []
+  const context = [decision.value.context ?? '', '【核账处置（authored 声明，不是用户答复或完成证明）】\n' + note.trim(),
+    sources.length ? '【本次 authored 转录：原授权可见来源引用；不认证引用内容】\n' + sources.join('\n\n') : '原授权可见来源引用：未知或未返回；未补造。'].filter(Boolean).join('\n\n')
+  return { operationId, expectedRevision: records.businessRevision, workflowId: decision.workflowId, action: 'put-decision', decisionId: decision.decisionId,
+    references: [...new Set(references.split(/\r?\n/).map(value => value.trim()).filter(Boolean))],
+    value: { question: decision.value.question, status: changes.status.trim() || decision.value.status, context,
+      ...(changes.pending === 'keep' ? {} : { pending: changes.pending === 'true' }),
+      ...(changes.awaiting === 'keep' ? {} : { awaitingImplementation: changes.awaiting === 'true' }) } }
+}
 function DecisionEditor(props: { readonly decision: DecisionRecord; readonly records: InstrumentSnapshot;
   readonly sessionId: string; readonly remote: ControlsRemote; readonly refresh: () => Promise<void> }): ReactElement {
   const [base, setBase] = useState({ records: props.records, decision: props.decision })
   const [answer, setAnswer] = useState('')
+  const [intent, setIntent] = useState<'answer' | 'closeout'>('answer')
+  const [closeoutNote, setCloseoutNote] = useState('')
+  const [closeoutReferences, setCloseoutReferences] = useState('')
+  const [closeoutStatus, setCloseoutStatus] = useState('')
+  const [closeoutPending, setCloseoutPending] = useState<DecisionFlagEdit>('keep')
+  const [closeoutAwaiting, setCloseoutAwaiting] = useState<DecisionFlagEdit>('keep')
   const [status, setStatus] = useState(props.decision.value.status)
   const [pending, setPending] = useState(props.decision.value.pending ?? false)
   const [awaiting, setAwaiting] = useState(props.decision.value.awaitingImplementation ?? false)
@@ -889,26 +910,42 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
   const save = async (): Promise<void> => {
     setBusy(true); setMessage(null)
     try {
-      const command = decisionAnswerCommand(base.records, base.decision, answer, status, pending, awaiting, crypto.randomUUID())
+      const command = intent === 'closeout' ? decisionCloseoutCommand(base.records, base.decision, closeoutNote, closeoutReferences,
+        { status: closeoutStatus, pending: closeoutPending, awaiting: closeoutAwaiting }, crypto.randomUUID())
+        : decisionAnswerCommand(base.records, base.decision, answer, status, pending, awaiting, crypto.randomUUID())
       remoteValue(await props.remote.applyInstrument(props.sessionId, command))
-      setMessage('已记录你的裁决；待落实标记按你的明确选择保存。')
+      setMessage(intent === 'closeout' ? '已登记核账处置（作者声明）；未替代用户答复或证明任务完成。' : '已记录你的裁决；待落实标记按你的明确选择保存。')
       await props.refresh()
     } catch (error) { setMessage(errorText(error)) } finally { setBusy(false) }
   }
+  const flagChoice = (label: string, value: DecisionFlagEdit, setValue: (value: DecisionFlagEdit) => void): ReactElement =>
+    h('label', { style: { display: 'block', margin: '8px 0' } }, label, h('select', { 'aria-label': label, value, disabled: busy, onChange: (event: ChangeEvent<HTMLSelectElement>) => setValue(event.target.value as DecisionFlagEdit) },
+      h('option', { value: 'keep' }, '保持原值（本次不修改）'), h('option', { value: 'true' }, '明确设为 true'), h('option', { value: 'false' }, '明确设为 false')))
   return h('article', { style: { borderBottom: '1px solid currentColor', padding: '12px 0' } },
     h('h4', null, props.decision.value.question),
     h('p', null, props.decision.workflowId + ' · ' + props.decision.value.status + (props.decision.value.pending ? ' · 未解决' : '') + (props.decision.value.awaitingImplementation ? ' · 原待落实标记' : '')),
     decisionLongText('背景', props.decision.value.context),
     props.decision.value.recommendation ? h('p', null, '建议：' + props.decision.value.recommendation) : null,
     props.decision.value.impact ? h('p', null, '影响：' + props.decision.value.impact) : null,
-    props.decision.value.options?.map(option => h('button', { key: option.key, type: 'button', disabled: busy, onClick: () => setAnswer(option.label) }, option.label)),
+    h('label', { style: { display: 'block', margin: '10px 0' } }, '保存意图', h('select', { 'aria-label': '保存意图', value: intent, disabled: busy, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setIntent(event.target.value as 'answer' | 'closeout'); setMessage(null) } },
+      h('option', { value: 'answer' }, '记录用户答复'), h('option', { value: 'closeout' }, '登记核账处置'))),
+    intent === 'answer' ? props.decision.value.options?.map(option => h(Button, { key: option.key, type: 'button', disabled: busy, onClick: () => setAnswer(option.label) }, option.label)) : null,
     decisionLongText('已记录结果', props.decision.value.result),
-    h('label', null, '你的裁决', h('textarea', { value: answer, disabled: busy, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setAnswer(event.target.value) })),
-    h('label', null, '保存状态（任务自定义）', h('input', { value: status, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setStatus(event.target.value) })),
-    h('label', null, h('input', { type: 'checkbox', checked: pending, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setPending(event.target.checked) }), '仍 pending'),
-    h('label', null, h('input', { type: 'checkbox', checked: awaiting, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setAwaiting(event.target.checked) }), '保留原待落实标记（不代表已经用户裁决）'),
-    h('button', { type: 'button', disabled: busy || !answer.trim() || !status.trim(), onClick: () => { void save() } }, '按明确选择记录裁决'),
-    h('button', { type: 'button', disabled: busy, onClick: () => { setBase({ records: props.records, decision: props.decision }); setAnswer(''); setStatus(props.decision.value.status); setPending(props.decision.value.pending ?? false); setAwaiting(props.decision.value.awaitingImplementation ?? false); setMessage(null) } }, '重新读取事项（丢弃草稿）'),
+    intent === 'closeout' ? h('fieldset', { style: { border: decisionBorder, padding: '10px', minWidth: 0 } },
+      h('legend', null, '登记核账处置'),
+      h('p', { style: { color: decisionSecondary, fontSize: '12px', lineHeight: 1.6 } }, '在原背景后追加作者声明与任务去向，不改原用户答复；原可见历史引用以 authored 转录保留。这不是完成证明，不自动清除标记。'),
+      h('label', { style: { display: 'block' } }, '核账说明与任务去向', h('textarea', { 'aria-label': '核账说明与任务去向', value: closeoutNote, disabled: busy, style: { width: '100%', boxSizing: 'border-box' }, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setCloseoutNote(event.target.value) })),
+      h('label', { style: { display: 'block' } }, '本次来源引用（每行一条）', h('textarea', { 'aria-label': '本次来源引用（每行一条）', value: closeoutReferences, disabled: busy, style: { width: '100%', boxSizing: 'border-box' }, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setCloseoutReferences(event.target.value) })),
+      h('label', { style: { display: 'block', margin: '8px 0' } }, '核账状态（留空保留原状态）', h(Input, { 'aria-label': '核账状态（留空保留原状态）', value: closeoutStatus, disabled: busy, placeholder: base.decision.value.status, onChange: (event: ChangeEvent<HTMLInputElement>) => setCloseoutStatus(event.target.value) })),
+      flagChoice('核账 pending', closeoutPending, setCloseoutPending), flagChoice('核账原待落实标记', closeoutAwaiting, setCloseoutAwaiting),
+      h(Button, { disabled: busy || !closeoutNote.trim(), onClick: () => { void save() } }, '登记核账处置'))
+    : h('div', null,
+      h('label', null, '你的裁决', h('textarea', { 'aria-label': '用户答复', value: answer, disabled: busy, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setAnswer(event.target.value) })),
+      h('label', null, '保存状态（任务自定义）', h('input', { value: status, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setStatus(event.target.value) })),
+      h('label', null, h('input', { type: 'checkbox', checked: pending, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setPending(event.target.checked) }), '仍 pending'),
+      h('label', null, h('input', { type: 'checkbox', checked: awaiting, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setAwaiting(event.target.checked) }), '保留原待落实标记（不代表已经用户裁决）'),
+      h(Button, { disabled: busy || !answer.trim() || !status.trim(), onClick: () => { void save() } }, '按明确选择记录裁决')),
+    h('button', { type: 'button', disabled: busy, onClick: () => { setBase({ records: props.records, decision: props.decision }); setAnswer(''); setIntent('answer'); setCloseoutNote(''); setCloseoutReferences(''); setCloseoutStatus(''); setCloseoutPending('keep'); setCloseoutAwaiting('keep'); setStatus(props.decision.value.status); setPending(props.decision.value.pending ?? false); setAwaiting(props.decision.value.awaitingImplementation ?? false); setMessage(null) } }, '重新读取事项（丢弃草稿）'),
     diagnostic('草稿业务修订 ' + base.records.businessRevision + '；背景刷新不会升级保存修订。'),
     message === null ? null : diagnostic(message),
     h(DecisionTechnicalDetails, { label: '来源历史（不是当前状态）', value: props.decision.history }))

@@ -74,6 +74,128 @@ function normalText(container) {
 async function click(element) { await React.act(async () => element.click()) }
 async function select(element, value) { await React.act(async () => { element.value = value; element.dispatchEvent(new element.ownerDocument.defaultView.Event('change', { bubbles: true })) }) }
 
+async function closeoutFixture(t, apply = async () => ok({})) {
+  const instance = { instrumentInstanceId: 'closeout-i', ownerSessionId: 'closeout-owner', controlWorkspaceId: 'work-one' }
+  const author = { kind: 'agent', principalId: 'agent:original', sessionId: 'original-session' }
+  let view = { sessionId: 'closeout-session', instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: false, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
+    records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, workflows: [], tickets: [], decisions: [{ workflowId: 'wf', decisionId: 'legacy', revision: 3,
+      history: [{ revision: 1, recordedAt: 1000, author, references: ['https://example.test/original-answer'], value: {} }, { revision: 3, recordedAt: 3000, author, references: ['https://example.test/task-link'], value: {} }],
+      value: { question: '需要保留原答复的旧事项', status: '任务原自定义状态', pending: true, awaitingImplementation: true, addressee: { kind: 'user' }, ticketIds: ['original-ticket'], context: '原背景与任务指针 https://example.test/task/42', result: '原用户明确答复：仅批准甲', recommendation: '旧建议', impact: '旧影响', options: [{ key: 'a', label: '原选项' }] } }],
+      summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 1, pendingUserDecisionCount: 1, awaitingImplementationCount: 1 } }, windows: null, resources: [], capabilities: [], health: [] }
+  const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (sessionId, command) => { calls.push({ sessionId, command: copy(command) }); return apply(command) } }
+  const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
+  const mounted = await mount(t, client.Details, { sessionId: view.sessionId, observer, remote, useTabInfo: () => ({ tab: { visible: true } }) })
+  await click(button(named(mounted.container, '待你裁决'), '阅读 / 编辑：需要保留原答复的旧事项'))
+  return { ...mounted, calls, get view() { return view }, refresh: async next => { view = next; await React.act(async () => observer.refresh()) } }
+}
+async function typeText(window, node, value) {
+  await React.act(async () => { Object.getOwnPropertyDescriptor(node.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype, 'value').set.call(node, value); node.dispatchEvent(new window.Event('input', { bubbles: true })) })
+}
+
+test('explicit closeout saves authored context and sources without inventing an answer or clearing old flags', async t => {
+  const f = await closeoutFixture(t), editor = named(f.container, '裁决阅读与编辑')
+  await select(named(editor, '保存意图'), 'closeout')
+  assert(!editor.querySelector('[aria-label="用户答复"]'), 'closeout is not a second answer or chat composer')
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '落实责任已移交任务 https://example.test/task/42；尚未完成，不是完成声明。')
+  await typeText(f.window, named(editor, '本次来源引用（每行一条）'), 'https://example.test/handoff\nhttps://example.test/handoff')
+  await click(button(editor, '登记核账处置'))
+  assert.equal(f.calls.length, 1)
+  const { sessionId, command } = f.calls[0]
+  assert.equal(sessionId, 'closeout-session'); assert.equal(command.action, 'put-decision'); assert.equal(command.expectedRevision, 7)
+  assert.equal(command.value.question, '需要保留原答复的旧事项'); assert.equal(command.value.status, '任务原自定义状态')
+  assert(command.value.context.startsWith('原背景与任务指针 https://example.test/task/42\n\n'))
+  assert.match(command.value.context, /authored.*转录/)
+  for (const text of ['落实责任已移交任务', '尚未完成', 'https://example.test/original-answer', 'https://example.test/task-link', 'agent:original', '修订 1', '修订 3']) assert(command.value.context.includes(text), text)
+  assert.deepEqual(command.references, ['https://example.test/handoff'])
+  assert.deepEqual(Object.keys(command.value).sort(), ['context', 'question', 'status'])
+  assert(!Object.hasOwn(command, 'author')); assert(!Object.hasOwn(command, 'caller'))
+  assert.equal(f.view.records.decisions[0].value.result, '原用户明确答复：仅批准甲')
+  assert.equal(f.view.records.decisions[0].value.awaitingImplementation, true)
+})
+
+test('closeout changes only explicit flags and retains original CAS and draft through conflict until explicit reload', async t => {
+  let actualRevision = 7
+  const f = await closeoutFixture(t, async command => command.expectedRevision === actualRevision ? ok({}) : { ok: false, error: new Error('business-revision-conflict') })
+  let editor = named(f.container, '裁决阅读与编辑')
+  await select(named(editor, '保存意图'), 'closeout')
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '明确移交任务，保留原答复，不宣称完成。')
+  await typeText(f.window, named(editor, '本次来源引用（每行一条）'), 'https://example.test/closeout-source')
+  await select(named(editor, '核账 pending'), 'keep')
+  await select(named(editor, '核账原待落实标记'), 'false')
+  const note = named(editor, '核账说明与任务去向'); note.focus()
+  const next = copy(f.view); next.records.businessRevision = actualRevision = 8
+  next.records.decisions[0].value.status = '并发更新状态'; next.records.decisions[0].value.context = '并发更新背景'; next.records.decisions[0].value.result = '并发更新的真实答复'
+  await f.refresh(next)
+  assert.equal(named(editor, '核账说明与任务去向'), note); assert.equal(f.window.document.activeElement, note)
+  await click(button(editor, '登记核账处置'))
+  assert.equal(f.calls[0].command.expectedRevision, 7)
+  assert.equal(f.calls[0].command.value.awaitingImplementation, false)
+  assert(!Object.hasOwn(f.calls[0].command.value, 'pending')); assert(!Object.hasOwn(f.calls[0].command.value, 'result'))
+  assert.equal(f.calls[0].command.value.status, '任务原自定义状态')
+  assert.match(editor.textContent, /business-revision-conflict/)
+  assert.equal(note.value, '明确移交任务，保留原答复，不宣称完成。')
+  assert.equal(named(editor, '核账原待落实标记').value, 'false')
+  assert.match(editor.textContent, /草稿业务修订 7/)
+  await click(button(editor, '重新读取事项（丢弃草稿）'))
+  assert.equal(named(editor, '保存意图').value, 'answer')
+  await select(named(editor, '保存意图'), 'closeout')
+  assert.equal(named(editor, '核账说明与任务去向').value, '')
+  assert.equal(named(editor, '本次来源引用（每行一条）').value, '')
+  assert.equal(named(editor, '核账原待落实标记').value, 'keep')
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '显式重读后基于现状登记，任务仍未完成。')
+  await typeText(f.window, named(editor, '核账状态（留空保留原状态）'), '明确移交状态')
+  await select(named(editor, '核账 pending'), 'false')
+  await click(button(editor, '登记核账处置'))
+  assert.equal(f.calls[1].command.expectedRevision, 8)
+  assert.equal(f.calls[1].command.value.pending, false)
+  assert(!Object.hasOwn(f.calls[1].command.value, 'awaitingImplementation'))
+  assert(!Object.hasOwn(f.calls[1].command.value, 'result'))
+  assert.equal(f.calls[1].command.value.status, '明确移交状态')
+  assert(f.calls[1].command.value.context.startsWith('并发更新背景'))
+})
+
+test('ordinary user answer preserves legacy await and cannot accidentally save a closeout draft', async t => {
+  const f = await closeoutFixture(t), editor = named(f.container, '裁决阅读与编辑')
+  await select(named(editor, '保存意图'), 'closeout')
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '未提交的核账草稿，不应进入用户答复')
+  await select(named(editor, '核账原待落实标记'), 'false')
+  await select(named(editor, '保存意图'), 'answer')
+  await typeText(f.window, named(editor, '用户答复'), '用户本次明确答复：仍采用甲')
+  await click(button(editor, '按明确选择记录裁决'))
+  assert.equal(f.calls.length, 1)
+  assert.equal(f.calls[0].command.expectedRevision, 7)
+  assert.equal(f.calls[0].command.value.result, '用户本次明确答复：仍采用甲')
+  assert.equal(f.calls[0].command.value.awaitingImplementation, true, 'ordinary answer does not default-clear legacy await')
+  assert(!Object.hasOwn(f.calls[0].command.value, 'context'))
+  assert(!JSON.stringify(f.calls[0].command).includes('未提交的核账草稿'))
+})
+
+test('closeout draft and selection are cleared on caller scope grants and record revocation without writes', async t => {
+  const f = await closeoutFixture(t), authorized = copy(f.view)
+  for (const change of ['caller', 'scope', 'grants', 'revoked']) {
+    let editor = named(f.container, '裁决阅读与编辑')
+    await select(named(editor, '保存意图'), 'closeout')
+    await typeText(f.window, named(editor, '核账说明与任务去向'), '只属于原授权范围的核账草稿')
+    const next = copy(authorized)
+    if (change === 'caller') next.caller.principalId = 'user:other'
+    if (change === 'scope') next.records.scope = { kind: 'assigned', workflowId: 'wf', ticketIds: [] }
+    if (change === 'grants') next.policyGrants.revision++
+    if (change === 'revoked') { next.records = null; next.health = [{ scope: 'records', status: 'restricted', reason: 'revoked' }] }
+    await f.refresh(next)
+    assert(!f.container.querySelector('[aria-label="核账说明与任务去向"]'), change)
+    assert(!f.container.textContent.includes('只属于原授权范围的核账草稿'))
+    await f.refresh(copy(authorized))
+    assert(!f.container.querySelector('[aria-label="裁决阅读与编辑"]'), 'recovery does not revive the old selection')
+    await click(button(named(f.container, '待你裁决'), '阅读 / 编辑：需要保留原答复的旧事项'))
+    editor = named(f.container, '裁决阅读与编辑')
+    assert.equal(named(editor, '保存意图').value, 'answer')
+    await select(named(editor, '保存意图'), 'closeout')
+    assert.equal(named(editor, '核账说明与任务去向').value, '')
+  }
+  assert.deepEqual(f.calls, [])
+})
+
 test('Settings selected session decisions use structured readonly hierarchy with authorization isolation', async t => {
   const instance = { instrumentInstanceId: 'inspect-i', ownerSessionId: 'inspect-owner', controlWorkspaceId: 'work-one' }
   let view = { sessionId: 'inspect-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
