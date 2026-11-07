@@ -27,7 +27,6 @@ if (hostRoot) {
     Query: (await load('@deepseek-ai/dsh-session-query-sqlite')).default,
     LocalFs: (await load('@deepseek-ai/dsh-fs-local')).default,
     fsTools: await load('@deepseek-ai/dsh-tool-fs'),
-    ToolExecutor: await load('@deepseek-ai/dsh-tool-executor-native'),
     WorkingDirectory: (await load('@deepseek-ai/dsh-working-directory')).default }
 }
 
@@ -56,7 +55,8 @@ async function fixture(t, { prepare = async () => ({}) } = {}) {
   await ctx.plugin(sdk.SessionProjectionRegistry)
   await ctx.plugin(sdk.SystemPrompt, {})
   await ctx.plugin(sdk.ToolRuntime, {})
-  await ctx.plugin(sdk.ToolExecutor)
+  // Only split-executor registries need this package; older hosts execute directly.
+  if (typeof ctx.tools.setExecutor === 'function') await ctx.plugin(await load('@deepseek-ai/dsh-tool-executor-native'))
   await sdk.jsonl.apply(ctx, { root: join(temp, 'sessions'), compression: 'none' })
   await ctx.plugin(sdk.Query, { path: join(temp, 'query.sqlite'), openAt: 'never' })
   ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model prohibited') }, stream() { modelCalls++; throw new Error('model prohibited') } })
