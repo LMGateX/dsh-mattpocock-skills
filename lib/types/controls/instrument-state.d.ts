@@ -30,6 +30,25 @@ export interface TicketValue {
     /** Ticket-level supervision override: off disables program suspicion, not periodic audit. */
     readonly suspicionMode?: 'auto' | 'off';
 }
+/** Authored identity and navigation only; never a source authorization or status receipt. */
+export type TaskReferenceSource = {
+    readonly kind: 'external';
+    readonly instance: string;
+    readonly project: string;
+    readonly taskId: string;
+} | {
+    readonly kind: 'repository';
+    readonly repositoryAnchor: string;
+    readonly relativePath: string;
+    readonly anchor?: string;
+} | {
+    readonly kind: 'unverified';
+};
+export interface TaskReferenceValue {
+    readonly source: TaskReferenceSource;
+    readonly locator: string;
+    readonly label?: string;
+}
 export interface DecisionValue {
     readonly question: string;
     readonly status: string;
@@ -68,6 +87,10 @@ export type InstrumentCommand = CommandBase & ({
     readonly localTicketId: string;
     readonly value: TicketValue;
 } | {
+    readonly action: 'put-task-reference';
+    readonly localTicketId: string;
+    readonly value: TaskReferenceValue;
+} | {
     readonly action: 'put-decision';
     readonly decisionId: string;
     readonly value: DecisionValue;
@@ -93,12 +116,19 @@ export interface InstrumentDocumentV2 extends InstrumentInstance {
     readonly events: readonly InstrumentEvent[];
     readonly checkpoint: {
         readonly throughRevision: number;
-        readonly state: InstrumentState;
+        readonly state: Omit<InstrumentState, 'taskReferences'>;
     };
     readonly dedup: readonly InstrumentDedup[];
     readonly coverage: readonly InstrumentCleanupCoverage[];
 }
-export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2;
+export interface InstrumentDocumentV3 extends Omit<InstrumentDocumentV2, 'schemaVersion' | 'checkpoint'> {
+    readonly schemaVersion: 3;
+    readonly checkpoint: {
+        readonly throughRevision: number;
+        readonly state: InstrumentState;
+    };
+}
+export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3;
 export interface InstrumentDedup {
     readonly operationId: string;
     readonly author: InstrumentAuthor;
@@ -119,6 +149,10 @@ export type InstrumentHistoryTarget = {
     readonly workflowId: string;
 } | {
     readonly kind: 'ticket';
+    readonly workflowId: string;
+    readonly localTicketId: string;
+} | {
+    readonly kind: 'task-reference';
     readonly workflowId: string;
     readonly localTicketId: string;
 } | {
@@ -145,7 +179,7 @@ export interface InstrumentPurgeHistoryInput extends InstrumentCompactInput {
     readonly throughRevision: number;
     readonly targets: readonly InstrumentHistoryTarget[];
 }
-export declare function upgradeInstrumentDocument(document: InstrumentDocument): InstrumentDocumentV2;
+export declare function upgradeInstrumentDocument(document: InstrumentDocument, references?: boolean): InstrumentDocumentV2 | InstrumentDocumentV3;
 export interface Change<T> {
     readonly revision: number;
     readonly recordedAt: number;
@@ -165,6 +199,13 @@ export interface TicketRecord {
     readonly revision: number;
     readonly value: TicketValue;
     readonly history: readonly Change<TicketValue>[];
+}
+export interface TaskReferenceRecord {
+    readonly workflowId: string;
+    readonly localTicketId: string;
+    readonly revision: number;
+    readonly value: TaskReferenceValue;
+    readonly history: readonly Change<TaskReferenceValue>[];
 }
 export interface DecisionRecord {
     readonly workflowId: string;
@@ -186,6 +227,7 @@ export interface InstrumentState {
     readonly viewerRevisions: Readonly<Record<string, number>>;
     readonly workflows: readonly WorkflowRecord[];
     readonly tickets: readonly TicketRecord[];
+    readonly taskReferences: readonly TaskReferenceRecord[];
     readonly decisions: readonly DecisionRecord[];
     readonly decisionViews: readonly DecisionViewRecord[];
 }

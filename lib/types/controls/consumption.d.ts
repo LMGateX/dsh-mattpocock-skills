@@ -13,6 +13,8 @@ export interface ConsumptionIdentity {
     readonly sessionId: string;
     readonly instrumentInstanceId: string;
     readonly ownerSessionId: string;
+    /** Trusted current authorization partition, not a credential; omitted only for legacy callers. */
+    readonly scopeFingerprint?: string;
 }
 export interface ConsumptionSnapshot {
     /** Held T slots whose ticket already sits in a terminal status; the agent releases them. */

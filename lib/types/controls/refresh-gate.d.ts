@@ -10,9 +10,10 @@
 export declare class RefreshGate {
     #private;
     private readonly ttlMs;
-    private readonly now;
+    private readonly elapsedNow;
     private readonly maxEntries;
-    constructor(ttlMs: number, now?: () => number, maxEntries?: number);
+    /** Process-local elapsed milliseconds, never an epoch wall/event timestamp. */
+    constructor(ttlMs: number, elapsedNow?: () => number, maxEntries?: number);
     /** Called by every mutation of the state the snapshot is derived from. */
     touch(scope?: string): void;
     /** Epoch observed before a read starts. Stamp it so a mutation that lands while the read

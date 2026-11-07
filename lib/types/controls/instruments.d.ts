@@ -1,7 +1,7 @@
 import type { WorkspaceControls } from './index.js';
 import type { InstrumentInstance } from './state.js';
 import type { InstrumentStorage } from './instrument-storage.js';
-import type { InstrumentAuthor, InstrumentCommand, InstrumentEvent, WorkflowRecord, TicketRecord, DecisionRecord, DecisionViewValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, Change } from './instrument-state.js';
+import type { InstrumentAuthor, InstrumentCommand, InstrumentEvent, WorkflowRecord, TicketRecord, TaskReferenceRecord, DecisionRecord, DecisionViewValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, Change } from './instrument-state.js';
 export type InstrumentScope = {
     readonly kind: 'coordinator';
 } | {
@@ -40,6 +40,11 @@ export interface InstrumentSnapshot {
     readonly focusedWorkflowId: string | null;
     readonly workflows: readonly WorkflowRecord[];
     readonly tickets: readonly TicketRecord[];
+    readonly taskReferences: readonly TaskReferenceRecord[];
+    readonly capabilities: {
+        readonly taskReferences: true;
+        readonly storageVersions: readonly [1, 2, 3];
+    };
     /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */
     readonly decisions: readonly (DecisionRecord & InstrumentDecisionTime & {
         readonly view: DecisionViewValue;
@@ -52,6 +57,7 @@ export interface InstrumentSnapshot {
     readonly summary: {
         readonly countingScope: 'instance' | 'assignment';
         readonly totalTickets: number;
+        readonly totalTaskReferences: number;
         readonly statusCounts: readonly {
             readonly workflowId: string;
             readonly axisKey: string;
@@ -80,6 +86,9 @@ export type InstrumentCurrentWorkflow = Omit<WorkflowRecord, 'history'> & {
 export type InstrumentCurrentTicket = Omit<TicketRecord, 'history'> & {
     readonly provenance: InstrumentCurrentProvenance;
 };
+export type InstrumentCurrentTaskReference = Omit<TaskReferenceRecord, 'history'> & {
+    readonly provenance: InstrumentCurrentProvenance;
+};
 export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & InstrumentDecisionTime & {
     readonly creator: InstrumentAuthor;
     readonly provenance: InstrumentCurrentProvenance;
@@ -88,9 +97,10 @@ export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creato
 /** Authorized current bodies for model projection/detail; never contains histories or changes.
  * Bodies are intentionally complete here: the model adapter owns its byte budget and locators.
  */
-export interface InstrumentCurrentSnapshot extends Omit<InstrumentSnapshot, 'workflows' | 'tickets' | 'decisions' | 'changes' | 'historyCoverage'> {
+export interface InstrumentCurrentSnapshot extends Omit<InstrumentSnapshot, 'workflows' | 'tickets' | 'taskReferences' | 'decisions' | 'changes' | 'historyCoverage'> {
     readonly workflows: readonly InstrumentCurrentWorkflow[];
     readonly tickets: readonly InstrumentCurrentTicket[];
+    readonly taskReferences: readonly InstrumentCurrentTaskReference[];
     readonly decisions: readonly InstrumentCurrentDecision[];
 }
 /** Current authorized badge facts; no retained versions, changes or decision bodies. */
