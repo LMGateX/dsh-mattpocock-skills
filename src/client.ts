@@ -19,7 +19,7 @@ import { ownSupervisionLeaf, parseSupervisionConfigSnapshot, resolveSupervisionS
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot, SupervisionField, SupervisionSettings } from './controls/supervision-config.js'
 import { parseSupervisionDocument } from './controls/supervision-audit.js'
 import type { SupervisionEpisode } from './controls/supervision-audit.js'
-import type { InstrumentDecisionTime, InstrumentSnapshot } from './controls/instruments.js'
+import type { InstrumentCurrentTaskReference, InstrumentDecisionTime, InstrumentSnapshot } from './controls/instruments.js'
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js'
 import type { WindowSnapshot } from './controls/windows.js'
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js'
@@ -486,14 +486,14 @@ export function ResourceProjection(props: { readonly view: ClientSessionSnapshot
   return h('section', { 'aria-label': '资源授权投影' }, diagnostic(summary.label), pretty(props.view.resources))
 }
 export function compactInstrumentSummary(view: ClientSessionSnapshot): { readonly parts: readonly string[]; readonly detail: string } {
-  const records = view.records
+  const records = inputRecords(view)
   const statuses = records?.summary.statusCounts.flatMap(axis => axis.statuses.map(status => ({
     key: axis.workflowId + '/' + axis.axisKey + '/' + status.statusKey,
     priority: status.summaryPriority ?? Number.MAX_SAFE_INTEGER,
     text: axis.workflowId + '/' + axis.label + ':' + status.label + ' ' + countText(status.count) + ' (' + axis.counting + ')',
   }))).sort((a, b) => a.priority - b.priority || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)) ?? []
   const custom = statuses.slice(0, 2).map(row => row.text).join(' · ')
-  const ticket = '票 ' + (records === null ? '未知' : countText(records.summary.totalTickets)) + (custom ? ' · ' + custom : '') + (statuses.length > 2 ? ' · 更多 ' + (statuses.length - 2) : '')
+  const ticket = '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + (records === null ? '未知' : countText(records.summary.totalTickets)) + '（业务报告）' + (custom ? ' · ' + custom : '') + (statuses.length > 2 ? ' · 更多 ' + (statuses.length - 2) : '')
   const [T = 'T 未知', S = 'S 未知'] = windowSummary(view.windows, view.health)
   const resource = resourceSummary(view)
   const parts = ['待用户裁决 ' + (records === null ? '未知' : countText(records.summary.pendingUserDecisionCount)), ticket, T, S,
@@ -534,6 +534,7 @@ interface InputSummaryWorkflow {
   readonly axes: readonly InputSummaryAxis[]
   readonly lastActivity: number
   readonly ticketCount: number | null
+  readonly referenceCount: number | null
   readonly order: number
 }
 /** Order the compact summary by real activity, not by the order workflows first appeared.
@@ -555,13 +556,22 @@ function inputSummaryWorkflows(records: InstrumentSnapshot): readonly InputSumma
     if (rows === undefined) ticketsByWorkflow.set(ticket.workflowId, [ticket])
     else rows.push(ticket)
   }
+  const references = taskReferenceRows(records)
+  const referencesByWorkflow = new Map<string, NonNullable<typeof references>[number][]>()
+  for (const reference of references ?? []) {
+    if (!axesByWorkflow.has(reference.workflowId)) axesByWorkflow.set(reference.workflowId, [])
+    const rows = referencesByWorkflow.get(reference.workflowId)
+    if (rows === undefined) referencesByWorkflow.set(reference.workflowId, [reference])
+    else rows.push(reference)
+  }
   return [...axesByWorkflow].map(([workflowId, axes], order) => {
+    const scopedReferences = referencesByWorkflow.get(workflowId) ?? []
     const scopedTickets = ticketsByWorkflow.get(workflowId) ?? []
-    const revisions = scopedTickets.map(ticket => ticket.revision)
+    const revisions = [...scopedTickets, ...scopedReferences].map(row => row.revision)
     const workflow = workflowById.get(workflowId)
     if (workflow !== undefined) revisions.push(workflow.revision)
     const lastActivity = revisions.reduce((latest, revision) => revision > latest ? revision : latest, 0)
-    return { workflowId, axes, lastActivity, ticketCount: ticketInventoryKnown ? scopedTickets.length : null, order }
+    return { workflowId, axes, lastActivity, ticketCount: ticketInventoryKnown ? scopedTickets.length : null, referenceCount: references === null ? null : scopedReferences.length, order }
   }).sort((left, right) => right.lastActivity - left.lastActivity || left.order - right.order)
 }
 function workflowSummaryLine(workflowId: string, axis: InputSummaryAxis): ReactElement {
@@ -631,9 +641,41 @@ function workflowIdentity(records: InstrumentSnapshot | null, workflowId: string
   const workflow = records?.workflows?.find(row => row.workflowId === workflowId)
   return workflow === undefined ? workflowId : workflow.value.title + '（' + workflowId + '）'
 }
+/** Capability absence is an old endpoint, never evidence of zero references. */
+function taskReferenceRows(records: InstrumentSnapshot | null): InstrumentSnapshot['taskReferences'] | null {
+  return records?.capabilities?.taskReferences === true && Array.isArray(records.taskReferences) ? records.taskReferences : null
+}
+function taskReferenceCount(records: InstrumentSnapshot | null): string {
+  return records?.capabilities?.taskReferences === true ? countText(records.summary.totalTaskReferences) : '未知'
+}
+function TaskReferenceItem(props: { readonly row: InstrumentSnapshot['taskReferences'][number] | InstrumentCurrentTaskReference }): ReactElement {
+  const row = props.row, value = row.value
+  const source = value.source
+  const provenance = 'provenance' in row ? row.provenance : row.history?.find(change => change.revision === row.revision)
+  return h('details', { style: { borderTop: decisionBorder, padding: '8px 0', minWidth: 0, overflowWrap: 'anywhere' } },
+    h('summary', { style: { cursor: 'pointer', whiteSpace: 'normal', lineHeight: 1.6 } }, value.label ?? row.workflowId + '/' + row.localTicketId),
+    h('div', { style: { paddingInlineStart: '12px', minWidth: 0 } },
+      h('p', { style: decisionBodyStyle }, '本地引用：' + row.workflowId + '/' + row.localTicketId + ' · 修订 ' + row.revision),
+      h('p', { style: decisionBodyStyle }, '来源：作者报告（authored），未核验；未观察源状态。'),
+      h('p', { style: decisionBodyStyle }, source.kind === 'external' ? '外部任务：' + source.instance + ' / ' + source.project + ' / ' + source.taskId
+        : source.kind === 'repository' ? '仓内任务：' + source.repositoryAnchor + ' / ' + source.relativePath + (source.anchor ? ' # ' + source.anchor : '') : '未核验来源（unverified）'),
+      h('p', { style: decisionBodyStyle }, '导航位置（仅文本）：' + value.locator),
+      provenance === undefined ? h('p', null, '当前版本作者与报告时间未知') : h('p', { style: decisionBodyStyle },
+        '报告作者：' + provenance.author.kind + ' / ' + provenance.author.principalId + ' · ', decisionTime('本地报告时间', provenance.recordedAt, '报告时间未知')),
+      h(DecisionTechnicalDetails, { label: '引用技术详情与历史（不证明来源时效）', value: row })))
+}
+function TaskReferences(props: { readonly view: ClientSessionSnapshot }): ReactElement {
+  const records = inputRecords(props.view), rows = taskReferenceRows(records)
+  return h('section', { 'aria-label': '任务引用', style: { minWidth: 0, overflowWrap: 'anywhere' } },
+    h('h4', null, '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + (records === null ? '未知' : countText(records.summary.totalTickets)) + '（业务报告）'),
+    rows === null ? diagnostic('任务引用读取能力未知或不支持（旧端可能缺少能力标记）；不是 0，不创建替代业务票。')
+      : h('div', null, diagnostic(countingScopeText(records!.summary.countingScope) + '；仅本地引用，不是外部任务总数或完成率。'),
+        rows.length === 0 ? diagnostic('本次授权投影没有任务引用。') : rows.map(row => h(TaskReferenceItem, { key: JSON.stringify([row.workflowId, row.localTicketId]), row }))))
+}
 function ticketIdentity(records: InstrumentSnapshot | null, workflowId: string, ticketId: string): string {
+  const reference = taskReferenceRows(records)?.find(row => row.workflowId === workflowId && row.localTicketId === ticketId)
   const ticket = records?.tickets?.find(row => row.workflowId === workflowId && row.localTicketId === ticketId)
-  return workflowId + '/' + ticketId + (ticket === undefined ? '' : ' · ' + ticket.value.title)
+  return workflowId + '/' + ticketId + (reference !== undefined ? ' · 任务引用 · ' + (reference.value.label ?? reference.value.locator) : ticket === undefined ? '' : ' · 旧票报告 · ' + ticket.value.title)
 }
 function ticketStatusText(records: InstrumentSnapshot, ticket: InstrumentSnapshot['tickets'][number]): string {
   const workflow = records.workflows.find(row => row.workflowId === ticket.workflowId)
@@ -650,14 +692,16 @@ function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
     diagnostic('实例总占用 T ' + countText(windows.T.used) + ' / 参考 ' + capacityText(windows.T.capacity) + '；仅作规模提示，不是硬名额。'),
     diagnostic(windows.scope?.kind === 'assigned' ? '当前可见 scope：分配范围，明细只是子集，不能从子集重算实例总数。' : windows.scope?.kind === 'coordinator' ? '当前可见 scope：协调者实例范围。' : '当前可见 scope 未知，不从明细重算实例总数。'),
     records === null ? diagnostic('票账本未知：' + (inputReadFailure(view, 'records') ?? '未返回账本') + '；保留显式占位身份。') : null,
+    taskReferenceRows(records) === null ? diagnostic('任务引用读取能力未知或不支持；未解析 handle 不视为业务票或空清单。') : null,
     held === null ? diagnostic('占位明细未知：未返回占位记录。') : h('div', null,
       diagnostic('本次可展示 held=true 占位 ' + held.length + ' 条。'),
       held.map(row => {
+        const reference = taskReferenceRows(records)?.find(reference => reference.workflowId === row.workflowId && reference.localTicketId === row.localTicketId)
         const ticket = records?.tickets?.find(ticket => ticket.workflowId === row.workflowId && ticket.localTicketId === row.localTicketId)
         return h('article', { key: row.workflowId + ':' + row.localTicketId },
           h('p', null, ticketIdentity(records, row.workflowId, row.localTicketId)),
           h('p', null, '工作流：' + workflowIdentity(records, row.workflowId)),
-          h('p', null, ticket === undefined || records === null ? '票标题/状态未在当前授权账本返回。' : ticketStatusText(records, ticket)), technicalDetails(row))
+          reference === undefined ? h('p', null, ticket === undefined || records === null ? '票标题/状态未在当前授权账本返回。' : ticketStatusText(records, ticket)) : h(TaskReferenceItem, { row: reference }), technicalDetails(row))
       })),
     records === null ? null : h('details', null, h('summary', null, '全部状态定义与计数（含零值）'),
       records.summary.statusCounts.map(axis => h('div', { key: axis.workflowId + ':' + axis.axisKey },
@@ -698,7 +742,7 @@ function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; rea
       value.options?.length ? h('div', null, h('strong', null, '选项'), h('ul', { style: { margin: '6px 0', paddingInlineStart: '24px' } }, value.options.map(option => h('li', { key: option.key, style: { whiteSpace: 'pre-wrap' } }, option.key + '：' + option.label)))) : null,
       value.recommendation ? h('p', { style: decisionBodyStyle }, '建议：' + value.recommendation) : null,
       value.impact ? h('p', { style: decisionBodyStyle }, '影响：' + value.impact) : null,
-      value.ticketIds?.length ? h('p', { style: decisionBodyStyle }, '关联票：' + value.ticketIds.map(id => ticketIdentity(props.records, row.workflowId, id)).join('；')) : null,
+      value.ticketIds?.length ? h('p', { style: decisionBodyStyle }, '关联任务（引用 / 旧票报告）：' + value.ticketIds.map(id => ticketIdentity(props.records, row.workflowId, id)).join('；')) : null,
       decisionLongText('背景', value.context), decisionLongText('已记录结果', value.result),
       h('details', { style: { borderTop: decisionBorder, padding: '8px 0' } }, h('summary', null, '标识与来源'),
         h('p', { style: decisionBodyStyle }, '工作流：' + row.workflowId + ' · 事项：' + row.decisionId + ' · 裁决者：' + decisionAddresseeText(row)),
@@ -847,13 +891,15 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
     h('div', { 'aria-label': '常驻协作提醒', style: { flexShrink: 0, width: '100%' } },
       inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新（非实时更新）。'),
-      records === null ? diagnostic('票进度未知') : h('span', null, '票 ' + countText(records.summary.totalTickets) + ' · ' + countingScopeText(records.summary.countingScope)),
+      records === null ? diagnostic('任务引用与旧票报告未知') : h('span', null, '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + countText(records.summary.totalTickets) + '（业务报告） · ' + countingScopeText(records.summary.countingScope)),
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
         pending === 0 ? null : entrance('pending', '待你裁决 ' + countText(pending)),
         windowEntrance('T'), windowEntrance('S'))),
     needsRecordCheck(records) ? h('div', { 'aria-label': '次级记录入口', style: { alignSelf: 'flex-end', fontSize: '12px' } }, entrance('awaiting', '记录核对')) : null,
     h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
-      ...visible.flatMap(workflow => workflow.ticketCount === 0
+      ...visible.flatMap(workflow => workflow.referenceCount !== null && workflow.referenceCount > 0
+        ? [h('div', { key: workflow.workflowId + ':references' }, workflow.workflowId + ' · 任务引用 ' + workflow.referenceCount + ' · 旧票 ' + countText(workflow.ticketCount) + '（业务报告）'), ...workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))]
+        : workflow.ticketCount === 0
         ? [h('div', { key: workflow.workflowId + ':no-tickets' }, workflow.workflowId + ' / ' + workflow.axes.map(axis => axis.label).join(' / ') + ' · 暂无票')]
         : workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))),
       hidden.length === 0 ? null : h('button', { key: 'workflow-rest', type: 'button', onClick: props.openDetails,
@@ -1001,7 +1047,8 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Session ' + props.sessionId + (tab.tab.visible ? '' : ' · 非前台')),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新已提交投影'),
-    h('h4', null, '票进度'),
+    h(TaskReferences, { key: readIdentity + ':references', view }),
+    h('h4', null, '旧票业务报告'),
     records === null ? diagnostic('票/事项账本未知或不可用') : h('div', null,
       diagnostic('统计范围：' + records.summary.countingScope + ' · 业务修订 ' + records.businessRevision),
       records.workflows.map(workflow => h('section', { key: workflow.workflowId }, h('h4', null, workflow.value.title),
@@ -1405,7 +1452,8 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
     h('h4', null, '所选会话 ' + props.sessionId + ' · 当前投影与显式登记'),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · 主会话 ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
     h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新所选会话'),
-    h('h4', null, '票进度与裁决记录'),
+    h('h4', null, '任务引用、旧票报告与裁决记录'),
+    h(TaskReferences, { key: decisionReadingIdentity(view) + ':references', view }),
     h('section', { 'aria-label': '设置页裁决记录' }, h(DecisionQueues, { key: decisionReadingIdentity(view), view })),
     h(DecisionTechnicalDetails, { key: decisionReadingIdentity(view) + ':raw', label: '票与事项账本技术数据', value: inputRecords(view) }),
     h('h4', null, '独立 T/S（观测）'), h(WindowProjection, { view }),
