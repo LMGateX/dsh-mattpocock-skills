@@ -70,7 +70,7 @@ test('package policy accepts the current private source-only manifest', () => {
 
 test('package policy rejects release, lifecycle, publication, client graph, and allowlist drift', () => {
   const cases = [
-    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]16[.]0/],
+    [{ ...packageJson, version: '0.9.0' }, /current release version 0[.]16[.]1/],
     // Derived from the manifest so the drift guard never pins a release number.
     [{ ...packageJson, version: '1.0.0' }, new RegExp(String(packageJson.version).replaceAll('.', '\\.'))],
     [{ ...packageJson, private: false }, /private/],
