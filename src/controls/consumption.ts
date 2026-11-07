@@ -14,6 +14,8 @@ export interface ConsumptionIdentity {
   readonly sessionId: string
   readonly instrumentInstanceId: string
   readonly ownerSessionId: string
+  /** Trusted current authorization partition, not a credential; omitted only for legacy callers. */
+  readonly scopeFingerprint?: string
 }
 export interface ConsumptionSnapshot {
   /** Held T slots whose ticket already sits in a terminal status; the agent releases them. */
@@ -60,7 +62,7 @@ export interface ConsumptionResult {
   readonly reason?: string
 }
 interface Commit { done: Promise<void>; failed: boolean }
-interface Cached { text: string; fingerprint: string; valid: boolean; sequence: number; verified: string | null }
+interface Cached { text: string; valid: boolean; sequence: number; verified: string | null }
 class ConsumptionFailure extends Error {
   constructor(readonly reason: string) { super(reason) }
 }
@@ -73,11 +75,14 @@ function checkedIdentity(identity: ConsumptionIdentity): ConsumptionIdentity {
   for (const key of ['principalId', 'sessionId', 'instrumentInstanceId', 'ownerSessionId'] as const) {
     if (typeof identity[key] !== 'string' || !identity[key].trim() || identity[key].includes('\0')) throw new TypeError('trusted identity requires ' + key)
   }
+  const scope = identity.scopeFingerprint
+  if (scope !== undefined && (typeof scope !== 'string' || !scope.trim() || scope.length > 1024 || scope.includes('\0'))) throw new TypeError('trusted identity requires scopeFingerprint of 1..1024 characters without NUL')
   return Object.freeze({ principalId: identity.principalId, sessionId: identity.sessionId,
-    instrumentInstanceId: identity.instrumentInstanceId, ownerSessionId: identity.ownerSessionId })
+    instrumentInstanceId: identity.instrumentInstanceId, ownerSessionId: identity.ownerSessionId,
+    ...(scope === undefined ? {} : { scopeFingerprint: scope }) })
 }
 function cacheKey(identity: ConsumptionIdentity): string {
-  return JSON.stringify([identity.principalId, identity.sessionId, identity.instrumentInstanceId, identity.ownerSessionId])
+  return JSON.stringify([identity.principalId, identity.sessionId, identity.instrumentInstanceId, identity.ownerSessionId, identity.scopeFingerprint ?? null])
 }
 function sameInstance(a: InstrumentInstance, b: InstrumentInstance): boolean {
   return a.instrumentInstanceId === b.instrumentInstanceId && a.ownerSessionId === b.ownerSessionId && a.controlWorkspaceId === b.controlWorkspaceId
@@ -100,7 +105,10 @@ function canonical(value: unknown): string {
     .map(([key, entry]) => JSON.stringify(key) + ':' + canonical(entry)).join(',') + '}'
 }
 function sorted<T>(rows: readonly T[], key: (row: T) => string): T[] {
-  return [...rows].sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
+  // Composite keys may require canonical encoding. Compute once per row in this
+  // projection only; retain stable tie order without a cross-snapshot cache.
+  return rows.map(row => ({ row, key: key(row) }))
+    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0).map(entry => entry.row)
 }
 function provenance(row: { readonly provenance: InstrumentCurrentProvenance } | { readonly history: readonly { readonly author: unknown; readonly references: readonly string[]; readonly recordedAt?: number }[] }): unknown {
   const last = 'provenance' in row ? row.provenance : row.history.at(-1)
@@ -281,6 +289,22 @@ function protocol(snapshot: ConsumptionSnapshot): string {
     if (snapshot.delegateRegistered === true) lines.push('Opt-in mattpocock_delegate is binding-first creation only, when a verifiable ticket↔worktree binding is required; it is not the default dispatch path. If a delegate operation was accepted or its result is uncertain, do not create another child: keep the existing child, re-read its effects and use an explicit mattpocock_assign when assignment is needed; reconcile only rechecks binding. A native tree observation never becomes a strong binding.')
   }
   lines.push('This is a bounded current view, not complete history. Each category reports shown/total/more and query locators; truncated fields retain source pointers. Use session history queries for omitted details.')
+  if (!p.extensionEnabled) lines.push('Management feature is OFF: existing records and execution facts remain.')
+  else if (p.workspaceEnabled === false) lines.push('Management feature is OFF for this workspace: existing records and execution facts remain.')
+  else if (p.features.windows.status === 'configured') {
+    lines.push('Windows explicitly enabled: mattpocock_window records explicit T reserve/release/reacquire independently of S. Only trusted program receipts release S, never a business completion label.')
+    lines.push('Ticket discipline: every ticket you reserve or delegate work on must already exist in this instrument. Record it first with mattpocock_record put-ticket (workflowId + localTicketId + title + statuses); mattpocock_window reserve rejects an unregistered ticket'
+      + (snapshot.delegateRegistered === true ? ', and an opted-in mattpocock_delegate does too' : '')
+      + '; the rejection names it. Ticketless research runs are allowed only by omitting workflowId entirely — then there is no ticket and no T requirement.')
+    lines.push('Work-in-progress discipline: the T window is how many tickets may be in flight at once, not a quota. Take each ticket to its declared delivered state (or record it blocked by name) before opening the next one on that lane — spreading partial progress over many tickets is exactly what T exists to prevent. An empty slot needs no excuse; a held slot whose ticket has already reached a delivered or blocked state is yours to release with mattpocock_window release, and nothing releases it for you.')
+  }
+  else if (p.features.windows.status === 'disabled') lines.push('Windows are OFF: preserve existing execution facts and records.')
+  else lines.push('Windows are unsupported for this policy: usage coverage remains explicit in capabilities; missing facts are not known/free slots.')
+  return lines.join('\n')
+}
+/** Current notices are deliberately after all policy guidance, inside the same owned snapshot. */
+function currentNotices(snapshot: ConsumptionSnapshot): string {
+  const lines: string[] = []
   const nativeExecutionRows = snapshot.nativeExecutions ?? []
   if (nativeExecutionRows.length > 0) {
     const shown = nativeExecutionRows.slice(0, 8).map(row => row.sessionId + ' ' + row.state
@@ -292,22 +316,14 @@ function protocol(snapshot: ConsumptionSnapshot): string {
       + (nativeExecutionRows.length > shown.length ? ' (showing ' + shown.length + ')' : '') + '. ' + shown.join('; ')
       + '. Activity is live; lane inferred from assignment/binding only, and header cwd is a recorded source value, not proof of the effective initial directory. They are native execution facts, not strong bindings or task-completion proof; use mattpocock_history query kind "native-execution" for recorded versions.')
   }
-  if (!p.extensionEnabled) lines.push('Management feature is OFF: existing records and execution facts remain.')
-  else if (p.workspaceEnabled === false) lines.push('Management feature is OFF for this workspace: existing records and execution facts remain.')
-  else if (p.features.windows.status === 'configured') {
-    lines.push('Windows explicitly enabled: mattpocock_window records explicit T reserve/release/reacquire independently of S. Only trusted program receipts release S, never a business completion label.')
-    lines.push('Ticket discipline: every ticket you reserve or delegate work on must already exist in this instrument. Record it first with mattpocock_record put-ticket (workflowId + localTicketId + title + statuses); mattpocock_window reserve rejects an unregistered ticket'
-      + (snapshot.delegateRegistered === true ? ', and an opted-in mattpocock_delegate does too' : '')
-      + '; the rejection names it. Ticketless research runs are allowed only by omitting workflowId entirely — then there is no ticket and no T requirement.')
-    lines.push('Work-in-progress discipline: the T window is how many tickets may be in flight at once, not a quota. Take each ticket to its declared delivered state (or record it blocked by name) before opening the next one on that lane — spreading partial progress over many tickets is exactly what T exists to prevent. An empty slot needs no excuse; a held slot whose ticket has already reached a delivered or blocked state is yours to release with mattpocock_window release, and nothing releases it for you.')
+  const p = snapshot.policy
+  if (p.extensionEnabled && p.workspaceEnabled !== false && p.features.windows.status === 'configured') {
     const pendingRelease=pendingReleaseRows(snapshot)
     if(pendingRelease.length>0)lines.push('T pending release: '+pendingRelease.map(row=>row.localTicketId+(row.label===null?'':' ('+row.label+')')).join(', ')+' — call mattpocock_window release with that ticket\'s generation; the slot stays held until you do.')
     const nativeStops=snapshot.nativeStops??[]
     if(nativeStops.length>0)lines.push('Native child outcomes to handle: '+nativeStops.map(row=>nativeOutcomeText(row)).join('; ')+'. Each item names one child turn from the host\'s published outcome vocabulary, or states that the outcome is unobservable; the item clears when the child runs again or its end arrives.')
   }
-  else if (p.features.windows.status === 'disabled') lines.push('Windows are OFF: preserve existing execution facts and records.')
-  else lines.push('Windows are unsupported for this policy: usage coverage remains explicit in capabilities; missing facts are not known/free slots.')
-  return lines.join('\n')
+  return lines.length === 0 ? 'No current notices in this projection.' : lines.join('\n')
 }
 function diagnostic(identity: ConsumptionIdentity, reason: string): string {
   return 'Instrument state unknown: ' + reason + '. No current policy, capacity or resource facts are asserted. Preserve ordinary native business input; this diagnostic is not a cancellation or a business decision.\n' +
@@ -416,13 +432,16 @@ export class InstrumentConsumption {
       // The projection is built here with fixed key order and deterministic row sorting, so a plain
       // stringify is a stable fingerprint; the previous canonical (recursively sorted) walk cost
       // several milliseconds per assembly pass for the same bytes.
-      const fingerprint = JSON.stringify(facts(snapshot))
-      const text = protocol(snapshot) + '\nCurrent runtime facts (null means unavailable/unknown, not zero):\n' + fingerprint
-      const changed = !previous?.valid || previous.fingerprint !== fingerprint
+      const currentFacts = JSON.stringify(facts(snapshot))
+      const text = protocol(snapshot) + '\nCurrent runtime notices:\n' + currentNotices(snapshot)
+        + '\nCurrent runtime facts (null means unavailable/unknown, not zero):\n' + currentFacts
+      // Notices such as pending release can change without changing the facts JSON. Compare
+      // the complete representation so adding or clearing an obligation is never consumed.
+      const changed = !previous?.valid || previous.text !== text
       const unhealthy = snapshot.health.some(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status))
       // A late older read cannot regress a newer projection/cache. Unknown details are
       // still returned, but a degraded snapshot cannot be replayed as fresh context.
-      if (!previous || sequence >= previous.sequence) this.#store(key, { text, verified: text, fingerprint, valid: !unhealthy, sequence })
+      if (!previous || sequence >= previous.sequence) this.#store(key, { text, verified: text, valid: !unhealthy, sequence })
       return { text: changed ? text : null, snapshot, freshness: unhealthy ? 'stale' : 'current', ...(unhealthy ? { reason: 'snapshot-health-degraded' } : {}) }
     } catch (error) {
       signal?.throwIfAborted() // exact caller reason; never convert cancellation into a diagnostic

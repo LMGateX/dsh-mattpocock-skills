@@ -282,8 +282,11 @@ function assertConsumedObligation(messages) {
 }
 
 test('hot preStep latency is characterized with two independent summary clients and an earlier summary FIFO gate', async t => {
-  // Freeze only Date-based reconciliation windows, not performance.now(). These
-  // synthetic turn:step keys exercise message de-duplication, not real model/S receipts.
+  // Freeze the elapsed freshness seam independently of wall event timestamps.
+  // Capture a real profiling clock before mocking; metrics must not use the frozen gate clock.
+  const sampleNow = performance.now.bind(performance)
+  let elapsed = 0
+  t.mock.method(performance, 'now', () => elapsed)
   t.mock.timers.enable({ apis: ['Date'], now: 2_000_000 })
   const releaseSummary = deferred(), summaryEntered = deferred()
   t.after(() => releaseSummary.resolve())
@@ -302,17 +305,17 @@ test('hot preStep latency is characterized with two independent summary clients 
     await settle()
     const beforeChecks = state.gets, stepTimes = [], allRequestTimes = [], messageBytes = []
     for (let index = 0; index < SAMPLES; index++) {
-      const iterationStart = performance.now()
+      const iterationStart = sampleNow()
       // Separate calls/signals represent two clients polling the same session;
       // they are not duplicate IDs in one batch and no model is invoked.
       const summaries = Array.from({ length: summaryClients }, () => f.runtime.readSummaries(operator,
         { sessions: [{ sessionId: 'root' }] }, signal()))
-      const stepStart = performance.now()
+      const stepStart = sampleNow()
       const step = f.runtime.preStep(caller('root'), signal(), [], turnKey + ':' + (index + 1)).then(messages => {
-        stepTimes.push(performance.now() - stepStart); return messages
+        stepTimes.push(sampleNow() - stepStart); return messages
       })
       const [messages, ...responses] = await Promise.all([step, ...summaries])
-      allRequestTimes.push(performance.now() - iterationStart)
+      allRequestTimes.push(sampleNow() - iterationStart)
       messageBytes.push(assertConsumedObligation(messages))
       for (const response of responses) {
         assert.equal(response.rows[0].status, 'current')
@@ -329,11 +332,12 @@ test('hot preStep latency is characterized with two independent summary clients 
     if (summaryClients === 2) gateCase = sample
   }
   console.log(JSON.stringify({ metric: 'prestep-two-summary-clients',
-    boundary: 'Public preStep/RuntimeFacade over fixture native ports and a real Domain adapter with stable in-memory table; no live model. Full snapshot and first consumption warmed before samples; Date-only clock freezes the existing refresh window. Synthetic step keys are not execution receipts.',
+    boundary: 'Public preStep/RuntimeFacade over fixture native ports and a real Domain adapter with stable in-memory table; no live model. Full snapshot and first consumption warmed before samples; Injected elapsed clock freezes the existing refresh window; sampleNow retains real profiling time. Synthetic step keys are not execution receipts.',
     summaryMode: 'Two independent current-summary RPCs to the same session per step, no shared request hint or batch', modes }))
 
   // A hot reused prepared view need not enter FIFO. Advance the public freshness
   // window to exercise a fresh read of already-warmed sources, not cold hydrate.
+  elapsed += 2001
   t.mock.timers.tick(2001)
   const { f, state } = gateCase, readSource = f.instrumentStorage.read.bind(f.instrumentStorage)
   let held = false, stepSubmittedAt, stepSourceEnteredAt, stepReturnedAt
@@ -341,7 +345,7 @@ test('hot preStep latency is characterized with two independent summary clients 
     if (!held) {
       held = true; summaryEntered.resolve()
       await releaseSummary.promise
-    } else if (stepSubmittedAt !== undefined && stepSourceEnteredAt === undefined) stepSourceEnteredAt = performance.now()
+    } else if (stepSubmittedAt !== undefined && stepSourceEnteredAt === undefined) stepSourceEnteredAt = sampleNow()
     return readSource(...args)
   }
   const blockedSummary = f.runtime.readSummaries(operator, { sessions: [{ sessionId: 'root' }] }, signal())
@@ -349,15 +353,15 @@ test('hot preStep latency is characterized with two independent summary clients 
   try {
     await summaryEntered.promise
     const beforeChecks = state.gets
-    stepSubmittedAt = performance.now()
+    stepSubmittedAt = sampleNow()
     pendingStep = f.runtime.preStep(caller('root'), signal(), [], '202:1').then(messages => {
-      stepReturnedAt = performance.now(); return messages
+      stepReturnedAt = sampleNow(); return messages
     })
     await settle()
     assert.equal(stepReturnedAt, undefined, 'fresh preStep cannot pass an earlier summary holding the permission FIFO')
     assert.equal(stepSourceEnteredAt, undefined)
     assert.equal(state.gets, beforeChecks, 'neither the gated summary nor queued step has reached Domain get')
-    const releasedAt = performance.now()
+    const releasedAt = sampleNow()
     releaseSummary.resolve()
     const [summary, messages] = await Promise.all([blockedSummary, pendingStep])
     assert.equal(summary.rows[0].summary.records.summary.pendingUserDecisionCount, 1)
@@ -365,7 +369,7 @@ test('hot preStep latency is characterized with two independent summary clients 
     assert(stepSourceEnteredAt >= releasedAt && stepReturnedAt >= stepSourceEnteredAt)
     assert(state.gets - beforeChecks >= 2)
     console.log(JSON.stringify({ metric: 'prestep-behind-summary-source-gate',
-      boundary: 'Public InstrumentStorage.read gates an earlier summary. PreStep first source-entry timing includes its authorization, FIFO wait and work before that public source port; it is not a private enqueue/CPU counter. Date-only freshness advanced after full-source warmup.',
+      boundary: 'Public InstrumentStorage.read gates an earlier summary. PreStep first source-entry timing includes its authorization, FIFO wait and work before that public source port; it is not a private enqueue/CPU counter. Elapsed freshness advanced after full-source warmup.',
       syntheticStepKey: '202:1', noLiveModel: true, headOfLineBlockingEliminated: false,
       observedMs: { preStepProvablyGateBlocked: round(releasedAt - stepSubmittedAt),
         preStepToFirstSourceEntry: round(stepSourceEnteredAt - stepSubmittedAt),

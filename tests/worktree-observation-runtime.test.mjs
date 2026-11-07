@@ -149,6 +149,7 @@ test('the first snapshot returns without waiting for the background replay scan'
 
 test('background replay verification invalidates a cached unverified observation when it commits', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  t.mock.method(performance, 'now', () => 0)
   const f = await fixture(t, { initialPolicy: policy() })
   const child = actualAgent('verify-replay-child', { parent: 'root', managed: true })
   const descriptor = child.session.ownEvents()[0]
@@ -189,6 +190,7 @@ test('background replay verification invalidates a cached unverified observation
 
 test('a rejected replay verification write invalidates the owner health without claiming a checked fact', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  t.mock.method(performance, 'now', () => 0)
   const f = await fixture(t, { initialPolicy: policy() })
   const child = actualAgent('write-failed-replay-child', { parent: 'root', managed: true })
   const descriptor = child.session.ownEvents()[0]
@@ -227,6 +229,7 @@ test('a rejected replay verification write invalidates the owner health without 
 
 test('a failed background replay invalidates the owner projection with an honest health diagnostic', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  t.mock.method(performance, 'now', () => 0)
   const f = await fixture(t, { initialPolicy: policy() })
   const child = actualAgent('failed-replay-child', { parent: 'root', managed: true })
   await f.created(child)

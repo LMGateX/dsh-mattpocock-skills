@@ -3,6 +3,12 @@ import { test } from 'node:test'
 import { fixture, policy, workflow, operator, signal } from './fixtures/runtime-host.mjs'
 
 const settled = () => new Promise(resolve => setImmediate(resolve))
+function freezeFreshness(t) {
+  let elapsed = 0
+  t.mock.method(performance, 'now', () => elapsed)
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  return { tick(ms) { elapsed += ms; t.mock.timers.tick(ms) } }
+}
 
 async function warm(f, id = 'root') {
   for (let i = 0; i < 3; i++) { await f.read(id); await settled() }
@@ -10,7 +16,7 @@ async function warm(f, id = 'root') {
 }
 
 test('completed empty replay preserves an unchanged coordinator projection inside its freshness window', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const clock = freezeFreshness(t)
   const f = await fixture(t, { initialPolicy: policy() })
   // Let baseline initialization and the one background replay finish before observing hot reads.
   await warm(f)
@@ -28,7 +34,7 @@ test('completed empty replay preserves an unchanged coordinator projection insid
 })
 
 test('cached projections still refresh on a business mutation and at the freshness deadline', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const clock = freezeFreshness(t)
   const f = await fixture(t, { initialPolicy: policy() })
   const before = await warm(f)
   await f.apply('put-workflow', { value: workflow })
@@ -36,16 +42,16 @@ test('cached projections still refresh on a business mutation and at the freshne
   assert.notStrictEqual(changed, before)
   assert.equal(changed.records.workflows[0].value.title, workflow.title)
   assert.equal(changed.records.businessRevision, before.records.businessRevision + 1)
-  t.mock.timers.tick(1_999)
+  clock.tick(1_999)
   assert.strictEqual(await f.read(), changed)
-  t.mock.timers.tick(1)
+  clock.tick(1)
   const refreshed = await f.read()
   assert.notStrictEqual(refreshed, changed, 'the existing 2-second reconciliation window is preserved')
   assert.deepEqual(refreshed.records, changed.records)
 })
 
 test('an owner-local business write does not rebuild another owner hot projection', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const clock = freezeFreshness(t)
   const f = await fixture(t, { initialPolicy: policy() })
   await warm(f)
   const other = await warm(f, 'other')
@@ -55,7 +61,7 @@ test('an owner-local business write does not rebuild another owner hot projectio
 })
 
 test('owner notification bookkeeping does not invalidate unrelated owner projections', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const clock = freezeFreshness(t)
   const f = await fixture(t, { initialPolicy: policy() })
   await warm(f)
   const other = await warm(f, 'other')
@@ -66,11 +72,11 @@ test('owner notification bookkeeping does not invalidate unrelated owner project
 })
 
 test('completed empty replays in another initialized owner do not invalidate a hot projection', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 })
+  const clock = freezeFreshness(t)
   const f = await fixture(t, { initialPolicy: policy() })
   await warm(f)
   await warm(f, 'other')
-  t.mock.timers.tick(2_000)
+  clock.tick(2_000)
   const root = await f.read()
   const other = await f.read('other')
   assert.notEqual(root.instance.instrumentInstanceId, other.instance.instrumentInstanceId)

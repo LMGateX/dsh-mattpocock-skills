@@ -12,7 +12,8 @@ export class RefreshGate {
   #clock = 0
   readonly #scopes = new Map<string, number>()
   readonly #last = new Map<string, { readonly epoch: number; readonly at: number }>()
-  constructor(private readonly ttlMs: number, private readonly now: () => number = Date.now,
+  /** Process-local elapsed milliseconds, never an epoch wall/event timestamp. */
+  constructor(private readonly ttlMs: number, private readonly elapsedNow: () => number = () => performance.now(),
     private readonly maxEntries = 64) {}
 
   /** Called by every mutation of the state the snapshot is derived from. */
@@ -34,14 +35,14 @@ export class RefreshGate {
     const last = this.#last.get(key)
     if (last === undefined) return true
     if (last.epoch !== this.epoch(scope)) return true
-    return this.now() - last.at >= this.ttlMs
+    return this.elapsedNow() - last.at >= this.ttlMs
   }
 
   /** Records that the projection was rebuilt from the state observed at `epoch`, which is the
    * epoch captured before the read; later mutations keep the key refreshing. */
   record(key: string, epoch?: number, scope?: string): void {
     this.#last.delete(key)
-    this.#last.set(key, { epoch: epoch ?? this.epoch(scope), at: this.now() })
+    this.#last.set(key, { epoch: epoch ?? this.epoch(scope), at: this.elapsedNow() })
     while (this.#last.size > this.maxEntries) this.#last.delete(this.#last.keys().next().value as string)
   }
 }
