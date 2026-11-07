@@ -21,6 +21,16 @@ export interface InstrumentFilter {
     readonly workflowId?: string;
     readonly afterRevision?: number;
 }
+/** Optional additive READ metadata; absent on older hosts, null when first-version proof/access is unavailable. */
+export interface InstrumentDecisionTime {
+    /** First put: epoch milliseconds and source revision (not a business CAS token). */
+    readonly registration?: {
+        readonly recordedAt: number;
+        readonly revision: number;
+    } | null;
+    /** Latest business update, never a viewer update or idempotent replay. */
+    readonly updatedAt?: number;
+}
 export interface InstrumentSnapshot {
     readonly instance: InstrumentInstance;
     readonly revision: number;
@@ -31,7 +41,7 @@ export interface InstrumentSnapshot {
     readonly workflows: readonly WorkflowRecord[];
     readonly tickets: readonly TicketRecord[];
     /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */
-    readonly decisions: readonly (DecisionRecord & {
+    readonly decisions: readonly (DecisionRecord & InstrumentDecisionTime & {
         readonly view: DecisionViewValue;
     })[];
     readonly changes: readonly InstrumentEvent[];
@@ -70,7 +80,7 @@ export type InstrumentCurrentWorkflow = Omit<WorkflowRecord, 'history'> & {
 export type InstrumentCurrentTicket = Omit<TicketRecord, 'history'> & {
     readonly provenance: InstrumentCurrentProvenance;
 };
-export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & {
+export type InstrumentCurrentDecision = Omit<DecisionRecord, 'history' | 'creator'> & InstrumentDecisionTime & {
     readonly creator: InstrumentAuthor;
     readonly provenance: InstrumentCurrentProvenance;
     readonly view: DecisionViewValue;

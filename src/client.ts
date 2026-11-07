@@ -19,7 +19,7 @@ import { ownSupervisionLeaf, parseSupervisionConfigSnapshot, resolveSupervisionS
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot, SupervisionField, SupervisionSettings } from './controls/supervision-config.js'
 import { parseSupervisionDocument } from './controls/supervision-audit.js'
 import type { SupervisionEpisode } from './controls/supervision-audit.js'
-import type { InstrumentSnapshot } from './controls/instruments.js'
+import type { InstrumentDecisionTime, InstrumentSnapshot } from './controls/instruments.js'
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js'
 import type { WindowSnapshot } from './controls/windows.js'
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js'
@@ -676,10 +676,7 @@ function decisionLongText(label: string, text: string | null | undefined): React
   return text ? h('details', { style: { borderTop: decisionBorder, padding: '8px 0' } }, h('summary', { style: { cursor: 'pointer' } }, label), h('p', { style: decisionBodyStyle }, text)) : null
 }
 // Optional authorized READ metadata; not a stored DecisionValue or a creation guess from retained history.
-type DecisionReadingRow = DecisionRecord & {
-  readonly registration?: { readonly recordedAt: number; readonly revision: number } | null
-  readonly updatedAt?: number
-}
+type DecisionReadingRow = DecisionRecord & InstrumentDecisionTime
 function decisionTime(label: string, value: number | undefined, unknown: string): ReactElement {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || !Number.isFinite(new Date(value).getTime())) return h('span', null, unknown)
   return h('span', null, label + ' ', h('time', { dateTime: new Date(value).toISOString() }, new Intl.DateTimeFormat(undefined, {
