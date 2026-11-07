@@ -12,7 +12,9 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
-## 0.15.0 实施与发版授权（2026-11-07，进行中；暂不本机安装）
+## 0.15.0 实施与发版授权（2026-11-07，已发布并下载回验；未为本机安装）
+
+交付状态：唯一 clean source/tag 为 5e24d574bab4f18a59964184a737e8aec3c3b375，0.15.0 五资产已发布并逐字节下载回验；源码/精确归档、双宿主、原生浏览器与独立复审门禁完成，见[验证摘要](<VERIFICATION.md>)。本机安装/激活依最新要求未执行，交付后等待用户补充讨论，不自行追加实现。
 
 所有者明确认可第一批实施，要求在 subagents 与隔离环境完成开发和测试并 push 发版；先前曾授权本机安装，后续明确更新为“完成后 push/发版，暂时不要为本机安装”，发布后再补充讨论新问题。以此最新边界执行：本轮不安装或激活现有 Profile，完成交付后不自行扩展新实现。实施/发布授权取代下文研究阶段的“仅文档/不提交”限制，仅限本节范围，不改写历史发布事实。
 

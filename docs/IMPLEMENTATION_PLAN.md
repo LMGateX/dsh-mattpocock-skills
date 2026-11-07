@@ -6,7 +6,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.15.0 当前交付计划（2026-11-07，已获实施/push/发布授权；最新要求暂不本机安装）
+## 0.15.0 交付完成（2026-11-07，已发布并下载回验；未为本机安装）
+
+最终 source/tag：5e24d574bab4f18a59964184a737e8aec3c3b375。A/B/C、两次 C3 缺口修复与独立复审、937 项源码与精确归档、双宿主/772 项浏览器检查及五资产下载 strict 均完成，详见[验证摘要](<VERIFICATION.md>)。本轮不安装/激活现有 Profile，不中断服务；保留隔离检出/私有证据供复验，停止扩展实现并等待下一轮问题讨论。
 
 以 [DESIGN.md](<DESIGN.md>) 的 0.15.0 授权节为当前范围，后文“仅研究/待授权”是前序阶段历史。先固定文档提交，再建隔离 integration 与独立 child 工作树：A 可信时间只读投影与授权/清理回归；B 原生逐项阅读/记录核对入口/设置会话展示与真实 React 回归；C 工具说明与实际消费指导/真实答复兼容回归。每树一名 writer、各自依赖/生成物；主代理串行集成，不共享生成目录并行构建。
 

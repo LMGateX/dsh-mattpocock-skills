@@ -2,6 +2,23 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.15.0 原生裁决阅读、可信时间与兼容核账（2026-11-07，已发布并下载回验；未为本机安装）
+
+所有者认可隔离子代理开发、测试与 push/发布；后续明确暂停本机安装，本轮按最新边界交付。最终运行时、测试、生成物和唯一 clean source 均为 **5e24d574bab4f18a59964184a737e8aec3c3b375**；新 annotated tag 指向该源，后续 main 只补公开验证记录，不冒充制品源。复验精确归档时应检出该 source/tag。
+
+- 输入区、右侧裁决阅读和设置页所选会话共用原生逐项折叠与问题/背景/结果/来源/技术分层。首次登记按可证明的最早源修订读取，业务时间与个人查看分开；assigned 无首版授权证明、源缺失或旧宿主缺字段显示未知。只扩完整/current READ 的可选时间元数据，不扩轻量摘要、模型 preview 或存储/请求 schema。
+- 主关注聚焦真实 pending-user 问题；旧 await 与非用户 pending 保留就地“记录核对”和原始计数，不作为未完成任务总数。新登记指导回归真实用户问题，技术选择回文档、执行回任务；不自动核账或清理存量。
+- 独立 Standards/Spec 复核关闭两个 P2：核账与用户答复保存意图分开，核账不捏造答复/覆盖原结果；必要旧来源可由操作者删减编辑，原 context 原样保留，本地按原 65536 边界诊断，超限不提交、不截断/放宽 wire。真实 React/受控 Remote 和真实 parser 保留 RED→GREEN，原 CAS、冲突草稿、显式重读及授权围栏不变。Standards 无硬性未关闭项；重复核对谓词的一个可选 P3 重构建议明确延后，无已观察行为不一致。
+- clean source 与显式 accepted archive 全套各 **937 tests / 931 pass / 0 fail / 6 skip**。六项均因 canonical 宿主缺可装配 native UI-slots，另在实际 alpha.3 native Client fixture **6/6 pass / 0 skip**；固定上游源校验已执行，未隐藏 vendor skips。归档模式 PluginManager 显式消费该 tgz；源码专用 seams 仍测源码，不泛称每项直接读取归档。
+- 根/Client strict types、实际 alpha.3 公开声明、闭合构建与 prepack 通过；Client **344714 B / 8 私有模块**，SHA-256 **fbf36ad9c1bed94d255cd37949e4734a6f2c8e20b248af3b2c6bd81a5d1ddc77**，externals 仍仅 React 与公开 primitives。**76 fixed / 85 vendor / 161 packed / 62 JS+DTS**，vendor、渠道与 provider precedence 未变。
+- 实际 DSH **0.2.2-alpha.3** shell/React 18.3.1/原生控件和主题的受控 Chromium fixture，明暗 × **1440/390**：**772/772**、96 截图，保留前序 632/488 项检查；可见 GMT+08:00、键盘焦点、完整问题选取、刷新/身份围栏、来源编辑及 65536/65537 边界通过。0 页面/console 异常、意外 Remote 写入或横向溢出。未点击 save；实际写入/CAS 由独立真实 React/受控 Remote 测试证明，不冒充生产 GUI、OS 剪贴板或通知投递验收。
+- **唯一 accepted tgz**：pnpm **11.8.0**，使用 --skip-manifest-obfuscation；**459756 B**，SHA-256 **6c50dd3e658e574b1e551cb4cfdd4cc5f126cb544b4e695f7857b39224631912**，161 regular / 0 directory / 0 symlink。只 pack 一次，归档和四 sidecars 均只读，dev/ino/mode/size/mtime/ctime 验证前后不变；original 与 downloaded 的 source-bound strict 均通过。
+- source + 同一归档 × **DSH 0.2.1-alpha.4 / 0.2.2-alpha.3** × stable/beta 隔离 headless 全通过，各 27 Skills，source/archive registry 逐字节相同；modelInvoked=false / webStarted=false。实际 alpha.2 二进制未实测，不将 engines 兼容门禁当成该版本 runtime 证明。
+- 非 force **atomic main + annotated v0.15.0** 已 push；tag object **ad6e0a65401e68359c491e0a22243cc33a2a23f9**，peeled=上述 source。[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.15.0) id **437291367**，published_at **2026-11-07T03:17:48Z**，draft=false / prerelease=false。五资产 API size/digest 匹配，下载 **5/5 逐字节一致**；92 个旧 tag refs 与 v0.14.1 body/五资产 id/size/digest 未变。草稿创建后一次只读 jq 引号错误已修正并找回同一草稿，未重建或重传。
+- 当前 Profile manifest/lock/patch 与共享 SDK manifest **4/4 SHA-256 不变**，原 Web listener PID/FD 不变；匿名 HTTP 请求得到正常认证要求 **401**，未绕过认证，不冒称当前 GUI 功能或加载验收。磁盘已装插件仍 **0.14.1**，实际当前进程加载版本未另行证明。**未为本机安装/激活、未改当前 Profile/SDK、未重启服务、未 npm publish、未处理目标 88 项记录**。隔离工作树与忽略的本地日志/截图有意保留供复验，交付后等待用户补充讨论，不自行扩展实现。
+
+公开身份与分阶段结果见[机器摘要](<../dist/verification-0.15.0.json>)；本机路径、原始环境日志和截图不随公开仓库分发。
+
 ## 0.14.1 设置页视觉层次（2026-11-06，已发布并下载回验；未为本机安装）
 
 本轮在 0.14.0 之后仅改客户端视觉层次、主题语义色、响应式分组、保存动作与提醒未保存反馈；来源、稀疏继承、CAS、授权与通知投递语义不变。初轮未授权发布，后续所有者明确要求 push/发版并继续禁止本机安装；授权先于版本准备在 39f3351 固定。最终运行时、测试与 Client bundle 为 **58b966bdf330950839f7d34486b271c169f8e575**；加入版本/断言/使用说明后的唯一 clean source 为 **08fd9b21005b7d24ce12b1849f5d613c116752d9**。后续 main 仅补文档证据，不冒充制品源。

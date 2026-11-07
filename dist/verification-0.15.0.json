@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "version": "0.15.0",
+  "sourceCommit": "5e24d574bab4f18a59964184a737e8aec3c3b375",
+  "runtimeAndBundleSource": "5e24d574bab4f18a59964184a737e8aec3c3b375",
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.15.0.tgz",
+    "bytes": 459756,
+    "sha256": "6c50dd3e658e574b1e551cb4cfdd4cc5f126cb544b4e695f7857b39224631912",
+    "pnpm": "11.8.0",
+    "members": {
+      "directories": 0,
+      "files": 161,
+      "symlinks": 0,
+      "expectedFiles": 161
+    },
+    "prepackPassed": true,
+    "strictOriginalPassed": true,
+    "strictDownloadedPassed": true,
+    "acceptedPackCount": 1,
+    "fiveOriginalFilesReadOnly": true,
+    "identityMetadataUnchanged": true,
+    "fiveDownloadedAssetsByteIdentical": true
+  },
+  "validation": {
+    "sourceSuite": {
+      "tests": 937,
+      "pass": 931,
+      "fail": 0,
+      "cancelled": 0,
+      "skip": 6
+    },
+    "explicitAcceptedArchiveSuite": {
+      "tests": 937,
+      "pass": 931,
+      "fail": 0,
+      "cancelled": 0,
+      "skip": 6,
+      "scope": "PluginManager consumes the accepted archive; source-only seams still test source"
+    },
+    "skipReasons": {
+      "upstreamSourceNotSupplied": 0,
+      "canonicalHostNativeUiSlotsNotAssemblable": 6
+    },
+    "nativeClientFixture": {
+      "host": "0.2.2-alpha.3",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "rootStrictTypesPassed": true,
+    "clientStrictTypesPassed": true,
+    "actualPublicAlpha3DeclarationsPassed": true,
+    "closedBuildFiles": 62,
+    "clientBundleBytes": 344714,
+    "clientBundleSha256": "fbf36ad9c1bed94d255cd37949e4734a6f2c8e20b248af3b2c6bd81a5d1ddc77",
+    "clientPrivateModules": 8,
+    "fixedPackedFiles": 76,
+    "vendorFiles": 85,
+    "browserFixture": {
+      "runtimeSource": "5e24d574bab4f18a59964184a737e8aec3c3b375",
+      "host": "0.2.2-alpha.3",
+      "react": "18.3.1",
+      "chromium": "156.0.8078.4",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "widths": [
+        1440,
+        390
+      ],
+      "timezone": "Asia/Shanghai",
+      "cases": 4,
+      "checks": 772,
+      "pass": 772,
+      "fail": 0,
+      "screenshots": 96,
+      "prior488And632ChecksPreserved": true,
+      "horizontalOverflow": false,
+      "pageErrors": 0,
+      "remoteWrites": 0,
+      "visibleKeyboardFocus": true,
+      "liveGuiAcceptance": false,
+      "osClipboardAcceptance": false,
+      "scope": "Delegated graphical-browser UI gate including C3 readonly; package/release and actual write payload gates remain separate"
+    },
+    "reviews": {
+      "sourceCommit": "5e24d574bab4f18a59964184a737e8aec3c3b375",
+      "baseline": "4e6b41a744b07894a4f2dbb1f0ff8b2f8b6137ca",
+      "standards": {
+        "newHardBreaches": 0,
+        "optionalNonblocking": [
+          {
+            "priority": "P3",
+            "issue": "Repeated record-check union predicate",
+            "disposition": "Deferred explicitly to keep the compatibility fix minimal; no observed behavioral mismatch"
+          }
+        ]
+      },
+      "spec": {
+        "openConfirmedFindings": 0,
+        "closed": [
+          {
+            "priority": "P2",
+            "issue": "Missing separate compatibility disposition save intent"
+          },
+          {
+            "priority": "P2",
+            "issue": "Mandatory complete historical-reference transcription can exceed existing context bound"
+          }
+        ]
+      },
+      "reviewScope": "Independent read-only fixed-SHA initial and incremental review; execution tests/artifact/browser gates are separate evidence",
+      "localInstallationDeferred": true
+    },
+    "headless": [
+      {
+        "dsh": "0.2.1-alpha.4",
+        "channels": {
+          "beta": {
+            "count": 27
+          },
+          "stable": {
+            "count": 27
+          }
+        },
+        "sourceAndArchiveRegistryByteIdentical": true,
+        "modelInvoked": false,
+        "webStarted": false
+      },
+      {
+        "dsh": "0.2.2-alpha.3",
+        "channels": {
+          "beta": {
+            "count": 27
+          },
+          "stable": {
+            "count": 27
+          }
+        },
+        "sourceAndArchiveRegistryByteIdentical": true,
+        "modelInvoked": false,
+        "webStarted": false
+      }
+    ],
+    "actualAlpha2BinaryTested": false
+  },
+  "release": {
+    "id": 437291367,
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.15.0",
+    "tag": "v0.15.0",
+    "annotatedTagObject": "ad6e0a65401e68359c491e0a22243cc33a2a23f9",
+    "tagPeeledSource": "5e24d574bab4f18a59964184a737e8aec3c3b375",
+    "publishedAt": "2026-11-07T03:17:48Z",
+    "draft": false,
+    "prerelease": false,
+    "nonForceAtomicMainAndTagPush": true,
+    "assets": [
+      {
+        "id": 719448178,
+        "name": "lmgatex-dsh-mattpocock-skills-0.15.0.tgz",
+        "size": 459756,
+        "digest": "sha256:6c50dd3e658e574b1e551cb4cfdd4cc5f126cb544b4e695f7857b39224631912",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.15.0/lmgatex-dsh-mattpocock-skills-0.15.0.tgz"
+      },
+      {
+        "id": 719448182,
+        "name": "lmgatex-dsh-mattpocock-skills-0.15.0.tgz.pnpm-version",
+        "size": 7,
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.15.0/lmgatex-dsh-mattpocock-skills-0.15.0.tgz.pnpm-version"
+      },
+      {
+        "id": 719448176,
+        "name": "lmgatex-dsh-mattpocock-skills-0.15.0.tgz.sha256",
+        "size": 107,
+        "digest": "sha256:e83163d14feb34b4a387f56c50e5d77b80df1ecf9d749a37c81fd18ec75a0927",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.15.0/lmgatex-dsh-mattpocock-skills-0.15.0.tgz.sha256"
+      },
+      {
+        "id": 719448181,
+        "name": "lmgatex-dsh-mattpocock-skills-0.15.0.tgz.size",
+        "size": 7,
+        "digest": "sha256:1d650a38b871a036c1b6cd5626b200ad529671468006913eaf7ae6be9495af26",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.15.0/lmgatex-dsh-mattpocock-skills-0.15.0.tgz.size"
+      },
+      {
+        "id": 719448189,
+        "name": "lmgatex-dsh-mattpocock-skills-0.15.0.tgz.source-commit",
+        "size": 41,
+        "digest": "sha256:1fde3072fd181a0f67d63396e99f68788d5a58b2de1ae2596cd8c96f9a3c320b",
+        "browser_download_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/download/v0.15.0/lmgatex-dsh-mattpocock-skills-0.15.0.tgz.source-commit"
+      }
+    ],
+    "downloadedAssetCount": 5,
+    "downloadedAssetsByteIdentical": true,
+    "previousTagRefsUnchanged": 92,
+    "previousReleaseAndAssetIdentityUnchanged": true
+  },
+  "local": {
+    "installationDeferredByLatestUserInstruction": true,
+    "newVersionInstalled": false,
+    "newVersionActivated": false,
+    "installedManifestVersion": "0.14.1",
+    "currentRuntimeLoadedVersionVerified": false,
+    "profileAndSdkMetadataSha256Unchanged": 4,
+    "webListenerIdentityUnchanged": true,
+    "anonymousGuiHttpStatus": 401,
+    "authenticationNotBypassed": true,
+    "liveGuiFunctionalAcceptance": false,
+    "currentServiceRestarted": false,
+    "sharedSdkChanged": false,
+    "managementAutoEnabled": false,
+    "productionRecordsAuditedOrChanged": false,
+    "target88Unreviewed": true,
+    "npmPublished": false,
+    "isolatedWorktreesAndPrivateEvidenceRetainedForRevalidation": true
+  }
+}
