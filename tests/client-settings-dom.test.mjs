@@ -4,6 +4,7 @@ import vm from 'node:vm'
 import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../scripts/build-client.mjs'
+import { parseInstrumentCommand } from '../lib/controls/instrument-state.js'
 import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
 // Real React and DOM integration, not a graphical-browser or live-profile probe.
@@ -74,7 +75,7 @@ function normalText(container) {
 async function click(element) { await React.act(async () => element.click()) }
 async function select(element, value) { await React.act(async () => { element.value = value; element.dispatchEvent(new element.ownerDocument.defaultView.Event('change', { bubbles: true })) }) }
 
-async function closeoutFixture(t, apply = async () => ok({})) {
+async function closeoutFixture(t, apply = async () => ok({}), configure = value => value) {
   const instance = { instrumentInstanceId: 'closeout-i', ownerSessionId: 'closeout-owner', controlWorkspaceId: 'work-one' }
   const author = { kind: 'agent', principalId: 'agent:original', sessionId: 'original-session' }
   let view = { sessionId: 'closeout-session', instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
@@ -83,6 +84,7 @@ async function closeoutFixture(t, apply = async () => ok({})) {
       history: [{ revision: 1, recordedAt: 1000, author, references: ['https://example.test/original-answer'], value: {} }, { revision: 3, recordedAt: 3000, author, references: ['https://example.test/task-link'], value: {} }],
       value: { question: '需要保留原答复的旧事项', status: '任务原自定义状态', pending: true, awaitingImplementation: true, addressee: { kind: 'user' }, ticketIds: ['original-ticket'], context: '原背景与任务指针 https://example.test/task/42', result: '原用户明确答复：仅批准甲', recommendation: '旧建议', impact: '旧影响', options: [{ key: 'a', label: '原选项' }] } }],
       summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 1, pendingUserDecisionCount: 1, awaitingImplementationCount: 1 } }, windows: null, resources: [], capabilities: [], health: [] }
+  view = configure(view)
   const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (sessionId, command) => { calls.push({ sessionId, command: copy(command) }); return apply(command) } }
   const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
   const mounted = await mount(t, client.Details, { sessionId: view.sessionId, observer, remote, useTabInfo: () => ({ tab: { visible: true } }) })
@@ -92,6 +94,67 @@ async function closeoutFixture(t, apply = async () => ok({})) {
 async function typeText(window, node, value) {
   await React.act(async () => { Object.getOwnPropertyDescriptor(node.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype, 'value').set.call(node, value); node.dispatchEvent(new window.Event('input', { bubbles: true })) })
 }
+
+test('closeout can retain one necessary historical source from a lawful long reference inventory', async t => {
+  const refs = Array.from({ length: 100 }, (_, index) => 'https://example.test/old-source-' + index + '/' + 'x'.repeat(1000))
+  const f = await closeoutFixture(t, async command => { assert.doesNotThrow(() => parseInstrumentCommand(command), 'actual UI command must satisfy the unchanged wire parser'); return ok({}) }, view => {
+    view.records.decisions[0].history[1].references = refs
+    assert.doesNotThrow(() => parseInstrumentCommand({ operationId: 'lawful-long-sources', expectedRevision: 6, workflowId: 'wf', decisionId: 'legacy', action: 'put-decision', references: refs, value: view.records.decisions[0].value }), 'the original long-reference decision is lawful under the real existing wire parser')
+    return view
+  })
+  const editor = named(f.container, '裁决阅读与编辑')
+  await select(named(editor, '保存意图'), 'closeout')
+  const sources = named(editor, '必要旧来源转录（authored，可编辑）')
+  assert(sources.value.length > 100000, 'prefill is complete, not silently truncated to the context budget')
+  assert(sources.value.includes(refs[99])); assert.match(sources.value, /修订 3.*agent:original/)
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '本次需要精简旧来源转录')
+  assert.equal(button(editor, '登记核账处置').disabled, true, 'the oversized full prefill must be diagnosed before Remote')
+  assert.match(named(editor, '核账背景长度').textContent, /65536.*超过/)
+  await click(button(editor, '登记核账处置')); assert.deepEqual(f.calls, [])
+  await typeText(f.window, sources, '修订 3 · 原作者 agent / agent:original\n' + refs[0])
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '只转录本次核账必须保留的一条答复来源，责任已移交原任务，尚未完成。')
+  await typeText(f.window, named(editor, '本次来源引用（每行一条）'), 'https://example.test/current-handoff')
+  await click(button(editor, '登记核账处置'))
+  assert.equal(f.calls.length, 1)
+  const { command } = f.calls[0]
+  assert.equal(command.expectedRevision, 7)
+  assert(command.value.context.startsWith('原背景与任务指针 https://example.test/task/42\n\n'))
+  assert(command.value.context.includes(refs[0])); assert(!command.value.context.includes(refs[99]))
+  assert.match(command.value.context, /authored.*转录/); assert.match(command.value.context, /修订 3.*agent:original/)
+  assert.deepEqual(command.references, ['https://example.test/current-handoff'])
+  assert.deepEqual(Object.keys(command.value).sort(), ['context', 'question', 'status'])
+  assert.equal(f.view.records.decisions[0].value.result, '原用户明确答复：仅批准甲')
+  assert.match(editor.textContent, /已登记核账处置/)
+})
+
+test('closeout diagnoses near-limit original context without truncation Remote writes or losing the source draft', async t => {
+  const original = '长'.repeat(65520)
+  const f = await closeoutFixture(t, async command => { parseInstrumentCommand(command); return ok({}) }, view => { view.records.decisions[0].value.context = original; return view })
+  const editor = named(f.container, '裁决阅读与编辑')
+  await select(named(editor, '保存意图'), 'closeout')
+  await typeText(f.window, named(editor, '必要旧来源转录（authored，可编辑）'), '修订 1 · 原作者 agent / agent:original\nhttps://example.test/necessary-source')
+  await typeText(f.window, named(editor, '核账说明与任务去向'), '不能丢失的核账说明与任务去向')
+  const sources = named(editor, '必要旧来源转录（authored，可编辑）'), note = named(editor, '核账说明与任务去向')
+  const diagnostic = named(editor, '核账背景长度')
+  assert.match(diagnostic.textContent, /拼接后背景.*65536/)
+  assert.match(diagnostic.textContent, /原背景 65520.*原样保留/)
+  assert.match(diagnostic.textContent, /必要旧来源|精简核账说明/)
+  assert.match(diagnostic.textContent, /原有授权编辑.*重新读取/)
+  assert.equal(button(editor, '登记核账处置').disabled, true)
+  await click(button(editor, '登记核账处置'))
+  assert.deepEqual(f.calls, [])
+  assert.equal(f.view.records.decisions[0].value.context, original)
+  assert.equal(note.value, '不能丢失的核账说明与任务去向')
+  assert.match(sources.value, /necessary-source/)
+  const refreshed = copy(f.view); refreshed.records.businessRevision++
+  await f.refresh(refreshed)
+  assert.equal(named(editor, '必要旧来源转录（authored，可编辑）'), sources)
+  assert.match(sources.value, /necessary-source/)
+  await click(button(editor, '重新读取事项（丢弃草稿）'))
+  await select(named(editor, '保存意图'), 'closeout')
+  assert(!named(editor, '必要旧来源转录（authored，可编辑）').value.includes('necessary-source'))
+  assert.equal(named(editor, '核账说明与任务去向').value, '')
+})
 
 test('explicit closeout saves authored context and sources without inventing an answer or clearing old flags', async t => {
   const f = await closeoutFixture(t), editor = named(f.container, '裁决阅读与编辑')
@@ -177,6 +240,7 @@ test('closeout draft and selection are cleared on caller scope grants and record
     let editor = named(f.container, '裁决阅读与编辑')
     await select(named(editor, '保存意图'), 'closeout')
     await typeText(f.window, named(editor, '核账说明与任务去向'), '只属于原授权范围的核账草稿')
+    await typeText(f.window, named(editor, '必要旧来源转录（authored，可编辑）'), '只属于原授权范围的来源转录草稿')
     const next = copy(authorized)
     if (change === 'caller') next.caller.principalId = 'user:other'
     if (change === 'scope') next.records.scope = { kind: 'assigned', workflowId: 'wf', ticketIds: [] }
@@ -185,6 +249,7 @@ test('closeout draft and selection are cleared on caller scope grants and record
     await f.refresh(next)
     assert(!f.container.querySelector('[aria-label="核账说明与任务去向"]'), change)
     assert(!f.container.textContent.includes('只属于原授权范围的核账草稿'))
+    assert(!f.container.textContent.includes('只属于原授权范围的来源转录草稿'))
     await f.refresh(copy(authorized))
     assert(!f.container.querySelector('[aria-label="裁决阅读与编辑"]'), 'recovery does not revive the old selection')
     await click(button(named(f.container, '待你裁决'), '阅读 / 编辑：需要保留原答复的旧事项'))
@@ -192,6 +257,7 @@ test('closeout draft and selection are cleared on caller scope grants and record
     assert.equal(named(editor, '保存意图').value, 'answer')
     await select(named(editor, '保存意图'), 'closeout')
     assert.equal(named(editor, '核账说明与任务去向').value, '')
+    assert(!named(editor, '必要旧来源转录（authored，可编辑）').value.includes('只属于原授权范围'))
   }
   assert.deepEqual(f.calls, [])
 })

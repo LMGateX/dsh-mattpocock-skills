@@ -879,13 +879,27 @@ export function decisionAnswerCommand(records: InstrumentSnapshot, decision: Dec
 
 /** Compatibility disposition is an authored context append, never a synthetic user answer. */
 type DecisionFlagEdit = 'keep' | 'true' | 'false'
-function decisionCloseoutCommand(records: InstrumentSnapshot, decision: DecisionRecord, note: string, references: string,
+function decisionSourceTranscription(decision: DecisionRecord): string {
+  return decision.history?.filter(change => change.references.length > 0).map(change =>
+    '修订 ' + change.revision + ' · 原作者 ' + change.author.kind + ' / ' + change.author.principalId + '\n' + change.references.join('\n')).join('\n\n') ?? ''
+}
+// Mirrors the unchanged DecisionValue text wire bound; no source or context is truncated to fit it.
+const DECISION_CONTEXT_TEXT_LIMIT = 65536
+function decisionCloseoutContext(decision: DecisionRecord, note: string, sources: string): string {
+  return [decision.value.context ?? '', '【核账处置（authored 声明，不是用户答复或完成证明）】\n' + note.trim(),
+    sources.trim() ? '【本次 authored 转录：所选必要旧来源；不认证引用内容】\n' + sources.trim() : '本次未转录旧来源；不代表历史不存在，未知来源未补造。'].filter(Boolean).join('\n\n')
+}
+function decisionCloseoutContextError(context: string): string | null {
+  if (context.length <= DECISION_CONTEXT_TEXT_LIMIT) return null
+  return '超过现有背景字段 ' + DECISION_CONTEXT_TEXT_LIMIT + ' 字符上限，不能提交。请精简核账说明或仅保留必要旧来源转录；不会自动截断原背景或来源。若原背景本身无法容纳追加内容，请先通过原有授权编辑流程整理背景并保留必要指针，再显式重新读取。'
+}
+function decisionCloseoutCommand(records: InstrumentSnapshot, decision: DecisionRecord, note: string, references: string, sources: string,
   changes: { readonly status: string; readonly pending: DecisionFlagEdit; readonly awaiting: DecisionFlagEdit }, operationId: string): InstrumentCommand {
   if (!note.trim()) throw new Error('请填写核账说明与任务去向；这不是用户答复或完成证明。')
-  const sources = decision.history?.filter(change => change.references.length > 0).map(change =>
-    '修订 ' + change.revision + ' · 原作者 ' + change.author.kind + ' / ' + change.author.principalId + '\n' + change.references.join('\n')) ?? []
-  const context = [decision.value.context ?? '', '【核账处置（authored 声明，不是用户答复或完成证明）】\n' + note.trim(),
-    sources.length ? '【本次 authored 转录：原授权可见来源引用；不认证引用内容】\n' + sources.join('\n\n') : '原授权可见来源引用：未知或未返回；未补造。'].filter(Boolean).join('\n\n')
+
+  const context = decisionCloseoutContext(decision, note, sources)
+  const contextError = decisionCloseoutContextError(context)
+  if (contextError !== null) throw new Error(contextError)
   return { operationId, expectedRevision: records.businessRevision, workflowId: decision.workflowId, action: 'put-decision', decisionId: decision.decisionId,
     references: [...new Set(references.split(/\r?\n/).map(value => value.trim()).filter(Boolean))],
     value: { question: decision.value.question, status: changes.status.trim() || decision.value.status, context,
@@ -899,6 +913,7 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
   const [intent, setIntent] = useState<'answer' | 'closeout'>('answer')
   const [closeoutNote, setCloseoutNote] = useState('')
   const [closeoutReferences, setCloseoutReferences] = useState('')
+  const [closeoutSources, setCloseoutSources] = useState(() => decisionSourceTranscription(props.decision))
   const [closeoutStatus, setCloseoutStatus] = useState('')
   const [closeoutPending, setCloseoutPending] = useState<DecisionFlagEdit>('keep')
   const [closeoutAwaiting, setCloseoutAwaiting] = useState<DecisionFlagEdit>('keep')
@@ -907,10 +922,12 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
   const [awaiting, setAwaiting] = useState(props.decision.value.awaitingImplementation ?? false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const closeoutContext = decisionCloseoutContext(base.decision, closeoutNote, closeoutSources)
+  const closeoutContextError = decisionCloseoutContextError(closeoutContext)
   const save = async (): Promise<void> => {
     setBusy(true); setMessage(null)
     try {
-      const command = intent === 'closeout' ? decisionCloseoutCommand(base.records, base.decision, closeoutNote, closeoutReferences,
+      const command = intent === 'closeout' ? decisionCloseoutCommand(base.records, base.decision, closeoutNote, closeoutReferences, closeoutSources,
         { status: closeoutStatus, pending: closeoutPending, awaiting: closeoutAwaiting }, crypto.randomUUID())
         : decisionAnswerCommand(base.records, base.decision, answer, status, pending, awaiting, crypto.randomUUID())
       remoteValue(await props.remote.applyInstrument(props.sessionId, command))
@@ -933,19 +950,23 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
     decisionLongText('已记录结果', props.decision.value.result),
     intent === 'closeout' ? h('fieldset', { style: { border: decisionBorder, padding: '10px', minWidth: 0 } },
       h('legend', null, '登记核账处置'),
-      h('p', { style: { color: decisionSecondary, fontSize: '12px', lineHeight: 1.6 } }, '在原背景后追加作者声明与任务去向，不改原用户答复；原可见历史引用以 authored 转录保留。这不是完成证明，不自动清除标记。'),
+      h('p', { style: { color: decisionSecondary, fontSize: '12px', lineHeight: 1.6 } }, '在原背景后追加作者声明与任务去向，不改原用户答复；必要旧来源须由你在下方明确保留，所选内容以 authored 转录写入持久背景，不认证引用内容。这不是完成证明，不自动清除标记。'),
       h('label', { style: { display: 'block' } }, '核账说明与任务去向', h('textarea', { 'aria-label': '核账说明与任务去向', value: closeoutNote, disabled: busy, style: { width: '100%', boxSizing: 'border-box' }, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setCloseoutNote(event.target.value) })),
+      h('label', { style: { display: 'block', margin: '8px 0' } }, '必要旧来源转录（authored，可编辑）', h('textarea', { 'aria-label': '必要旧来源转录（authored，可编辑）', rows: 5, value: closeoutSources, disabled: busy, style: { width: '100%', boxSizing: 'border-box' }, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setCloseoutSources(event.target.value) })),
+      h('p', { style: { color: decisionSecondary, fontSize: '12px', lineHeight: 1.6 } }, '预填当前授权可见引用，可删减为本次必要来源并编辑；请连同原修订与原作者保留。不会静默截断或替你判断哪些来源可以丢弃。本次来源引用是另一个字段，不代替持久背景中的必要旧来源。'),
       h('label', { style: { display: 'block' } }, '本次来源引用（每行一条）', h('textarea', { 'aria-label': '本次来源引用（每行一条）', value: closeoutReferences, disabled: busy, style: { width: '100%', boxSizing: 'border-box' }, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setCloseoutReferences(event.target.value) })),
       h('label', { style: { display: 'block', margin: '8px 0' } }, '核账状态（留空保留原状态）', h(Input, { 'aria-label': '核账状态（留空保留原状态）', value: closeoutStatus, disabled: busy, placeholder: base.decision.value.status, onChange: (event: ChangeEvent<HTMLInputElement>) => setCloseoutStatus(event.target.value) })),
       flagChoice('核账 pending', closeoutPending, setCloseoutPending), flagChoice('核账原待落实标记', closeoutAwaiting, setCloseoutAwaiting),
-      h(Button, { disabled: busy || !closeoutNote.trim(), onClick: () => { void save() } }, '登记核账处置'))
+      h('p', { 'aria-label': '核账背景长度', role: closeoutContextError === null ? undefined : 'status', style: { color: closeoutContextError === null ? decisionSecondary : 'var(--dsw-alias-state-error-primary, #dc4444)', fontSize: '12px', lineHeight: 1.6 } },
+        '拼接后背景 ' + closeoutContext.length + ' / ' + DECISION_CONTEXT_TEXT_LIMIT + ' 字符；原背景 ' + (base.decision.value.context?.length ?? 0) + ' 字符原样保留。' + (closeoutContextError ?? '')),
+      h(Button, { disabled: busy || !closeoutNote.trim() || closeoutContextError !== null, onClick: () => { void save() } }, '登记核账处置'))
     : h('div', null,
       h('label', null, '你的裁决', h('textarea', { 'aria-label': '用户答复', value: answer, disabled: busy, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => setAnswer(event.target.value) })),
       h('label', null, '保存状态（任务自定义）', h('input', { value: status, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setStatus(event.target.value) })),
       h('label', null, h('input', { type: 'checkbox', checked: pending, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setPending(event.target.checked) }), '仍 pending'),
       h('label', null, h('input', { type: 'checkbox', checked: awaiting, disabled: busy, onChange: (event: ChangeEvent<HTMLInputElement>) => setAwaiting(event.target.checked) }), '保留原待落实标记（不代表已经用户裁决）'),
       h(Button, { disabled: busy || !answer.trim() || !status.trim(), onClick: () => { void save() } }, '按明确选择记录裁决')),
-    h('button', { type: 'button', disabled: busy, onClick: () => { setBase({ records: props.records, decision: props.decision }); setAnswer(''); setIntent('answer'); setCloseoutNote(''); setCloseoutReferences(''); setCloseoutStatus(''); setCloseoutPending('keep'); setCloseoutAwaiting('keep'); setStatus(props.decision.value.status); setPending(props.decision.value.pending ?? false); setAwaiting(props.decision.value.awaitingImplementation ?? false); setMessage(null) } }, '重新读取事项（丢弃草稿）'),
+    h('button', { type: 'button', disabled: busy, onClick: () => { setBase({ records: props.records, decision: props.decision }); setAnswer(''); setIntent('answer'); setCloseoutNote(''); setCloseoutReferences(''); setCloseoutSources(decisionSourceTranscription(props.decision)); setCloseoutStatus(''); setCloseoutPending('keep'); setCloseoutAwaiting('keep'); setStatus(props.decision.value.status); setPending(props.decision.value.pending ?? false); setAwaiting(props.decision.value.awaitingImplementation ?? false); setMessage(null) } }, '重新读取事项（丢弃草稿）'),
     diagnostic('草稿业务修订 ' + base.records.businessRevision + '；背景刷新不会升级保存修订。'),
     message === null ? null : diagnostic(message),
     h(DecisionTechnicalDetails, { label: '来源历史（不是当前状态）', value: props.decision.history }))
