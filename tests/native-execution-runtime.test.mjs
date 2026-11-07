@@ -219,6 +219,8 @@ test('a delegate binding contributes an inferred lane while the fact row stays a
 
 test('execution facts are coordinator-only and keep S, nativeStops and owner notices intact', async t => {
   const f = await fixture(t, { known: true, initialPolicy: policy() })
+  await f.apply('put-workflow', { value: { title: 'Execution lane', axes: [] } })
+  await f.apply('put-task-reference', { localTicketId: 'T1', value: { source: { kind: 'unverified' }, locator: 'task-document#execution-lane' } })
   const child = actualAgent('native-scope', { parent: 'root', managed: true, cwd: '/trees/S' })
   await f.created(child)
   await f.assign(child.id, 'flow', ['T1'])

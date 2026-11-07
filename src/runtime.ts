@@ -1080,7 +1080,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(!(await load()).notifications.some(n=>n.notificationId===notificationId))await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-outcome',state:'pending',messageId:null}]})
     scheduleNotification(event.ownerSessionId)
   })
-  const baselines=new Map<string,{readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
+  // Keep only the latest scope baseline per caller identity, never one large body per grant.
+  const baselines=new Map<string,{readonly scopeKey:string;readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
   // The host may assemble one admitted model request several times, and a PTC step may complete
   // several nested dispatches; all of them share one turn:step identity. Those passes can be seconds
   // apart while other sessions keep changing the facts, and a message queued during the step is not
@@ -1089,22 +1090,26 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // per admitted step; later passes are suppressed and the newest facts reach the model with the next
   // admitted step (its own instrument tool results still carry the state their call produced).
   let stepSerial=0,currentStepKey='serial:0'
-  const deliveredInStep=new Map<string,{readonly step:string;readonly text:string}>()
+  const deliveredInStep=new Map<string,{readonly step:string;readonly agent:Agent|undefined;readonly session:Agent['session']|undefined}>()
   // A persistent association or policy-storage failure must not append the same notice at every
   // step and every tool result: the notice reuses the snapshot baseline and visibility rule.
   const failureReason=(error:unknown):string=>error instanceof ControlsError?error.code:error instanceof ResourceError?error.code:'internal-error'
   const installSnapshot=(caller:HostCaller,acceptedMessages:readonly UserMessage[],text:string,baselineKey:string):readonly UserMessage[]=>{
-    const delivered=deliveredInStep.get(baselineKey)
-    if(delivered!==undefined&&delivered.step===currentStepKey)return []
-    const agent=ports.liveAgent(caller.sessionId!),baseline=baselines.get(baselineKey)
+    const identityKey=JSON.stringify([caller.principalId,caller.sessionId]),agent=ports.liveAgent(caller.sessionId!)
+    const prior=baselines.get(identityKey),baseline=prior?.scopeKey===baselineKey?prior:undefined
+    if(prior!==undefined&&baseline===undefined)baselines.delete(identityKey)
+    // The admitted-step installation slot belongs to the actual caller/session, not to
+    // a scope version or diagnostic kind. Scope changes must still fence baseline reuse.
+    const delivered=deliveredInStep.get(identityKey)
+    if(delivered!==undefined&&delivered.step===currentStepKey&&delivered.agent===agent&&delivered.session===agent?.session)return []
     if(agent&&baseline&&baseline.text===text&&baseline.agent===agent&&baseline.session===agent.session){
       if(acceptedMessages.some(message=>message.id===baseline.message.id&&canonical({source:message.source,content:message.content})===canonical({source:baseline.message.source,content:baseline.message.content})))return []
       try{if(ports.snapshotVisible?.(caller,agent,baseline.message)===true)return []}catch{/* Unavailable visibility never proves delivery. */}
     }
     const message=ports.makeSnapshotMessage(text)
-    if(agent)baselines.set(baselineKey,{agent,session:agent.session,message,text})
-    else baselines.delete(baselineKey)
-    deliveredInStep.set(baselineKey,{step:currentStepKey,text})
+    if(agent)baselines.set(identityKey,{scopeKey:baselineKey,agent,session:agent.session,message,text})
+    else baselines.delete(identityKey)
+    deliveredInStep.set(identityKey,{step:currentStepKey,agent,session:agent?.session})
     return [message]
   }
   const deliverFailure=(caller:HostCaller,acceptedMessages:readonly UserMessage[],error:unknown):readonly UserMessage[]=>installSnapshot(caller,acceptedMessages,

@@ -262,3 +262,38 @@ test('delegate revalidates referenced admission after preparation rather than re
   await assert.rejects(f.runtime.delegate(caller('root'), { description: 'Prepared lane', prompt: 'Use reference', worktree: '/fixture/prepared', workflowId: 'flow', ticketIds: ['R'] }, f.exec()), { code: 'storage-uncertain' })
   assert.equal(created, 0)
 })
+
+test('one admitted step installs at most one view across scope changes and identity failures in source and mounted runtimes', async t => {
+  for (const mounted of [false, true]) await t.test(mounted ? 'mounted' : 'source', async t => {
+    const f = mounted ? await mountedFixture(t) : await fixture(t, { initialPolicy: policy(), known: true })
+    if (mounted) await f.runtime.savePolicy(operator, policy(), 0, signal())
+    const childId = mounted ? 'child' : 'old-child', who = caller(childId)
+    let revision = 0
+    const apply = command => f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'same-step-' + revision, expectedRevision: revision++, workflowId: 'flow', ...command }, signal())
+    await apply({ action: 'put-workflow', value: { title: 'Step group', axes: [] } })
+    for (const id of ['A', 'B']) await apply({ action: 'put-task-reference', localTicketId: id, value: { source: { kind: 'unverified' }, locator: 'task#' + id, label: id === 'B' ? 'PRIVATE-old-scope-B' : 'Allowed-A' } })
+    const assign = ticketIds => f.runtime.assign(caller('root'), { sessionId: childId, workflowId: 'flow', ticketIds }, signal())
+    await assign(['A', 'B'])
+    const first = await f.runtime.preStep(who, signal(), [], '1:1')
+    assert.equal(first.length, 1)
+    const original = JSON.stringify(first[0])
+    await assign(['A'])
+    assert.equal((await f.runtime.preStep(who, signal(), first, '1:1')).length, 0, 'scope partition must not create a second per-step installation slot')
+    const narrowed = await f.runtime.preStep(who, signal(), first, '2:1')
+    assert.equal(narrowed.length, 1)
+    assert.doesNotMatch(JSON.stringify(narrowed), /PRIVATE-old-scope-B/)
+    assert.equal(JSON.stringify(first[0]), original, 'already admitted native history is never rewritten')
+    const ports = mounted ? f.mounted.ports : f.ports, resolve = ports.authority.resolveSession
+    ports.authority.resolveSession = async () => { throw new Error('identity unavailable') }
+    assert.equal((await f.runtime.preStep(who, signal(), narrowed, '2:1')).length, 0, 'an unavailable diagnostic shares the same per-step installation slot')
+    const failed = await f.runtime.preStep(who, signal(), narrowed, '3:1')
+    assert.equal(failed.length, 1)
+    assert.match(JSON.stringify(failed), /Instrument context unavailable/)
+    assert.doesNotMatch(JSON.stringify(failed), /PRIVATE-old-scope-B|Allowed-A/)
+    ports.authority.resolveSession = resolve
+    assert.equal((await f.runtime.preStep(who, signal(), failed, '3:1')).length, 0, 'recovery also waits for the next admitted step')
+    const recovered = await f.runtime.preStep(who, signal(), failed, '4:1')
+    assert.equal(recovered.length, 1)
+    assert.doesNotMatch(JSON.stringify(recovered), /PRIVATE-old-scope-B/)
+  })
+})
