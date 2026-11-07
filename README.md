@@ -24,6 +24,16 @@ This release mirrors upstream **v1.3.2** (commit `d1478fc`). `PROVENANCE.json` r
 
 **Upgrading an existing repository?** Upstream v1.3 renamed `CONTEXT.md` to `GLOSSARY.md` with no fallback, and the skills fail silently rather than reporting the old name. Read [MIGRATION.md](MIGRATION.md) first.
 
+## 0.16.0 task references and stable context
+
+The default collaboration path points to the project’s existing task source instead of maintaining another business lifecycle. `put-task-reference` stores a narrow local handle, an authored source identity, a navigation locator and an optional label—no copied task body, status dictionary or completion state. T, assignment and decision associations accept that handle or an existing legacy ticket. T is a local selection of work, not the tracker’s unique-task or in-progress total. Native dispatch and questions remain primary.
+
+References have their own bounded query/history kind, read-only native presentation and explicit capability. Source identity is an author report, not proof of external access, freshness or completion; this release adds no runtime fetching or background synchronization. Effective delegated scopes follow the actual parent chain, so narrowing an ancestor immediately restricts descendants and invalidates old scoped locators. Re-expansion may restore the intersection with a retained grant; this is not permanent cascading revocation.
+
+Within the existing owned snapshot, stable guidance precedes changing notices and the current JSON. Notice-only changes are delivered, including clearing pending releases; missing baselines still restore the complete snapshot. Refresh TTL uses a monotonic elapsed clock while persisted event times remain program-owned wall time. Optional supervision no longer prescribes creating an extra subagent task. Legacy resource/history tools and opt-in delegate remain compatible.
+
+Instrument storage reads V1/V2 and first writes a reference through an atomic V3 upgrade; old binaries cannot read V3 and must not be allowed to downgrade-write it. Existing tickets, original authors, explicit decision flags and history remain readable under current authorization. No production records are automatically migrated or cleared. See [migration and rollback limits](<MIGRATION.md>), [the guide](<CONTROLS.md>) and [verification](<docs/VERIFICATION.md>). This release does **not** install or activate the existing local Profile, modify the shared SDK or restart the service.
+
 ## 0.15.0 decision reading and compatible record checks
 
 Decision details in the input dock, sidebar and selected-session inspection use native per-item disclosure, readable workflow titles and grouped background/result/source/technical content. First-registration and business-update times are read-only source facts: unavailable or unauthorized creation evidence stays explicitly unknown, never inferred from the earliest retained version. Main attention highlights real pending user questions; the secondary record-check entrance preserves raw legacy flags without claiming they are unfinished-task totals.

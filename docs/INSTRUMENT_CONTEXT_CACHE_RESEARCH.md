@@ -23,21 +23,21 @@
 
 ## 3. 时间来源：用户担心的创建时间路径符合预期
 
-1. **模型不填写记录时间。** [command／decision白名单](<../src/controls/instrument-state.ts#L141-L175>)不含createdAt／recordedAt／updatedAt／registration；额外键由[解析器](<../src/controls/validation.ts#L27-L35>)拒绝。时间也不是需要模型每回合计算的参数。
-2. [写入程序](<../src/controls/instruments.ts#L278-L350>)默认用Date.now，在apply调用中取得recordedAt；它是登记写入的程序采样，不是用户问题真实发生时间、文件mtime或精确磁盘提交时刻。重试回执保持首次已应用事件，不重新给旧事件盖时间。
-3. [完整／current读取](<../src/controls/instruments.ts#L282-L312>)从已存来源取时间，不读取当前clock生成createdAt。registration按最早可证明源revision取时间，updatedAt来自最新业务版本；已读／隐藏和幂等重放不更新业务时间。[首版索引](<../src/controls/instruments.ts#L119-L161>)是可信不可变源上的WeakMap索引，不是每条decision每次扫描全历史。
-4. V1连续事件、V2完整技术回执和tail提供不同证明；assigned还须证明首版授权，否则null。purge后的history第一行不是创建时间，clock回退也不改“最早revision”身份。[现有回归](<../tests/instruments-current.test.mjs#L161-L274>)已覆盖更新／重放／压缩／清理／冷重开。程序wall时间本身不保证单调或绝对准确，业务排序不能以最小timestamp代替revision。
-5. 新增registration／updatedAt不进入[模型轻量preview](<../src/runtime.ts#L519-L523>)；授权detail可带元数据。[消费](<../src/controls/consumption.ts#L189-L232>)选择真实业务provenance.recordedAt，而非每读新造“当前时间”。稳定事件时间可以保留，不能为缓存抹掉来源。
+1. **模型不填写记录时间。** [command／decision白名单](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instrument-state.ts#L141-L175>)不含createdAt／recordedAt／updatedAt／registration；额外键由[解析器](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/validation.ts#L27-L35>)拒绝。时间也不是需要模型每回合计算的参数。
+2. [写入程序](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instruments.ts#L278-L350>)默认用Date.now，在apply调用中取得recordedAt；它是登记写入的程序采样，不是用户问题真实发生时间、文件mtime或精确磁盘提交时刻。重试回执保持首次已应用事件，不重新给旧事件盖时间。
+3. [完整／current读取](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instruments.ts#L282-L312>)从已存来源取时间，不读取当前clock生成createdAt。registration按最早可证明源revision取时间，updatedAt来自最新业务版本；已读／隐藏和幂等重放不更新业务时间。[首版索引](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instruments.ts#L119-L161>)是可信不可变源上的WeakMap索引，不是每条decision每次扫描全历史。
+4. V1连续事件、V2完整技术回执和tail提供不同证明；assigned还须证明首版授权，否则null。purge后的history第一行不是创建时间，clock回退也不改“最早revision”身份。[现有回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/instruments-current.test.mjs#L161-L274>)已覆盖更新／重放／压缩／清理／冷重开。程序wall时间本身不保证单调或绝对准确，业务排序不能以最小timestamp代替revision。
+5. 新增registration／updatedAt不进入[模型轻量preview](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/runtime.ts#L519-L523>)；授权detail可带元数据。[消费](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/consumption.ts#L189-L232>)选择真实业务provenance.recordedAt，而非每读新造“当前时间”。稳定事件时间可以保留，不能为缓存抹掉来源。
 
 ### 时间字段逐项区别
 
 | 时间 | 位置／行为 | 推荐处理 |
 |---|---|---|
 | 业务recordedAt、首次登记／业务更新 | 程序写入一次或真实业务更新后变化 | 保留证据；不让模型提供、不按读取刷新 |
-| 资源轮询checkedAt／ledgerRevision | 当前注入facts不选择这些每读元数据；[去重回归](<../tests/consumption.test.mjs#L390-L419>)验证无语义变化不重发 | 不扩大成“所有工具都不返回时间”的承诺 |
-| resource工具checkedAt、audit generatedAt | [工具投影](<../src/model-tools.ts#L205-L219>)实际返回；[audit读取](<../src/host.ts#L1791-L1813>)即时采样 | 是工具结果变化，不是schema变化；采样时刻与业务事件分开，是否减量另测 |
-| worktree检查／native事件时间 | [消费选择](<../src/controls/consumption.ts#L214-L228>)保留；[native重复等价事件](<../src/controls/native-executions.ts#L129-L195>)不改recordedAt | 不把有意义的核验／结局时间统称噪声，不据字段存在推断每次轮询都在写 |
-| RefreshGate TTL／catalog退避 | [gate](<../src/controls/refresh-gate.ts#L15-L45>)及[退避](<../src/host.ts#L361>)使用程序clock，属内部调度 | 需区分wall事件时刻和elapsed时长；monotonic elapsed为候选，不能给每轮正文塞now |
+| 资源轮询checkedAt／ledgerRevision | 当前注入facts不选择这些每读元数据；[去重回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/consumption.test.mjs#L390-L419>)验证无语义变化不重发 | 不扩大成“所有工具都不返回时间”的承诺 |
+| resource工具checkedAt、audit generatedAt | [工具投影](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/model-tools.ts#L205-L219>)实际返回；[audit读取](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/host.ts#L1791-L1813>)即时采样 | 是工具结果变化，不是schema变化；采样时刻与业务事件分开，是否减量另测 |
+| worktree检查／native事件时间 | [消费选择](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/consumption.ts#L214-L228>)保留；[native重复等价事件](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/native-executions.ts#L129-L195>)不改recordedAt | 不把有意义的核验／结局时间统称噪声，不据字段存在推断每次轮询都在写 |
+| RefreshGate TTL／catalog退避 | [gate](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/refresh-gate.ts#L15-L45>)及[退避](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/host.ts#L361>)使用程序clock，属内部调度 | 需区分wall事件时刻和elapsed时长；monotonic elapsed为候选，不能给每轮正文塞now |
 
 本会话的“Time sampled while preparing turn”文字未在所检插件src定位；未调查宿主内部请求链，不归因本插件，也不假称知道它在provider token序列中的位置。
 
@@ -45,29 +45,29 @@
 
 | 证据 | 本轮确认 | 限定 |
 |---|---|---|
-| [统一注册](<../src/host.ts#L1685-L1700>)、[工具面回归](<../tests/model-contract.test.mjs#L26-L41>) | 描述为固定字面量、参数为固定JSON request；常态七项，delegate显式opt-in | facade能力和配置可能改变可用集合；不是承诺所有配置同一工具面 |
-| [audit注册](<../src/host.ts#L1817-L1841>) | 任一配置启用监督时注册，全部关闭时移除；已注册不重复注册 | 这是配置引起的例外，不是普通状态每次重注册；不可为缓存擅改权限／注册策略 |
-| [dynamic context](<../src/runtime.ts#L1308-L1313>)、[装配](<../src/host.ts#L1987-L1988>) | 已关联会话注入固定短工具指针，否则空串 | 首次关联会从无到有，不是把全量快照每轮覆盖system |
-| [preStep／postExecute](<../src/host.ts#L1942-L1967>) | 保留原消息／结果后追加owned snapshot候选 | 最终SDK投影／compaction仍可改变有效历史；插件append不证明provider序列append-only |
-| [baseline与step去重](<../src/runtime.ts#L1049-L1127>) | 实际Agent／Session／正文及可见性相符才省略；同admitted step至多一份，缺baseline需重装 | 候选未入模型不算送达；嵌套工具更新可在下一admitted step进入新快照，其自身工具结果仍有效 |
+| [统一注册](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/host.ts#L1685-L1700>)、[工具面回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/model-contract.test.mjs#L26-L41>) | 描述为固定字面量、参数为固定JSON request；常态七项，delegate显式opt-in | facade能力和配置可能改变可用集合；不是承诺所有配置同一工具面 |
+| [audit注册](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/host.ts#L1817-L1841>) | 任一配置启用监督时注册，全部关闭时移除；已注册不重复注册 | 这是配置引起的例外，不是普通状态每次重注册；不可为缓存擅改权限／注册策略 |
+| [dynamic context](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/runtime.ts#L1308-L1313>)、[装配](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/host.ts#L1987-L1988>) | 已关联会话注入固定短工具指针，否则空串 | 首次关联会从无到有，不是把全量快照每轮覆盖system |
+| [preStep／postExecute](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/host.ts#L1942-L1967>) | 保留原消息／结果后追加owned snapshot候选 | 最终SDK投影／compaction仍可改变有效历史；插件append不证明provider序列append-only |
+| [baseline与step去重](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/runtime.ts#L1049-L1127>) | 实际Agent／Session／正文及可见性相符才省略；同admitted step至多一份，缺baseline需重装 | 候选未入模型不算送达；嵌套工具更新可在下一admitted step进入新快照，其自身工具结果仍有效 |
 
-重复刷新／viewer-only／资源读时间已有去重覆盖；[快照回归](<../tests/snapshot-baseline.test.mjs#L23-L257>)验证拒绝、取消、projection／替换及compaction后恢复。不要为减少输入永久省略“上次hash相同”的快照。
+重复刷新／viewer-only／资源读时间已有去重覆盖；[快照回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/snapshot-baseline.test.mjs#L23-L257>)验证拒绝、取消、projection／替换及compaction后恢复。不要为减少输入永久省略“上次hash相同”的快照。
 
-**累计增长仍需诚实说明。** 真正变化会追加新快照；同一步至多一次和单条预算没有将整个长期会话历史设为固定大小。重复协议也会随变化快照再次出现。protocol中还含native outcomes／pendingRelease等易变分支，不能只优化facts JSON而忽略[协议部分](<../src/controls/consumption.ts#L248-L310>)。现有compaction／消息投影机制仍由宿主负责，不自造删历史、delta-only或持久消息替换器。
+**累计增长仍需诚实说明。** 真正变化会追加新快照；同一步至多一次和单条预算没有将整个长期会话历史设为固定大小。重复协议也会随变化快照再次出现。protocol中还含native outcomes／pendingRelease等易变分支，不能只优化facts JSON而忽略[协议部分](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/consumption.ts#L248-L310>)。现有compaction／消息投影机制仍由宿主负责，不自造删历史、delta-only或持久消息替换器。
 
 ## 5. 性能与队列复核
 
 保持[0.11.0既有性能契约](<PERFORMANCE_READ_PATHS.md>)，不是重新宣告旧问题未修复。当前确认：
 
-- [currentIndex](<../src/controls/instruments.ts#L225-L273>)只保当前merged value和provenance；历史线性builder与精确版本索引仍在。同可信不可变源复用首版时间证明。冷源验证／索引首建仍可能扫描保留事件，WeakMap不是零CPU或峰值内存保证。
-- [实际消费回归](<../tests/performance-runtime.test.mjs#L28-L61>)验证首次／源变更／失败才full补捕获，已成功且无变化的热路径不再构造全部业务history。不要把MemoryStorage每读clone的测试行为外推成Domain生产对象复用行为。
-- [指纹／预算](<../src/controls/consumption.ts#L133-L187>)仍遍历选定当前数据、排序和signature；输出截断也要检测尾部变化。当前实体／正文越多仍有成本，不是每轮扫描全部历史。
-- [正文编码](<../src/controls/model-output.ts#L161-L179>)可每64KiB协作yield，但每片仍编码／hash整个选中正文；[locator](<../src/controls/model-output.ts#L261-L276>)也有同步整正文hash。需量化hash字节与页数，不以单片输出小宣称内部工作小。
-- [固定durability frontier](<../src/controls/consumption.ts#L344-L363>)和[本次捕获](<../src/controls/consumption.ts#L381-L447>)仅等待当时本实例已登记提交，不追随后来提交、别实例或child寿命；跟踪溢出明确unknown，timeout／迟到与取消有既有处理。这不等于全系统inflight绝不增长，也不承诺timer能抢占同步格式化CPU。
-- 共享权限FIFO仍有真实head-of-line等待。[summary阻塞回归](<../tests/summary-performance.test.mjs#L145-L211>)和[preStep竞争回归](<../tests/summary-performance.test.mjs#L340-L379>)故意通过受控端口证明等待存在；不是新的死锁或线上延迟事故证据。不能为性能擅拆FIFO、跳授权／freshness／物理事实或放宽storage latch。
-- 内层投影key包含native revision／live数量，[外层prepared](<../src/runtime.ts#L1079-L1127>)另有epoch／TTL。纯状态无写、同数量成员替换等组合应在真实preStep seam补覆盖；未做该组合复现，不能据两层key不同宣称缓存已漏失效。
+- [currentIndex](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instruments.ts#L225-L273>)只保当前merged value和provenance；历史线性builder与精确版本索引仍在。同可信不可变源复用首版时间证明。冷源验证／索引首建仍可能扫描保留事件，WeakMap不是零CPU或峰值内存保证。
+- [实际消费回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/performance-runtime.test.mjs#L28-L61>)验证首次／源变更／失败才full补捕获，已成功且无变化的热路径不再构造全部业务history。不要把MemoryStorage每读clone的测试行为外推成Domain生产对象复用行为。
+- [指纹／预算](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/consumption.ts#L133-L187>)仍遍历选定当前数据、排序和signature；输出截断也要检测尾部变化。当前实体／正文越多仍有成本，不是每轮扫描全部历史。
+- [正文编码](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/model-output.ts#L161-L179>)可每64KiB协作yield，但每片仍编码／hash整个选中正文；[locator](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/model-output.ts#L261-L276>)也有同步整正文hash。需量化hash字节与页数，不以单片输出小宣称内部工作小。
+- [固定durability frontier](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/consumption.ts#L344-L363>)和[本次捕获](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/consumption.ts#L381-L447>)仅等待当时本实例已登记提交，不追随后来提交、别实例或child寿命；跟踪溢出明确unknown，timeout／迟到与取消有既有处理。这不等于全系统inflight绝不增长，也不承诺timer能抢占同步格式化CPU。
+- 共享权限FIFO仍有真实head-of-line等待。[summary阻塞回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/summary-performance.test.mjs#L145-L211>)和[preStep竞争回归](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/tests/summary-performance.test.mjs#L340-L379>)故意通过受控端口证明等待存在；不是新的死锁或线上延迟事故证据。不能为性能擅拆FIFO、跳授权／freshness／物理事实或放宽storage latch。
+- 内层投影key包含native revision／live数量，[外层prepared](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/runtime.ts#L1079-L1127>)另有epoch／TTL。纯状态无写、同数量成员替换等组合应在真实preStep seam补覆盖；未做该组合复现，不能据两层key不同宣称缓存已漏失效。
 
-**clock边界有一个可复现特性**：[RefreshGate](<../src/controls/refresh-gate.ts#L33-L45>)用wall差值。相同epoch下clock回拨会延长TTL；epoch变化仍立即要求刷新。一次性注入clock探针已确认该算术行为，不代表生产clock发生回拨或义务实际被延迟。推荐未来以monotonic elapsed测TTL／退避，业务recordedAt继续epoch wall；目前未修改。
+**clock边界有一个可复现特性**：[RefreshGate](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/refresh-gate.ts#L33-L45>)用wall差值。相同epoch下clock回拨会延长TTL；epoch变化仍立即要求刷新。一次性注入clock探针已确认该算术行为，不代表生产clock发生回拨或义务实际被延迟。推荐未来以monotonic elapsed测TTL／退避，业务recordedAt继续epoch wall；目前未修改。
 
 ## 6. 本轮实际执行与结果
 

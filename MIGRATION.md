@@ -1,5 +1,19 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.16.0 task references and storage compatibility
+
+- Keep the project’s existing tracker or task documents authoritative. Use native dispatch directly for work that needs no local T/assignment association. Do not mirror business statuses just to register a task.
+- For a necessary association, declare a workflow with empty axes and use `mattpocock_record` apply `put-task-reference`. Its `localTicketId` is a stable local handle, distinct from `source` and the mutable navigation `locator`; optional `label` is an authored display name. Existing assignment `ticketIds`, decision `ticketIds` and window `localTicketId` now also accept these handles. They do not grant source access or modify tracker assignees.
+- Read the returned reference capability/query shapes before using the new action. Old clients/hosts without the capability remain legacy-only; do not silently fall back to creating a fake `put-ticket`. References and legacy ticket reports have separate collections/counts. Model result envelopes remain schemaVersion 2 and retain their existing budgets.
+- V1/V2 instrument storage remains readable without a read-time rewrite. The first reference write upgrades that document to **V3 in the same CAS**; reference events, checkpoints, idempotency receipts and cleanup retain their original authors and revision meanings. Runtime/Window document versions are unchanged.
+- **Rollback is not a package-only downgrade after V3 writes.** An older binary rejects V3 instead of interpreting or overwriting it. Keep a verified pre-upgrade backup if rollback is required; do not edit the schemaVersion, discard references, replay stale backups over concurrent work or let mixed-version writers share the store. No automatic downgrade/migration utility is included.
+- Delegated access is now bounded by the current actual parent chain. Ancestor narrowing restricts existing descendants, historical reads and locators; an operator granting through a non-root parent does not create an independent override. An expanded parent scope may make the retained raw child grant effective again. This is a current-scope intersection, not permanent grant deletion.
+- New reserve/reacquire, assignment and opt-in delegate require a successfully read local handle set. A source/local record read failure must not prevent an otherwise authorized existing T release; current effective scope and generation still apply. Feature OFF does not create a new reference, enable management or erase old obligations.
+- Existing business tickets, decisions, results, views, context inclusion/exclusion and source/history records are not automatically moved, cleared or hidden. If the plugin is their only valid carrier, preserve the actual task commitments before an explicitly authorized handoff.
+- Context guidance is reordered inside the existing owned message, not replaced with a new history manager. Refresh TTL is monotonic elapsed time; decision/event timestamps remain program-generated wall time. No extra subagent is required by a supervision notice.
+
+Use isolated source/artifact verification and an explicitly authorized Profile update when ready. This delivery does **not** install the existing local Profile, activate a running GUI, modify the shared SDK or restart the current service.
+
 ## Plugin 0.15.0 decision-reading migration
 
 This release does not migrate business storage or change model-tool request schemas. Optional read-only registration and update metadata is additive; old hosts/fixtures without trustworthy metadata display creation time as unknown. A retained earliest history entry is not creation proof, and an assigned reader cannot recover an unauthorized first version through the new display.

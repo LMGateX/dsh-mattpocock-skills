@@ -43,28 +43,28 @@
 | 导航地址及别名 | 当前可读 URL／路径；仅有明确来源依据时记录别名或搬迁关系 | 不按同名、路径相似或 URL 字符串自动合并／重授权限 |
 | 展示标题／来源报告 | 可选的最后已知名称、作者与时间，不要求复制正文或声明状态轴 | 改标题不改身份；作者转录不认证源内容 |
 
-现有 Git probe 只证明其可观测身份范围，见[实现](<../src/controls/git-worktrees.ts#L39-L85>)。文件改名、搬迁、换 clone 或 tracker 转移后，证据不足就保留原 handle 和未知关联；有依据的关联变更需当前授权、修订与可追溯来源，不批量重键旧历史。
+现有 Git probe 只证明其可观测身份范围，见[实现](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/git-worktrees.ts#L39-L85>)。文件改名、搬迁、换 clone 或 tracker 转移后，证据不足就保留原 handle 和未知关联；有依据的关联变更需当前授权、修订与可追溯来源，不批量重键旧历史。
 
 同一 workflow 内已证同源别名复用原 handle；不因 alias 共享其他 workflow／instance 的 ACL。来源版本不进入任务身份键，否则每次更新都会制造新任务。未核验引用可以导航和承载受权的本地安排，但不能声称已验证唯一源、源状态或去重完毕。
 
-真正用户问题可不关联票：在实际目标 workflow 中使用空 axes、无 ticketIds 的既有路径；child 若获该 workflow 空票范围，仅按现有 creator 规则访问自己提出的无票事项。没有 workflow 的 child 把问题交主代理／原生提问，不伪造票绕过 ACL；OFF 不为新问题自动开功能或创建对象。现有[workflow／票存在检查](<../src/controls/instrument-state.ts#L385-L398>)及[无票事项权限](<../src/controls/instruments.ts#L112-L116>)仍是当前事实。
+真正用户问题可不关联票：在实际目标 workflow 中使用空 axes、无 ticketIds 的既有路径；child 若获该 workflow 空票范围，仅按现有 creator 规则访问自己提出的无票事项。没有 workflow 的 child 把问题交主代理／原生提问，不伪造票绕过 ACL；OFF 不为新问题自动开功能或创建对象。现有[workflow／票存在检查](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instrument-state.ts#L385-L398>)及[无票事项权限](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instruments.ts#L112-L116>)仍是当前事实。
 
 ## 4. T：保留局部推进单元与显式释放
 
 **首批推荐保持既有 (instance, workflow, handle) 命名空间及 generation。** 同 workflow 的同一 handle 只有一个占位，多 child 共用它不增加 T；跨 workflow 指向同一来源任务可以计两个显式推进单元，必须注明 T 不是外部唯一任务数，更不是第二份业务状态。全实例 canonical 去重会改变谁可释放和权限关系，不在首批静默引入。
 
 - 新 reserve／reacquire 只需最小受权引用，不再要求 title＋statuses 业务票或新状态字典。workflow 仅作真实协作分组；空 axes 不是额外业务阶段。
-- reserve/release/reacquire、代次与 operationId 绑定、过期代次忽略和并发保护保持。[现行窗口](<../src/controls/windows.ts#L735-L763>)与[幂等绑定](<../src/controls/windows.ts#L928-L931>)是回归基线，不是已经支持 ref-only。
+- reserve/release/reacquire、代次与 operationId 绑定、过期代次忽略和并发保护保持。[现行窗口](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/windows.ts#L735-L763>)与[幂等绑定](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/windows.ts#L928-L931>)是回归基线，不是已经支持 ref-only。
 - release 仅表示退出当前推进集合。暂停、移交或转向其他工作也可按任务约定退出；不要求先写 delivered／blocked 才能释放或继续下一票。推进纪律由 Skill／用户约定决定。
 - 不因某个 child end、tracker closed、源不可读或 UI 隐藏自动 release；也不因释放 T 自动改业务 done、清 decision 标记或释放 S。多 child 的整体安排由有权操作者处理，不加隐式 child 引用计数器。
-- 源 404、离线、版本冲突或源读权丢失不应卡住已有本地占位释放；仍核当前插件身份、scope 与 generation。插件 assignment 已撤的 child 不能继续释放，交 owner／有权 coordinator 收尾。OFF 禁新占位但保留合法旧 release，不能顺手 reacquire。[现行 release 跳过票存在检查](<../src/runtime.ts#L1190>)不能回归。
+- 源 404、离线、版本冲突或源读权丢失不应卡住已有本地占位释放；仍核当前插件身份、scope 与 generation。插件 assignment 已撤的 child 不能继续释放，交 owner／有权 coordinator 收尾。OFF 禁新占位但保留合法旧 release，不能顺手 reacquire。[现行 release 跳过票存在检查](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/runtime.ts#L1190>)不能回归。
 - 旧 terminal 计算的 pendingRelease 只作旧报告提示，不认证外部完成；新引用若无源状态，不伪造 terminal。T 选择数、受权子集、来源任务去重数、tracker 总票数分别标注，未知不显示为 0。
 
 ## 5. 读取与来源时效：先做诚实报告，不默认增加抓取
 
 ### 5.1 两个独立维度
 
-当前 [model current](<../src/runtime.ts#L519-L545>)只证明插件本地记录读到了当前版本。推荐读取／UI／模型消费均区分：
+当前 [model current](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/runtime.ts#L519-L545>)只证明插件本地记录读到了当前版本。推荐读取／UI／模型消费均区分：
 
 1. **本地读取健康**：当前本地版本是否成功取得、是否有持久提交未知或历史缺口。
 2. **来源观察**：读的是哪个真实来源、取得时间、可证明的源版本／截点、覆盖正文／评论／brief 的范围，是否已知变化或无法复核。
@@ -81,14 +81,14 @@ B 如有明确需求，先选择一个真实来源和可信读取／授权 seam�
 
 B 的缓存／分页至少绑定来源限定身份、可信源版本或 snapshot cut、caller／owner／instance／scope、可核验授权代次。版本或权限变化使旧页／locator 失效，必要时从第一页重开；没有可靠 source token 只能降级 as-of／unknown，不沿用本地两秒刷新假设冒称源 current。不以派生 history、旧授权正文或最近一次成功请求作为权限恢复 fallback。
 
-来源身份必须进入记录／历史定位：当前 [history latest](<../src/controls/history.ts#L123-L125>)按 kind＋recordId 聚合，仅换 sourceDomain 不足以区分两个来源同号条目。保持既有 suppression 与源清理覆盖，不以换 ID／domain 重捕获已删除正文。
+来源身份必须进入记录／历史定位：当前 [history latest](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/history.ts#L123-L125>)按 kind＋recordId 聚合，仅换 sourceDomain 不足以区分两个来源同号条目。保持既有 suppression 与源清理覆盖，不以换 ID／domain 重捕获已删除正文。
 
 ## 6. 授权、委派与 decision 引用兼容
 
 - 引用不是权限；插件 coordinator 不是外部 tracker 管理员。源正文／标题等的自动读取与合并，需插件授权与每个来源当前授权同时允许；多引用不得“命中任一”便放行整个对象。无法证明的源授权 seam 不以自制 rights facade 补齐，退回 ref-only。已存在的 authored 报告依其自身保存／可见性契约处理，不能重新认证为源当前事实。
 - 保留 owner／instance 身份、真实直接 child、父当前授权子集、变更前后全部关联票检查、历史逐版本过滤、撤权／缓存／locator 围栏；授予仪器范围不等于 tracker assignee、claim 或源端写权。
 - **补验项**：父范围收窄后旧孙辈授权的即时有效性不能只凭 grant 时子集校验宣称成立。推荐委派来源的有效权限不超出仍有效的祖先委派链；独立 owner 授权须按真实来源区分。实现前核验当前调用链，冻结失效语义和回归，不将静态局部阅读冒称已证实漏洞或已具备级联撤权。
-- 当前 decision.ticketIds 是工作流本地票引用，参与授权且被 fold／checkpoint 校验。**不能把它直接换成 URL，或只删 put-ticket 指导便宣称完成解耦。** [引用约束](<../src/controls/instrument-state.ts#L395-L400>)、[前后授权](<../src/controls/instruments.ts#L464-L475>)均需配套处理。
+- 当前 decision.ticketIds 是工作流本地票引用，参与授权且被 fold／checkpoint 校验。**不能把它直接换成 URL，或只删 put-ticket 指导便宣称完成解耦。** [引用约束](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instrument-state.ts#L395-L400>)、[前后授权](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/6a3a7b24f003006a83a7dc379532d149729c7726/src/controls/instruments.ts#L464-L475>)均需配套处理。
 - 推荐新引用仍保留窄本地 handle；在明确的新引用登记能力上接入 T／assign／decision，旧票仍以原 handle 读取。优先复用现有 record/window/assign 的工具座位，不新增并行工具族；具体 action、字段、存储版本与旧宿主协商在实施前冻结，不能声称当前 schema 已支持。
 - 新引用登记不存新 statuses／summary／disposition 业务生命周期，不用空壳 put-ticket 或通用 decision 日记绕过缺口。旧 put-ticket 完整解析／重放／受权旧对象收尾保留；新流程与旧对象的技术区分不能靠日期、作者种类或标题猜测。
 

@@ -34,6 +34,22 @@
 
 旧版启动/组合文档保留为历史，不再描述当前运行路径：[启动支持说明](<docs/STARTUP_CWD_SUPPORT.md>)、[插件管理兼容说明](<docs/PLUGIN_MANAGED_COMPATIBILITY.md>)。
 
+## 0.16.0 任务引用：单一业务来源与本地协作
+
+任务正文、验收、依赖、领取和业务关闭仍在项目约定来源维护。仪器只在需要T、任务授权或关联时保存引用；普通研究／原生派发不强制先建workflow或票，不维护另一份done。
+
+`mattpocock_record` 的 `apply` 新增 `put-task-reference`：command保留operationId／expectedRevision／workflowId／references，使用localTicketId作为稳定本地handle，value只允许source／locator／label。source可为external（instance／project／taskId）、repository（repositoryAnchor／relativePath／可选anchor）或unverified；均为作者声明，不认证源状态／权限。locator可更新但不触发网络／文件读取；创建后的source身份不能静默替换。没有新statuses、任务正文、summary或disposition字段。
+
+- Workflow可用 `axes: []` 作协作分组。同workflow内引用与旧票handle不碰撞，已声明同源tuple使用同handle；unverified不自动去重，旧externalRef不自动认证／合并。同源跨workflow的两个T单元不冒称外部两项独立任务。
+- T的reserve／reacquire、assignment.ticketIds和decision.ticketIds均可使用引用或旧票handle；新占位／授权／绑定式创建在本地对象读取unknown时拒绝猜测。release仍独立，只表示退出本会话推进集合，不要求先写delivered／blocked，不自动关闭来源票／decision或结束child。
+- taskReferences与旧tickets分开读／展示，引用数不混入旧业务状态统计。record／history的新查询kind为 `task-reference`；当前恢复只证明local-current，源状态未观察保持未知。旧端缺引用能力明确不支持，不回退造空壳票。
+- Assignment只给真实direct child，后代有效范围为同实例实际父链的当前交集，operator经child上下文赋权不绕过祖先。收窄会使旧scope正文／历史／locator不可用；重新扩大可恢复保留grant的有效部分。协调者读取／设置权和来源外部权限各自成立。
+- 旧票仍以真实作者报告显示，保留原业务值／历史／显式收尾；新引用没有业务状态，不能显示成“尚未报告业务状态”的缺口。无源读取能力时不抓取、不要求模型补状态、不认证tracker current。
+- 新引用首次写入在原CAS中升级Instrument V3，V1/V2读取不迁移。旧binary明确拒绝V3，回退限制见[迁移说明](<MIGRATION.md>)。不运行生产迁移、批量清账或88项核账。
+- 稳定指导与易变通知在同一owned快照中分区，缺baseline／压缩后仍完整恢复；仅pending-release通知新增／清空也构成变化。TTL用单调elapsed clock，登记时间仍由程序记录wall时刻，模型不能提供createdAt。监督只给观察，不规定插入新的subagent任务。
+
+本节描述本批Interface；实际源码／制品／独立复核结果以[验证摘要](<docs/VERIFICATION.md>)为准。发布不等于本机安装或当前GUI加载，管理总闸与原生工具权限不自动改变。
+
 ## 0.15.0 裁决阅读与记录核对
 
 - 输入区、右侧详情和设置页所选会话使用逐项原生折叠，先显示问题摘要、可读工作流、状态和时间；完整问题/选项/建议/影响可读，长背景/结果/来源/标识/技术原文按需展开。
