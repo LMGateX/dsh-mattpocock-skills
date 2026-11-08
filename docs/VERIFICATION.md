@@ -2,6 +2,18 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.17.0 Skill 正文提示化（冻结源中的发布前门禁记录，2026-11-09）
+
+契约先于实现固定；从现行0.16.1后的基线隔离开发，不合入原工作区未提交文档。运行时／测试固定于 **ba137c8125b012782e928bfcd7eb98fda4aae2f1**；后续本节仅补源码阶段记录。用户授权本批push／新发版／同制品本机安装，不自动重启现有服务。
+
+- 全部27份选中正文默认可获取；来源11 model-enabled／16 user-only和vendor/provenance不变，有效调用策略在适配层派生。前言给出定位／资源及非强制执行／不扩权限说明，原文仅一份连续suffix。四种invocation、LF/CRLF、多字节frontmatter、正文BOM／空正文／控制字符路径均有provider回归；路径／inode／hash／abort／关闭／scope／rank既有围栏保留。
+- 独立provider、native-loader、headless proof子树保留真实RED→GREEN。双宿主 **DSH 0.2.1-alpha.4／0.2.2-rc.1** 完整source suite各 **1042 tests／1036 pass／0 fail／6 skip**；显式上游checkout已提供。六skip为canonical宿主无可装配native UI-slots，另以精确RC1 renderer/slots的native Client fixture **6/6 pass／0 skip**；公共primitives为受控stand-in，不冒称GUI视觉验收。
+- 原生loader双宿主各 **7/7**：真实Registry／ToolsService或ToolRuntime／native skill.execute与render，stable/beta × parent/child-like各27定义，完整typed JSON回读；false/false、关闭重开、同名override、child shadow和工具限制仍有效。child-like scope与typed序列化不是live child／完整PTC执行器或模型行为证明。
+- headless报告器双宿主定向各 **19/19**：两安装路径真实Registry逐条校验27份来源sha／body suffix／元数据／源行／JSON路径及提示；只归一化已验证前言的sourceFile/resourceBase两行，正文不替换；含16项晚条目故障拒绝，不写partial成功报告。正式同归档headless仍属后续D门禁。
+- baseline root／Client strict、精确RC1公开声明映射root／Client均零诊断；显式文件清单未回退非目标DSH声明。闭合Client仍357619 B／8模块，externals仍React／公共primitives；85 vendor／296048 B、root SHA-256 **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**不变。clean候选prepack通过，不等于accepted归档已验证。
+- 独立两轴固定 **e63c33c…ba137c8**：**Standards：0硬性、0可选smell、0未关闭；Spec：0发现、0未关闭**。轻量六类prompt合同审查支持解释／任务内复用／讨论不执行／不扩任务／子代理复用／按需资源，但未新跑真实模型业务campaign；历史Phase5失败不被本次机械结果抹除。作者复审报告与实际测试日志分别保留，不互当执行回执。
+- 当前仅完成源码与开发门禁；唯一accepted归档、完整archive suite、双宿主source/archive stable+beta headless、tag／Release／下载／磁盘安装与live activation均须后续真实结果，未完成项不提前标通过。无新工具／Remote／存储／审批或全局SDK改动。
+
 ## 0.16.1 发布与下载回验（2026-11-07，已发布；未为本机安装）
 
 - 唯一 clean source 与 annotated `v0.16.1` 的 peeled commit 为 **0e7b311683541036ae0bc351536fa4a0721ac1c0**，tag object **cbf0b19579227d0176e16cb9c787422c7072e5c9**。本完成记录与机器摘要是发布后 main 的纯文档追加，不改变 tag／运行时／冻结归档；精确包复验须检出该 source/tag。
