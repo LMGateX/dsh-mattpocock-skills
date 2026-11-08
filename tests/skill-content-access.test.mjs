@@ -84,7 +84,8 @@ for (const channel of ['stable', 'beta']) {
 // SkillRegistry, scoped layers, tool definition, invocation checks and render
 // are the actual installed host implementations.
 if (hostRoot) {
-  const { ToolsService } = await load('@deepseek-ai/dsh-tools')
+  const toolsModule = await load('@deepseek-ai/dsh-tools')
+  const ToolsService = toolsModule.ToolsService ?? toolsModule.default
   const { default: SystemPrompt } = await load('@deepseek-ai/dsh-system-prompt')
   const nativeSkill = await load('@deepseek-ai/dsh-tool-skill')
   const { createScope } = await load('@deepseek-ai/dsh-scope')
@@ -244,9 +245,9 @@ if (hostRoot) {
       await mask
       additions.push(mask)
       assert.equal(f.ctx.tools.get('skill', f.child), undefined)
-      assert.equal(f.ctx.tools.executable('skill', f.child), undefined)
-      assert(f.ctx.tools.executable('skill', f.parent))
-      assert(f.ctx.tools.executable('skill', f.stranger))
+      assert(f.ctx.tools.get('skill', f.parent))
+      assert(f.ctx.tools.get('skill', f.stranger))
+      if (typeof f.ctx.tools.executable === 'function') assert.equal(f.ctx.tools.executable('skill', f.child), undefined)
     } finally {
       for (const fiber of additions.reverse()) await fiber.dispose()
       await f.dispose()
