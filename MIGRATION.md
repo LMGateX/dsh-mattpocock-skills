@@ -1,5 +1,15 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.17.0 advisory Skill body access
+
+- No source upgrade, vendor rewrite, channel/precedence change or business-storage migration. Raw `CATALOG` invocation and source provenance remain authoritative and unchanged.
+- Effective provider invocation now permits native model loading of source model=false/user=true bodies. The original user-only designation is shown in the catalog and returned content as a user-led workflow hint; it does not require slash syntax or a new approval. Source false/false remains disabled.
+- `SkillDefinition.content` and native typed `skill` results now contain a stable adapter preface plus the exact upstream body once. Consumers must not equate the whole content hash to the raw-body hash. Source file/body-start-line and JSON-encoded resource paths are explicit; use those source positions for citations instead of adapter-preface line numbers.
+- Relative resources still resolve from the existing `resourceBase`. Main content is already supplied; read ancillary files only as needed. Loading is not a command to execute every workflow step and never grants writes or bypasses workspace/tool permissions.
+- There is no strict-compatibility toggle, intent classifier or per-request grant. Use a verified same-version artifact with the supported Profile package manager, preserving existing policy and overrides. Disk installation, running-host activation and browser loading are separate checks; do not infer live update from a successful CLI install or restart a current service automatically.
+
+See [the accepted content-access contract](<docs/SKILL_CONTENT_ACCESS.md>) and [verification results and limits](<docs/VERIFICATION.md>). Historical version sections retain their own delivery scope.
+
 ## Plugin 0.16.0 task references and storage compatibility
 
 - Keep the project’s existing tracker or task documents authoritative. Use native dispatch directly for work that needs no local T/assignment association. Do not mirror business statuses just to register a task.

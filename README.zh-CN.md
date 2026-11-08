@@ -4,7 +4,9 @@
 
 **当前状态：核心插件与历史 Phase 4 制品验证已完成；Phase 5 行为评估已关闭，但未通过。** 三次试验为 2 次通过、1 次硬失败，总体失败。当前协作实现与复审修复已通过机械源码／构建／测试验收；结果及单独保存的 clean-source 制品门禁见[公开验证摘要](<docs/VERIFICATION.md>)。源码公开不授权安装、启用、部署或 npm 发布。
 
-**0.16.1 — DSH 0.2.2-rc.1 兼容补发：** 在隔离 SDK／Profile 中重新核对现有运行时，不修改插件运行时代码、生成的 JS/DTS、Skills、渠道、工具／Remote／存储契约或宿主声明范围。DSH rc.1 自身要求 **Node.js ≥24.9**，插件的 Node 范围不能替代宿主前提。本次**不为当前本机 Profile 安装或激活**；结果与限制见[RC1 兼容记录](<docs/DSH_022_RC1_COMPATIBILITY.md>)及[制品验证](<docs/VERIFICATION.md>)。
+**0.17.0 — Skill 正文可获取、user-only 提示化（开发中）：** 标准 `skill` 工具可获取当前选中的全部27份正文。16个上游user-only条目保留来源调用标记，并在目录／正文前言中提示用户主导定位；模型按任务和上下文判断怎样采用，加载不等于启动全部流程或扩大操作权限。不加意图分类、特批token、严格模式开关，也不升级上游。稳定适配前言带真实源文件／正文首行及相对资源根，后接一份逐字不改的正文；definition.content不再仅含裸body。真实workspace／工具权限、完整性、渠道和优先级保持不变。见[获取契约](<docs/SKILL_CONTENT_ACCESS.md>)、[迁移](<MIGRATION.md>)和[验证](<docs/VERIFICATION.md>)。发布／安装结果另记，磁盘安装不冒充当前进程已激活。
+
+**0.16.1 — 历史 DSH 0.2.2-rc.1 兼容补发范围：** 在隔离 SDK／Profile 中重新核对现有运行时，不修改插件运行时代码、生成的 JS/DTS、Skills、渠道、工具／Remote／存储契约或宿主声明范围。DSH rc.1 自身要求 **Node.js ≥24.9**，插件的 Node 范围不能替代宿主前提。本次**不为当前本机 Profile 安装或激活**；结果与限制见[RC1 兼容记录](<docs/DSH_022_RC1_COMPATIBILITY.md>)及[制品验证](<docs/VERIFICATION.md>)。
 
 - 已有仓库的升级须知：[MIGRATION.md](MIGRATION.md)
 - 权威设计：[docs/DESIGN.md](docs/DESIGN.md)
@@ -65,7 +67,7 @@
 
 1. **安装与启用是 DSH 层的操作。** 本包提供原生 Skill provider，声明 `stable` 与 `beta` 两个通道，默认使用 `stable`。安装不会自动切换 owner Profile，也不会修改项目约定。
 2. **项目初始化是另一件事。** 在已启用插件的目标项目会话中，首次使用工程类 Skills 前运行 `/setup-matt-pocock-skills`。它会与用户确认 tracker、标签与领域文档，并写入项目配置；不是插件安装器。GitHub/GitLab 操作需要相应 CLI、认证和授权，也可选 local markdown。
-3. **通过原生入口调用。** 用户用 `/skill-name` 调用；Skill 正文中的后续 Skill 调用由 agent 使用 DSH 的 `skill` 工具完成，不是自动递归执行 slash 文本。模型可调用与用户可调用权限分别生效。
+3. **通过原生入口调用。** 用户可用 `/skill-name`；agent通过DSH `skill` 工具获取正文，包括本适配器中的上游user-only条目。Skill引用不是自动递归执行slash文本。来源user-only继续作为用户主导流程的提示，不再作为正文禁读；加载不强制整套流程、不扩权。明确false/false的来源条目仍禁用。
 
 当前本地 DSH 实现的兼容提示（不代表所有 Profile 均已启用相关能力）：
 
@@ -73,7 +75,7 @@
 - DSH 默认识别 `AGENTS.md` 与 `CLAUDE.md`，无需批量改写为某一种文件名。
 - **后台派发不等于 headless 保活。** 当前 headless 等 root idle 后汇总并退出，不能承诺后台子任务继续正常完成及回传。Web 场景不能由此直接推断；完整无人值守工作流需另行解决宿主生命周期。
 - Git/worktree、浏览器、网络研究与共享笔记目录依赖目标环境和权限。provider 不安装这些工具、不授予外部写权限，也不绕过文件策略。
-- **宿主版本。** Skills provider 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2` 与 `0.2.1-alpha.1` 上核对，该部分始终无需修改运行时代码。`0.2.1-alpha.2` 是第一个需要适配的宿主（原生子代理 activation seam）。`0.2.1-alpha.3` 移除了 `connection.operator`，改为 owner 的 `connection.browserPeer`；可选控制面读取的是旧属性，因此从 alpha.3 起它会在注册九个工具之前中断装载，而 Skills 分发不受影响（cordis 默认日志级别会丢弃 `warn`，所以实机终端上看不到任何提示）。现在以版本中立方式读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者都不存在时失败关闭），并由用例覆盖两种拼写。`0.2.1-alpha.4` 改变了安装期门禁的判定依据：声明了 `engines.dsh` 就只按它判断，未声明才回退到 `@deepseek-ai/dsh*` peer 规则。0.13.0 声明 `"engines.dsh": "~0.2.1-alpha.2"`：引擎感知门禁放行 `0.2.1-alpha.2`、`0.2.1-alpha.3` 与 `0.2.2-alpha.*`，拒绝 `0.2.1-alpha.1`、`0.2.0-rc.2` 与 `0.3.0-alpha.1`；旧的兼容桥及其下次启动请求已不存在。`0.2.2-alpha.2` 在 `mattpocock_execute` 尚存时是需要运行时代码适配的宿主：工具执行拆入 executor 插件并移除了旧的单调用 `ctx.tools.execute`，该包装在那一宿主线上改用公开 `ToolExecutionPipeline`。0.7.0 源码线已整体移除该包装及 `executeNative` 路径，普通派发使用宿主原生工具。Skills provider 本身不变。`0.2.2-alpha.3` 已于 2026-11-04 复核，无需新的插件代码、元数据或制品改动：alpha.3 类型集下根与 Client 编译均 0 error，全量套件 **1077 通过、0 失败**（9 个环境门禁 skip）；已发布的 0.10.0 制品在隔离 headless profile 中成功安装并暴露 **27 个 Skills、11 个模型可见**。这是 headless 兼容核对，不代表浏览器 GUI 或模型运行。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
+- **宿主版本。** Skills provider 已在 DSH `0.1.2-rc.1`、`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2` 与 `0.2.1-alpha.1` 上核对，在0.17.0主动调整正文获取语义之前，该部分无需宿主兼容运行时代码修改。`0.2.1-alpha.2` 是第一个需要适配的宿主（原生子代理 activation seam）。`0.2.1-alpha.3` 移除了 `connection.operator`，改为 owner 的 `connection.browserPeer`；可选控制面读取的是旧属性，因此从 alpha.3 起它会在注册九个工具之前中断装载，而 Skills 分发不受影响（cordis 默认日志级别会丢弃 `warn`，所以实机终端上看不到任何提示）。现在以版本中立方式读取 operator Peer（`connection.operator ?? connection.browserPeer`，两者都不存在时失败关闭），并由用例覆盖两种拼写。`0.2.1-alpha.4` 改变了安装期门禁的判定依据：声明了 `engines.dsh` 就只按它判断，未声明才回退到 `@deepseek-ai/dsh*` peer 规则。0.13.0 声明 `"engines.dsh": "~0.2.1-alpha.2"`：引擎感知门禁放行 `0.2.1-alpha.2`、`0.2.1-alpha.3` 与 `0.2.2-alpha.*`，拒绝 `0.2.1-alpha.1`、`0.2.0-rc.2` 与 `0.3.0-alpha.1`；旧的兼容桥及其下次启动请求已不存在。`0.2.2-alpha.2` 在 `mattpocock_execute` 尚存时是需要运行时代码适配的宿主：工具执行拆入 executor 插件并移除了旧的单调用 `ctx.tools.execute`，该包装在那一宿主线上改用公开 `ToolExecutionPipeline`。0.7.0 源码线已整体移除该包装及 `executeNative` 路径，普通派发使用宿主原生工具。Skills provider 本身不变。`0.2.2-alpha.3` 已于 2026-11-04 复核，无需新的插件代码、元数据或制品改动：alpha.3 类型集下根与 Client 编译均 0 error，全量套件 **1077 通过、0 失败**（9 个环境门禁 skip）；已发布的 0.10.0 制品在隔离 headless profile 中成功安装并暴露 **27 个 Skills、11 个模型可见**。这是 headless 兼容核对，不代表浏览器 GUI 或模型运行。详见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。
 
 职责边界见 [薄适配范围](docs/ADAPTER_SCOPE.md)，Skill 语义见 [兼容性清单](docs/COMPATIBILITY.md)，宿主版本见 [宿主兼容性核对](docs/HOST_COMPATIBILITY.md)。这些说明不改写官方 Skill 或历史评估结果，也不解除启用/发布门槛。
 
