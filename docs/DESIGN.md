@@ -12,6 +12,16 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.17.0 Skill 正文可获取与 user-only 行为提示（2026-11-09，已认可；文档先行）
+
+所有者认可默认开放 agent 获取 Skill 正文、上游 user-only 作为行为提示而非程序禁读；要求先固定文档，再在隔离环境／subagents 开发测试，push、发版并安装。唯一细化契约为 [SKILL_CONTENT_ACCESS.md](<SKILL_CONTENT_ACCESS.md>)。本节取代旧 provider 逐值映射和裸正文返回的相关限制，不改 vendor 原文、原始 catalog、channel 或 provider precedence。
+
+- 原始来源 invocation 保持不变；provider 仅把 source model=false/user=true 派生为有效 model=true/user=true，保留来源标记；其他组合不变。标准 skill 工具正常取正文，无旧严格开关、意图分类、特批 token、业务白名单或新审批。
+- 目录标记与稳定适配前言让模型知道上游定位、源文件/正文首行和相对资源根；来源正文完整且只出现一次，判断是否采用及执行到何程度由任务/上下文/既有约定决定。PTC typed content 也必须得到说明，不依赖可选协作功能。
+- 真正工具权限、分发关闭、scope、路径/完整性/abort 不放宽；不修改宿主全局 Skills、消息 provenance、共享SDK，不升级上游源集或引入 experimental Skill。
+- 开发基于最新 0.16.1 后源码的隔离树，保护旧工作区 dirty；按已认可 provider/Registry/真实loader、typed/rendered、child-like scope、精确归档及双宿主 seams RED→GREEN，独立复审后冻结唯一制品。
+- 本次明确授权非 force push、新 tag/Release 和同字节本机安装，取代旧轮次的“不安装”限制；不覆盖旧资产，不npm publish，不改管理策略/生产业务数据，不自动重启或替换当前GUI。安装与当前进程激活分开如实验证。
+
 ## 0.16.1 DSH 0.2.2-rc.1 兼容核对与发布授权（2026-11-07，已发布／未为本机安装）
 
 交付已完成：唯一source/tag为 **0e7b311683541036ae0bc351536fa4a0721ac1c0**，[v0.16.1五资产](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.1)已发布并逐字节下载strict回验；双宿主source/显式accepted archive各1014项、真实RC1类型／原生Client／公开admitted-tool seams、双轴复审与双渠道headless门禁通过。运行时代码／生成物／vendor／兼容范围不变。此次与下方状态追加只在发布后的main，不移动tag或重pack；详见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.1.json>)。本机未安装或激活0.16.1，Profile／共享SDK／服务及生产数据未改。
@@ -356,7 +366,7 @@ The distribution owns channel policy and publishes a closed set that only ever g
 - When a channel declares `extends`, ingestion asserts that it contains every Skill of the base channel and that `additionalSkills` equals the difference.
 - Each selected Skill path means the complete Skill directory, including references, scripts, assets, and adapter metadata supplied by the source distribution.
 
-`implement-spec` has `disable-model-invocation: true`, so it adds the user command `/implement-spec` without adding a model-visible catalog entry. Upstream v1.3 promoted it into the promoted set, so it is now selected by both channels.
+`implement-spec` has source `disable-model-invocation: true` and is selected by both channels. From 0.17.0, the source flag is retained as a user-led usage hint while the adapter exposes its complete body to the native model Skill tool; see [Skill content access](<SKILL_CONTENT_ACCESS.md>). Earlier model-hidden behavior remains a historical baseline, not the current exposure contract.
 
 ## 5. DSH Integration
 
@@ -401,7 +411,7 @@ The provider is immutable for one plugin mount:
 - The generated JSON catalog is loaded, closed-schema validated, and deeply frozen once when the Host module loads.
 - `list()` reads no Skill files and performs no directory scan. It returns the immutable configured-channel selection from that catalog.
 - `get()` accepts only the exact candidate object created by this provider. It anchors the non-symlink vendored root to `realpath(packageRoot)` while permitting the package root itself to be package-manager symlinked, resolves the cataloged directory and file back to their exact real paths beneath that anchor, rejects root/intermediate/final symlink or identity drift, opens `SKILL.md` with no-follow semantics as a regular file, then repeats containment and bigint device/inode checks before reading.
-- Each definition preserves the candidate's name, description, invocation policy, provider, source, metadata, path, and package-directory `resourceBase`; the body starts at the generation-validated frontmatter byte boundary.
+- Each definition preserves its effective candidate's name, description, invocation policy, provider, source, metadata, path, and package-directory `resourceBase`. From 0.17.0, a stable adapter preface supplies source-policy and resource/source-location guidance; the unchanged upstream body from the generation-validated byte boundary follows exactly once. The raw catalog remains the source policy, not the effective exposure; see [Skill content access](<SKILL_CONTENT_ACCESS.md>).
 - The provider observes `AbortSignal`, passes it into the active file-read operation, and propagates the exact lookup or lifecycle abort reason.
 - Node does not expose an `openat2`-style beneath/no-symlink resolver. Concurrent hostile mutation can therefore retain a residual parent-directory race after the repeated checks; installed package artifacts are treated as immutable during a provider read, and unsupported no-follow hosts fail closed.
 - Missing files, malformed content, hash drift, or candidate/catalog mismatch return no definition and emit a warning through the plugin's named Cordis logger; they never silently substitute another Skill. Abort reasons propagate instead of being diagnosed as corruption.
@@ -414,7 +424,8 @@ Candidate fields include:
   source: 'bundled',
   rank: BUNDLED_SKILL_RANK,
   invocation: {
-    modelInvocable: disableModelInvocation !== true,
+    // Effective body access; raw catalog retains the upstream model flag.
+    modelInvocable: sourceInvocation.modelInvocable || sourceInvocation.userInvocable,
     userInvocable: userInvocable !== false,
   },
   resourceBase: {

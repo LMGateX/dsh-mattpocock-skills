@@ -6,6 +6,20 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.17.0 Skill 正文获取实施（2026-11-09，文档已固定；开发待开始）
+
+接受范围见 [DESIGN](<DESIGN.md>) 与唯一细化 [SKILL_CONTENT_ACCESS](<SKILL_CONTENT_ACCESS.md>)。默认正文可获取、user-only 交模型理解，不做自然语言特批或严格兼容模式；既有权限与来源完整性不变。本轮用户明确授权push／发版／安装，旧轮次“不安装”不限制本批。
+
+| 阶段 | 交付／门槛 |
+|---|---|
+| A 文档／基线 | 从现行origin/main隔离树先提交契约；保留原主工作区dirty；冻结来源/有效策略、提示/定位及验证seams |
+| B 实现与纵切测试 | 独立单writer子树，provider有效暴露与稳定前言；public provider/Registry/native loader typed/rendered RED→GREEN；保持源catalog/vendor、scope/gate、完整性与abort |
+| C 集成／复审 | 串行集成；独立Standards/Spec关闭必改；完整source、双宿主公开类型/loader、生成物/vendor、行为评估覆盖边界如实记载 |
+| D 制品／发布 | clean source、一次accepted tarball、精确包完整suite/双宿主stable+beta headless；同字节五资产，新annotated tag与非force push、Release下载strict回验 |
+| E 本机安装 | 支持的Profile包管理安装同一归档；保留其他配置/业务数据/共享SDK；验证已安装字节和实际加载，当前进程未激活则明确待重载；不自动重启或替换GUI |
+
+本段初始状态仅A文档完成；后续实际结果追加验证记录，不沿用旧测试数字冒充本次完成。
+
 ## 0.16.1 DSH 0.2.2-rc.1 兼容发布（已完成／未为本机安装）
 
 A–D已完成：source/tag **0e7b311683541036ae0bc351536fa4a0721ac1c0**；同归档双宿主完整suite与stable/beta headless、独立Standards/Spec、精确RC1 types和native Client通过；新[v0.16.1](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.16.1)五资产已发布并下载strict回验。运行时代码与生成物无改动，只有元数据／断言／测试装配及兼容资料；本机未安装，最终身份与边界见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.16.1.json>)。本状态是发布后main文档，不改变冻结source/tag。
