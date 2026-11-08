@@ -82,8 +82,8 @@ test('list is static, channel-exact, immutable, and package-relative', async () 
   for (const candidate of stableCandidates) {
     const row = CATALOG.skills.find((entry) => entry.name === candidate.name)
     assert(row)
-    assert.equal(candidate.description, row.description)
-    assert.deepEqual(candidate.invocation, row.invocation)
+    assert.equal(candidate.description, row.invocation.modelInvocable ? row.description : '[Upstream user-only; agent-readable] ' + row.description)
+    assert.deepEqual(candidate.invocation, { modelInvocable: true, userInvocable: row.invocation.userInvocable })
     assert.equal(candidate.provider, PROVIDER_NAME)
     assert.equal(candidate.source, 'bundled')
     assert.equal(candidate.rank, BUNDLED_SKILL_RANK)
@@ -97,7 +97,7 @@ test('list is static, channel-exact, immutable, and package-relative', async () 
   }
 })
 
-test('get lazily returns the exact body and preserves candidate semantics', async () => {
+test('get lazily prefixes adaptation guidance to one exact body and preserves candidate semantics', async () => {
   const provider = createMattPocockSkillProvider('stable')
   const candidates = await provider.list({})
   const candidate = candidates.find((entry) => entry.name === 'triage')
@@ -107,8 +107,24 @@ test('get lazily returns the exact body and preserves candidate semantics', asyn
   const raw = await readFile(candidate.path)
   const definition = await provider.get(candidate, {})
   assert(definition)
-  assert.equal(definition.content, raw.subarray(row.bodyByteOffset).toString('utf8'))
-  assert.equal(definition.content.startsWith('---'), false)
+  const body = raw.subarray(row.bodyByteOffset).toString('utf8')
+  assert(definition.content.endsWith(body))
+  assert.equal(definition.content.split(body).length - 1, 1)
+  const preface = definition.content.slice(0, -body.length)
+  assert.match(preface, /^\[Matt Pocock Skills adapter\]\n/)
+  assert.match(preface, /Source invocation: user-only \(modelInvocable=false, userInvocable=true\)/)
+  assert.match(preface, /user-led workflow/)
+  assert.match(preface, /adapter permits body access/)
+  assert.match(preface, /task and context/)
+  assert.match(preface, /does not require starting or completing.*workflow/)
+  assert.match(preface, /does not expand.*permissions/)
+  assert(preface.includes('sourceFile: ' + JSON.stringify(candidate.path)))
+  assert.match(preface, /sourceBodyStartLine: [0-9]+\n/)
+  assert(preface.includes('resourceBase: ' + JSON.stringify(candidate.resourceBase.path)))
+  assert.match(preface, /Resolve relative resources from resourceBase, not the current working directory/)
+  assert.match(preface, /main body is already returned.*supporting files only as needed/)
+  assert(preface.endsWith('[Original Skill body]\n'))
+  assert.equal((await provider.get(candidate, {})).content, definition.content)
   assert.equal(definition.name, candidate.name)
   assert.equal(definition.description, candidate.description)
   assert.strictEqual(definition.invocation, candidate.invocation)
@@ -160,10 +176,97 @@ test('provider preserves optional metadata and when-to-use semantics', async () 
     assert(Object.isFrozen(candidate.metadata.frontmatterExtensions))
     const definition = await provider.get(candidate, {})
     assert(definition)
-    assert.equal(definition.content, 'Synthetic body\n')
+    assert(definition.content.endsWith('Synthetic body\n'))
+    assert.match(definition.content, /Source invocation: model-invocable \(modelInvocable=true, userInvocable=false\)/)
     assert.equal(definition.whenToUse, candidate.whenToUse)
     assert.strictEqual(definition.metadata, candidate.metadata)
     assert.strictEqual(definition.invocation, candidate.invocation)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('provider derives effective invocation for all four source combinations without altering source metadata', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-provider-invocation-'))
+  try {
+    const prefix = Buffer.from('---\nname: synthetic\ndescription: Synthetic test Skill\n---\n')
+    const bytes = Buffer.concat([prefix, Buffer.from('Synthetic body\n')])
+    const combinations = [
+      { source: { modelInvocable: false, userInvocable: false }, effective: { modelInvocable: false, userInvocable: false }, marked: false },
+      { source: { modelInvocable: false, userInvocable: true }, effective: { modelInvocable: true, userInvocable: true }, marked: true },
+      { source: { modelInvocable: true, userInvocable: false }, effective: { modelInvocable: true, userInvocable: false }, marked: false },
+      { source: { modelInvocable: true, userInvocable: true }, effective: { modelInvocable: true, userInvocable: true }, marked: false },
+    ]
+    for (const { source, effective, marked } of combinations) {
+      const row = {
+        name: 'synthetic', description: 'Synthetic test Skill', invocation: source,
+        metadata: { invocation: 'source-owned', sourceFile: 'source-owned', sourceBodyStartLine: 99, resourceBase: 'source-owned' },
+        channels: ['stable'], directory: 'skills/testing/synthetic', skillPath: 'skills/testing/synthetic/SKILL.md',
+        bodyByteOffset: prefix.length, sha256: sha256(bytes),
+      }
+      const original = structuredClone(row)
+      await writeSkill(temporary, row.skillPath, bytes)
+      const provider = createMattPocockSkillProvider('stable', { packageRoot: temporary, catalog: oneSkillCatalog(row) })
+      const [candidate] = await provider.list({})
+      assert.deepEqual(candidate.invocation, effective)
+      assert.equal(candidate.description, marked ? '[Upstream user-only; agent-readable] Synthetic test Skill' : 'Synthetic test Skill')
+      assert(Object.isFrozen(candidate.invocation))
+      const definition = await provider.get(candidate, {})
+      assert(definition)
+      assert.strictEqual(definition.invocation, candidate.invocation)
+      assert.equal(definition.description, candidate.description)
+      assert.deepEqual(definition.metadata, original.metadata)
+      assert(definition.content.includes('Source invocation: ' + (marked ? 'user-only' : source.modelInvocable ? 'model-invocable' : 'disabled')))
+      assert(definition.content.includes('(modelInvocable=' + source.modelInvocable + ', userInvocable=' + source.userInvocable + ').'))
+      assert.equal(definition.content.includes('Upstream positions this as a user-led workflow'), marked)
+      assert.deepEqual(row, original)
+    }
+    assert.equal(CATALOG.skills.filter(row => row.invocation.modelInvocable).length, 11)
+    assert.equal(CATALOG.skills.filter(row => !row.invocation.modelInvocable && row.invocation.userInvocable).length, 16)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('verified framing determines source lines and safely locates unchanged bodies including a UTF-8 BOM', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-provider-source-location-'))
+  try {
+    const packageRoot = join(temporary, 'package "quoted"\nsourceBodyStartLine: 999\r\t')
+    const fixtures = [
+      { prefix: '---\nname: synthetic\ndescription: Synthetic\n---\n', line: 5, body: '\ufeffOriginal body\n\nNo final newline' },
+      { prefix: '---\r\nname: synthetic\r\ndescription: |\r\n  多字节\r\n\r\n---\r\n', line: 7, body: '\r\nOriginal 多字节 body\r\n' },
+      { prefix: '---\nname: synthetic\n---', line: 3, body: '' },
+    ]
+    for (const fixture of fixtures) {
+      const prefix = Buffer.from(fixture.prefix)
+      const bytes = Buffer.concat([prefix, Buffer.from(fixture.body)])
+      const row = {
+        name: 'synthetic', description: 'Synthetic test Skill', invocation: { modelInvocable: true, userInvocable: true },
+        channels: ['stable'], directory: 'skills/testing/synthetic', skillPath: 'skills/testing/synthetic/SKILL.md',
+        bodyByteOffset: prefix.length, sha256: sha256(bytes),
+      }
+      await writeSkill(packageRoot, row.skillPath, bytes)
+      const provider = createMattPocockSkillProvider('stable', { packageRoot, catalog: oneSkillCatalog(row) })
+      const [candidate] = await provider.list({})
+      const definition = await provider.get(candidate, {})
+      assert(definition)
+      const separator = '[Original Skill body]\n'
+      const bodyStart = definition.content.indexOf(separator) + separator.length
+      assert(bodyStart >= separator.length)
+      assert.equal(definition.content.slice(bodyStart), fixture.body)
+      assert(Buffer.from(definition.content.slice(bodyStart)).equals(bytes.subarray(prefix.length)))
+      const preface = definition.content.slice(0, bodyStart)
+      assert(preface.includes('sourceBodyStartLine: ' + fixture.line + '\n'))
+      const fileLines = preface.split('\n').filter(line => line.startsWith('sourceFile: '))
+      const resourceLines = preface.split('\n').filter(line => line.startsWith('resourceBase: '))
+      assert.equal(fileLines.length, 1)
+      assert.equal(resourceLines.length, 1)
+      assert.equal(JSON.parse(fileLines[0].slice('sourceFile: '.length)), candidate.path)
+      assert.equal(JSON.parse(resourceLines[0].slice('resourceBase: '.length)), candidate.resourceBase.path)
+      assert.equal(preface.includes(packageRoot), false)
+      assert.equal(preface.split('\n').filter(line => line.startsWith('sourceBodyStartLine: ')).length, 1)
+      assert.equal((await provider.get(candidate, {})).content, definition.content)
+    }
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }

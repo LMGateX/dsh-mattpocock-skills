@@ -151,10 +151,41 @@ function deepFreeze<T>(value: T): T {
   return value
 }
 
+function isUpstreamUserOnly(row: CatalogSkill): boolean {
+  return !row.invocation.modelInvocable && row.invocation.userInvocable
+}
+
+function contentPreface(record: CandidateRecord, bytes: Buffer): string {
+  const source = record.row.invocation
+  const positioning = isUpstreamUserOnly(record.row) ? 'user-only' : source.modelInvocable ? 'model-invocable' : 'disabled'
+  let sourceBodyStartLine = 1
+  for (let index = 0; index < record.row.bodyByteOffset; index++) {
+    if (bytes[index] === 10) sourceBodyStartLine++
+  }
+  return [
+    '[Matt Pocock Skills adapter]',
+    'Source invocation: ' + positioning + ' (modelInvocable=' + source.modelInvocable + ', userInvocable=' + source.userInvocable + ').',
+    ...(isUpstreamUserOnly(record.row)
+      ? ['Upstream positions this as a user-led workflow; this adapter permits body access. Decide how to use it according to the task and context.']
+      : []),
+    'Loading this body does not require starting or completing the workflow and does not expand any operation permissions. Follow the task, context, and existing agreements.',
+    'sourceFile: ' + JSON.stringify(record.filePath),
+    'sourceBodyStartLine: ' + sourceBodyStartLine,
+    'resourceBase: ' + JSON.stringify(record.resourcePath),
+    'Resolve relative resources from resourceBase, not the current working directory. The main body is already returned below; read supporting files only as needed.',
+    '',
+    '[Original Skill body]',
+    '',
+  ].join('\n')
+}
+
 function candidateFor(row: CatalogSkill, filePath: string, resourcePath: string): SkillCandidate {
   const resourceBase = Object.freeze({ kind: 'directory' as const, path: resourcePath })
   const locator = Object.freeze({ name: row.name, skillPath: row.skillPath, sha256: row.sha256 })
-  const invocation = Object.freeze({ ...row.invocation })
+  const invocation = Object.freeze({
+    modelInvocable: row.invocation.modelInvocable || row.invocation.userInvocable,
+    userInvocable: row.invocation.userInvocable,
+  })
   const metadata = row.metadata === undefined && row.frontmatterExtensions === undefined
     ? undefined
     : deepFreeze(structuredClone({
@@ -163,7 +194,7 @@ function candidateFor(row: CatalogSkill, filePath: string, resourcePath: string)
       }))
   const candidate: SkillCandidate = {
     name: row.name,
-    description: row.description,
+    description: isUpstreamUserOnly(row) ? '[Upstream user-only; agent-readable] ' + row.description : row.description,
     invocation,
     provider: PROVIDER_NAME,
     source: 'bundled',
@@ -227,7 +258,8 @@ export function createMattPocockSkillProvider(channel: Channel, options: Provide
         }
         let content: string
         try {
-          content = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(record.row.bodyByteOffset))
+          // Treat a body BOM as source content, not a transport marker to strip.
+          content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes.subarray(record.row.bodyByteOffset))
         } catch {
           diagnostic('refused Skill "' + record.row.name + '" at ' + record.filePath + ': body is not valid UTF-8')
           return undefined
@@ -240,7 +272,7 @@ export function createMattPocockSkillProvider(channel: Channel, options: Provide
           source: record.candidate.source,
           resourceBase: record.candidate.resourceBase!,
           path: record.filePath,
-          content,
+          content: contentPreface(record, bytes) + content,
           ...(record.candidate.whenToUse === undefined ? {} : { whenToUse: record.candidate.whenToUse }),
           ...(record.candidate.metadata === undefined ? {} : { metadata: record.candidate.metadata }),
         }

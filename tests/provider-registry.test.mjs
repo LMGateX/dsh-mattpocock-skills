@@ -8,7 +8,7 @@ import SkillRegistry, { BUNDLED_SKILL_RANK, isModelInvocable, isUserInvocable, r
 
 import * as plugin from '../lib/index.js'
 
-const MODEL_SKILLS = [
+const SOURCE_MODEL_SKILLS = [
   'code-review',
   'codebase-design',
   'diagnosing-bugs',
@@ -67,19 +67,30 @@ test('actual DSH registry exposes stable membership and exact lazy definitions',
   try {
     const summaries = await mounted.ctx.skills.list()
     assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.stable)
-    assert.deepEqual(summaries.filter(isModelInvocable).map((skill) => skill.name), MODEL_SKILLS)
+    assert.deepEqual(summaries.filter(isModelInvocable).map((skill) => skill.name), plugin.CATALOG.channels.stable)
     assert.deepEqual(summaries.filter(isUserInvocable).map((skill) => skill.name), plugin.CATALOG.channels.stable)
 
-    const definition = await mounted.ctx.skills.get('triage')
-    const row = plugin.CATALOG.skills.find((skill) => skill.name === 'triage')
-    assert(definition && row)
-    const raw = await readFile(definition.path)
-    assert.equal(definition.content, raw.subarray(row.bodyByteOffset).toString('utf8'))
-    assert.equal(definition.resourceBase.kind, 'directory')
-    assert.equal(definition.resourceBase.path, dirname(definition.path))
-    const rendered = renderSkillContent(definition)
-    assert.match(rendered, /Base directory for this skill:/)
-    assert(rendered.includes(definition.resourceBase.path))
+    assert.deepEqual(plugin.CATALOG.skills.filter(skill => skill.invocation.modelInvocable).map(skill => skill.name), SOURCE_MODEL_SKILLS)
+    for (const summary of summaries) {
+      const definition = await mounted.ctx.skills.get(summary.name)
+      const row = plugin.CATALOG.skills.find((skill) => skill.name === summary.name)
+      assert(definition && row)
+      const raw = await readFile(definition.path)
+      const body = raw.subarray(row.bodyByteOffset).toString('utf8')
+      assert(definition.content.endsWith(body))
+      assert.equal(definition.content.split(body).length - 1, 1)
+      assert.match(definition.content, /^\[Matt Pocock Skills adapter\]\n/)
+      assert(definition.content.includes(row.invocation.modelInvocable ? 'Source invocation: model-invocable' : 'Source invocation: user-only'))
+      assert.match(definition.content, /Resolve relative resources from resourceBase/)
+      assert.equal(definition.description, summary.description)
+      assert.deepEqual(definition.invocation, summary.invocation)
+      assert.equal(definition.resourceBase.kind, 'directory')
+      assert.equal(definition.resourceBase.path, dirname(definition.path))
+      const rendered = renderSkillContent(definition)
+      assert.match(rendered, /Base directory for this skill:/)
+      assert(rendered.includes(definition.resourceBase.path))
+      assert(rendered.includes(definition.content))
+    }
     assert.equal(await mounted.ctx.skills.get('not-present'), undefined)
     assert.equal(await mounted.ctx.skills.get('Not_Valid'), undefined)
   } finally {
@@ -87,16 +98,18 @@ test('actual DSH registry exposes stable membership and exact lazy definitions',
   }
 })
 
-test('actual DSH registry exposes implement-spec as user-invocable and model-hidden', async () => {
+test('actual DSH registry exposes upstream user-only implement-spec to model and user', async () => {
   const mounted = await mount('stable')
   try {
     const summaries = await mounted.ctx.skills.list()
     assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.stable)
-    assert.deepEqual(summaries.filter(isModelInvocable).map((skill) => skill.name), MODEL_SKILLS)
+    assert.deepEqual(summaries.filter(isModelInvocable).map((skill) => skill.name), plugin.CATALOG.channels.stable)
     assert.deepEqual(summaries.filter(isUserInvocable).map((skill) => skill.name), plugin.CATALOG.channels.stable)
     const implementSpec = summaries.find((skill) => skill.name === 'implement-spec')
     assert(implementSpec)
-    assert.deepEqual(implementSpec.invocation, { modelInvocable: false, userInvocable: true })
+    assert.deepEqual(implementSpec.invocation, { modelInvocable: true, userInvocable: true })
+    assert.match(implementSpec.description, /^\[Upstream user-only; agent-readable\] /)
+    assert.deepEqual(plugin.CATALOG.skills.find(skill => skill.name === 'implement-spec').invocation, { modelInvocable: false, userInvocable: true })
     const definition = await mounted.ctx.skills.get('implement-spec')
     assert(definition)
     assert.deepEqual(definition.invocation, implementSpec.invocation)
@@ -112,6 +125,17 @@ test('the beta channel resolves to the same set as stable while nothing is previ
     const summaries = await mounted.ctx.skills.list()
     assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.beta)
     assert.deepEqual(summaries.map((skill) => skill.name), plugin.CATALOG.channels.stable)
+    for (const summary of summaries) {
+      const definition = await mounted.ctx.skills.get(summary.name)
+      const row = plugin.CATALOG.skills.find(skill => skill.name === summary.name)
+      const raw = await readFile(definition.path)
+      const body = raw.subarray(row.bodyByteOffset).toString('utf8')
+      assert.equal(isModelInvocable(definition), true)
+      assert.equal(isUserInvocable(definition), true)
+      assert(definition.content.endsWith(body))
+      assert.equal(definition.content.split(body).length - 1, 1)
+      assert(renderSkillContent(definition).includes(definition.content))
+    }
   } finally {
     await cleanup(mounted.packageFiber, mounted.registryFiber)
   }
