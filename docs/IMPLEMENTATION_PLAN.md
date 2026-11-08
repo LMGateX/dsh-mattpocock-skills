@@ -6,7 +6,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
-## 0.17.0 Skill 正文获取实施（2026-11-09，A–C已完成；制品／发布／安装门禁待执行）
+## 0.17.0 Skill 正文获取实施（2026-11-09，A–E已交付；磁盘已安装，当前宿主待重载）
 
 接受范围见 [DESIGN](<DESIGN.md>) 与唯一细化 [SKILL_CONTENT_ACCESS](<SKILL_CONTENT_ACCESS.md>)。默认正文可获取、user-only 交模型理解，不做自然语言特批或严格兼容模式；既有权限与来源完整性不变。本轮用户明确授权push／发版／安装，旧轮次“不安装”不限制本批。
 
@@ -18,7 +18,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | D 制品／发布 | clean source、一次accepted tarball、精确包完整suite/双宿主stable+beta headless；同字节五资产，新annotated tag与非force push、Release下载strict回验 |
 | E 本机安装 | 支持的Profile包管理安装同一归档；保留其他配置/业务数据/共享SDK；验证已安装字节和实际加载，当前进程未激活则明确待重载；不自动重启或替换GUI |
 
-A–C已完成：先提交契约，三个独立单writer子树实现／验证后串行集成；独立Standards与Spec均无必改。最终源码双宿主各1042 tests／1036 pass／0 fail／6 native-UI装配skip，另精确RC1原生Client fixture 6/6关闭这六项。当前冻结源中的本段不表示已经pack／push／发布或安装；D–E的精确身份与实际结果后续追加[验证摘要](<VERIFICATION.md>)。
+A–E已交付：先提交契约，三个独立单writer子树实现／验证后串行集成，两轴无必改；双宿主源码与同归档完整门禁、原生loader／公开类型／正式headless通过，六native-UI装配skip由精确RC1 fixture 6/6关闭。唯一clean source／tag为8d914db，473809 B归档只pack一次；新[v0.17.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.17.0)五资产发布、下载严格回验及本机161/161字节安装验证已完成。alpha.4初次并行既有cwd失败与完整串行通过均保留。当前进程仍返回旧Skill正文形式，等待宿主重载；未重启／替换服务，未迁移／清理业务数据。源/tag保持冻结，本状态仅发布后main文档，详见[验证摘要](<VERIFICATION.md>)及[机器摘要](<../dist/verification-0.17.0.json>)。
 
 ## 0.16.1 DSH 0.2.2-rc.1 兼容发布（已完成／未为本机安装）
 

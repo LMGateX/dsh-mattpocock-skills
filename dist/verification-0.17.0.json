@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "version": "0.17.0",
+  "sourceCommit": "8d914db4ce9023c1bec9cd723185f157f571f431",
+  "reviewedRuntimeAndTestsCommit": "ba137c8125b012782e928bfcd7eb98fda4aae2f1",
+  "reviewBase": "e63c33c7831313a39506facad675e690edbc1309",
+  "tag": {
+    "name": "v0.17.0",
+    "object": "837284adc4979bdf6d163e6f4a649be9148003e9",
+    "peeled": "8d914db4ce9023c1bec9cd723185f157f571f431"
+  },
+  "change": {
+    "selectedSkills": 27,
+    "sourceInvocation": {
+      "modelEnabled": 11,
+      "userOnly": 16
+    },
+    "effectiveModelVisible": 27,
+    "sourceCatalogAndVendorUnchanged": true,
+    "content": "adapter preface + one exact contiguous original-body suffix",
+    "intentClassifierAdded": false,
+    "approvalGateAdded": false,
+    "globalSdkPatchAdded": false
+  },
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.17.0.tgz",
+    "bytes": 473809,
+    "sha256": "22f3f832118e266cb6aa94501aaf238e69e356591ccb10b270969d087332f706",
+    "pnpm": "11.8.0",
+    "acceptedPackCount": 1,
+    "members": {
+      "directories": 0,
+      "files": 161,
+      "symlinks": 0
+    },
+    "fixedFiles": 76,
+    "vendorFiles": 85,
+    "buildFiles": 62,
+    "prepackPassed": true,
+    "strictOriginalPassed": true,
+    "strictDownloadedPassed": true,
+    "fiveOriginalFilesReadOnly": true,
+    "identityMetadataUnchanged": true,
+    "fiveDownloadedAssetsByteIdentical": true
+  },
+  "validation": {
+    "sourceSuites": {
+      "0.2.1-alpha.4": {
+        "tests": 1042,
+        "pass": 1036,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6
+      },
+      "0.2.2-rc.1": {
+        "tests": 1042,
+        "pass": 1036,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6
+      }
+    },
+    "explicitAcceptedArchiveSuites": {
+      "0.2.1-alpha.4": {
+        "tests": 1042,
+        "pass": 1036,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6,
+        "fileConcurrency": 1
+      },
+      "0.2.2-rc.1": {
+        "tests": 1042,
+        "pass": 1036,
+        "fail": 0,
+        "cancelled": 0,
+        "skip": 6,
+        "fileConcurrency": "node default"
+      }
+    },
+    "archiveScope": "PluginManager consumes the accepted archive; source-only fixtures continue to exercise source",
+    "observedNonPassingRun": {
+      "host": "0.2.1-alpha.4",
+      "mode": "first default-parallel accepted-archive suite",
+      "tests": 1042,
+      "pass": 1035,
+      "fail": 1,
+      "skip": 6,
+      "test": "existing native activation relative-read cwd fixture",
+      "error": "cannot create effect on inactive context",
+      "independentUnmodifiedCwdFile": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "skip": 0
+      },
+      "subsequentFullSerialSuitePassed": true,
+      "fixtureOrSdkModified": false,
+      "repacked": false,
+      "rootCause": "specific teardown trigger not established; do not claim a fix"
+    },
+    "skipReasons": {
+      "canonicalNativeUiSlotsNotAssemblable": 6,
+      "upstreamSourceNotSupplied": 0
+    },
+    "nativeClientFixture": {
+      "host": "0.2.2-rc.1",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "primitives": "controlled stand-in",
+      "liveGuiAcceptance": false
+    },
+    "actualPublicTypes": {
+      "0.2.1-alpha.4": {
+        "rootDiagnostics": 0,
+        "clientDiagnostics": 0,
+        "nonTargetDshFallbacks": 0
+      },
+      "0.2.2-rc.1": {
+        "rootDiagnostics": 0,
+        "clientDiagnostics": 0,
+        "nonTargetDshFallbacks": 0
+      }
+    },
+    "nativeSkillLoader": {
+      "hosts": [
+        "0.2.1-alpha.4",
+        "0.2.2-rc.1"
+      ],
+      "testsPerHost": 7,
+      "passPerHost": 7,
+      "skipPerHost": 0,
+      "realRegistryAndToolExecution": true,
+      "fullTypedJsonAndNativeRender": true,
+      "scopes": "parent and synthetic child-like",
+      "fullPtcOrLiveChildAcceptance": false
+    },
+    "headlessPresentationVerifier": {
+      "testsPerHost": 19,
+      "passPerHost": 19,
+      "skipPerHost": 0,
+      "faultCases": 16
+    },
+    "vendor": {
+      "files": 85,
+      "bytes": 296048,
+      "sha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8"
+    },
+    "client": {
+      "bytes": 357619,
+      "privateModules": 8,
+      "unchanged": true
+    },
+    "realModelCampaignRun": false,
+    "promptContractReviewOnly": true
+  },
+  "review": {
+    "standards": {
+      "hardFindings": 0,
+      "optionalSmells": 0,
+      "unresolved": 0
+    },
+    "spec": {
+      "findings": 0,
+      "unresolved": 0
+    },
+    "postReviewSourceDelta": "documentation only",
+    "authoredReportsAreNotExecutionReceipts": true
+  },
+  "headless": {
+    "hosts": [
+      "0.2.1-alpha.4",
+      "0.2.2-rc.1"
+    ],
+    "channels": [
+      "stable",
+      "beta"
+    ],
+    "forms": [
+      "checkout",
+      "same accepted archive"
+    ],
+    "definitionsPerProbe": 27,
+    "modelVisiblePerProbe": 27,
+    "sourceInvocationCounts": {
+      "modelEnabled": 11,
+      "userOnly": 16
+    },
+    "sourceAndArchiveReportsByteIdenticalAfter": "only the two validated preface path lines are normalized; original body is never replaced",
+    "modelInvoked": false,
+    "webStarted": false,
+    "freshHomesRemoved": true
+  },
+  "release": {
+    "id": 438392386,
+    "tag": "v0.17.0",
+    "draft": false,
+    "prerelease": false,
+    "publishedAt": "2026-11-08T17:12:55Z",
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.17.0",
+    "assets": [
+      {
+        "id": 724616292,
+        "name": "lmgatex-dsh-mattpocock-skills-0.17.0.tgz",
+        "size": 473809,
+        "digest": "sha256:22f3f832118e266cb6aa94501aaf238e69e356591ccb10b270969d087332f706"
+      },
+      {
+        "id": 724616369,
+        "name": "lmgatex-dsh-mattpocock-skills-0.17.0.tgz.sha256",
+        "size": 107,
+        "digest": "sha256:f8240905bf011a430c73ed4cd70bbf061db53b38ee5b143d0002b206d81a00d0"
+      },
+      {
+        "id": 724616378,
+        "name": "lmgatex-dsh-mattpocock-skills-0.17.0.tgz.size",
+        "size": 7,
+        "digest": "sha256:b8aed0807ca53309e2af4835f1968599c466c29368df7405bf6840612ec4ec3b"
+      },
+      {
+        "id": 724616297,
+        "name": "lmgatex-dsh-mattpocock-skills-0.17.0.tgz.source-commit",
+        "size": 41,
+        "digest": "sha256:67d6a8a5a5c05b389868d781c93f26267ff5f46c226aa2c999ead9ba8279974c"
+      },
+      {
+        "id": 724616299,
+        "name": "lmgatex-dsh-mattpocock-skills-0.17.0.tgz.pnpm-version",
+        "size": 7,
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b"
+      }
+    ],
+    "nonForceAtomicMainAndNewTagPush": true,
+    "oldTagRefsUnchanged": 98,
+    "previousReleaseBodyAndFiveAssetsUnchanged": true,
+    "draftCreatedOnce": true,
+    "assetsUploadedOnce": true,
+    "draftLookupNote": "tag endpoint returned 404 for draft; found the same unique draft by bounded release listing and published its existing ID"
+  },
+  "installation": {
+    "profile": "web",
+    "fromVersion": "0.16.1",
+    "diskVersion": "0.17.0",
+    "method": "supported dsh plugin add; exact verified downloaded archive; lifecycle scripts disabled",
+    "installedRegularFiles": 161,
+    "allInstalledFilesByteIdenticalToDownloadedArchive": true,
+    "priorProfileAndFullPackageBackedUp": true,
+    "unrelatedManifestFieldsUnchanged": true,
+    "profilePatchByteIdentical": true,
+    "sharedSdkManifestUnchanged": true,
+    "originalWebListenerPidAndFdUnchanged": true,
+    "currentNativeSkillProbe": {
+      "provider": "dsh-mattpocock-skills",
+      "adapterPrefaceVisible": false,
+      "meaning": "running host still returns legacy presentation; new release activation awaits host reload; exact older live version not asserted"
+    },
+    "serviceRestarted": false,
+    "replacementServerStarted": false,
+    "liveActivationClaimed": false
+  },
+  "boundaries": {
+    "npmPublished": false,
+    "productionBusinessDataMigratedOrCleaned": false,
+    "managementEnabled": false,
+    "originalDirtyCheckoutPreserved": true,
+    "worktrees": "intentionally retained for audit and follow-up; not physically cleaned"
+  }
+}

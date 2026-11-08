@@ -2,6 +2,20 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.17.0 已发布、下载回验并安装（2026-11-09；当前宿主待重载）
+
+本完成记录与[机器摘要](<../dist/verification-0.17.0.json>)为发布后main纯文档追加，不改变已冻结source／tag／归档。精确制品复验应检出source或tag，不在这些后续文档commit上冒充原制品源。
+
+- 唯一clean source／annotated `v0.17.0` peeled为 **8d914db4ce9023c1bec9cd723185f157f571f431**，tag object **837284adc4979bdf6d163e6f4a649be9148003e9**；运行时／测试与独立审查固定的 **ba137c8** 相同，冻结前增量仅四份源码阶段说明。
+- 源码与显式同一accepted归档 × **DSH 0.2.1-alpha.4／0.2.2-rc.1** 最终完整门禁各 **1042 tests／1036 pass／0 fail／6 skip**。六项canonical native UI-slots装配skip另在精确RC1 native Client fixture **6/6** 关闭；上游checkout已提供。归档模式PluginManager消费同一tgz，源码专用seams仍测source，不把全部测试说成直接从归档运行。实际alpha.4与rc.1公开root／Client声明均零诊断、无非目标DSH回退；生成物／vendor／Client闭合门禁通过。
+- **失败保留：** alpha.4首次默认并行archive suite为1035 pass／1 fail／6 skip，唯一失败是既有原生cwd夹具的 `inactive context`。该夹具不导入插件；原样独立 **4/4**、随后完整 `--test-concurrency=1` 同包套件 **1036/0/6**。未改测试／断言／SDK、未跳过用例、未repack；具体teardown触发未确证，不宣称根因已修复或所有运行都零失败。
+- 双宿主 × source／同归档 × **stable／beta** 正式隔离headless全部通过：各 **27 definitions／27 model-visible**，原始调用划分仍11／16。先验证每份来源sha、原文、元数据、源行与JSON路径，仅归一化前言两路径行后，source/archive报告逐字节一致；原文不替换。fresh homes已清理，modelInvoked=false／webStarted=false。原生loader和child-like typed/rendered覆盖不等于真实模型／live child／完整PTC验收。
+- **accepted只pack一次：473809 B**，SHA-256 **22f3f832118e266cb6aa94501aaf238e69e356591ccb10b270969d087332f706**，pnpm **11.8.0**；161 regular／0 directory／0 symlink，76 fixed／85 vendor／62 JS+DTS。归档＋四sidecars只读、dev/ino/mode/size/mtime/ctime不变；original及downloaded source-bound strict均通过，下载五项 **5/5逐字节一致**。
+- 非force **atomic main＋新annotated tag**已push；[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.17.0) id **438392386**，published_at **2026-11-08T17:12:55Z**，draft=false／prerelease=false。五资产API size/digest全部匹配；**98旧tag refs**与v0.16.1正文／五资产id/size/digest未改。草稿按tag查询404后从有界列表找回同一id，未重建Release／重传资产。
+- 支持的Profile CLI已将同一下载归档安装到本机Web Profile：**磁盘0.16.1→0.17.0，161/161文件逐字节一致**。安装前备份manifest／lock／patch及完整旧包；无关manifest字段、Profile patch和选定共享SDK manifest不变，原Web listener PID/FD不变。指纹与字段比较有明确覆盖，不充当全磁盘证明。
+- **尚未激活到当前运行宿主。** 安装后的标准 `skill(code-review)` 仍返回旧正文形式，没有本版无条件adapter前言；不由磁盘版本推断live版本，旧进程具体历史版本也不另作断言。待宿主正常重载后复核；本轮未自动重启／替换GUI，未绕过认证调用管理Remote。
+- 独立 **Standards：0硬性／0可选smell／0未关闭；Spec：0发现／0未关闭**；轻量prompt合同评估不抹除历史Phase5失败。无npm发布、生产业务数据迁移／清理或管理启用。原主树dirty文档保留，隔离树与私有失败／成功日志有意保留；subagents及后台任务已收尾。
+
 ## 0.17.0 Skill 正文提示化（冻结源中的发布前门禁记录，2026-11-09）
 
 契约先于实现固定；从现行0.16.1后的基线隔离开发，不合入原工作区未提交文档。运行时／测试固定于 **ba137c8125b012782e928bfcd7eb98fda4aae2f1**；后续本节仅补源码阶段记录。用户授权本批push／新发版／同制品本机安装，不自动重启现有服务。
