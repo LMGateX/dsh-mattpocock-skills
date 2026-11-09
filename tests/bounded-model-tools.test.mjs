@@ -14,6 +14,59 @@ const value = result => {
   return parsed
 }
 
+test('actual mounted decision receipts retain exact candidate and historical adoption distinct from current support, including nested typed output', async t => {
+  const f = await mountedFixture(t)
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
+  await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'enable', expectedRevision: 0, expectedScope: initial.instance, action: 'enable', durationMs: 600000 }, signal())
+  const execute = command => f.execute('mattpocock_record', { request: { action: 'apply', command } })
+  value(await execute({ operationId: 'flow', expectedRevision: 0, workflowId: 'flow', action: 'put-workflow', value: { title: 'Delivery', axes: [] } }))
+  const put = value(await execute({ operationId: 'question', expectedRevision: 1, workflowId: 'flow', decisionId: 'D', action: 'put-decision', references: ['task:source'], value: { question: 'Choose path', context: '中😀'.repeat(6000), status: 'open', pending: true, awaitingImplementation: true, addressee: { kind: 'user', principalId: operator.principalId }, options: [{ key: 'B', label: 'Recommended' }, { key: 'A', label: 'Alternative' }], recommendation: 'B' } }))
+  assert.equal(put.recommendation.status, 'candidate')
+  assert.match(f.ctx.tools.get('mattpocock_record').description, /adopt-decision-recommendation/)
+  assert.match(f.ctx.tools.get('mattpocock_record').description, /same decisionId/)
+  const candidate = put.recommendation.candidate
+  assert.equal(candidate.optionKey, 'B'); assert.equal(candidate.decisionRevision, 2)
+  const page = value(await f.execute('mattpocock_record', { request: { action: 'read', query: { kind: 'decision' } } }))
+  assert.deepEqual(page.rows[0].recommendationSupport.candidate, candidate)
+  assert.equal(page.rows[0].policyBinding.createdRevision, 2)
+  const command = { operationId: 'adopt', expectedRevision: 2, workflowId: 'flow', decisionId: 'D', action: 'adopt-decision-recommendation', references: ['adopt:source'], value: { optionKey: candidate.optionKey, decisionRevision: candidate.decisionRevision, policyEpochId: candidate.policyEpochId, policyRevision: candidate.policyRevision } }
+  const realApply = f.runtime.applyInstrument.bind(f.runtime), realWrite = f.mounted.ports.instrumentStorage.compareAndSwap.bind(f.mounted.ports.instrumentStorage)
+  let calls = 0, writes = 0
+  f.runtime.applyInstrument = async (...args) => { calls++; return { ...await realApply(...args), diagnostic: { notJson: 1n } } }
+  f.mounted.ports.instrumentStorage.compareAndSwap = async (...args) => { writes++; return realWrite(...args) }
+  const adopted = value(await execute(command))
+  assert.equal(adopted.projection, 'failed'); assert.equal(adopted.commit, 'confirmed')
+  assert.equal(calls, 1); assert.equal(writes, 1)
+  assert.equal(adopted.recommendation.status, 'adopted')
+  assert.equal(adopted.recommendation.selection.selectedOptionKey, 'B')
+  assert.equal(adopted.recommendation.selection.policy.authorizedBy.principalId, operator.principalId)
+  await f.runtime.applyInstrument(operator, 'root', { operationId: 'human-correct', expectedRevision: 3, workflowId: 'flow', decisionId: 'D', action: 'put-decision', value: { question: 'Choose path', status: 'corrected', pending: false, result: 'Human correction', addressee: { kind: 'user', principalId: operator.principalId } } }, signal())
+  const replay = value(await execute(command))
+  assert.equal(replay.replayed, true); assert.equal(replay.appliedRevision, 3)
+  assert.deepEqual(replay.recommendation, adopted.recommendation)
+  assert.equal(replay.currentRecommendationSupport.status, 'not-eligible')
+  assert.equal((await f.runtime.readSession(operator, 'root', signal())).records.decisions[0].value.result, 'Human correction')
+  let nestedParent
+  f.ctx.on('tools/post-execute', async (exec, result, next) => { if (exec.name === 'mattpocock_record' && exec.parent !== undefined) nestedParent = exec.parent; return next() })
+  f.ctx.tools.register(sdk.defineTool({ name: 'recommendation_nested', description: 'mechanical actual nested recommendation receipt probe', parameters: {}, output: { schema: { type: 'json' }, render: () => [] }, async execute(_, exec) {
+    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal }, loadSDK))
+  } }))
+  const nested = await f.execute('recommendation_nested')
+  assert.notEqual(nested.isError, true); assert.ok(nestedParent)
+  assert.deepEqual(nested.value.recommendation, adopted.recommendation)
+  assert.equal(nested.value.currentRecommendationSupport.status, 'not-eligible')
+  assert.equal(writes, 2, 'only original adoption and real human correction write; replays/projection failure never reexecute business effects')
+})
+
+test('mounted model read preserves compact owner policy facts in typed and rendered output', async t => {
+  const f = await mountedFixture(t)
+  const current = value(await f.execute('mattpocock_record', { request: { action: 'read' } }))
+  assert.equal(current.ownerDecisionPolicy.status, 'feature-disabled')
+  assert.equal(current.ownerDecisionPolicy.revision, 0)
+  assert.equal(current.ownerDecisionPolicy.epochId, null)
+})
+
 test('model execute returns a current-only schema2 value and a small committed receipt', async t => {
   const f = await mountedFixture(t)
   await f.runtime.savePolicy(operator, policy(), 0, signal())

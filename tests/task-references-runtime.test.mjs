@@ -91,7 +91,7 @@ test('a real reference flows through T assignment decision current query and his
   assert.equal(childView.records.taskReferences[0].localTicketId, 'R')
   assert.equal(childView.records.summary.totalTickets, 0)
   assert.equal(childView.records.summary.totalTaskReferences, 1)
-  assert.deepEqual(childView.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3] })
+  assert.deepEqual(childView.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3, 4], decisionRecommendationAdoption: true })
   assert.equal(reserved.snapshot.T.used, 1)
   assert.equal(childView.records.decisions[0].value.ticketIds[0], 'R')
   const model = createModelTools(f.runtime)
@@ -129,7 +129,7 @@ test('mounted reference receipts query the reference kind and locators/cursors f
   }
   dto(await f.execute('mattpocock_assign', { request: { sessionId: 'child', workflowId: 'flow', ticketIds: ['A', 'B'] } }))
   const current = dto(await f.execute('mattpocock_record', { request: { action: 'read' } }, f.child))
-  assert.deepEqual(current.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3] })
+  assert.deepEqual(current.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3, 4], decisionRecommendationAdoption: true })
   assert.equal(current.collections.ticket.total, 0)
   assert.equal(current.collections['task-reference'].total, 2)
   const first = dto(await f.execute('mattpocock_record', { request: { action: 'read', query: { kind: 'task-reference', limit: 1 } } }, f.child))

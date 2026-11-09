@@ -50,6 +50,8 @@ import { createDomainResourceStorage, parseResourceDocument } from './controls/r
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js'
 import { createDomainVersionedStorage } from './controls/versioned-storage.js'
 import type { VersionedStorage } from './controls/versioned-storage.js'
+import { RECOMMENDATION_REMOTE_NAMESPACE, RECOMMENDATION_REMOTE_CONTRIBUTION, parseOwnerDecisionPolicySaveRequest, parseOwnerDecisionPolicySnapshot, parseOwnerDecisionPolicySaveResult } from './controls/recommendation-contract.js'
+import type { OwnerDecisionPolicySaveRequest, OwnerDecisionPolicySnapshot, OwnerDecisionPolicySaveResult } from './controls/recommendation-contract.js'
 import { REMOTE_NAMESPACE, REMOTE_CONTRIBUTION, parseHostJson, createHostJsonRepresentation, parsePolicyGrants, parseResourceAction, parseSessionSummaryRequest, parseSessionSummaryBatch } from './controls/remote-contract.js'
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, RuntimeSnapshot, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js'
 import { boolean, ControlsError, freeze, id, increment, memoized, record, revision } from './controls/validation.js'
@@ -935,6 +937,8 @@ export interface RuntimeFacade {
   readModelSource?(caller: HostCaller, sessionId: string, selector: { readonly domain: string; readonly key: string }, signal: AbortSignal): Promise<{ readonly identity: import('./model-tools.js').ModelIdentity; readonly source: import('./model-tools.js').ModelSource | null }>
   readPolicy(caller: HostCaller, signal: AbortSignal): Promise<PolicySnapshot>
   savePolicy(caller: HostCaller, intent: PolicyIntent, expectedRevision: number, signal: AbortSignal): Promise<PolicySnapshot>
+  readOwnerDecisionPolicy?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<OwnerDecisionPolicySnapshot>
+  saveOwnerDecisionPolicy?(caller: HostCaller, sessionId: string, request: OwnerDecisionPolicySaveRequest, signal: AbortSignal): Promise<OwnerDecisionPolicySaveResult>
   readSession(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<unknown>
   readSummaries(caller: HostCaller, request: SessionSummaryRequest, signal: AbortSignal): Promise<SessionSummaryBatch>
   applyInstrument(caller: HostCaller, sessionId: string, command: InstrumentCommand, signal: AbortSignal): Promise<unknown>
@@ -1340,6 +1344,37 @@ export class MattPocockControlsService extends TypertRemoteService {
 }
 
 
+/** Independent optional namespace: old server/client base descriptors are unchanged. */
+export class MattPocockRecommendationSupportService extends TypertRemoteService {
+  constructor(ctx: Context, private readonly runtime: RuntimeFacade, private readonly ports: HostPorts,
+    private readonly lifecycle: { readonly signal: AbortSignal; track<T>(work: () => Promise<T>): Promise<T> }) { super(ctx, RECOMMENDATION_REMOTE_NAMESPACE) }
+  private run<T>(operation: (caller: HostCaller, signal: AbortSignal) => Promise<T>, suppliedSignal?: AbortSignal): Promise<T> {
+    const caller = operatorCaller(this.ctx)
+    this.lifecycle.signal.throwIfAborted()
+    const signal = AbortSignal.any([this.ctx.invocation!.signal, this.lifecycle.signal, ...(suppliedSignal ? [suppliedSignal] : [])])
+    return this.lifecycle.track(() => operation(caller, signal))
+  }
+  readOwnerDecisionPolicy(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<OwnerDecisionPolicySnapshot> {
+    return this.run(async (caller, signal) => {
+      const sid = id(sessionId, 'sessionId')
+      await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted()
+      if (!this.runtime.readOwnerDecisionPolicy) throw new ControlsError('feature-disabled', 'owner recommendation policy is unsupported by this runtime')
+      return parseOwnerDecisionPolicySnapshot(await this.runtime.readOwnerDecisionPolicy(caller, sid, signal))
+    }, suppliedSignal)
+  }
+  saveOwnerDecisionPolicy(sessionId: unknown, request: unknown): Promise<OwnerDecisionPolicySaveResult> {
+    return this.run(async (caller, signal) => {
+      const sid = id(sessionId, 'sessionId'), parsed = parseOwnerDecisionPolicySaveRequest(request)
+      await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted()
+      if (!this.runtime.saveOwnerDecisionPolicy) throw new ControlsError('feature-disabled', 'owner recommendation policy is unsupported by this runtime')
+      return parseOwnerDecisionPolicySaveResult(await this.runtime.saveOwnerDecisionPolicy(caller, sid, parsed, signal))
+    })
+  }
+}
+export function recommendationHostRemoteContribution(): TypertContribution {
+  return { package: RECOMMENDATION_REMOTE_CONTRIBUTION.package, face: 'host', schemas: [], model: { services: [], events: [], objects: [] }, invocations: RECOMMENDATION_REMOTE_CONTRIBUTION.descriptors }
+}
+
 export function hostRemoteContribution(): TypertContribution {
   return { package: REMOTE_CONTRIBUTION.package, face: 'host', schemas: [], model: { services: [], events: [], objects: [] }, invocations: REMOTE_CONTRIBUTION.descriptors }
 }
@@ -1675,6 +1710,13 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     let syncAuditTool: (snapshot: SupervisionConfigSnapshot) => void = () => {}
     const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }), onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
     disposers.push(ctx.typert.register(hostRemoteContribution()))
+    // Optional enhancement failure never removes the established base namespace or tools.
+    try {
+      const unregister = ctx.typert.register(recommendationHostRemoteContribution())
+      try { new MattPocockRecommendationSupportService(ctx, active, ports, { signal: lifetime.signal, track }) }
+      catch (error) { unregister(); throw error }
+      disposers.push(unregister)
+    } catch { /* Unsupported optional namespace is observable as unavailable; base remains usable. */ }
     // Model tools always address the actual caller's session, never a supplied principal.
     const model = createModelTools(active)
     const boundedError = (error: unknown): Error => {
@@ -1706,7 +1748,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const saved = await active.savePolicy(caller, parsePolicyIntent(raw.intent), revision(raw.expectedRevision, 'expectedRevision'), exec.signal)
       options.onPolicyChanged?.(); return saved
     })
-    tool('mattpocock_record', 'Read the actual session instrument or submit authored task references and genuine user decisions. Task business facts stay in the agreed tracker/document. Prefer put-task-reference for T, assignment and decision links, not a duplicate business ticket. References are author reports, not verified source observations; local-current only certifies local instrument state. Read capabilities.taskReferences=true before using references; absence means unsupported, never fall back to a fake ticket. New query kind task-reference returns reference handles; legacy ticket remains readable. No source fetch is performed. New decisions are only for genuine unresolved user questions: set pending=true and addressee.kind=user; ordinary implementation choices, research and completion reports use existing spec, ADR and task records, not self-question/answer entries. Record an explicit reply with its source on the same decisionId; actual authenticated author stays agent when an agent records the reply. Partial, skipped, cancelled or silent replies are not approval; pending=false requires an explicit real resolution. On ordinary answer updates preserve existing awaitingImplementation=true; do not default new questions to awaiting=true. Await flags/counts are raw compatibility markers needing task-evidence review, not unfinished-task totals; explicit task handoff is not completion. Preserve the answer/result and task/source pointers; append review notes to context. Never infer completion or clear flags automatically. Legacy agent/unspecified/missing-addressee updates remain legal; OFF permits old-record closeout but no new records. Requests are {action:"read", query?}, {action:"detail", locator, offset?}, or {action:"apply", command} with command={operationId, expectedRevision, action:"put-workflow"|"put-task-reference"|"put-ticket"|"put-decision"|"set-decision-view", workflowId, references, value, plus localTicketId for put-task-reference or legacy put-ticket and decisionId for put-decision or set-decision-view}. Value shapes: put-task-reference {source:{kind:"external",instance,project,taskId}|{kind:"repository",repositoryAnchor,relativePath,anchor?}|{kind:"unverified"},locator,label?}; source is immutable and locator is required nonempty navigation only. No statuses/summary/disposition/claim/body/author/time. put-workflow {title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?}]}]}; put-ticket {title, statuses:{axisKey:[statusKey, ...]}, externalRef?, summary?, disposition?, suspicionMode?:\"auto\"|\"off\"}; put-decision {question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key,label}], recommendation?, impact?, addressee?, result?}; set-decision-view {read, hidden}. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
+    tool('mattpocock_record', 'Read the actual session instrument or submit authored task references and genuine user decisions. Task business facts stay in the agreed tracker/document. Prefer put-task-reference for T, assignment and decision links, not a duplicate business ticket. References are author reports, not verified source observations; local-current only certifies local instrument state. Read capabilities.taskReferences=true before using references; absence means unsupported, never fall back to a fake ticket. New query kind task-reference returns reference handles; legacy ticket remains readable. No source fetch is performed. New decisions are only for genuine unresolved user questions: set pending=true and addressee.kind=user; ordinary implementation choices, research and completion reports use existing spec, ADR and task records, not self-question/answer entries. Record an explicit reply with its source on the same decisionId; actual authenticated author stays agent when an agent records the reply. Partial, skipped, cancelled or silent replies are not approval; pending=false requires an explicit real resolution. On ordinary answer updates preserve existing awaitingImplementation=true; do not default new questions to awaiting=true. Await flags/counts are raw compatibility markers needing task-evidence review, not unfinished-task totals; explicit task handoff is not completion. Preserve the answer/result and task/source pointers; append review notes to context. Never infer completion or clear flags automatically. Legacy agent/unspecified/missing-addressee updates remain legal; OFF permits old-record closeout but no new records. Recommendation support requires capabilities.decisionRecommendationAdoption=true and current active owner authorization; absent means unsupported. First put a genuine pending user question with recommendation exactly equal to a unique options.key. Candidate is not adopted. Only an explicit second adopt-decision-recommendation on the same decisionId using returned exact candidate fields records a selection. Prior operator authorization is not a fresh user reply, completion proof, or additional operation permission; preserve result, references, await flags and task constraints. Never self-enable or renew the owner policy. Requests are {action:"read", query?}, {action:"detail", locator, offset?}, or {action:"apply", command} with command={operationId, expectedRevision, action:"put-workflow"|"put-task-reference"|"put-ticket"|"put-decision"|"set-decision-view"|"adopt-decision-recommendation", workflowId, references, value, plus localTicketId for put-task-reference or legacy put-ticket and decisionId for put-decision or set-decision-view}. Value shapes: put-task-reference {source:{kind:"external",instance,project,taskId}|{kind:"repository",repositoryAnchor,relativePath,anchor?}|{kind:"unverified"},locator,label?}; source is immutable and locator is required nonempty navigation only. No statuses/summary/disposition/claim/body/author/time. put-workflow {title, axes:[{axisKey, label, counting:"exclusive"|"overlapping", statuses:[{statusKey, label, meaning?, summaryPriority?}]}]}; put-ticket {title, statuses:{axisKey:[statusKey, ...]}, externalRef?, summary?, disposition?, suspicionMode?:\"auto\"|\"off\"}; put-decision {question, status, pending?, awaitingImplementation?, ticketIds?, context?, options?:[{key,label}], recommendation?, impact?, addressee?, result?}; set-decision-view {read, hidden}; adopt-decision-recommendation {optionKey,decisionRevision,policyEpochId,policyRevision} with no caller, author or time claims. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
       if (raw.action === 'read') { record(raw, 'instrument read', ['action', 'query']); return model.current(caller, raw.query, exec.signal) }
       if (raw.action === 'detail') return model.detail(caller, raw, exec.signal)
