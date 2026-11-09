@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fixture, operator, signal, caller, actualAgent, policy, deferred, loadSDK } from './fixtures/runtime-host.mjs'
+import { fixture, operator, signal, caller, actualAgent, policy, deferred, loadSDK, host } from './fixtures/runtime-host.mjs'
+
+const { Session } = await loadSDK('@deepseek-ai/dsh-session')
+const descriptorData = { version: 3, mode: 'continuable', provider: 'spawn', label: 'synthetic' }
+function realSession(id = 'old-child', options = {}) {
+  return Session.create(id, options.seed ?? [], { id, version: 4, createdAt: 0, cwd: '/fixture',
+    isSeeded: options.inheritedEventCount !== undefined, origin: 'subagent', parentSession: 'root', delegationDepth: 1,
+    ...options.header }, options.inheritedEventCount)
+}
+// Observe only the public behavior the authority already calls. No private log/cache access.
+function materializations(session) {
+  let reads = 0, slots = 0
+  const ownEvents = session.ownEvents.bind(session)
+  session.ownEvents = () => { const events = ownEvents(); reads++; slots += events.length; return events }
+  return { get reads() { return reads }, get slots() { return slots } }
+}
 
 // Real authority closure -> real Runtime summary, never a patched ports.sessionFacts.
 async function coldFixture(t, count = 4001) {
@@ -46,7 +61,7 @@ test('large cold child summary reuses only verified compact identity across all 
   assert.ok(f.stats >= 6, 'current source health is rechecked, not TTL cached')
 })
 
-test('live summary folds once per exact Session, Agent and own-event generation', async t => {
+test('untrusted Session-like summary still folds per exact Session, Agent and own-event generation', async t => {
   const f = await fixture(t)
   await f.read('old-child', operator)
   const child = f.agents.get('old-child'), descriptor = child.session.ownEvents()[0]
@@ -65,6 +80,151 @@ test('live summary folds once per exact Session, Agent and own-event generation'
   replacement.session.seq = 1; replacement.session.ownEvents = () => { reads++; return [descriptor] }
   f.agents.set(child.id, replacement)
   await read(); assert.equal(reads, 4)
+})
+
+for (const count of [1000, 4000]) test('trusted RC1 live first descriptor survives unrelated append/read: ' + count, async t => {
+  const f = await fixture(t), session = realSession()
+  session.append('subagent/descriptor', descriptorData)
+  for (let i = 1; i < count; i++) session.append('fixture/noop', {})
+  f.agents.set(session.id, { ...f.agents.get(session.id), session })
+  const work = materializations(session)
+  const read = version => f.runtime.readSummaries(operator, { sessions: [{ sessionId: session.id, ...(version ? { version } : {}) }] }, signal()).then(x => x.rows[0])
+  const first = await read()
+  assert.equal(first.status, 'current')
+  for (let i = 0; i < 3; i++) assert.equal((await read(first.version)).status, 'unchanged')
+  assert.equal(work.reads, 1, 'stable sequence reuses verified compact facts')
+  for (let i = 0; i < 5; i++) {
+    session.append('fixture/noop', {})
+    assert.equal((await read(first.version)).status, 'unchanged')
+  }
+  assert.equal(work.reads, 1, 'ordinary appends cannot replace the first owned descriptor')
+  assert.equal(work.slots, count + 1, 'only the first verification materializes the owned range, including seed marker')
+  t.diagnostic(JSON.stringify({ initialEvents: count + 1, appendReadPairs: 5, materializations: work.reads, slots: work.slots }))
+})
+
+test('RC1 Session snapshots descriptor input and later descriptors cannot rewrite the first', async t => {
+  const f = await fixture(t), session = realSession('immutable-child')
+  const data = { ...descriptorData }
+  session.append('subagent/descriptor', data)
+  data.mode = 'invalid'
+  f.agents.set(session.id, { id: session.id, session })
+  const work = materializations(session)
+  assert.deepEqual(await f.ports.authority.resolveSession(session.id), { kind: 'managed-child', parentSessionId: 'root' })
+  session.append('subagent/descriptor', { version: 3, mode: 'invalid' })
+  assert.deepEqual(await f.ports.authority.resolveSession(session.id), { kind: 'managed-child', parentSessionId: 'root' })
+  assert.equal(work.reads, 1, 'supported first descriptor remains authoritative')
+  const facts = await f.ports.sessionFacts(session.id, signal())
+  assert.equal(facts.events.length, 3, 'public sessionFacts still returns the complete owned log')
+  assert.equal(facts.events[1].data.mode, 'continuable', 'append detached and froze the establishing payload')
+  assert.equal(Object.isFrozen(facts.events[1].data), true)
+  assert.equal(host.classifySession(facts).kind, 'managed-child', 'fresh fold agrees with the positive fast path')
+})
+
+for (const initial of ['absent', 'unsupported', 'inherited']) test('real RC1 non-positive descriptor keeps generation fallback: ' + initial, async t => {
+  const f = await fixture(t)
+  const inherited = { type: 'subagent/descriptor', seq: 0, time: 0, data: descriptorData }
+  const session = realSession('negative-' + initial, initial === 'inherited' ? { seed: [inherited], inheritedEventCount: 1 } : {})
+  if (initial === 'unsupported') session.append('subagent/descriptor', { version: 99 })
+  f.agents.set(session.id, { id: session.id, session })
+  const work = materializations(session)
+  assert.equal(await f.ports.authority.resolveSession(session.id), undefined)
+  assert.equal(await f.ports.authority.resolveSession(session.id), undefined)
+  assert.equal(work.reads, 1, 'unchanged negative generation can reuse its compact fold')
+  session.append('fixture/noop', {})
+  assert.equal(await f.ports.authority.resolveSession(session.id), undefined)
+  assert.equal(work.reads, 2, 'negative facts are not granted positive immutable lifetime')
+  session.append('subagent/descriptor', descriptorData)
+  const found = await f.ports.authority.resolveSession(session.id)
+  if (initial === 'unsupported') assert.equal(found, undefined, 'later supported descriptor cannot replace unsupported first')
+  else assert.deepEqual(found, { kind: 'managed-child', parentSessionId: 'root' }, 'late first owned descriptor is discovered')
+  assert.equal(work.reads, 3)
+  session.append('fixture/noop', {})
+  await f.ports.authority.resolveSession(session.id)
+  assert.equal(work.reads, initial === 'unsupported' ? 4 : 3)
+})
+
+test('malformed real RC1 first descriptor rejects on every read despite later valid descriptor', async t => {
+  const f = await fixture(t), session = realSession()
+  await f.read(session.id, operator) // retained child association must not hide a malformed first descriptor
+  session.append('subagent/descriptor', { version: 3, mode: 'invalid' })
+  f.agents.set(session.id, { ...f.agents.get(session.id), session })
+  const work = materializations(session)
+  await assert.rejects(f.ports.authority.resolveSession(session.id))
+  session.append('subagent/descriptor', descriptorData)
+  await assert.rejects(f.ports.authority.resolveSession(session.id))
+  assert.equal(work.reads, 2, 'failed folds are never published as a positive fact')
+})
+
+test('trusted positive facts keep Agent, Session, mount and live/cold fences', async t => {
+  const f = await fixture(t), session = realSession('fenced-child')
+  session.append('subagent/descriptor', descriptorData)
+  let agent = { id: session.id, session }
+  f.agents.set(agent.id, agent)
+  const work = materializations(session), resolve = () => f.ports.authority.resolveSession(agent.id)
+  assert.equal((await resolve()).kind, 'managed-child'); assert.equal(work.reads, 1)
+  session.append('fixture/noop', {})
+  f.agents.set(agent.id, agent = { ...agent })
+  assert.equal((await resolve()).kind, 'managed-child'); assert.equal(work.reads, 2, 'new Agent must verify even the same real Session')
+  const replacement = realSession(agent.id)
+  replacement.append('subagent/descriptor', descriptorData)
+  const replacementWork = materializations(replacement)
+  agent.session = replacement
+  assert.equal((await resolve()).kind, 'managed-child'); assert.equal(replacementWork.reads, 1, 'same Agent with new Session must verify')
+  const remount = host.createHostAuthority(f.ctx, f.controlsStorage, f.grants)
+  assert.equal((await remount.authority.resolveSession(agent.id)).kind, 'managed-child')
+  assert.equal(replacementWork.reads, 2, 'a new authority mount owns no old positive facts')
+  f.cold.set(agent.id, agent); f.agents.delete(agent.id)
+  assert.equal((await resolve()).kind, 'managed-child')
+  assert.equal(f.observations.length, 2, 'cold source is observed and lease released')
+  f.agents.set(agent.id, agent)
+  assert.equal((await resolve()).kind, 'managed-child')
+  assert.equal(replacementWork.reads, 4, 'cold observation and live re-entry each verify their current source')
+  f.ctx.get = name => name === 'sessions' ? { get: () => session } : undefined
+  await assert.rejects(resolve(), { code: 'access-denied' })
+})
+
+test('trusted positive identity never hides a conflicting replacement header or retained parent', async t => {
+  const f = await fixture(t), original = realSession()
+  original.append('subagent/descriptor', descriptorData)
+  const agent = { ...f.agents.get(original.id), session: original }
+  f.agents.set(agent.id, agent)
+  await f.read(agent.id, operator)
+  const read = version => f.runtime.readSummaries(operator, { sessions: [{ sessionId: agent.id, ...(version ? { version } : {}) }] }, signal()).then(x => x.rows[0])
+  const first = await read()
+  assert.equal(first.status, 'current')
+  const changedParent = realSession(agent.id, { header: { parentSession: 'other' } })
+  changedParent.append('subagent/descriptor', descriptorData)
+  agent.session = changedParent
+  assert.equal(await f.ports.authority.resolveSession(agent.id), undefined, 'retained association cannot authorize a different parent')
+  assert.equal((await read(first.version)).status, 'unavailable')
+  agent.session = realSession('conflicting-id')
+  await assert.rejects(f.ports.authority.resolveSession(agent.id), { code: 'access-denied' })
+})
+
+test('real live Session without Agent retains positive facts but cannot authenticate an agent caller', async t => {
+  const f = await fixture(t), session = realSession('session-only')
+  session.append('subagent/descriptor', descriptorData)
+  f.ctx.get = name => name === 'sessions' ? { get: id => id === session.id ? session : undefined } : undefined
+  const work = materializations(session)
+  assert.equal((await f.ports.authority.resolveSession(session.id)).kind, 'managed-child')
+  session.append('fixture/noop', {})
+  assert.equal((await f.ports.authority.resolveSession(session.id)).kind, 'managed-child')
+  assert.equal(work.reads, 1)
+  await assert.rejects(f.ports.authority.authorizeSession('agent:' + session.id, session.id, 'read'), { code: 'access-denied' })
+  f.agents.set(session.id, { id: session.id, session })
+  assert.equal((await f.ports.authority.resolveSession(session.id)).kind, 'managed-child')
+  assert.equal(work.reads, 2, 'Agent presence is itself an identity fence')
+})
+
+for (const seq of [undefined, NaN, -1, 1.5]) test('untrusted Session-like without reliable seq never reuses positive fact: ' + seq, async t => {
+  const f = await fixture(t), child = actualAgent('untrusted', { parent: 'root', managed: true })
+  child.session.seq = seq
+  let reads = 0
+  child.session.ownEvents = () => { reads++; return [{ type: 'subagent/descriptor', data: descriptorData }] }
+  f.agents.set(child.id, child)
+  assert.equal((await f.ports.authority.resolveSession(child.id)).kind, 'managed-child')
+  assert.equal((await f.ports.authority.resolveSession(child.id)).kind, 'managed-child')
+  assert.equal(reads, 2)
 })
 
 test('current stat/header conflict cannot reuse a retained child association', async t => {

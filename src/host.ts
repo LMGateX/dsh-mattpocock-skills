@@ -14,7 +14,7 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, UserMessage } from '@deepseek-ai/dsh-session'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
@@ -1147,7 +1147,11 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       const header = checkedHeader(sessionId, live.header), key = fingerprint(header)
       const agent = ctx.agents.get(sessionId), seq = live.seq
       const cached = liveIdentities.get(sessionId)
-      if (Number.isSafeInteger(seq) && seq >= 0 && cached?.session.deref() === live && (cached.agent === undefined ? agent === undefined : agent !== undefined && cached.agent.deref() === agent) && cached.seq === seq && cached.fingerprint === key) return cached.facts
+      // The public Session class owns an immutable append-only log, and the first OWN
+      // descriptor is authoritative. Only a successfully folded positive fact survives
+      // later appends on that exact host Session. Session-like adapters, absence and
+      // unsupported descriptors retain the exact-generation fallback below.
+      if (Number.isSafeInteger(seq) && seq >= 0 && cached?.session.deref() === live && (cached.agent === undefined ? agent === undefined : agent !== undefined && cached.agent.deref() === agent) && (cached.seq === seq || live instanceof Session && cached.facts.hasDescriptor && seq > cached.seq) && cached.fingerprint === key) return cached.facts
       liveIdentities.delete(sessionId)
       const facts = Object.freeze({ header, hasDescriptor: header.origin === 'subagent' && !!header.parentSession && foldSubagentDescriptor(live.ownEvents()) !== undefined })
       if (Number.isSafeInteger(seq) && seq >= 0) {
