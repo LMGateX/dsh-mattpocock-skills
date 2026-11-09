@@ -15,8 +15,17 @@ const hostRequire = hostRoot ? createRequire(pathToFileURL(join(hostRoot, 'packa
 // (dsh-web-frontend/dist). This fixture assembles the Renderer from installed packages, so it
 // reports the missing precondition instead of a product failure.
 const slotsInstalled = hostRequire !== undefined && (() => { try { hostRequire.resolve('@deepseek-ai/dsh-client-ui-slots'); return true } catch { return false } })()
-const native = { skip: !hostRoot ? 'Set DSH_CONTROLS_HOST_ROOT for native Client activation'
+const native = { timeout: 2000, skip: !hostRoot ? 'Set DSH_CONTROLS_HOST_ROOT for native Client activation'
   : !slotsInstalled ? 'the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly' : false }
+
+function assertUnmounted(f) {
+  for (const namespace of ['remote.mattpocockControls', 'remote.mattpocockRecommendationSupport'])
+    assert.equal(f.ctx.get(namespace), undefined, namespace)
+  for (const seat of ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
+    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview'])
+    assert.equal(f.ctx.slots.entriesOfSlot(seat).length, 0, seat)
+  assert.equal(f.tabs.length, 0)
+}
 
 async function assembly(t) {
   const require = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
@@ -25,7 +34,7 @@ async function assembly(t) {
   const { TypertRegistry } = await load('@deepseek-ai/dsh-typert-registry')
   const gateway = await import(pathToFileURL(join(hostRoot, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/types/client/index.js')))
   const ctx = new Context()
-  t.after(() => ctx.fiber.dispose())
+  t.after(() => ctx.fiber.dispose(), { timeout: 2000 })
   new TypertRegistry(ctx)
   const calls = [], tabs = []
   const nativeSlots = await load('@deepseek-ai/dsh-client-ui-slots')
@@ -79,15 +88,19 @@ test('native Client teardown removes all namespace-owned UI and permits a clean 
   const f = await assembly(t)
   const seats = ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
     'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview']
-  for (let turn = 0; turn < 2; turn++) {
+  for (let turn = 0; turn < 3; turn++) {
     const fiber = f.ctx.plugin(f.plugin); await fiber
     assert.equal(fiber.state, 2)
     for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : ['conversation.session.header.utilities', 'conversation.input.dock'].includes(seat) ? 2 : 1, seat)
     assert.equal(f.tabs.length, 1)
+    assert.ok(f.ctx.get('remote.mattpocockControls'))
+    assert.ok(f.ctx.get('remote.mattpocockRecommendationSupport'))
     await fiber.dispose()
+    assert.equal(fiber.state, 4) // Actual unload must settle, not only UI disappearance.
     for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, 0, seat)
     assert.equal(f.tabs.length, 0)
     assert.equal(f.ctx.get('remote.mattpocockControls'), undefined)
+    assert.equal(f.ctx.get('remote.mattpocockRecommendationSupport'), undefined)
   }
 })
 
@@ -98,6 +111,9 @@ test('native Client dependent setup errors fail startup instead of reporting a f
   await assert.rejects(async () => { await fiber }, /synthetic-native-ui-registration-failure/)
   assert.equal(fiber.state, 3) // Public Cordis FiberState.FAILED.
   assert.equal(f.ctx.slots.entriesOfSlot('plugins.bundle.config').length, 0)
+  await fiber.dispose()
+  assert.equal(fiber.state, 4)
+  assertUnmounted(f)
 })
 
 async function browserBoot(f) {
@@ -145,6 +161,9 @@ test('native browser loader settling is not a false success when the dependent U
   const failed = [...f.ctx.loader.entries()].filter(row => row.fiber?.state !== 2).map(row => row.options.name)
   assert.deepEqual(failed, [id])
   assert.equal(f.ctx.slots.entriesOfSlot('plugins.bundle.config').length, 0)
+  await entry.fiber.dispose()
+  assert.equal(entry.fiber.state, 4)
+  assertUnmounted(f)
 })
 
 
@@ -166,6 +185,8 @@ test('native browser graph removal and re-add replace the fiber without leaked o
   for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, 0, seat)
   assert.equal(f.tabs.length, 0)
   assert.equal(f.ctx.get('remote.mattpocockControls'), undefined)
+  assert.equal(originalFiber.state, 4)
+  assertUnmounted(f)
   await modules.entries.sync({ rev: 'synthetic-readded', entries: [{ id, url: '/synthetic-client.js', rev: 'synthetic-client' }],
     batches: [{ phase: 'application', url: '/synthetic-client.js', rev: 'synthetic-client', entries: [id] }] })
   await f.ctx.loader.await()
@@ -176,4 +197,7 @@ test('native browser graph removal and re-add replace the fiber without leaked o
   assert.notStrictEqual(next.fiber, originalFiber)
   assert.deepEqual(modules.entries.state.getSnapshot().failures, [])
   registered()
+  await next.fiber.dispose()
+  assert.equal(next.fiber.state, 4)
+  assertUnmounted(f)
 })

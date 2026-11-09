@@ -2235,6 +2235,10 @@ export const inject = ['slots', 'remote', 'sidebarRight', 'sidebarRightTabs']
 /** Browser plugin activation, governed by Host Loader/package manifest, not DOM insertion. */
 export async function apply(ctx: Context): Promise<void> {
   await ctx.remote.$mount(REMOTE_CONTRIBUTION)
+  // Both namespace contributions belong to the bootstrap. Mounting the optional one
+  // inside a Controls-dependent child would make serialized namespace cleanup wait
+  // on that child while the child waits for the next cleanup in the same queue.
+  const recommendationPolicy = installRecommendationPolicy(ctx)
   // $mount creates the namespace. Requiring it on the bootstrap itself would
   // prevent apply from running; all consumers instead belong to this child scope.
   await ctx.inject(['remote.mattpocockControls'], (ctx) => {
@@ -2243,7 +2247,6 @@ export async function apply(ctx: Context): Promise<void> {
     const notificationReading = createNotificationReading()
     const observe = (sessionId: string): SessionObservation => observers.observe(sessionId)
     const navigation = createSubagentNavigationSource(observe)
-    const recommendationPolicy = installRecommendationPolicy(ctx)
     // Optional capability scope: missing/revoked sessions must never disable base reading.
     void ctx.inject(['sessions'], scoped => {
       scoped.effect(() => navigation.publish(scoped), 'collaboration: native subagent navigation')
