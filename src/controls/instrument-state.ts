@@ -1,4 +1,6 @@
 import type { InstrumentInstance } from './state.js'
+import type { DecisionPolicyBinding, DecisionPolicySelection, DecisionPolicyEventEffect } from './recommendation-contract.js'
+import { parseDecisionPolicyBinding, parseDecisionPolicySelection, parseDecisionPolicyEventEffect } from './recommendation-contract.js'
 import { array, boolean, boundedArray, ControlsError, freeze, id, invalid, record, revision } from './validation.js'
 
 export interface InstrumentAuthor { readonly kind: 'agent' | 'user'; readonly principalId: string; readonly sessionId: string | null }
@@ -39,9 +41,10 @@ export type InstrumentCommand = CommandBase & (
   | { readonly action: 'put-ticket'; readonly localTicketId: string; readonly value: TicketValue }
   | { readonly action: 'put-task-reference'; readonly localTicketId: string; readonly value: TaskReferenceValue }
   | { readonly action: 'put-decision'; readonly decisionId: string; readonly value: DecisionValue }
+  | { readonly action:'adopt-decision-recommendation';readonly decisionId:string;readonly value:{readonly optionKey:string;readonly decisionRevision:number;readonly policyEpochId:string;readonly policyRevision:number} }
   | { readonly action: 'set-decision-view'; readonly decisionId: string; readonly value: DecisionViewValue }
 )
-export interface InstrumentEvent { readonly revision: number; readonly recordedAt: number; readonly author: InstrumentAuthor; readonly command: InstrumentCommand }
+export interface InstrumentEvent { readonly revision: number; readonly recordedAt: number; readonly author: InstrumentAuthor; readonly command: InstrumentCommand; readonly decisionPolicy?: DecisionPolicyEventEffect }
 export interface InstrumentDocumentV1 extends InstrumentInstance { readonly schemaVersion: 1; readonly revision: number; readonly events: readonly InstrumentEvent[] }
 export interface InstrumentDocumentV2 extends InstrumentInstance {
   readonly schemaVersion: 2; readonly revision: number; readonly events: readonly InstrumentEvent[]
@@ -52,7 +55,8 @@ export interface InstrumentDocumentV3 extends Omit<InstrumentDocumentV2, 'schema
   readonly schemaVersion: 3
   readonly checkpoint: { readonly throughRevision: number; readonly state: InstrumentState }
 }
-export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3
+export interface InstrumentDocumentV4 extends Omit<InstrumentDocumentV3, 'schemaVersion'> { readonly schemaVersion:4 }
+export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4
 export interface InstrumentDedup {
   readonly operationId:string; readonly author:InstrumentAuthor; readonly digest:string
   readonly appliedRevision:number; readonly kind:'command'|'compact'|'purge-history'
@@ -60,12 +64,12 @@ export interface InstrumentDedup {
 }
 export interface InstrumentCommandMetadata {
   readonly action:InstrumentCommand['action'];readonly target:InstrumentHistoryTarget
-  readonly expectedRevision:number;readonly recordedAt:number
+  readonly expectedRevision:number;readonly recordedAt:number;readonly decisionPolicy?:DecisionPolicyEventEffect
 }
 export function instrumentCommandMetadata(event:InstrumentEvent):InstrumentCommandMetadata {
   const c=event.command,workflowId=c.workflowId
   const target:InstrumentHistoryTarget=c.action==='put-workflow' ? {kind:'workflow',workflowId} : c.action==='put-ticket' || c.action==='put-task-reference' ? {kind:c.action==='put-ticket'?'ticket':'task-reference',workflowId,localTicketId:c.localTicketId} : {kind:'decision',workflowId,decisionId:c.decisionId}
-  return {action:c.action,target,expectedRevision:c.expectedRevision,recordedAt:event.recordedAt}
+  return {action:c.action,target,expectedRevision:c.expectedRevision,recordedAt:event.recordedAt,...(event.decisionPolicy ? {decisionPolicy:event.decisionPolicy} : {})}
 }
 export type InstrumentHistoryTarget = {readonly kind:'workflow';readonly workflowId:string}
   | {readonly kind:'ticket';readonly workflowId:string;readonly localTicketId:string}
@@ -79,17 +83,19 @@ export interface InstrumentCleanupCoverage {
 export interface InstrumentCompactInput {readonly operationId:string;readonly expectedRevision:number}
 export interface InstrumentPurgeHistoryInput extends InstrumentCompactInput {readonly throughRevision:number;readonly targets:readonly InstrumentHistoryTarget[]}
 const EMPTY_INSTRUMENT_STATE: InstrumentState = freeze({businessRevision:0,viewerRevisions:{},workflows:[],tickets:[],taskReferences:[],decisions:[],decisionViews:[]})
-export function upgradeInstrumentDocument(document: InstrumentDocument, references = false): InstrumentDocumentV2 | InstrumentDocumentV3 {
+export function upgradeInstrumentDocument(document: InstrumentDocument, references = false, policy = false): InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4 {
+  if (document.schemaVersion === 4) return document
+  if (policy) { const upgraded=upgradeInstrumentDocument(document,true); return freeze({...upgraded,schemaVersion:4,checkpoint:{...upgraded.checkpoint,state:{...upgraded.checkpoint.state,taskReferences:'taskReferences' in upgraded.checkpoint.state ? upgraded.checkpoint.state.taskReferences : []}}}) }
   if (document.schemaVersion === 3) return document
   const { taskReferences: _references, ...legacyEmpty } = EMPTY_INSTRUMENT_STATE
   const current: InstrumentDocumentV2 = document.schemaVersion === 2 ? document : freeze({...document,schemaVersion:2,checkpoint:{throughRevision:0,state:legacyEmpty},dedup:[],coverage:[]})
   return references ? freeze({...current,schemaVersion:3,checkpoint:{...current.checkpoint,state:{...current.checkpoint.state,taskReferences:[]}}}) : current
 }
-export interface Change<T> { readonly revision: number; readonly recordedAt: number; readonly author: InstrumentAuthor; readonly references: readonly string[]; readonly value: T }
+export interface Change<T> { readonly revision: number; readonly recordedAt: number; readonly author: InstrumentAuthor; readonly references: readonly string[]; readonly value: T; readonly policySelection?:DecisionPolicySelection }
 export interface WorkflowRecord { readonly workflowId: string; readonly revision: number; readonly value: WorkflowValue; readonly history: readonly Change<WorkflowValue>[] }
 export interface TicketRecord { readonly workflowId: string; readonly localTicketId: string; readonly revision: number; readonly value: TicketValue; readonly history: readonly Change<TicketValue>[] }
 export interface TaskReferenceRecord { readonly workflowId: string; readonly localTicketId: string; readonly revision: number; readonly value: TaskReferenceValue; readonly history: readonly Change<TaskReferenceValue>[] }
-export interface DecisionRecord { readonly workflowId: string; readonly decisionId: string; readonly revision: number; readonly value: DecisionValue; readonly history: readonly Change<DecisionValue>[]; readonly creator?: InstrumentAuthor }
+export interface DecisionRecord { readonly workflowId: string; readonly decisionId: string; readonly revision: number; readonly value: DecisionValue; readonly history: readonly Change<DecisionValue>[]; readonly creator?: InstrumentAuthor; readonly policyBinding?:DecisionPolicyBinding; readonly policySelection?:DecisionPolicySelection }
 export interface DecisionViewRecord { readonly workflowId: string; readonly decisionId: string; readonly principalId: string; readonly revision: number; readonly value: DecisionViewValue }
 export interface InstrumentState { readonly businessRevision: number; readonly viewerRevisions: Readonly<Record<string, number>>; readonly workflows: readonly WorkflowRecord[]; readonly tickets: readonly TicketRecord[]; readonly taskReferences: readonly TaskReferenceRecord[]; readonly decisions: readonly DecisionRecord[]; readonly decisionViews: readonly DecisionViewRecord[] }
 
@@ -203,12 +209,19 @@ export function parseInstrumentCommand(value: unknown): InstrumentCommand {
     case 'put-ticket': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: shape('ticket value', TICKET_VALUE_SHAPE, () => ticketValue(raw.value)) })
     case 'put-task-reference': record(raw, 'command', [...baseKeys, 'localTicketId']); return freeze({ ...base, action: raw.action, localTicketId: id(raw.localTicketId, 'localTicketId'), value: shape('task reference value', '{source, locator, label?}', () => taskReferenceValue(raw.value)) })
     case 'put-decision': record(raw, 'command', [...baseKeys, 'decisionId']); return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: shape('decision value', DECISION_VALUE_SHAPE, () => decisionValue(raw.value)) })
+    case 'adopt-decision-recommendation': {
+      record(raw,'command',[...baseKeys,'decisionId'])
+      const v=record(raw.value,'adoption value',['optionKey','decisionRevision','policyEpochId','policyRevision'])
+      const decisionRevision=revision(v.decisionRevision,'decisionRevision'),policyRevision=revision(v.policyRevision,'policyRevision')
+      if(decisionRevision<1||policyRevision<1) invalid('adoption source revisions must be positive')
+      return freeze({...base,action:raw.action,decisionId:id(raw.decisionId,'decisionId'),value:{optionKey:id(v.optionKey,'optionKey'),decisionRevision,policyEpochId:id(v.policyEpochId,'policyEpochId'),policyRevision}})
+    }
     case 'set-decision-view': {
       record(raw, 'command', [...baseKeys, 'decisionId'])
       const view = shape('decision view value', '{read, hidden}', () => record(raw.value, 'decision view', ['read', 'hidden']))
       return freeze({ ...base, action: raw.action, decisionId: id(raw.decisionId, 'decisionId'), value: { read: boolean(view.read, 'read'), hidden: boolean(view.hidden, 'hidden') } })
     }
-    default: return invalid('unknown instrument action; accepted actions: put-workflow, put-ticket, put-task-reference, put-decision, set-decision-view')
+    default: return invalid('unknown instrument action; accepted actions: put-workflow, put-ticket, put-task-reference, put-decision, adopt-decision-recommendation, set-decision-view')
   }
 }
 
@@ -230,20 +243,20 @@ export function parseInstrumentHistoryTarget(value: unknown): InstrumentHistoryT
   if(r.kind==='decision') {record(value,'decision target',['kind','workflowId','decisionId']);return {kind:'decision',workflowId,decisionId:id(r.decisionId,'decisionId')}}
   return invalid('unknown instrument history target kind; accepted kinds: workflow, ticket, task-reference, decision')
 }
-function checkpointState(value: unknown, cut: number, references: boolean): InstrumentState {
+function checkpointState(value: unknown, cut: number, references: boolean, policy = false): InstrumentState {
   const s=record(value,'checkpoint state',['businessRevision','viewerRevisions','workflows','tickets','decisions','decisionViews',...(references ? ['taskReferences'] : [])])
   const viewers=record(s.viewerRevisions,'viewer revisions')
   const viewerRevisions=Object.fromEntries(Object.entries(viewers).map(([key,value])=>[id(key,'viewer'),revision(value,'viewer revision')]))
   const parseRows=<T>(input:unknown,kind:'workflow'|'ticket'|'task-reference'|'decision',parse:(value:unknown)=>T) => array(input,kind+' checkpoint rows').map(value=>{
     const key=kind==='workflow' ? undefined : kind==='ticket' || kind==='task-reference' ? 'localTicketId' : 'decisionId'
-    const r=record(value,'checkpoint record',['workflowId',...(key ? [key] : []),'revision','value','history',...(kind==='decision' ? ['creator'] : [])])
+    const r=record(value,'checkpoint record',['workflowId',...(key ? [key] : []),'revision','value','history',...(kind==='decision' ? ['creator',...(policy?['policyBinding','policySelection']:[])] : [])])
     const history=array(r.history,'retained history').map(value=>{
-      const h=record(value,'history version',['revision','recordedAt','author','references','value'])
-      return {revision:revision(h.revision,'history revision'),recordedAt:revision(h.recordedAt,'recordedAt'),author:parseAuthor(h.author),references:array(h.references,'references').map(value=>text(value,'reference')),value:parse(h.value)}
+      const h=record(value,'history version',['revision','recordedAt','author','references','value',...(kind==='decision'&&policy?['policySelection']:[])])
+      return {revision:revision(h.revision,'history revision'),recordedAt:revision(h.recordedAt,'recordedAt'),author:parseAuthor(h.author),references:array(h.references,'references').map(value=>text(value,'reference')),value:parse(h.value),...(h.policySelection===undefined?{}:{policySelection:parseDecisionPolicySelection(h.policySelection)})}
     })
     const current=parse(r.value), rowRevision=revision(r.revision,'row revision'),last=history.at(-1)
     if(!last || rowRevision!==last.revision || rowRevision>cut || history.some((h,i)=>h.revision<1 || h.revision>cut || i>0 && h.revision<=history[i-1]!.revision) || JSON.stringify(current)!==JSON.stringify(last.value)) invalid('checkpoint current value differs from latest retained version')
-    return {workflowId:id(r.workflowId,'workflowId'),...(key ? {[key]:id(r[key],key)} : {}),revision:rowRevision,value:current,history,...(kind==='decision' ? {creator:parseAuthor(r.creator)} : {})}
+    return {workflowId:id(r.workflowId,'workflowId'),...(key ? {[key]:id(r[key],key)} : {}),revision:rowRevision,value:current,history,...(kind==='decision' ? {creator:parseAuthor(r.creator),...(r.policyBinding===undefined?{}:{policyBinding:parseDecisionPolicyBinding(r.policyBinding)}),...(r.policySelection===undefined?{}:{policySelection:parseDecisionPolicySelection(r.policySelection)})} : {})}
   })
   const workflows=parseRows(s.workflows,'workflow',workflowValue) as unknown as readonly WorkflowRecord[]
   const tickets=parseRows(s.tickets,'ticket',ticketValue) as unknown as readonly TicketRecord[]
@@ -279,20 +292,22 @@ function checkpointState(value: unknown, cut: number, references: boolean): Inst
   if(businessRevision+Object.values(viewerRevisions).reduce((sum,n)=>sum+n,0)>cut) invalid('checkpoint business/viewer revision exceeds source cut')
   return freeze({businessRevision,viewerRevisions,workflows,tickets,taskReferences,decisions,decisionViews})
 }
-function parseCommandMetadata(value:unknown):InstrumentCommandMetadata {
-  const m=record(value,'technical command metadata',['action','target','expectedRevision','recordedAt'])
-  if(m.action!=='put-workflow' && m.action!=='put-ticket' && m.action!=='put-task-reference' && m.action!=='put-decision' && m.action!=='set-decision-view') invalid('unknown technical command action')
+function parseCommandMetadata(value:unknown,policy=false):InstrumentCommandMetadata {
+  const m=record(value,'technical command metadata',['action','target','expectedRevision','recordedAt',...(policy?['decisionPolicy']:[])])
+  if(m.action!=='put-workflow' && m.action!=='put-ticket' && m.action!=='put-task-reference' && m.action!=='put-decision' && m.action!=='set-decision-view' && !(policy&&m.action==='adopt-decision-recommendation')) invalid('unknown technical command action')
   const target=parseInstrumentHistoryTarget(m.target),kind=m.action==='put-workflow'?'workflow':m.action==='put-ticket'?'ticket':m.action==='put-task-reference'?'task-reference':'decision'
   if(target.kind!==kind) invalid('technical command action and target differ')
-  return {action:m.action,target,expectedRevision:revision(m.expectedRevision,'expectedRevision'),recordedAt:revision(m.recordedAt,'recordedAt')}
+  const decisionPolicy=m.decisionPolicy===undefined?undefined:parseDecisionPolicyEventEffect(m.decisionPolicy)
+  if(decisionPolicy && (decisionPolicy.kind==='bound' ? m.action!=='put-decision' : m.action!=='adopt-decision-recommendation') || m.action==='adopt-decision-recommendation'&&decisionPolicy?.kind!=='adopted') invalid('technical command/effect action mismatch')
+  return {action:m.action as InstrumentCommand['action'],target,expectedRevision:revision(m.expectedRevision,'expectedRevision'),recordedAt:revision(m.recordedAt,'recordedAt'),...(decisionPolicy?{decisionPolicy}:{})}
 }
-function dedupRows(value: unknown, cut:number): readonly InstrumentDedup[] {
+function dedupRows(value: unknown, cut:number, policy=false): readonly InstrumentDedup[] {
   const rows=array(value,'instrument dedup').map(value=>{
     const d=record(value,'dedup receipt',['operationId','author','digest','appliedRevision','kind','command'])
     if(typeof d.digest!=='string' || !/^[a-f0-9]{64}$/u.test(d.digest)) invalid('invalid SHA256 command digest')
     if(d.kind!=='command' && d.kind!=='compact' && d.kind!=='purge-history') invalid('invalid dedup receipt kind')
     if(d.kind!=='command' && d.command!==undefined) invalid('cleanup receipt must not carry command metadata')
-    return {operationId:id(d.operationId,'operationId'),author:parseAuthor(d.author),digest:d.digest,appliedRevision:revision(d.appliedRevision,'appliedRevision'),kind:d.kind,...(d.kind==='command'?{command:parseCommandMetadata(d.command)}:{})} as InstrumentDedup
+    return {operationId:id(d.operationId,'operationId'),author:parseAuthor(d.author),digest:d.digest,appliedRevision:revision(d.appliedRevision,'appliedRevision'),kind:d.kind,...(d.kind==='command'?{command:parseCommandMetadata(d.command,policy)}:{})} as InstrumentDedup
   })
   if(rows.length!==cut || rows.some((d,i)=>d.appliedRevision!==i+1) || new Set(rows.map(d=>d.operationId)).size!==rows.length) invalid('checkpoint dedup receipt revision gap or duplicate')
   return rows
@@ -366,10 +381,30 @@ function validateCheckpointAuthors(state:InstrumentState,dedup:readonly Instrume
     if(group.kind==='decision') {
       const first=firstCreators.get(JSON.stringify(target)),creator='creator' in row ? row.creator : undefined
       if(!first || JSON.stringify(first)!==JSON.stringify(creator)) invalid('checkpoint decision creator differs from first source target receipt')
+      const decision=row as DecisionRecord,source=dedup.filter(d=>d.kind==='command'&&d.command!.action!=='set-decision-view'&&JSON.stringify(d.command!.target)===JSON.stringify(target))
+      const opening=source[0]!,bound=opening.command!.decisionPolicy,latest=source.at(-1)!.command!.decisionPolicy
+      if(bound?.kind==='bound') {
+        if(opening.author.kind!=='agent'||bound.binding.createdRevision!==opening.appliedRevision||opening.command!.recordedAt<bound.binding.policy.enabledAt||opening.command!.recordedAt>=bound.binding.policy.expiresAt||JSON.stringify(bound.binding)!==JSON.stringify(decision.policyBinding)) invalid('checkpoint binding differs from first source receipt')
+      }else if(decision.policyBinding) invalid('checkpoint binding has no first source receipt')
+      if(source.slice(1).some(d=>d.command!.decisionPolicy?.kind==='bound')) invalid('binding cannot be recreated by a later command')
+      const expectedSelection=latest?.kind==='adopted'?latest.selection:undefined
+      if(JSON.stringify(decision.policySelection)!==JSON.stringify(expectedSelection)) invalid('checkpoint current selection differs from latest source receipt')
+      const original=bound?.kind==='bound'?decision.history.find(h=>h.revision===bound.binding.createdRevision):undefined
+      if(original && bound?.kind==='bound' && (original.value.pending!==true||original.value.addressee?.kind!=='user'||original.value.addressee.principalId!=null&&original.value.addressee.principalId!==bound.binding.policy.authorizedBy.principalId||original.value.recommendation!==bound.binding.optionKey||original.value.options?.filter(o=>o.key===bound.binding.optionKey).length!==1)) invalid('retained original value differs from its qualified binding')
+      for(const [index,receipt] of source.entries()) if(receipt.command!.action==='adopt-decision-recommendation') {
+        if(bound?.kind!=='bound'||source[index-1]?.appliedRevision!==bound.binding.createdRevision) invalid('adoption must immediately follow its bound business source')
+        const effect=receipt.command!.decisionPolicy
+        if(receipt.author.kind!=='agent'||bound?.kind!=='bound'||effect?.kind!=='adopted'||effect.selection.selectedOptionKey!==bound.binding.optionKey||effect.selection.decisionSourceRevision!==bound.binding.createdRevision||JSON.stringify(effect.selection.policy)!==JSON.stringify(bound.binding.policy)||effect.selection.authorizedAt!==receipt.command!.recordedAt) invalid('checkpoint adoption source does not match original binding')
+        const retained=decision.history.find(h=>h.revision===receipt.appliedRevision)
+        if(retained && (retained.value.pending!==false||retained.value.recommendation!==effect.selection.selectedOptionKey||retained.value.options?.filter(o=>o.key===effect.selection.selectedOptionKey).length!==1||retained.value.addressee?.kind!=='user'||retained.value.addressee.principalId!=null&&retained.value.addressee.principalId!==effect.selection.policy.authorizedBy.principalId)) invalid('retained adoption differs from bound recommendation')
+        if(retained&&original&&(JSON.stringify(retained.value)!==JSON.stringify({...original.value,pending:false})||original.references.some(ref=>!retained.references.includes(ref)))) invalid('retained adoption changed original fields or discarded references')
+      }
     }
     for(const version of row.history) {
       const receipt=receipts.get(version.revision),meta=receipt?.command
-      if(!receipt || receipt.kind!=='command' || !meta || meta.action!=='put-'+group.kind || JSON.stringify(meta.target)!==JSON.stringify(target) || meta.recordedAt!==version.recordedAt || JSON.stringify(receipt.author)!==JSON.stringify(version.author)) invalid('checkpoint retained version metadata differs from source receipt')
+      if(!receipt || receipt.kind!=='command' || !meta || (meta.action!=='put-'+group.kind && !(group.kind==='decision'&&meta.action==='adopt-decision-recommendation')) || JSON.stringify(meta.target)!==JSON.stringify(target) || meta.recordedAt!==version.recordedAt || JSON.stringify(receipt.author)!==JSON.stringify(version.author)) invalid('checkpoint retained version metadata differs from source receipt')
+      const expectedSelection=meta.decisionPolicy?.kind==='adopted'?meta.decisionPolicy.selection:undefined
+      if(JSON.stringify(version.policySelection)!==JSON.stringify(expectedSelection)) invalid('retained policy selection differs from source receipt')
     }
   }
 }
@@ -396,7 +431,7 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
   const base = document.schemaVersion !== 1 ? document.checkpoint.state : EMPTY_INSTRUMENT_STATE
   const workflows = new Map(base.workflows.map(row => [row.workflowId, row]))
   const tickets = new Map(base.tickets.map(row => [entityKey(row.workflowId, row.localTicketId), row]))
-  const taskReferences = new Map((document.schemaVersion === 3 ? document.checkpoint.state.taskReferences : []).map(row => [entityKey(row.workflowId, row.localTicketId), row]))
+  const taskReferences = new Map((document.schemaVersion >= 3 ? (document as InstrumentDocumentV3 | InstrumentDocumentV4).checkpoint.state.taskReferences : []).map(row => [entityKey(row.workflowId, row.localTicketId), row]))
   const referenceSources = new Map<string, string>()
   const sourceKey = (workflowId: string, source: TaskReferenceSource): string => JSON.stringify([workflowId, source])
   for (const row of taskReferences.values()) if (row.value.source.kind !== 'unverified') referenceSources.set(sourceKey(row.workflowId, row.value.source), row.localTicketId)
@@ -421,6 +456,8 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
   const viewerRevisions = new Map<string, number>(Object.entries(base.viewerRevisions))
   for (const event of document.events) {
     const command = event.command
+    if(event.decisionPolicy && command.action!=='put-decision' && command.action!=='adopt-decision-recommendation') invalid('decision policy effect on non-decision event')
+    if(command.action==='adopt-decision-recommendation' && document.schemaVersion!==4) invalid('adoption requires V4')
     const previousRevision = command.action === 'set-decision-view' ? viewerRevisions.get(event.author.principalId) ?? 0 : businessRevision
     if (command.expectedRevision !== previousRevision) invalid('event expectedRevision mismatches its business/viewer revision')
     if (command.action === 'set-decision-view') viewerRevisions.set(event.author.principalId, previousRevision + 1)
@@ -445,7 +482,7 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
       const group = workflowTickets.get(command.workflowId) ?? new Map<string, TicketRecord>()
       group.set(command.localTicketId, row); workflowTickets.set(command.workflowId, group)
     } else if (command.action === 'put-task-reference') {
-      if (document.schemaVersion !== 3) invalid('task references require instrument schemaVersion 3')
+      if (document.schemaVersion < 3) invalid('task references require instrument schemaVersion 3 or 4')
       const key = entityKey(command.workflowId, command.localTicketId), previous = taskReferences.get(key)
       if (tickets.has(key)) invalid('local task handle already has another record kind')
       if (previous && JSON.stringify(previous.value.source) !== JSON.stringify(command.value.source)) invalid('task reference source identity is immutable')
@@ -458,12 +495,32 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
       const value = { ...previous?.value, ...command.value }
       taskReferences.set(key, { workflowId: command.workflowId, localTicketId: command.localTicketId, revision: event.revision, value,
         history: append('task-reference' + key, previous?.history ?? [], change(value)) })
+    } else if (command.action === 'adopt-decision-recommendation') {
+      const key=entityKey(command.workflowId,command.decisionId),previous=decisions.get(key),effect=event.decisionPolicy
+      if(document.schemaVersion!==4||!previous||event.author.kind!=='agent'||effect?.kind!=='adopted') invalid('adoption requires a trusted V4 agent effect')
+      const binding=previous.policyBinding,selection=effect.selection
+      if(!binding||previous.revision!==binding.createdRevision||command.value.decisionRevision!==previous.revision
+        || previous.value.pending!==true||previous.value.addressee?.kind!=='user'||previous.value.recommendation!==binding.optionKey
+        || previous.value.options?.filter(o=>o.key===binding.optionKey).length!==1||command.value.optionKey!==binding.optionKey
+        || command.value.policyEpochId!==binding.policy.epochId||command.value.policyRevision!==binding.policy.policyRevision
+        || selection.selectedOptionKey!==binding.optionKey||selection.decisionSourceRevision!==binding.createdRevision
+        || JSON.stringify(selection.policy)!==JSON.stringify(binding.policy)||selection.authorizedAt!==event.recordedAt) invalid('adoption effect differs from bound source')
+      const value={...previous.value,pending:false},version={...change(value),references:[...new Set([...previous.history.at(-1)!.references,...command.references??[]])],policySelection:selection}
+      decisions.set(key,{...previous,revision:event.revision,value,policySelection:selection,history:append('decision'+key,previous.history,version)})
     } else if (command.action === 'put-decision') {
       const key = entityKey(command.workflowId, command.decisionId), previous = decisions.get(key)
       const value = { ...previous?.value, ...command.value }
       for (const ticketId of value.ticketIds ?? []) if (!tickets.has(entityKey(command.workflowId, ticketId)) && !taskReferences.has(entityKey(command.workflowId, ticketId))) invalid('decision refers to unknown ticket or task reference')
       decisions.set(key, { workflowId: command.workflowId, decisionId: command.decisionId, revision: event.revision, value,
-        history: append('decision' + key, previous?.history ?? [], change(value)), ...(previous?.creator ? { creator: previous.creator } : {}) })
+        history: append('decision' + key, previous?.history ?? [], change(value)), ...(previous?.creator ? { creator: previous.creator } : {}),
+        ...(previous?.policyBinding ? {policyBinding:previous.policyBinding} : {}),
+        ...(event.decisionPolicy?.kind==='bound' ? {policyBinding:event.decisionPolicy.binding} : {}) })
+      if(event.decisionPolicy) {
+        if(document.schemaVersion!==4 || event.decisionPolicy.kind!=='bound' || previous || event.author.kind!=='agent' || event.decisionPolicy.binding.createdRevision!==event.revision
+          || value.pending!==true || value.addressee?.kind!=='user' || value.addressee.principalId!=null&&value.addressee.principalId!==event.decisionPolicy.binding.policy.authorizedBy.principalId
+          || value.recommendation!==event.decisionPolicy.binding.optionKey || value.options?.filter(o=>o.key===value.recommendation).length!==1
+          || event.recordedAt<event.decisionPolicy.binding.policy.enabledAt || event.recordedAt>=event.decisionPolicy.binding.policy.expiresAt) invalid('invalid qualified creation binding')
+      }
     } else {
       if (!decisions.has(entityKey(command.workflowId, command.decisionId))) invalid('view refers to unknown decision')
       decisionViews.set(viewKey(command.workflowId, command.decisionId, event.author.principalId),
@@ -483,32 +540,32 @@ export function parseInstrumentDocument(value: unknown): InstrumentDocument {
   }
   try {
     const raw=record(value,'instrument document',['schemaVersion','revision','instrumentInstanceId','ownerSessionId','controlWorkspaceId','events','checkpoint','dedup','coverage'])
-    if(raw.schemaVersion!==1 && raw.schemaVersion!==2 && raw.schemaVersion!==3) invalid('unsupported instrument schemaVersion')
+    if(raw.schemaVersion!==1 && raw.schemaVersion!==2 && raw.schemaVersion!==3 && raw.schemaVersion!==4) invalid('unsupported instrument schemaVersion')
     if(raw.schemaVersion===1) record(value,'V1 instrument document',['schemaVersion','revision','instrumentInstanceId','ownerSessionId','controlWorkspaceId','events'])
     const docRevision=revision(raw.revision,'instrument revision')
     let checkpoint:InstrumentDocumentV2['checkpoint']|InstrumentDocumentV3['checkpoint']|undefined, dedup:readonly InstrumentDedup[]=[], coverage:readonly InstrumentCleanupCoverage[]=[]
     if(raw.schemaVersion!==1) {
       const c=record(raw.checkpoint,'instrument checkpoint',['throughRevision','state']),cut=revision(c.throughRevision,'checkpoint revision')
       if(cut>docRevision) invalid('checkpoint exceeds source revision')
-      const state=checkpointState(c.state,cut,raw.schemaVersion===3)
+      const state=checkpointState(c.state,cut,raw.schemaVersion>=3,raw.schemaVersion===4)
       const {taskReferences: _references,...legacy}=state
-      checkpoint={throughRevision:cut,state:raw.schemaVersion===3 ? state : legacy}
-      dedup=dedupRows(raw.dedup,cut);coverage=cleanupCoverage(raw.coverage,dedup)
-      if(raw.schemaVersion!==3 && (dedup.some(d=>d.command?.action==='put-task-reference') || coverage.some(c=>c.targets.some(t=>t.kind==='task-reference')))) invalid('task reference receipts require instrument schemaVersion 3')
+      checkpoint={throughRevision:cut,state:raw.schemaVersion>=3 ? state : legacy}
+      dedup=dedupRows(raw.dedup,cut,raw.schemaVersion===4);coverage=cleanupCoverage(raw.coverage,dedup)
+      if(raw.schemaVersion<3 && (dedup.some(d=>d.command?.action==='put-task-reference') || coverage.some(c=>c.targets.some(t=>t.kind==='task-reference')))) invalid('task reference receipts require instrument schemaVersion 3')
       validateCheckpointAuthors(state,dedup)
       validateCheckpointCounters(state,dedup)
       validateCheckpointHistory(state,dedup,coverage)
     }
     const cut=checkpoint?.throughRevision??0
     const events=array(raw.events,'instrument events').map((value,index):InstrumentEvent=>{
-      const event=record(value,'instrument event',['revision','recordedAt','author','command']),eventRevision=cut+index+1
+      const event=record(value,'instrument event',['revision','recordedAt','author','command',...(raw.schemaVersion===4?['decisionPolicy']:[])]),eventRevision=cut+index+1
       if(revision(event.revision,'event revision')!==eventRevision) invalid('instrument event revision gap')
-      return {revision:eventRevision,recordedAt:revision(event.recordedAt,'recordedAt'),author:parseAuthor(event.author),command:parseInstrumentCommand(event.command)}
+      return {revision:eventRevision,recordedAt:revision(event.recordedAt,'recordedAt'),author:parseAuthor(event.author),command:parseInstrumentCommand(event.command),...(event.decisionPolicy===undefined?{}:{decisionPolicy:parseDecisionPolicyEventEffect(event.decisionPolicy)})}
     })
     const operationIds=[...dedup.map(d=>d.operationId),...events.map(e=>e.command.operationId)]
     if(events.length+cut!==docRevision || new Set(operationIds).size!==operationIds.length) invalid('revision or operation-id index is inconsistent')
     const identity={instrumentInstanceId:id(raw.instrumentInstanceId,'instrumentInstanceId'),ownerSessionId:id(raw.ownerSessionId,'ownerSessionId'),controlWorkspaceId:id(raw.controlWorkspaceId,'controlWorkspaceId'),revision:docRevision,events}
-    const result:InstrumentDocument=checkpoint ? raw.schemaVersion===3 ? {schemaVersion:3,...identity,checkpoint:checkpoint as InstrumentDocumentV3['checkpoint'],dedup,coverage} : {schemaVersion:2,...identity,checkpoint,dedup,coverage} : {schemaVersion:1,...identity}
+    const result:InstrumentDocument=checkpoint ? raw.schemaVersion>=3 ? {schemaVersion:raw.schemaVersion,...identity,checkpoint:checkpoint as InstrumentDocumentV3['checkpoint'],dedup,coverage} : {schemaVersion:2,...identity,checkpoint,dedup,coverage} : {schemaVersion:1,...identity}
     const state = projectInstrumentDocument(result)
     const document = freeze(result), entry = { document, state }
     validatedDocuments.set(document, entry)

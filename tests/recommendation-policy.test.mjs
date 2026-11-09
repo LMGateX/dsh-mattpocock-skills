@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { OwnerDecisionPolicyStore, parseOwnerDecisionPolicyDocument, evaluateOwnerDecisionPolicy, parseOwnerDecisionPolicySaveRequest, RECOMMENDATION_REMOTE_CONTRIBUTION } from '../lib/controls/index.js'
-import { MemoryVersionedStorage } from '../lib/controls/versioned-storage.js'
+import { createDomainVersionedStorage, MemoryVersionedStorage } from '../lib/controls/versioned-storage.js'
 const instance = { instrumentInstanceId:'i',ownerSessionId:'owner',controlWorkspaceId:'w' }
 const author = {kind:'user',principalId:'operator',sessionId:null}
 function fixture() {
@@ -13,6 +13,58 @@ function fixture() {
   return {store,storage,setNow:v=>now=v,setEnabled:v=>enabled=v,setOperator:v=>operator=v}
 }
 const enable=(more={})=>({operationId:'enable',expectedRevision:0,expectedScope:instance,action:'enable',durationMs:3600000,...more})
+test('operator revocation during a rejected CAS prevents the retry from writing',async()=>{
+ let allowed=true,writes=0
+ const storage=new MemoryVersionedStorage(parseOwnerDecisionPolicyDocument)
+ const racing={read:()=>storage.read(),compareAndSwap:async()=>{writes++;allowed=false;return false}}
+ const store=new OwnerDecisionPolicyStore({storageFor:()=>racing,now:()=>1000,newEpochId:()=> 'epoch',authorizeOperator:async()=>{if(!allowed) throw Error('revoked')},authorizeEnable:async()=>{}})
+ await assert.rejects(store.save(instance,enable(),author),/revoked/)
+ assert.equal(writes,1);assert.equal(await storage.read(),undefined)
+})
+test('operator auth, scope equality, feature gates, finite durations and expected revision are independent fences',async()=>{
+ const f=fixture();f.setOperator(false)
+ await assert.rejects(f.store.save(instance,enable(),author),/operator/)
+ f.setOperator(true)
+ await assert.rejects(f.store.save(instance,enable(),{...author,kind:'agent',sessionId:'owner'}))
+ await assert.rejects(f.store.save(instance,enable({expectedScope:{...instance,ownerSessionId:'other'}}),author),e=>e.code==='association-conflict')
+ for(const durationMs of [0,-1,86400001,1.5,Infinity]) await assert.rejects(f.store.save(instance,enable({durationMs}),author))
+ f.setEnabled(false);await assert.rejects(f.store.save(instance,enable(),author),/OFF/)
+ assert.deepEqual(await f.store.read(instance),{revision:0,enabled:false,epoch:null})
+ const disabled=await f.store.save(instance,{operationId:'disable-empty',expectedRevision:0,expectedScope:instance,action:'disable'},author)
+ assert.equal(disabled.appliedRevision,1);f.setEnabled(true)
+ await assert.rejects(f.store.save(instance,enable(),author),e=>e.code==='revision-conflict')
+ const enabled=await f.store.save(instance,enable({expectedRevision:1,durationMs:1}),author)
+ assert.equal(enabled.state.epoch.expiresAt,1001)
+ f.setEnabled(false)
+ const stopped=await f.store.save(instance,{operationId:'disable',expectedRevision:2,expectedScope:instance,action:'disable'},author)
+ assert.equal(stopped.state.enabled,false);assert.equal(stopped.state.epoch.epochId,enabled.state.epoch.epochId)
+ const replay=await f.store.save(instance,enable({expectedRevision:1,durationMs:1}),author)
+ assert.equal(replay.appliedRevision,2);assert.equal(replay.state.revision,3);assert.equal(replay.state.enabled,false)
+ await assert.rejects(f.store.save(instance,enable({expectedRevision:1,durationMs:2}),author),e=>e.code==='operation-conflict')
+ f.setOperator(false);await assert.rejects(f.store.save(instance,enable({expectedRevision:1,durationMs:1}),author),/operator/)
+})
+test('write-uncertain survives a new store and domain adapter wrapper until an actual fresh handle reopens committed receipts',async()=>{
+ const values=new Map(),lost=new Error('lost durable receipt')
+ const handle={get:k=>values.get(k),put:async(k,v)=>{values.set(k,v);throw lost},update:async(k,fn)=>{const v=fn(values.get(k));values.set(k,v);return v}}
+ const open=table=>createDomainVersionedStorage(table,'state',parseOwnerDecisionPolicyDocument)
+ const make=storage=>new OwnerDecisionPolicyStore({storageFor:()=>storage,now:()=>1000,newEpochId:()=> 'epoch',authorizeOperator:async()=>{},authorizeEnable:async()=>{}})
+ const storage=open(handle);await assert.rejects(make(storage).save(instance,enable(),author),e=>e===lost)
+ await assert.rejects(make(storage).read(instance),e=>e.code==='storage-uncertain')
+ await assert.rejects(make(open(handle)).read(instance),e=>e.code==='storage-uncertain')
+ const fresh={get:k=>values.get(k),put:async(k,v)=>values.set(k,v),update:async(k,fn)=>{const v=fn(values.get(k));values.set(k,v);return v}}
+ const reopened=make(open(fresh)),replay=await reopened.save(instance,enable(),author)
+ assert.equal(replay.replayed,true);assert.equal(replay.appliedRevision,1);assert.equal(replay.state.epoch.expiresAt,3601000)
+})
+test('corrupt owner policy documents and wrong owner identities fail closed instead of returning disabled defaults',async()=>{
+ const f=fixture();await f.store.save(instance,enable(),author)
+ await assert.rejects(f.store.read({...instance,ownerSessionId:'other'}),e=>e.code==='association-conflict')
+ const good=await f.storage.read()
+ for(const change of [d=>d.schemaVersion=2,d=>d.receipts=[],d=>d.epoch.authorizedBy.kind='agent',d=>d.epoch.policyRevision=2,d=>d.enabled=false]) {
+  const raw=structuredClone(good);change(raw)
+  const store=new OwnerDecisionPolicyStore({storageFor:()=>({read:async()=>raw,compareAndSwap:async()=>{throw Error('never write corrupt')}}),authorizeOperator:async()=>{},authorizeEnable:async()=>{}})
+  await assert.rejects(store.read(instance),e=>e.code==='invalid-state')
+ }
+})
 test('operator store persists a finite epoch and historical replay does not renew or require feature ON',async()=>{
  const f=fixture(); assert.deepEqual(await f.store.read(instance),{revision:0,enabled:false,epoch:null})
  const request=enable(); const saved=await f.store.save(instance,request,author)

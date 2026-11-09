@@ -378,7 +378,7 @@ test('reference-only collaboration registers a V3 handle and exposes authored cu
   assert.equal(result.appliedRevision, 2)
   assert.equal((await f.storage.read(result.snapshot.instance.instrumentInstanceId)).schemaVersion, 3)
   const full = await f.read(), current = await reopen(f).readCurrent('A', 'A')
-  assert.deepEqual(full.capabilities, { taskReferences: true, storageVersions: [1, 2, 3] })
+  assert.deepEqual(full.capabilities, { taskReferences: true, storageVersions: [1, 2, 3, 4], decisionRecommendationAdoption: false })
   assert.deepEqual(current.capabilities, full.capabilities)
   assert.deepEqual(full.tickets, [])
   assert.equal(full.summary.totalTickets, 0)
