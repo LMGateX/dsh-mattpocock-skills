@@ -62,7 +62,7 @@ U1 测试先锁明确 0/unknown/1→0 阅读/焦点与次级核对；使用真�
 
 ### 5.2 B 与 U2 策略/采用 wire（已冻结）
 
-browser-pure 新模块 recommendation-contract 定义以下严格类型、parsers 和独立 RECOMMENDATION_REMOTE_CONTRIBUTION，namespace 为 mattpocockRecommendationSupport。旧 REMOTE_CONTRIBUTION/mattpocockControls 不增删方法；新增可选 mount/namespace 失败只使本控制 unsupported，不阻止基础 apply/read，不能只对 Remote Proxy 做 typeof 检测而假称能力存在。read 使用既有 transport cancellation，AbortSignal 不进 JSON。
+browser-pure 新模块 recommendation-contract 定义以下严格类型、parsers 和独立 RECOMMENDATION_REMOTE_CONTRIBUTION，namespace 为 mattpocockRecommendationSupport。真实 Typert 按 package+face 唯一登记，因此该可选 contribution 使用独立协议身份 @lmgatex/dsh-mattpocock-skills/recommendation-support；它不是新 npm 依赖或另一个插件，不改变基础包身份/namespace/method/wire。不能以两份同 package+host-face 注册，也不把新 descriptors 合进旧 contribution 破坏旧端 mount。旧 REMOTE_CONTRIBUTION/mattpocockControls 不增删方法；新增可选 mount/namespace 失败只使本控制 unsupported，不阻止基础 apply/read，不能只对 Remote Proxy 做 typeof 检测而假称能力存在。read 使用既有 transport cancellation，AbortSignal 不进 JSON。
 
 ~~~ts
 type OperatorAuthor = {
