@@ -2,7 +2,7 @@
 
 ## 1. 状态、授权与范围
 
-2026-11-10，所有者认可代码性能审计的推荐顺序，明确要求“先固定到文档；在 subagents、隔离环境中完成开发和测试；push 发版，为本机 DSH 安装”。本页为实施前冻结的最新细化契约；当前状态为 **Implemented / independent review and artifact gates pending**，不是已发布或已部署结果。初轮固定提交审查发现的 freshness／取消边界必须修复并独立复验后才能进入发布。
+2026-11-10，所有者认可代码性能审计的推荐顺序，明确要求“先固定到文档；在 subagents、隔离环境中完成开发和测试；push 发版，为本机 DSH 安装”。本页为实施前冻结的细化契约；当前状态为 **Released / download verified / local disk installed; live activation not checked**。初审 freshness／取消反例已修复并独立复验，源／同包门禁、0.21.0发布与同一下载包官方磁盘安装已完成，事实与限制见[公开验证说明](<VERIFICATION.md>)。此状态更新为发布后main文档，不改变冻结tag／归档。
 
 本批性能优化范围仍只实施第一批三项：**owner 相关完整投影失效、live descriptor 紧凑事实寿命、已开始读取的协作取消传播**。发布目标 0.21.0，仅以 DSH 0.2.2-rc.1 和 Node >=24.9.0 验收；engines.dsh 仍为 >=0.2.2-rc.1。更高版本是声明范围而非已实测承诺。
 

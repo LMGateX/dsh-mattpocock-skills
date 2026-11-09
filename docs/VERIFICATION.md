@@ -2,6 +2,23 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.21.0 已发布、下载回验并安装本机（2026-11-10，UTC+08:00；激活另核）
+
+本记录与[机器摘要](<../dist/verification-0.21.0.json>)为发版后 main 的纯文档追加，不移动 tag、不重打包。精确制品复验须检出 `v0.21.0`／冻结 source，不能把后续文档 HEAD 作为该制品源。
+
+- **范围与授权：** [本批契约](<PERFORMANCE_ACTIVE_READS.md>)的 F owner/membership 相关 freshness、I 已验证 live descriptor 正事实寿命、C 插件只读链协作取消，以及所有者另明确认可、先文档的 N 可选 namespace bootstrap 所有权最小修复。保留当前权限／健康、absence／替换／后代闭包、bounded rebuild、FIFO／history／durability frontier 与完整 Remote；未扩入下一批候选。
+- **仅 RC1：** 实测 **DSH 0.2.2-rc.1／Node 24.17.0**；最低声明仍 **DSH >=0.2.2-rc.1／Node >=24.9.0**，未启动 alpha.4，不把未来版本声明当实测。实际 RC1 Host／Client strict/noEmit 均 **0 diagnostics**，保留既有 skipLibCheck=true，无旧 SDK 声明回退；canonical 发射沿用固定开发声明输入，不能据此伪称旧 Host runtime 门禁。
+- **冻结与发布：** source **e9ff7a02fb80445011735b7e5cf30d363c340767**，tree **56d4aa03f198fea51a564f2521e9b9db95cce6ad**；annotated tag object **161b88eb8b3b518d923755c351f15092fbb70b45**，peeled 为该 source。非 force atomic main＋新 tag 已 push；[0.21.0 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.21.0) 于 **2026-11-09T21:35:35Z** published，非 draft／prerelease，五资产齐备，**106 旧 tag refs** 保持。
+- **唯一 accepted 制品：** **568640 B**，SHA256 **161b015a71028a903be927d80bb810a948bde7dd5d11cc7545457789565c2dc7**，pnpm **11.8.0**；**171 regular = 86 fixed＋85 vendor，0 symlink，66 JS/DTS**。Client **466733 B／13 模块**，仅 React／原生 primitives externals，SHA256 **72a3e3903f7d4ac3ddd2191e6096601972beb9244de5cc8ef7ec226059031b4f**；公开声明 **17435 B／437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf**。N 后 Client 不再等同0.20字节。原／下载包 source-bound strict 与 canonical 生成树比对通过。
+- **源码与同包完整回归：** 各 **1294 total／1288 pass／0 fail／6 skip／0 cancel**；六项默认 skip 是实际 SDK 缺 standalone slots，不回填 pass。归档模式用相同 accepted 包与封闭 Client、模块解析指向解出的 lib；源码专用文本／编译测试仍依其公开 seam，不能把全部测试说成直接从 tgz 执行。
+- **原生生命周期补验：** 显式标注的同版本 public-slots 装配，源码及同包各 **6/6，0 skip**，自然完成 ACTIVE、实际 DISPOSED、双 namespace／全部 seats／tabs 清理、三次重挂、FAILED 可见及 Loader remove/re-add；不是已安装 SDK 的 standalone 能力或生产 GUI。使用有限2s上界，不放宽旧阈值、不用 process.exit／删除断言规避 teardown。同包实际 native shell 离线消费 **48/48，0 skip**。
+- **正式 headless 与 vendor：** 实际 RC1 source／同包 × stable／beta 规范化 registry 报告逐字节一致，modelInvoked=false／webStarted=false／customClient=false；不调用模型或启动替代 Web。27 Skills／85 vendor／296048 B、vendor root **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8** 保持。
+- **独立双轴：** 初审及后续真实反例均先修正、独立重放，最终 **Standards／Spec 未闭合必改均0**。membership 外部成员新后代、纯准备拒绝污染 history health 等反例关闭；已接受 history/CAS 真失败仍可见，不吞 producer 写错。Standards 两项 P3（registry 读取形状、清理断言重复）非阻塞延期；作者复审报告不冒充程序执行回执。
+- **包级回退：** 发布前 accepted 与发布后下载包分别在独立 fresh 私有 Profile，经同一官方 RC1 CLI **0.21→0.20→0.21** 三步 exit0，每步 **171/171 literal byte equality、0 manifest LF exception**；不启动业务 runtime，不把包级回退当生产数据降版保证。
+- **下载及本机：** 五资产 **5/5 与 accepted Buffer.equals**，GitHub API size／SHA256 digest 均一致；下载四 sidecars 再做 strict 绑定。仅该下载制品由官方 CLI 完成本机 Web Profile 磁盘 **0.20.0→0.21.0**，安装后 **171/171 literal byte equality**。原包171文件的实际mode及私有配置／lock／旧新归档已持久备份；安装文件正常rw mode可不同于tar，明确检查无特殊位／exec扩张，不伪称mode也相同。非目标manifest／lock完整对象、其他Profile配置保持。
+- **保护、warnings与失败记录：** 原dirty检出HEAD／status／diff与初始指纹一致，安装前后 tracked＋nonignored bytes/modes、选定SDK入口／manifest指纹保持，不声称覆盖ignored或全SDK／全机。请求 --ignore-scripts／--strict-peer-dependencies，官方CLI仍有peer WARN后成功，不声称warning-free。首次默认pack遗漏仓库既有 --skip-manifest-obfuscation，被strict拒绝，未发布／安装；随后按既有命令形成accepted，未改断言。安装准备的mode假设及脚本交付竞态也被保护器拒绝，调查后用冻结helper／全新state重做，未自动restore、未修改真实mode来迎合检查。原失败／成功日志私下保留。
+- **边界与保留：** 已确认磁盘安装，**未验证当前 Host／GUI 已装载新版**；未自动重启、未新跑 Chromium／生产 Session 探针、未证实此前CPU99%根因或生产CPU降幅。未改共享SDK／vendor正文、未启用管理／预授权、未迁移／清理业务、未npm publish；既有 Phase5 历史失败不被抹除。所有本批独立工树／审计refs与私有原始证据刻意保留，未作物理清理或业务完成推断。
+
 ## 0.20.0 已发布、下载回验并安装本机（2026-11-10；仅 RC1 验收，激活另核）
 
 本记录与[机器摘要](<../dist/verification-0.20.0.json>)为发版后 main 的纯文档追加；不移动 tag、不重打包。精确制品复验须检出 `v0.20.0`／冻结 source，不能把后续文档 HEAD 作为该制品源。
