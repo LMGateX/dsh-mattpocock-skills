@@ -1,6 +1,6 @@
 # Native client integration
 
-> 最新本地修复授权见 [CLIENT_RECOVERY_STABILITY.md](<CLIENT_RECOVERY_STABILITY.md>)：语义身份忽略对象字段顺序；同一观察器域／Session 的 slot 重注入不应仅因 callback／handle 引用变化而中断有效订阅。真实撤权、错误、最后卸载与旧结果围栏不变。本轮先文档，再隔离 subagents 开发测试；不 push／发版／本机安装／重启，不宣称当前 GUI 已修复。
+> 最新本地修复授权见 [CLIENT_RECOVERY_STABILITY.md](<CLIENT_RECOVERY_STABILITY.md>)：语义身份忽略对象字段顺序；同一观察器域／Session 的 slot 重注入不应仅因 callback／handle 引用变化而中断有效订阅。真实撤权、错误、最后卸载与旧结果围栏不变。本轮先文档，再隔离 subagents 开发测试；不 push／发版／本机安装／重启，不宣称当前 GUI 已修复。本地实现与验收已完成（代码／包冻结 `80804ff`），准确结果见 [本地验收摘要](<CLIENT_RECOVERY_VALIDATION.md>)。
 
 > 0.18.0 当前增量以 [协作信息区契约](<COLLABORATION_UI_REFRESH.md>) 为准：暂时 unknown 只保留已许可的中性外壳，不保留旧正文/计数；详情主切换统一为裁决、T、S，记录核对降为裁决标题同行次级入口。S 标题/parent 只读公开 useSessions/catalog，点击窄适配公开 subagentAddress→sidebarRight.openResource；不增加agent标题字段。裁决模板使用 session slot公开 inputActions.captureInsertion/insertText，不替换全文、不覆盖非空选择、不发送或写业务记录。通知音频从本包固定CC0字节解码，无runtime fetch；新client-*.ts模块只在闭合browser图中，不生成standalone宿主lib。源码/制品门禁结果另见[验证摘要](<VERIFICATION.md>)，本轮不安装本机。
 

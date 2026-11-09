@@ -78,4 +78,16 @@
 - 新鲜第二轮 Standards 为 0 必改、1 条非阻断测试 DOM／global lifetime 代码去重启发式建议（本批不为此扩一般性重构）；Spec 仍有 1 项继承的 P2：同一 registry／Session／Remote 下真实 caller、grant revision 或 scope 改变，历史面板不取消旧授权时发出的 pending 请求，迟到合法旧响应仍可进入新投影。两个 surface、三类变化的 6 个公开挂载 probe 可复现；旧基线 grant 控制亦同样失败。**这是客户端失效围栏未闭合，不是已证明生产越权。** 该候选归档也已另标 superseded，原字节不改。
 - 补修继续限定在既有根阅读／授权身份：真实身份变化取消并卸载旧域属子状态，不能只在 registry epoch 变化时处理；同一授权下 business／viewer revision 的健康更新以及对象字段重排，不得误伤 pending history、草稿、焦点或原始 CAS。不加 Remote／model／schema 字段，不改变历史读取的显式点击行为。
 
-当前阶段：第二轮 Spec 授权元数据围栏 P2 正由原单 writer 子代理先 RED 后修复；最终候选必须重新生成、源绑定归档、完整门禁与独立复核。此前通过结果不代替最终验收。
+以上均为中间候选历史，不能代替最终验收。
+
+## 7. 最终本地完成记录
+
+2026-11-09，最终代码／生成物／测试与唯一接受归档冻结于 `80804ff3bfa45d0ccfa20083e6df5b321ba48591`，本地集成分支 `client-recovery-local`。第二轮遗留 metadata-history P2 用既有完整阅读／授权身份围栏两处根子树补齐：6 项 caller／grant／scope 公开 RED 修后 GREEN，30 mounted／13 native 均不跳过；同域 business／viewer 更新与对象字段重排不取消有效历史请求，草稿／焦点／原 CAS 保持。
+
+- 集成 targeted 59／59；唯一精确归档原字节 mounted＋native 43／43，均 0 fail／0 skip。
+- 双宿主 source／archive-input 四矩阵各 1127 总／1121 pass／6 已解释旧 native 装配 skip／0 fail，六项已在对应隔离原生装配夹具各补跑 6／6。严格 Host／Client 四类型门禁通过，11 模块闭合图及 167 个 regular 包文件与源绑定通过。
+- 同一未修改隔离图形 runner，light／dark ×1440／390：SOURCE 32／32、204 帧；唯一 ARCHIVE 32／32、205 帧，均 0 页面错误／0 意外外部网络。真实错误仍撤下正文显示中性壳，不掩盖未知。
+- 新鲜独立 Standards 0 必改／1 条非阻断测试去重启发式建议（defer）；新鲜独立 Spec 0 必改／0 建议，两个继承 P2 均关闭。两轴不互相替代结论。
+- 本地归档 535656 bytes，SHA256 `e27cfd4ce48741a104cd3f255676927932aa6c81245f4fd2c24708e16a5b12d3`；包内版本仍 0.18.0，但明确 LOCAL-UNRELEASED，非已发布原制品。4d7025f／0ffca73 归档保留为 superseded。
+
+完整结果、各类测试的证明边界、skip 与剩余限制见 [本地验收摘要](<CLIENT_RECOVERY_VALIDATION.md>)。本轮目标是本地修复交付，现已完成；未 push／发版／安装当前 DSH／激活／重启或变更生产 GUI，未改变 vendor／wire／模型字段／业务数据／管理开关。工作树与私有原始证据保留，受保护安装字节、原 dirty diff、tag／remote refs、GUI listener 进程／fd 均未变。最终结果文档是冻结代码之后的纯文档提交，不改变已验收归档的 sourceCommit。

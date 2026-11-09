@@ -12,6 +12,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 **本轮禁止 push、tag／Release、npm publish、本机安装／激活与服务重启；不改共享 SDK 或生产业务记录。** 本地提交和验证包不代表新版本已发布，不覆盖 0.18.0 原制品。完成时保留本地候选与证据，原 dirty 检出不改。
 
+本地开发与验收已完成：代码／包冻结 `80804ff3bfa45d0ccfa20083e6df5b321ba48591`；独立 Standards／Spec 必改均关闭，原始证据仅本地保留。准确矩阵与限制见 [本地验收摘要](<CLIENT_RECOVERY_VALIDATION.md>)，不将本地完成解释为发布或当前 GUI 更新。
+
 ## 0.18.0 协作信息区与可选铃声（2026-11-09，实施中）
 
 以 [DESIGN](<DESIGN.md>) 与 [COLLABORATION_UI_REFRESH](<COLLABORATION_UI_REFRESH.md>) 为准；最新授权为隔离开发/测试、push/新Release，**不安装本机**。

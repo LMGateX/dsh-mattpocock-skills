@@ -18,6 +18,8 @@ This document is the authoritative implementation contract. A later implementati
 
 相同语义身份不因对象字段顺序变化而失效；同一观察器域与 Session 的参数重注入不因 callback／handle 引用变化而清空有效观测或增加读取。真实身份／授权／显示变化、最后卸载取消与未知时中性壳保持；不保留旧正文／计数，不延长超时掩盖问题。实际挂载、native slot／cache多seat与source／精确包、独立双轴回归通过后仅本地交付；不把隔离复现冒充用户现场唯一根因已证实。
 
+本批现已完成隔离实现与验收，代码／包冻结 `80804ff3bfa45d0ccfa20083e6df5b321ba48591`；结果与证明边界见 [本地验收摘要](<CLIENT_RECOVERY_VALIDATION.md>)。独立复核发现的继承域／授权围栏 partial 已补齐，不改原权限协议；本地完成不扩展发布／安装权限。
+
 ## 0.18.0 协作信息区与可选铃声（2026-11-09，已认可；隔离实施／发布，不安装本机）
 
 所有者认可稳定无旧正文的恢复外壳、裁决/T/S统一三切换、次级记录核对、T票号层次、S原生标题读取/侧栏/父子折叠、裁决文字选项插入模板与多个已试听CC0声音备选。唯一细化契约为 [COLLABORATION_UI_REFRESH.md](<COLLABORATION_UI_REFRESH.md>)，先固定文档再开发测试与独立复核，完成后非force push与新版本Release；**暂不为本机DSH安装**，不继承0.17.0本机安装许可，不改当前Profile/共享SDK/GUI/生产数据或自动重启。
