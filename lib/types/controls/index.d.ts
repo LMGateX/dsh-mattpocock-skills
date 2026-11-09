@@ -12,7 +12,7 @@ export type { ControlsErrorCode } from './validation.js';
 export { SessionInstruments } from './instruments.js';
 export type { InstrumentAuthority, InstrumentAccess, InstrumentScope, InstrumentFilter, InstrumentSnapshot, InstrumentCurrentSnapshot, InstrumentCurrentTaskReference, InstrumentSummary, InstrumentApplyResult } from './instruments.js';
 export { parseInstrumentCommand, parseInstrumentDocument, initialInstrumentDocument } from './instrument-state.js';
-export type { InstrumentDocument, InstrumentEvent, InstrumentAuthor, InstrumentCommand, WorkflowValue, StatusAxis, StatusDefinition, TicketValue, TaskReferenceSource, TaskReferenceValue, TaskReferenceRecord, DecisionValue, DecisionViewValue, WorkflowRecord, TicketRecord, DecisionRecord, Change } from './instrument-state.js';
+export type { InstrumentDocument, InstrumentDocumentV1, InstrumentDocumentV2, InstrumentDocumentV3, InstrumentDocumentV4, InstrumentCommandMetadata, InstrumentEvent, InstrumentAuthor, InstrumentCommand, WorkflowValue, StatusAxis, StatusDefinition, TicketValue, TaskReferenceSource, TaskReferenceValue, TaskReferenceRecord, DecisionValue, DecisionViewValue, WorkflowRecord, TicketRecord, DecisionRecord, Change } from './instrument-state.js';
 export { MemoryInstrumentStorage, createDomainInstrumentStorage } from './instrument-storage.js';
 export type { InstrumentStorage } from './instrument-storage.js';
 export * from './windows.js';
@@ -28,6 +28,8 @@ export * from './worktree-observations.js';
 export * from './supervision-config.js';
 export * from './supervision-ledger.js';
 export * from './supervision-audit.js';
+export * from './recommendation-contract.js';
+export * from './owner-decision-policy.js';
 export type TrustedSession = {
     readonly kind: 'owner';
     readonly controlWorkspaceId: string;

@@ -4,6 +4,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-manager/client';
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
+import type { RecommendationRemote } from './controls/recommendation-contract.js';
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js';
 import type { InstrumentSnapshot } from './controls/instruments.js';
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js';
@@ -160,20 +161,35 @@ export declare function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIn
     }[];
     readonly executionEffects: string;
 };
-interface SubagentFace {
-    readonly subagentNavigation?: {
-        available(id: string, parent: string): boolean;
-        open(id: string, parent: string, view: ClientSessionSnapshot): boolean;
-    };
+export interface SubagentNavigationPort {
+    available(id: string, parent: string): boolean;
+    open(id: string, parent: string, expected: ClientSessionSnapshot): boolean;
+}
+export interface SubagentNavigationSource {
+    subscribe(listener: () => void): () => void;
+    getSnapshot(): SubagentNavigationPort | null;
+}
+export interface SubagentFace {
+    readonly subagentNavigation?: SubagentNavigationSource;
+}
+export interface RecommendationPolicyPort extends RemoteProjection<RecommendationRemote> {
+    isCurrent(): boolean;
+}
+export interface RecommendationPolicySource {
+    subscribe(listener: () => void): () => void;
+    getSnapshot(): RecommendationPolicyPort | null;
+}
+export interface RecommendationPolicyFace {
+    readonly recommendationPolicy?: RecommendationPolicySource | undefined;
 }
 interface DecisionInputFace {
     readonly inputActions?: unknown;
 }
-interface SessionFace extends DecisionInputFace, SubagentFace {
+interface SessionFace extends DecisionInputFace, SubagentFace, RecommendationPolicyFace {
     readonly observer: SessionObservation;
     readonly openDetails: () => void;
 }
-interface SummaryFace extends DecisionInputFace, SubagentFace {
+interface SummaryFace extends DecisionInputFace, SubagentFace, RecommendationPolicyFace {
     readonly summary: SummaryObserver;
     readonly observe: () => SessionObservation;
     readonly openDetails: () => void;
@@ -314,7 +330,7 @@ export declare function SupervisionHistory(props: {
     readonly remote: ControlsRemote;
     readonly sessionId: string | null;
 }): ReactElement;
-export declare function SettingsPage(props: PluginConfigViewProps & {
+export declare function SettingsPage(props: PluginConfigViewProps & RecommendationPolicyFace & {
     readonly remote: ControlsRemote;
     readonly refreshAll: () => void;
     readonly observe: (sessionId: string) => SessionObservation;

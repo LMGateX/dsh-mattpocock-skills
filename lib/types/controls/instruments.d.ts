@@ -1,3 +1,4 @@
+import type { DecisionPolicyReader, RecommendationOutcome } from './recommendation-contract.js';
 import type { WorkspaceControls } from './index.js';
 import type { InstrumentInstance } from './state.js';
 import type { InstrumentStorage } from './instrument-storage.js';
@@ -30,6 +31,7 @@ export interface InstrumentDecisionTime {
     } | null;
     /** Latest business update, never a viewer update or idempotent replay. */
     readonly updatedAt?: number;
+    readonly recommendationSupport?: RecommendationOutcome;
 }
 export interface InstrumentSnapshot {
     readonly instance: InstrumentInstance;
@@ -43,7 +45,8 @@ export interface InstrumentSnapshot {
     readonly taskReferences: readonly TaskReferenceRecord[];
     readonly capabilities: {
         readonly taskReferences: true;
-        readonly storageVersions: readonly [1, 2, 3];
+        readonly storageVersions: readonly [1, 2, 3, 4];
+        readonly decisionRecommendationAdoption: boolean;
     };
     /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */
     readonly decisions: readonly (DecisionRecord & InstrumentDecisionTime & {
@@ -119,6 +122,7 @@ export interface InstrumentApplyResult {
     readonly appliedRevision: number;
     readonly replayed: boolean;
     readonly snapshot: InstrumentSnapshot;
+    readonly recommendation?: RecommendationOutcome;
 }
 export interface InstrumentCleanupResult extends InstrumentApplyResult {
     readonly removedVersions: number;
@@ -132,7 +136,12 @@ export declare class SessionInstruments {
     private readonly storage;
     private readonly authority;
     private readonly now;
-    constructor(controls: WorkspaceControls, storage: InstrumentStorage, authority: InstrumentAuthority, now?: () => number);
+    private readonly decisionPolicy?;
+    constructor(controls: WorkspaceControls, storage: InstrumentStorage, authority: InstrumentAuthority, now?: () => number, decisionPolicy?: DecisionPolicyReader | undefined);
+    private policyState;
+    private supportSnapshot;
+    private refreshWriteContext;
+    private applyResult;
     read(principal: string, sessionId: string, filter?: InstrumentFilter): Promise<InstrumentSnapshot>;
     readCurrent(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentCurrentSnapshot>;
     readSummary(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentSummary>;

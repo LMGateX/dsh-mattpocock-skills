@@ -15,6 +15,7 @@ import type { SupervisionEpisode } from './controls/supervision-audit.js';
 import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js';
 import type { ResourceLifecycle, ResourceStorage } from './controls/resources.js';
 import type { VersionedStorage } from './controls/versioned-storage.js';
+import type { OwnerDecisionPolicySaveRequest, OwnerDecisionPolicySnapshot, OwnerDecisionPolicySaveResult } from './controls/recommendation-contract.js';
 import type { HostCaller, HostJson, PolicyGrants, ResourceAction, WorkspaceRow, SessionSummaryRequest, SessionSummaryBatch } from './controls/remote-contract.js';
 declare module '@deepseek-ai/dsh-llm' {
     interface MessageSourceMap {
@@ -184,6 +185,8 @@ export interface RuntimeFacade {
     }>;
     readPolicy(caller: HostCaller, signal: AbortSignal): Promise<PolicySnapshot>;
     savePolicy(caller: HostCaller, intent: PolicyIntent, expectedRevision: number, signal: AbortSignal): Promise<PolicySnapshot>;
+    readOwnerDecisionPolicy?(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<OwnerDecisionPolicySnapshot>;
+    saveOwnerDecisionPolicy?(caller: HostCaller, sessionId: string, request: OwnerDecisionPolicySaveRequest, signal: AbortSignal): Promise<OwnerDecisionPolicySaveResult>;
     readSession(caller: HostCaller, sessionId: string, signal: AbortSignal): Promise<unknown>;
     readSummaries(caller: HostCaller, request: SessionSummaryRequest, signal: AbortSignal): Promise<SessionSummaryBatch>;
     applyInstrument(caller: HostCaller, sessionId: string, command: InstrumentCommand, signal: AbortSignal): Promise<unknown>;
@@ -335,6 +338,20 @@ export declare class MattPocockControlsService extends TypertRemoteService {
     resourceAction(sessionId: unknown, request: unknown): Promise<HostJson>;
     grantPolicy(sessionId: unknown, enabled: unknown, expectedRevision: unknown): Promise<PolicyGrants>;
 }
+/** Independent optional namespace: old server/client base descriptors are unchanged. */
+export declare class MattPocockRecommendationSupportService extends TypertRemoteService {
+    private readonly runtime;
+    private readonly ports;
+    private readonly lifecycle;
+    constructor(ctx: Context, runtime: RuntimeFacade, ports: HostPorts, lifecycle: {
+        readonly signal: AbortSignal;
+        track<T>(work: () => Promise<T>): Promise<T>;
+    });
+    private run;
+    readOwnerDecisionPolicy(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<OwnerDecisionPolicySnapshot>;
+    saveOwnerDecisionPolicy(sessionId: unknown, request: unknown): Promise<OwnerDecisionPolicySaveResult>;
+}
+export declare function recommendationHostRemoteContribution(): TypertContribution;
 export declare function hostRemoteContribution(): TypertContribution;
 /** Fixed Git argv execution; subprocess alone is not a sandbox or permission decision. */
 export declare function createAuthorizedGitRunner(ctx: Context, rawSessionId: string, outerSignal: AbortSignal): AuthorizedGitRunner;

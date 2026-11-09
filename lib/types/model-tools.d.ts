@@ -28,6 +28,7 @@ export interface ModelCollection {
     readonly reason?: string;
 }
 export interface ModelCurrent extends ModelIdentity {
+    readonly ownerDecisionPolicy?: import('./controls/recommendation-contract.js').OwnerDecisionPolicyPublic;
     readonly policy: unknown;
     readonly revisions: Readonly<Record<string, number | null>>;
     readonly records: Readonly<Record<string, unknown>> | null;
@@ -99,6 +100,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         };
     } & (({
         revisions: Readonly<Record<string, number | null>>;
+        ownerDecisionPolicy: import("./controls/recommendation-contract.js").OwnerDecisionPolicyPublic | null;
         policy: {
             configurationRevision: unknown;
             workspaceVerified: unknown;
@@ -143,6 +145,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         scopeDetail?: never;
     } | {
         revisions: Readonly<Record<string, number | null>>;
+        ownerDecisionPolicy: import("./controls/recommendation-contract.js").OwnerDecisionPolicyPublic | null;
         policy: {
             configurationRevision: unknown;
             workspaceVerified: unknown;

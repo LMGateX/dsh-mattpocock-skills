@@ -2,9 +2,9 @@
 
 > **模型工具输出（0.10.0 起）：** [插件模型工具输出减负](<docs/BOUNDED_TOOL_OUTPUTS.md>) 已实施：默认 schema-2 有界当前视图/小回执、按授权版本分段取正文，覆盖插件各工具的同类大返回。它不要求 DSH 补丁、改宿主配置或清理旧 spill；历史 snapshot 返回不作为当前调用格式。
 
-## 即将交付：限时推荐支持与零值摘要
+## 0.19.0：限时推荐支持与零值摘要
 
-> 本节描述已冻结、正在完成集成的下一批控制约定，不表示已发布、已安装或当前页面已加载。最终源码、精确制品及安装/激活事实分别见[验证摘要](<docs/VERIFICATION.md>)；完整字段和权限边界见[本批契约](<docs/COLLABORATION_RECOMMENDATION_SUPPORT.md>)。下方各历史版本的交付范围不取代本批最新授权。
+> 本节描述本批控制约定；版本号不证明已发布、已安装或当前页面已加载。最终源码、精确制品及安装/激活事实分别见[验证摘要](<docs/VERIFICATION.md>)；完整字段和权限边界见[本批契约](<docs/COLLABORATION_RECOMMENDATION_SUPPORT.md>)。下方各历史版本的交付范围不取代本批最新授权。
 
 ### 用户怎样开启
 
@@ -39,11 +39,11 @@
 
 个人提醒中可选三音上行Toast、双音Modal、上滑Pop-up或短促Bubble；四个Qvantor CC0原作者压缩预览随包提供，运行时不联网，来源和完整许可见[音频来源](<assets/notification-sounds/SOURCE.json>)及[CC0](<assets/notification-sounds/CC0-1.0.txt>)。短音型与静音间隔在1–60秒预算内有限重复，不time-stretch。老偏好缺选择时默认Toast，声音仍默认关闭；明确试听才尝试解锁，浏览器/OS/后台策略仍可能阻止听见，错误状态始终可见。偏好仅本浏览器，不改变业务策略。
 
-本轮只隔离开发/测试并发布，**不为现有本机DSH安装或激活**，不改当前Profile/共享SDK/GUI或重启；源码、精确制品、隔离fixture与实际GUI验收分别记录。
+0.18.0 批次只隔离开发/测试并发布，**该历史批次不为现有本机DSH安装或激活**，不改当前Profile/共享SDK/GUI或重启；源码、精确制品、隔离fixture与实际GUI验收分别记录。
 
 ## 当前提供什么
 
-协作仪器是不可变 Skills 分发之外的可选扩展。当前源码版本为 0.18.0（机械验收、精确制品与发布状态见[验证摘要](<docs/VERIFICATION.md>)；包版本不代表本机安装版本）：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.10.2 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。0.10.2 只修正模型工具请求描述，不改变运行面。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求。0.10.2 的本机安装/重启为当时历史，不作为当前版本证明；当前安装版本与运行时加载应分别核验。
+协作仪器是不可变 Skills 分发之外的可选扩展。当前源码版本为 0.19.0（机械验收、精确制品与发布状态见[验证摘要](<docs/VERIFICATION.md>)；包版本不代表本机安装版本）：参考 T/S、工作树绑定与创建观测、持久关系登记、有界当前投影、主动历史查询、显式历史副本与源旧历史清理、native-observed 执行事实、dispose 后迟到 end 的覆盖处理，以及 Host/Client 接口均已实现。0.10.2 的默认模型面仍是七个固定工具 + 条件 `mattpocock_audit`；`mattpocock_execute` 已移除，`mattpocock_delegate` 默认不注册，只有 profile 显式设置 `delegate: true` 时才作为可选第八项启用。0.9.0 将执行事实的 `initialCwd` 迁移为来源明确的 `headerCwd`，不再由 header 路径相等生成实际初始目录/工作树关联；delegate 的结果分别报告 creation、binding、assignment。没有新增模型工具、Remote 方法或存储域。0.10.2 只修正模型工具请求描述，不改变运行面。包内容、安装状态和当前进程实际启用仍是三件事，安装不会自动开启管理或改写启动请求。0.10.2 的本机安装/重启为当时历史，不作为当前版本证明；当前安装版本与运行时加载应分别核验。
 
 > **2026-11-04 事实边界（0.9.0 源码实施）：** `headerCwd` 只是 child header 的来源值，不证明实际初始目录、当前目录或目录使用。已接受/不确定的 delegate 操作必须保留已有 child，不应改用 native 重建；必要时对同一真实 child 显式 `mattpocock_assign`。`recording: failed` 不再单独表示“没有创建”，而要与 `creation`/`binding`/`assignment` 分项读取。迟到 end 使用已保存的 owner/session/run 事实处理，旧 run 不会覆盖新 run；无法归属时在既有 health 明示覆盖缺口。详见[事实边界与恢复设计](<docs/INSTRUMENT_FACT_BOUNDARIES.md>)。
 

@@ -1,4 +1,5 @@
 import type { InstrumentInstance } from './state.js';
+import type { DecisionPolicyBinding, DecisionPolicySelection, DecisionPolicyEventEffect } from './recommendation-contract.js';
 export interface InstrumentAuthor {
     readonly kind: 'agent' | 'user';
     readonly principalId: string;
@@ -95,6 +96,15 @@ export type InstrumentCommand = CommandBase & ({
     readonly decisionId: string;
     readonly value: DecisionValue;
 } | {
+    readonly action: 'adopt-decision-recommendation';
+    readonly decisionId: string;
+    readonly value: {
+        readonly optionKey: string;
+        readonly decisionRevision: number;
+        readonly policyEpochId: string;
+        readonly policyRevision: number;
+    };
+} | {
     readonly action: 'set-decision-view';
     readonly decisionId: string;
     readonly value: DecisionViewValue;
@@ -104,6 +114,7 @@ export interface InstrumentEvent {
     readonly recordedAt: number;
     readonly author: InstrumentAuthor;
     readonly command: InstrumentCommand;
+    readonly decisionPolicy?: DecisionPolicyEventEffect;
 }
 export interface InstrumentDocumentV1 extends InstrumentInstance {
     readonly schemaVersion: 1;
@@ -128,7 +139,10 @@ export interface InstrumentDocumentV3 extends Omit<InstrumentDocumentV2, 'schema
         readonly state: InstrumentState;
     };
 }
-export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3;
+export interface InstrumentDocumentV4 extends Omit<InstrumentDocumentV3, 'schemaVersion'> {
+    readonly schemaVersion: 4;
+}
+export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4;
 export interface InstrumentDedup {
     readonly operationId: string;
     readonly author: InstrumentAuthor;
@@ -142,6 +156,7 @@ export interface InstrumentCommandMetadata {
     readonly target: InstrumentHistoryTarget;
     readonly expectedRevision: number;
     readonly recordedAt: number;
+    readonly decisionPolicy?: DecisionPolicyEventEffect;
 }
 export declare function instrumentCommandMetadata(event: InstrumentEvent): InstrumentCommandMetadata;
 export type InstrumentHistoryTarget = {
@@ -179,13 +194,14 @@ export interface InstrumentPurgeHistoryInput extends InstrumentCompactInput {
     readonly throughRevision: number;
     readonly targets: readonly InstrumentHistoryTarget[];
 }
-export declare function upgradeInstrumentDocument(document: InstrumentDocument, references?: boolean): InstrumentDocumentV2 | InstrumentDocumentV3;
+export declare function upgradeInstrumentDocument(document: InstrumentDocument, references?: boolean, policy?: boolean): InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4;
 export interface Change<T> {
     readonly revision: number;
     readonly recordedAt: number;
     readonly author: InstrumentAuthor;
     readonly references: readonly string[];
     readonly value: T;
+    readonly policySelection?: DecisionPolicySelection;
 }
 export interface WorkflowRecord {
     readonly workflowId: string;
@@ -214,6 +230,8 @@ export interface DecisionRecord {
     readonly value: DecisionValue;
     readonly history: readonly Change<DecisionValue>[];
     readonly creator?: InstrumentAuthor;
+    readonly policyBinding?: DecisionPolicyBinding;
+    readonly policySelection?: DecisionPolicySelection;
 }
 export interface DecisionViewRecord {
     readonly workflowId: string;

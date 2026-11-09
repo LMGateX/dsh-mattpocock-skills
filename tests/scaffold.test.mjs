@@ -21,7 +21,7 @@ async function pathExists(path) {
 
 test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.name, '@lmgatex/dsh-mattpocock-skills')
-  assert.equal(packageJson.version, '0.18.0')
+  assert.equal(packageJson.version, '0.19.0')
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
@@ -78,7 +78,7 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   const entries = await readdir(join(root, 'src'), { recursive: true, withFileTypes: true })
   const sources = entries.filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
-  const privateBrowserSources = ['client-notifications.ts', 'client-notification-sounds.ts', 'client-notification-sound-data.ts', 'client-subagents.ts']
+  const privateBrowserSources = ['client-notifications.ts', 'client-notification-sounds.ts', 'client-notification-sound-data.ts', 'client-subagents.ts', 'client-recommendation-policy.ts']
   assert.deepEqual(sources.filter(path => path.startsWith('client-')), [...privateBrowserSources].sort())
   assert.equal(sources.filter(path => !path.includes('/')).length, 7 + privateBrowserSources.length)
   assert.equal(sources.filter(path => path.startsWith('controls/')).length, 26)

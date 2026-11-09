@@ -1,6 +1,6 @@
 # Migrating an existing repository across Skills v1.3
 
-## Upcoming recommendation-support compatibility (implementation contract)
+## Plugin 0.19.0 recommendation-support compatibility
 
 This section fixes the accepted upgrade and rollback boundary before implementation. It is not a claim that a new version has shipped or that the running host has loaded it. See the [accepted collaboration contract](<docs/COLLABORATION_RECOMMENDATION_SUPPORT.md>) for the exact API and delivery gates.
 

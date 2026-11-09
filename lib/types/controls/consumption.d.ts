@@ -1,4 +1,5 @@
 import type { InstrumentInstance } from './state.js';
+import type { OwnerDecisionPolicyPublic } from './recommendation-contract.js';
 import type { EffectivePolicy } from './policy.js';
 import type { InstrumentSnapshot, InstrumentCurrentSnapshot } from './instruments.js';
 import type { WindowSnapshot } from './windows.js';
@@ -15,6 +16,8 @@ export interface ConsumptionIdentity {
     readonly ownerSessionId: string;
     /** Trusted current authorization partition, not a credential; omitted only for legacy callers. */
     readonly scopeFingerprint?: string;
+    /** Source revision/effective expiry bucket; never a permission credential. */
+    readonly sourceToken?: string;
 }
 export interface ConsumptionSnapshot {
     /** Held T slots whose ticket already sits in a terminal status; the agent releases them. */
@@ -27,6 +30,7 @@ export interface ConsumptionSnapshot {
     readonly sessionId: string;
     readonly instance: InstrumentInstance;
     readonly policy: EffectivePolicy;
+    readonly ownerDecisionPolicy?: OwnerDecisionPolicyPublic;
     readonly records: InstrumentSnapshot | InstrumentCurrentSnapshot | null;
     readonly windows: WindowSnapshot | null;
     readonly resources: readonly ResourceView[];
@@ -52,7 +56,9 @@ export interface ConsumptionSnapshot {
     readonly contextConclusions?: readonly {
         readonly decisionId: string;
         readonly workflowId: string;
-        readonly result: string;
+        readonly result: string | null;
+        readonly policySelection?: import('./recommendation-contract.js').DecisionPolicySelection;
+        readonly references?: readonly string[];
         readonly sourceRevision: number;
         readonly source: unknown;
     }[];
