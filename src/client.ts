@@ -1155,7 +1155,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
       h(Button, { variant: 'ghost', size: 'sm', onClick: () => setReading({ identity: readIdentity, key: null }) }, '关闭阅读')),
     diagnostic('当前分类：' + (isPendingUserDecision(selectedDecision) ? '待你裁决' : isAwaitingImplementation(selectedDecision) || isNonUserPending(selectedDecision) ? '记录核对（已更新）' : '其他 / 已解决（已更新）') + '；分类变化不关闭阅读。'),
     h(DecisionEditor, { key: readIdentity + ':' + decisionRecordKey(selectedDecision), decision: selectedDecision, records, sessionId: props.sessionId, remote: props.remote, refresh: observer.refresh }))
-  return h('section', { key, style: panelStyle, 'aria-label': '协作详情' },
+  return h('section', { key: readIdentity, style: panelStyle, 'aria-label': '协作详情' },
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Session ' + props.sessionId + (tab.tab.visible ? '' : ' · 非前台')),
     h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '刷新已提交投影'),
@@ -1561,7 +1561,7 @@ export function ObservedSettingsInspection(props: { readonly sessionId: string; 
   if (observation.status !== 'ready') return h('section', { key, 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
     h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '重新读取所选会话'))
   const view = observation.value
-  return h('section', { key, 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } },
+  return h('section', { key: JSON.stringify([key, decisionReadingIdentity(view)]), 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } },
     h('h4', null, '所选会话 ' + props.sessionId + ' · 当前投影与显式登记'),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · 主会话 ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
     h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '刷新所选会话'),

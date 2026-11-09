@@ -256,6 +256,7 @@ test('Details same-domain lazy handles and successful refresh preserve reader dr
   await ui.render()
   assert.equal(ui.A.reads, reads, 'same-domain reinjection does not read again')
   ui.A.view.records.businessRevision = 8
+  ui.A.view.records.viewerRevision = 1
   ui.A.view.records.decisions[0].revision = 8
   await ui.refresh()
   assert.strictEqual(named(ui.container, '裁决阅读与编辑'), reader)
@@ -275,7 +276,12 @@ for (const component of ['Details', 'SettingsInspection']) test(component + ' fe
   assert.equal(ui.historyPending.length, 1, 'history reads are explicit')
   const request = ui.historyPending[0]
   assert.equal(request.signal.aborted, false)
-  await ui.render(); await ui.refresh()
+  await ui.render()
+  ui.A.view.records.businessRevision++
+  ui.A.view.records.viewerRevision++
+  ui.A.view.instance = Object.fromEntries(Object.entries(ui.A.view.instance).reverse())
+  ui.A.view.caller = Object.fromEntries(Object.entries(ui.A.view.caller).reverse())
+  await ui.refresh()
   assert.equal(request.signal.aborted, false, 'same-domain handles and current refresh preserve the actual pending inspection')
   assert.equal(ui.historyPending.length, 1)
   await ui.switchRegistry()
@@ -286,3 +292,26 @@ for (const component of ['Details', 'SettingsInspection']) test(component + ' fe
     total: 1, cut: 1, nextCursor: null, coverage: {purged: false, notRecorded: false, sources: []}}}))
   assert.doesNotMatch(ui.container.textContent, /OLD HISTORY|old-history/)
 })
+
+const authorityChanges = {
+  caller(view) { view.caller = {...view.caller, principalId: 'another-operator'} },
+  grant(view) { view.policyGrants = {...view.policyGrants, revision: 1} },
+  scope(view) { view.records.scope = {kind: 'assigned', workflowId: 'work', ticketIds: []} },
+}
+for (const component of ['Details', 'SettingsInspection']) for (const [change, update] of Object.entries(authorityChanges)) {
+  test(component + ' cancels old history when current authorization changes: ' + change, async t => {
+    const ui = await mountWarmInspection(t, component)
+    await click(textButton(ui.container, '查询历史'))
+    const request = ui.historyPending[0]
+    assert.equal(request.signal.aborted, false)
+    update(ui.A.view)
+    await ui.refresh()
+    assert.equal(request.signal.aborted, true, 'authorization metadata invalidates every descendant action lifetime, not only selected decisions')
+    assert.equal(ui.historyPending.length, 1, 'authorization change never auto-queries history')
+    await React.act(async () => request.resolve({ok: true, value: {instance: ui.A.view.instance, revision: 7, notRecorded: false,
+      rows: [{historyId: 'old-auth-history', kind: 'decision', recordId: 'decision', sequence: 1, purged: false, summary: 'OLD-AUTH-HISTORY'}],
+      total: 1, cut: 1, nextCursor: null, coverage: {purged: false, notRecorded: false, sources: []}}}))
+    assert.doesNotMatch(ui.container.textContent, /OLD-AUTH-HISTORY|old-auth-history/)
+    assert.equal(ui.calls.length, 0, 'authorization fencing itself does not write any business record')
+  })
+}
