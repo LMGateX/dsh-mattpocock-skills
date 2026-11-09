@@ -3,7 +3,7 @@ import { test, after } from 'node:test'
 const hostRoot = process.env.DSH_RECOVERY_HOST_ROOT ?? process.env.DSH_CONTROLS_HOST_ROOT
 if (!hostRoot && process.env.DSH_RECOVERY_NATIVE_REQUIRED === '1') throw new Error('Native recovery validation requires an explicit isolated DSH host')
 const native = { skip: !hostRoot ? 'Set DSH_RECOVERY_HOST_ROOT for actual native seeded SlotCore recovery validation; no substitute ran' : false }
-const { mount, React, window, settle, snapshot, ok, closeFixture } = hostRoot ? await import('./fixtures/client-recovery-native.mjs') : {}
+const { mount, activation, React, window, settle, snapshot, ok, closeFixture } = hostRoot ? await import('./fixtures/client-recovery-native.mjs') : {}
 const nativeTest = (name, run) => test(name, native, run)
 if (closeFixture) after(closeFixture)
 
@@ -81,4 +81,54 @@ nativeTest('native last unmount immediately aborts pending read and cold remount
   assert.doesNotMatch(container.textContent, /Native fixture decision/)
   held.resolve(ok(snapshot())); await React.act(settle)
   assert.doesNotMatch(container.textContent, /Native fixture decision/, 'late old flight cannot populate cold lease')
+})
+
+nativeTest('a warm different native registry with identical wire identity still resets reading lifetime', async t => {
+  const f = await mount(t); const { region } = await open(f)
+  const registry = await activation(snapshot()); t.after(() => registry.dispose())
+  const observer = registry.seats[1].inject('native-session').observer
+  const release = observer.retain(); t.after(release)
+  await React.act(settle)
+  assert.equal(observer.getSnapshot().status, 'ready', 'new registry is already warm before handoff')
+  await f.render(registry)
+  assert.equal(registry.fullCalls.length, 1, 'warm registry does not require a second full read')
+  assert.equal(f.container.querySelector(regionSelector) === region, false, 'wire identity alone cannot reuse old registry reading')
+  assert.equal(f.container.querySelector(regionSelector), null, 'new registry must not inherit selected detail')
+  await open(f)
+})
+
+nativeTest('native A to B with late uncooperative A full result cannot populate B', async t => {
+  const f = await mount(t); await open(f)
+  f.initial.mode = 'pending'
+  await React.act(async () => { void f.props()[1].observer.refresh(); await settle() })
+  const old = f.initial.pending[0]
+  const next = snapshot('native-session-B'); f.initial.view = next
+  await f.render(f.initial, next.sessionId)
+  assert.equal(old.signal.aborted, true)
+  assert.equal(f.initial.pending.at(-1).id, next.sessionId)
+  assert.doesNotMatch(f.container.textContent, /Native fixture decision/)
+  old.resolve(ok(snapshot())); await React.act(settle)
+  assert.doesNotMatch(f.container.textContent, /Native fixture decision/, 'old A cannot fill pending B')
+  await React.act(async () => { f.initial.pending.at(-1).resolve(ok(next)); await settle() })
+  assert.equal(f.props()[1].observer.getSnapshot().status, 'ready')
+  await open(f)
+})
+
+nativeTest('native actual summary error withdraws selected business details without pretending zero', async t => {
+  const f = await mount(t); await open(f)
+  f.initial.summaryFailure = true; await f.refreshSummary()
+  assert.equal(f.container.querySelector(regionSelector), null)
+  assert.doesNotMatch(f.container.textContent, /Native fixture decision/)
+  assert.match(f.container.textContent, /暂不可用|恢复|未知/)
+})
+
+for (const change of ['scope', 'grant']) nativeTest('native real ' + change + ' change fences previously selected reading', async t => {
+  const f = await mount(t); await open(f)
+  const next = snapshot(); next.records.decisions[0].value.question = 'New authorized decision'
+  if (change === 'scope') next.records.scope = { kind: 'assigned', workflowId: 'fixture', ticketIds: [] }
+  else next.policyGrants.revision++
+  f.initial.view = next; await f.refresh()
+  assert.equal(f.container.querySelector(regionSelector), null, 'changed authorization clears old selection before another click')
+  assert.doesNotMatch(f.container.textContent, /Native fixture decision/)
+  await open(f); assert.match(f.container.textContent, /New authorized decision/)
 })
