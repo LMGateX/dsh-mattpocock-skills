@@ -2,7 +2,7 @@
 
 ## 1. 状态、授权与范围
 
-2026-11-10，所有者认可代码性能审计的推荐顺序，明确要求“先固定到文档；在 subagents、隔离环境中完成开发和测试；push 发版，为本机 DSH 安装”。本页为实施前冻结的最新细化契约；当前状态为 **Accepted / implementation pending**，不是已部署结果。
+2026-11-10，所有者认可代码性能审计的推荐顺序，明确要求“先固定到文档；在 subagents、隔离环境中完成开发和测试；push 发版，为本机 DSH 安装”。本页为实施前冻结的最新细化契约；当前状态为 **Implemented / independent review and artifact gates pending**，不是已发布或已部署结果。初轮固定提交审查发现的 freshness／取消边界必须修复并独立复验后才能进入发布。
 
 本批只实施第一批三项：**owner 相关完整投影失效、live descriptor 紧凑事实寿命、已开始读取的协作取消传播**。发布目标 0.21.0，仅以 DSH 0.2.2-rc.1 和 Node >=24.9.0 验收；engines.dsh 仍为 >=0.2.2-rc.1。更高版本是声明范围而非已实测承诺。
 
@@ -23,10 +23,10 @@
 保持 Runtime.readSession/模型当前消费、Remote wire 内容/版本/身份、现有 effect FIFO 与刷新上限。内部 Module 可计算**当前 owner 相关 live cut**，取代无关全局 live Agent 数量对完整投影 cache key 的过度影响；这不是授权缓存，不新增模型/Remote 调试入口、持久拓扑账本、后台调度或 SDK 改造。
 
 - 当前身份、policy/grants/assignment/workspace/lineage、来源健康仍先核验；旧投影不能给新调用者扩大可见范围。
-- cut 至少覆盖该 owner 与当前可证明后代的实际 Agent/Session 对象身份、header/parent 身份及运行/idle/消失；同时覆盖投影使用的 worktree creator、binding child、native execution 关联身份，即使它们不在当前可遍历 live 父链中。
+- cut 至少覆盖该 owner 与当前可证明后代的实际 Agent/Session 对象身份、header/parent 身份及运行/idle/消失；同时覆盖投影使用的 worktree creator、binding child、native execution 关联身份及原生计数器当前已知 membership IDs，即使它们没有持久 nativeExecution 行或不在当前可遍历 live 父链中。计数器 membership 与深度计算所依赖的外部 live 祖先（含 ordinary root/fork）也必须覆盖；只同步复制紧凑已存 ID，不刷新 catalog、不携带 Agent 图。旧 Adapter 缺少 membership proof 时保守不复用。
 - 未知/断裂/循环父链、实际能力缺失/拒绝、未知身份应保守失效或保持明确 unknown，不得因无法证明“相关”而把可能相关变化排除。普通 fork 与独立 owner 仍按原身份语义区分。
 - 新 live child 即使尚无持久记录或 lifecycle 回调，下一次读取仍须看见；不能仅删除全局长度或仅信已存 owner count revision。只复用已证明无关变化的纯投影，不减少必要物理观察或借大 TTL 掩盖变化。
-- 每次读取在 body 工作前同步捕获不可变快照 A（复制字段，不跨 await 握可变 Agent 当 cut）。候选缓存保存紧凑依赖 ID 集 D 与 A.token(D)；miss 从实际 registry/facts 收集 D，但 token 必须仍从 A 的字段（含缺席标记）计算。热命中完成 validateProjection 后、miss 完成 body 与最终 validate 后，再取 B 对相同 D/owner代次/能力核对；若不同则重新构造或走既有 conflict/unknown，不返回或认证旧 body。B 只用于校验，绝不把较新的 token 盖给旧 body。新发现关联 ID 无法在 A 证明时保留保守 fallback；临时 cut 不长期驻留整份 Agent 图。
+- 每次读取在 body 工作前同步捕获不可变快照 A（复制字段，不跨 await 握可变 Agent 当 cut）。候选缓存保存紧凑依赖 ID 集 D 与 A.token(D)；miss 从实际 registry/facts 收集 D，但 token 必须仍从 A 的字段（含缺席标记）计算。热命中完成 validateProjection 后、miss 完成 body 与最终 validate 后，再取 B 对相同 D/owner代次/能力核对；若不同则在同一 FIFO permit 内至多完整重建一次；再次变化走既有 conflict，不递归排队、不扩大 timeout、不返回或认证旧 body。B 只用于校验，绝不把较新的 token 盖给旧 body。新发现关联 ID 无法在 A 证明时保留保守 fallback；临时 cut 不长期驻留整份 Agent 图。
 - 对象身份编码只作有界/弱引用的进程内事实，不持有整份 Session/日志图，不另存巨型序列化字符串。保持现有生命周期/缓存上限义务。
 
 ### 3.2 必需 RED→GREEN
@@ -56,7 +56,7 @@
 在插件拥有的内部 HostPorts/ControlsAuthority/InstrumentAuthority 与读取调用链上**兼容地透传可选 AbortSignal**，允许将之前已有外层取消扩展到 stat/observe/lineage 等可中断 seam。现有省略参数调用保持合法；wire 方法/typed模型输入/持久格式不改变。不引入新的通用全局 context 或授权 token。
 
 - pre-abort 与排队后 entry guard 保留；已开始读在昂贵阶段开始与 await 返回处检查 signal，及时阻止新来源/投影工作，传到支持 signal 的公开 stat/observe。
-- caller abort 抛同一 reason，不吞成 records-unavailable/unknown 或正常结果；timeout、superseded、stale 与权限源错误各按原语义，lease 总能释放。
+- caller abort 抛同一 reason（包括 workspace／runtime store／grants 等 await 在取消后拒绝的竞态），不吞成 records-unavailable/unknown 或正常结果；未取消的来源拒绝仍按原错误语义。timeout、superseded、stale 各按原语义，lease 总能释放。历史 retained catch-up 与 captureOthers 的准备性读取同样传递 signal、逐阶段检查；尚未接受写入的准备过程不算豁免的 producer，也不能把调用者取消登记成 history 来源失败。
 - 保持前后当前权限/来源健康重验、全局 policy/grant effect FIFO、固定每实例已登记 durability frontier。读取取消不取消 producer，不丢弃已开始/已接受持久写或既有义务；trackCommit 与 uncertain/late 回执语义不变。
 - 不增加 timeout、不暂停真实状态、不粗暴并发原串行权限链。timer 不能抢占同步 JS；分别记录 queue wait、执行和不可中断阶段，不伪称全链可立即停止。
 - 新 signal 参数属于必要内部 Interface 精化，不借此复用跨item/batch授权上下文，也不把9次来源核验直接砍成1次。
