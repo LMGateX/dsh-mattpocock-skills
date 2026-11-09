@@ -6,6 +6,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 协作摘要短暂恢复闪烁（2026-11-09，本地实施）
+
+以 [修复契约](<CLIENT_RECOVERY_STABILITY.md>) 与 [DESIGN](<DESIGN.md>) 为准；先文档提交、再隔离 subagent 单writer 实施、主代理串行集成与源／精确包／隔离浏览器验证、独立 Standards／Spec 复核、本地结果记录。按真实挂载与原生 slot 竖切保留 RED→GREEN，测试语义身份与同域订阅稳定，同时覆盖真正换域、撤权、失败和最后卸载。
+
+**本轮禁止 push、tag／Release、npm publish、本机安装／激活与服务重启；不改共享 SDK 或生产业务记录。** 本地提交和验证包不代表新版本已发布，不覆盖 0.18.0 原制品。完成时保留本地候选与证据，原 dirty 检出不改。
+
 ## 0.18.0 协作信息区与可选铃声（2026-11-09，实施中）
 
 以 [DESIGN](<DESIGN.md>) 与 [COLLABORATION_UI_REFRESH](<COLLABORATION_UI_REFRESH.md>) 为准；最新授权为隔离开发/测试、push/新Release，**不安装本机**。
