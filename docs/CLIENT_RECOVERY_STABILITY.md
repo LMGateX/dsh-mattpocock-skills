@@ -16,7 +16,7 @@
 1. 相同身份的普通 full／summary 成功更新不必然触发恢复。
 2. full 身份对象仅字段顺序变化，也能被整体 JSON 字符串比较误判为不同身份；summary parser 会重建固定字段顺序。
 3. 同一 Session 的注入 callback／lazy handle 引用变化，可触发 React effect 释放／重建；最后一个 retain 短暂归零会清空观测并额外读取。实际 InputSummary 与 DecisionNotificationReader 同 commit 重注入也能复现。若另有稳定 holder 保持，控制组不触发。
-4. 内存候选已验证方向有效，但未进入正式源码；它不是发版、安装或完整门禁证据。
+4. 契约冻结时的内存候选只验证方向，不是正式源码、发版、安装或完整门禁证据；后续实施与复核进展单独记录，不追溯改写早期诊断。
 
 这些是**客户端可确定复现的两条机制**，不是已证明现场每次闪动的唯一根因。模型消费 consumption-timeout 与浏览器读取不是同一请求；没有共享 DOM／RPC 时间轴，不互相归因。当前 GUI 的认证会话未由诊断工具接管，不绕过认证或获取用户凭据。
 
@@ -67,4 +67,11 @@
 4. Standards／Spec 双轴复核关闭必须修复项；最后本地文档追加准确结果和剩余限制。
 5. 汇报 commit／分支／工作树、测试结果、精确包摘要与未发布／未安装状态；保留后续复核所需工作树与本地证据。
 
-当前阶段：契约已固定，实施与最终门禁待完成。
+## 6. 中间候选与独立复核记录
+
+- 正式原生 slot 回归进一步确认同一类寿命缺口也存在于 summary 的首次注入：冷 entry 建立前的临时 handle 不等于随后 canonical handle。全量订阅稳定后，若 summary 仍按偶然引用重建，full RPC 虽不增加，summary 会归零、重新读取并清空阅读／焦点。已补同 scheduler／Session 稳定化与 summary RPC 断言；即时成功及受控 pending 都须通过，不能靠批处理藏住瞬态。
+- 中间干净候选 `4d7025f45d9345a8e478af6a8d7d5aa4a7a49489` 已通过源侧定向 49 项、原生新增 13 项与精确归档新增 33 项、双宿主严格类型，以及隔离 input 图形检查。其完整 source 两矩阵各 1117 项、1108 pass／9 环境 skip／0 fail；其中 3 项缺少上游 Git fixture 的 skip 已用既有精确 pinned 源独立补跑通过，6 项旧 native activation 已在原生装配 fixture 各 6／6 补跑。此处只记录该候选已执行的门禁，不能代替最终候选重新验收。
+- 独立 Standards 第一轮 0 必改；Spec 第一轮发现 1 项 P2：两个真实 registry 都预热 ready、Session／wire 身份完全相同，Details 已开的编辑器草稿／base 仍可能跨到新 remote。内存 public-port probe 对旧基线和中间候选均可复现，因此是本轮既有 3.1／3.2／4 节域隔离要求未闭合，**不是声称新增回归，也不是现场闪烁的另一个已确认根因**。
+- 该中间归档已明确标为 superseded，原字节和 sidecars 保留作证；不得发布、安装或称为最终通过。修复必须围栏真正新域的整个 reader／draft／action 子树，并以同域新 handle 与健康刷新保留草稿作控制；设置检查中同类域属子状态也须检查。旧域不可操作，显式在新域重新打开后只使用新域 base。
+
+当前阶段：独立 Spec P2 正由原单 writer 实施子代理按公开 mounted seam 先 RED 后修复；最终源码、生成物、唯一最终归档、双轴复核和交付记录仍待完成。
