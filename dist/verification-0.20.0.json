@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "package": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.20.0",
+  "sourceCommit": "70b683f0ebbb98470252f71c519953afbf169e90",
+  "sourceTree": "8ffb754e43a7bf19e44d569ed68bf20310540c3e",
+  "tag": "v0.20.0",
+  "annotatedTagObject": "ac583b1eaf3899711e80e08ba3abbc8e4ac09265",
+  "releaseUrl": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.20.0",
+  "releasePublishedAt": "2026-11-09T19:00:38Z",
+  "deliveryComplete": true,
+  "deliveryScope": "Accepted source, same archive, publication, five-asset download and verified local disk installation. Live Host/GUI activation and a separate Chromium run are not established.",
+  "declaredMinimum": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "testedDshVersion": "0.2.2-rc.1",
+  "onlyCurrentDshSdkTested": true,
+  "higherVersionsDeclaredNotClaimedTested": true,
+  "archive": {
+    "sha256": "98fd599f6bb67b90f4deedcdc69b9779160f4ab00c041ce496e999d7da06b469",
+    "bytes": 564815,
+    "pnpm": "11.8.0",
+    "regularFiles": 171,
+    "buildOutputs": 66,
+    "vendorFiles": 85,
+    "packedManifestPrivate": true,
+    "publicMeansExportedApiNotNpmPublication": true,
+    "clientBytes": 466481,
+    "clientSHA256": "771804c35cf22ee67ffb5adf67d1155b43f9359ea429f321a48febfbfde5b896",
+    "clientDeclarationBytes": 17435,
+    "clientDeclarationSHA256": "437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf",
+    "closedLocalClientModules": 13,
+    "clientExternals": [
+      "react",
+      "@deepseek-ai/dsh-client-ui-primitives"
+    ]
+  },
+  "tests": {
+    "source": {
+      "total": 1216,
+      "pass": 1210,
+      "fail": 0,
+      "skip": 6,
+      "cancelled": 0
+    },
+    "focusedRecommendationClientPackage": {
+      "total": 145,
+      "pass": 145,
+      "fail": 0,
+      "skip": 0
+    },
+    "packageGates": {
+      "total": 32,
+      "pass": 32,
+      "fail": 0,
+      "skip": 0
+    },
+    "nativeFiberSkips": 6,
+    "skipInterpretation": "Six native UI-slots fixture preconditions remain skipped, not relabeled as passing. Focused native Client/recommendation tests ran against the RC1 host.",
+    "separateChromiumRun": false
+  },
+  "publication": {
+    "nonForceAtomicPush": true,
+    "fiveAssets": [
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.20.0.tgz",
+        "bytes": 564815,
+        "sha256": "98fd599f6bb67b90f4deedcdc69b9779160f4ab00c041ce496e999d7da06b469"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.20.0.tgz.sha256",
+        "bytes": 107,
+        "sha256": "55273c828a5fe19744d7d091c3f6056ecc1f4eb2bc21720d4bee1f128fac852a"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.20.0.tgz.size",
+        "bytes": 7,
+        "sha256": "b0256b7ba7ba4841c171b4bd8df86fe9299b3d37d7a7c032d398a822d566c0f7"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.20.0.tgz.source-commit",
+        "bytes": 41,
+        "sha256": "1a31e0fef124f7ef69816e3862f4e36cde5fca4893f79fdec68b8c3f1eb4ee9f"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.20.0.tgz.pnpm-version",
+        "bytes": 7,
+        "sha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b"
+      }
+    ],
+    "downloadByteIdenticalToAcceptedAllFive": true,
+    "downloadStrictRegularFiles": 171,
+    "tagMovedAfterFreeze": false,
+    "repackedAfterAcceptance": false
+  },
+  "isolatedOfficialCli": {
+    "sdkVersion": "0.2.2-rc.1",
+    "accepted": true,
+    "sequence": [
+      {
+        "version": "0.20.0",
+        "regularFiles": 171
+      }
+    ],
+    "allExitCodes": 0,
+    "installedContentIdenticalToArchive": true,
+    "freshProfileOnly": true,
+    "ignoreScriptsRequested": true,
+    "strictPeerDependenciesRequested": true,
+    "peerWarningsObserved": true,
+    "notWarningFree": true,
+    "hostBooted": false,
+    "businessDataMigrated": false
+  },
+  "localDiskInstallation": {
+    "installed": true,
+    "from": "0.19.0",
+    "to": "0.20.0",
+    "profile": "web",
+    "sameVerifiedDownloadedArchive": true,
+    "regularFilesByteVerified": 171,
+    "backupCreated": true,
+    "nonTargetManifestUnchanged": true,
+    "nonTargetLockGraphUnchanged": true,
+    "profileCordisUnchanged": true,
+    "otherProfileControlsNotIndividuallyHashed": true,
+    "sharedSdkManifestRehashed": false,
+    "originalCheckoutHeadAndDiffUnchanged": true,
+    "listenerUnchanged": true,
+    "peerWarningsObserved": true,
+    "liveHostActivationEstablished": false,
+    "productionGuiNewVersionEstablished": false,
+    "automaticRestartPerformed": false,
+    "hiddenRpcUsed": false,
+    "managementOrPreauthorizationEnabled": false,
+    "businessDataMigrated": false
+  },
+  "browserAndNative": {
+    "focusedNativeClientTests": true,
+    "separateChromiumRun": false,
+    "nativeFiberSkips": 6,
+    "liveVisualActivationEstablished": false
+  },
+  "reviews": {
+    "initial": {
+      "verdict": "REJECT",
+      "blockingFindings": 1,
+      "fixedBeforeMerge": true
+    },
+    "delta": {
+      "verdict": "APPROVE",
+      "closedFindings": 5,
+      "newBlockingFindings": 0
+    },
+    "scope": "Independent read-only spec/standards delta review of commit 70b683f; focused tests and manual persistent/V4 cycles."
+  },
+  "rollback": {
+    "liveRollbackPerformed": false,
+    "persistentNullForwardCompatibility": "Old 0.19.0 rejects a null expiry as invalid-state.",
+    "caveat": "After a persistent epoch or a V4 decision carrying it is written, rollback is not package-only. Finite epochs remain readable by 0.20.0."
+  },
+  "resourceDisposition": {
+    "ownedWorktreesAndPrivateEvidenceRetainedForAudit": true,
+    "physicalWorktreeCleanupClaimed": false,
+    "allDelegatedQaJobsCollected": true
+  },
+  "publicEvidencePolicy": "Counts and identities summarize actual program receipts and independent reviews; raw logs and local snapshots are retained privately, not published as complete execution traces."
+}

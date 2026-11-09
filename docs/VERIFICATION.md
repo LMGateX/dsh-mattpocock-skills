@@ -2,6 +2,20 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.20.0 已发布、下载回验并安装本机（2026-11-10；仅 RC1 验收，激活另核）
+
+本记录与[机器摘要](<../dist/verification-0.20.0.json>)为发版后 main 的纯文档追加；不移动 tag、不重打包。精确制品复验须检出 `v0.20.0`／冻结 source，不能把后续文档 HEAD 作为该制品源。
+
+- **兼容范围：** 仅运行 **DSH 0.2.2-rc.1**；最低声明 **DSH >=0.2.2-rc.1 / Node >=24.9.0**。更高版本只被声明接受，不是已实测承诺。
+- **功能：** 推荐支持预授权预设 1/2/4/8/12/24 小时（表单默认 12 小时）与 `expiresAt:null` 持续模式；持续模式只能由同一 switch 显式关闭，不自动到期/续期。active 时在裁决/T/S 行只显示短标记“推荐支持 启用”，非 active 不显示；可导航子代理标题使用 S 紫，未知/不可导航保持灰。未新增 V5 或 checkpoint 布局。
+- **冻结与发布：** source **70b683f0ebbb98470252f71c519953afbf169e90**，tree **8ffb754e43a7bf19e44d569ed68bf20310540c3e**；annotated tag object **ac583b1eaf3899711e80e08ba3abbc8e4ac09265**，peeled 为该 source。非 force atomic main＋新 tag 已 push；[0.20.0 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.20.0) 为 published、非 draft／prerelease，五资产齐备。
+- **唯一 accepted 制品：** **564815 B**，SHA256 **98fd599f6bb67b90f4deedcdc69b9779160f4ab00c041ce496e999d7da06b469**，pnpm **11.8.0**；**171 regular = 86 fixed＋85 vendor，0 symlink，66 JS/DTS**。封闭 Client **466481 B／13 模块**，仅 React／原生 primitives externals，SHA256 **771804c35cf22ee67ffb5adf67d1155b43f9359ea429f321a48febfbfde5b896**；公开声明 **17435 B／437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf**。
+- **源码与包回归：** 完整套件 **1216 total／1210 pass／0 fail／6 skip／0 cancel**；6 项均为既有 native UI-slots fixture 缺包，不回填为 pass。聚焦 recommendation/client/package 门禁 **145/145 pass**，含持久 enable→disable、同 opId 重放、有限到期、状态标记与紫色标题。仅 RC1 实际 Host 环境；未拉入旧 0.19 包。
+- **独立审查：** 初审 **REJECT** 发现持续模式 disable 的 operation 校验阻塞（导致同一 switch 无法关闭）；已修正并补测试。Delta 复审 **APPROVE**，先前 1–5 findings 全部关闭，无新阻塞项；未发现为过测试而削弱的断言。
+- **下载与安装实证：** 发布后五资产 **5/5 与 accepted 原文件逐字节一致**；下载包再做 source-bound strict、171 文件验证。仅此下载制品经官方 CLI 将本机 Web Profile 磁盘 **0.19.0 → 0.20.0**，**171/171 文件**与归档逐字节相同；隔离 Profile 同制品安装亦为 171/171。已私密备份配置／lock、完整旧 171 文件与旧归档；只允许 target dependency／lock 节点变更；Profile cordis 与 package 其余字段保持，未对共享 SDK 执行写入（未单独复算其 manifest）；原 dirty checkout HEAD／diff 与原 listener 指纹保持。指纹只覆盖明确列出的对象，不是全盘证明。
+- **warnings／回退：** 隔离及真实安装均请求 `--ignore-scripts --strict-peer-dependencies`，pnpm 仍有 peer WARN 后成功，不能声称 warning-free。无 V4/持续策略写入的包级回退不证明写 V4 后可直接降版；持续 null 在旧 0.19.0 会被判 `invalid-state`，详见[迁移边界](<../MIGRATION.md>)。
+- **激活边界：** 已确认磁盘安装，**未执行或证明当前 Host／GUI 已装载新版本**。本轮未自动重启／替换服务、未绕认证调隐藏 RPC、未启用管理或推荐预授权、未迁移／清理生产业务、未 npm publish；未单独运行 Chromium，浏览器加载与视觉激活另核。隔离工树和原始证据保留供审计，未宣称物理清理。
+
 ## 0.19.0 已发布、下载回验并安装本机（2026-11-10；仅 RC1 验收，激活另核）
 
 本记录与[机器摘要](<../dist/verification-0.19.0.json>)为发版后 main 的纯文档追加；不移动 tag、不重打包。精确制品复验须检出 `v0.19.0`／冻结 source，不能把后续文档 HEAD 作为该制品源。下方双宿主数字均为历史，不再是当前门禁。
