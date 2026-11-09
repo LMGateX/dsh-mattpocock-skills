@@ -12,6 +12,14 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 裁决摘要、推荐支持预授权与原生子代理导航（2026-11-09，已认可；先文档、隔离实施／测试、发布并安装本机）
+
+所有者认可 [三项研究及推荐方案 B](<COLLABORATION_FOLLOWUP_RESEARCH.md>)，要求先固定文档，在隔离工作树/subagents 中完成开发测试，再 **push、发版、为本机安装**。本节是最新授权，取代下方旧批次的仅本地/不安装限制；承接已验收的恢复稳定性修复，不覆盖旧版本/tag/资产。细化契约为 [本批实施契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>)。先冻结表示/权限/兼容与真实测试 seam，再改代码；最终通过源、唯一精确制品、宿主兼容与独立 Standards/Spec 复核后，非 force 发布并将同一回验制品安装到 Web Profile。
+
+摘要仅删“裁决 · ”前缀，明确 0 隐藏主待答提醒，unknown 不当 0，保留详情裁决 tab、受权阅读/焦点与次级核对可达。推荐支持采用 B：用户显式为当前 owner-instance 与受权后代开启有限期、仅新事项预授权；put-decision 返回明确选项支持，agent 在 SAME decisionId 显式采用，后端重验当前策略/修订/assignment 后持久真实来源；不伪造用户亲答、不擅清 awaiting/承诺，不新增业务风险审批机或操作权限。开关默认关闭，不因安装启用管理/预授权或迁移旧记录。
+
+S 标题仍只读宿主 useSessions/catalog，不加模型标题字段/第二账本；在真实 Cordis 服务生命周期下修补 sessions 依赖，缺能力时保留基础阅读并撤销导航能力，点击重验真实地址/父链/当前身份。客户端/制品成功不等当前 GUI 已加载；安装、热激活与页面刷新分别核验，不改共享 SDK、不启动替代服务器，不擅自重启当前服务，不 npm publish。
+
 ## 协作摘要短暂恢复闪烁（2026-11-09，已认可；仅本地隔离开发／测试）
 
 所有者认可两条客户端误恢复机制的诊断与候选方向，要求先固定文档，再在隔离环境与 subagents 中完成开发和测试；**暂时不要 push／发版，不要为本机 DSH 安装**。唯一细化契约为 [CLIENT_RECOVERY_STABILITY.md](<CLIENT_RECOVERY_STABILITY.md>)。允许本地提交、闭合生成物与精确包验证，不分配发布版本，不继承此前任何发布／安装权限，不改当前 Profile／共享 SDK／运行 GUI，不重启或写生产数据。

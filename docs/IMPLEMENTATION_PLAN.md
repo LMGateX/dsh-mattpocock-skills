@@ -6,6 +6,23 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 裁决摘要、推荐支持 B 与原生子代理导航（2026-11-09，已认可，实施前冻结）
+
+最新范围以 [DESIGN](<DESIGN.md>) 与 [本批契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>) 为准：先文档，隔离 subagents 单 writer，主代理串行集成，真实公开 seam RED→GREEN，独立双轴复核，源/精确包及兼容门禁后非 force push、新版本 Release、下载回验并安装同一制品到本机。无人值守默认关闭，不迁移业务，不擅重启。采用当前本地恢复修复基线，保护旧 dirty 检出/共享依赖。
+
+本批以本契约与下表为本地任务权威，不为了管理功能 OFF 制造仪器 task references/decisions，也不另开外部重复票。下列标签仅用于实施依赖，不表示 T 占位或原生运行状态：
+
+| 工作单元 | 依赖 | 交付与关闭依据 |
+|---|---|---|
+| D 文档/隔离 | 无 | 接收用户认可，冻结术语/表示/API/兼容/seams，文档先提交 |
+| B 后端预授权/采用 | D | 真实 operator owner-scope policy、仅新项支持、显式采用/CAS/来源、typed 输出/消费与恢复 |
+| U 摘要/开关/导航 | D；开关最终接 B | 零隐藏/阅读/设置、sessions 可撤销增强、宿主标题/地址真实 seams |
+| V 集成/验证 | B、U | 独立真宿主/挂载/浏览器、源与同一归档双宿主完整测试/严格类型、必改复核关闭 |
+| R 发布 | V | clean-source 唯一版本/制品冻结、非 force refs 推进、五资产 Release 下载逐字节回验 |
+| I 本机安装 | R | 官方 PluginManager 同一 tgz 安装、快照/回滚保护、版本/字节/激活边界核验，不自动改业务策略 |
+
+技术表征细化尚在 D 阶段时不得提前写实施代码；实现者各自独立工作树，交付前同步 integration，由串行 merger 合入。
+
 ## 协作摘要短暂恢复闪烁（2026-11-09，本地实施）
 
 以 [修复契约](<CLIENT_RECOVERY_STABILITY.md>) 与 [DESIGN](<DESIGN.md>) 为准；先文档提交、再隔离 subagent 单writer 实施、主代理串行集成与源／精确包／隔离浏览器验证、独立 Standards／Spec 复核、本地结果记录。按真实挂载与原生 slot 竖切保留 RED→GREEN，测试语义身份与同域订阅稳定，同时覆盖真正换域、撤权、失败和最后卸载。
