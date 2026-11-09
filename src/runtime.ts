@@ -145,7 +145,48 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // still the current projection.
   type CurrentRuntimeSnapshot = Omit<RuntimeSnapshot,'records'> & { readonly records: InstrumentCurrentSnapshot | null }
   type RuntimeReadSnapshot = Omit<RuntimeSnapshot,'records'> & { readonly records: ConsumptionSnapshot['records'] }
-  const projectionCache=new Map<string,{readonly key:string;readonly value:RuntimeReadSnapshot}>()
+  const projectionCache=new Map<string,{readonly key:string;readonly liveToken:string;readonly dependencies:readonly string[];readonly value:RuntimeReadSnapshot}>()
+  // Weak numeric identities never retain borrowed Agent/Session graphs in a cache entry.
+  const liveIdentities=new WeakMap<object,number>()
+  let nextLiveIdentity=0
+  const liveIdentity=(value:object):number=>{let token=liveIdentities.get(value);if(token===undefined){token=++nextLiveIdentity;liveIdentities.set(value,token)}return token}
+  const captureLiveCut=(owner:string)=>{
+    // Copy every field synchronously. Only this temporary cut holds the whole live index;
+    // cache entries keep a digest and the registry IDs that their bodies actually used.
+    const rows=new Map<string,{readonly parent:string|undefined;readonly origin:string|undefined;readonly token:readonly unknown[]}>()
+    let reusable=true
+    for(const agent of ports.liveAgents()){
+      const session=agent.session,header=session.header,sid=String(agent.id)
+      if(rows.has(sid)||String(header.id)!==sid)reusable=false
+      rows.set(sid,{parent:header.parentSession,origin:header.origin,token:[sid,liveIdentity(agent),liveIdentity(session),session.id,header.id,header.version,header.createdAt,header.cwd,header.isSeeded,header.origin,header.parentSession,agent.status]})
+    }
+    const related=new Set<string>([owner])
+    for(const [sid,row]of rows){
+      if(sid===owner||row.origin!=='subagent')continue
+      const seen=new Set<string>()
+      let cursor:string|undefined=sid
+      while(cursor!==undefined){
+        if(cursor===owner){related.add(sid);for(const id of seen)related.add(id);break}
+        if(seen.has(cursor)||seen.size>=64){reusable=false;break}
+        seen.add(cursor)
+        const current=rows.get(cursor)
+        if(current===undefined){reusable=false;break}
+        // A root/fork is an independent identity, not an unknown missing parent.
+        if(current.origin!=='subagent')break
+        if(current.parent===undefined){reusable=false;break}
+        cursor=current.parent
+      }
+    }
+    const countState=ports.nativeSubagentCountState?.(owner)
+    // A revision alone cannot detect a silently removed native service.
+    if(countState===undefined)reusable=false
+    const countRevision=ports.nativeSubagentCountRevision?.(owner)??0
+    const countToken=countState===undefined?null:[countState.revision,countState.known,countState.reason,countState.available]
+    const capabilities=Object.entries(ports.capabilities).map(([key,value])=>[key,value])
+    const token=(dependencies:readonly string[]):string=>sourceVersion([countRevision,countToken,capabilities,
+      [...new Set([...related,...dependencies,...(reusable?[]:rows.keys())])].sort().map(sid=>[sid,rows.get(sid)?.token??null])])
+    return {reusable,token}
+  }
   const touchState=(instanceId?:string):void=>{refresh.touch(instanceId);project.touch(instanceId)}
   const controls=new WorkspaceControls(ports.controlsStorage,ports.authority)
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
@@ -712,17 +753,22 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly?:false):Promise<RuntimeSnapshot>
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly:true):Promise<CurrentRuntimeSnapshot>
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly=false):Promise<RuntimeReadSnapshot>{return queue.run(async()=>{
+    // Native count establishment/background reconciliation may change its generation mid-read.
+    // Rebuild once under this same FIFO permit; never stamp B onto the discarded A body.
+    for(let attempt=0;attempt<2;attempt++){
     const view=await identity(caller,sessionId,signal,false)
     const permission=await scope(caller.principalId,sessionId,view)
     const projectionBase=caller.principalId+'|'+sessionId+'|'+(currentOnly?'current':'full')
-    // The native running count is derived from live Agents and the counter's state, so both are
-    // part of the freshness key: a newly live child rebuilds the projection even with no document
-    // write, and a counter stop/degradation is never masked by a cached snapshot.
     const ownerDecisionPolicy=await readOwnerPolicy(view,signal)
-    const projectionKey=sourceVersion(ownerDecisionPolicy)+'|'+projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length+'|'+sourceVersion(permission)
+    const liveCut=captureLiveCut(view.instance.ownerSessionId)
+    const projectionKey=sourceVersion(ownerDecisionPolicy)+'|'+projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+sourceVersion(permission)
     const epoch=project.epoch(view.instance.instrumentInstanceId)
     const projection=projectionCache.get(projectionBase)
-    if(projection!==undefined&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId)){await validateProjection(caller,projection.value,permission,signal);return projection.value}
+    if(projection!==undefined&&liveCut.reusable&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&projection.liveToken===liveCut.token(projection.dependencies)&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId)){
+      await validateProjection(caller,projection.value,permission,signal)
+      if(liveCut.token(projection.dependencies)!==captureLiveCut(view.instance.ownerSessionId).token(projection.dependencies)){if(attempt===0)continue;throw new ControlsError('revision-conflict','live projection sources changed during validation')}
+      return projection.value
+    }
     const health: {scope:string;status:string;reason:string|null}[]=[]
     const runtimeDocument=await load()
     let records:ConsumptionSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
@@ -830,10 +876,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const value=freeze({sessionId,caller,delegateRegistered,ownerDecisionPolicy,policyGrants:{...grants,grants:grants.grants.filter(row=>permission.kind==='coordinator'?managed.has(row.sessionId):row.sessionId===sessionId)},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:assignmentScope?.kind==='assigned'?{workflowId:assignmentScope.workflowId,ticketIds:assignmentScope.ticketIds}:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     await validateProjection(caller,value,permission,signal)
+    const dependencies=[...new Set([
+      ...bindingRows.flatMap(row=>[row.value.parentSessionId,row.value.plannedChildSessionId,...(row.value.actualChildSessionId===null?[]:[row.value.actualChildSessionId])]),
+      ...observationRows.map(row=>row.value.creatorSessionId),
+      ...runtimeDocument.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).flatMap(row=>[row.sessionId,row.parentSessionId]),
+    ])].sort()
+    const liveToken=liveCut.token(dependencies)
+    if(liveToken!==captureLiveCut(view.instance.ownerSessionId).token(dependencies)){if(attempt===0)continue;throw new ControlsError('revision-conflict','live projection sources changed during construction')}
     project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
-    projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,value})
+    projectionCache.delete(projectionBase);projectionCache.set(projectionBase,{key:projectionKey,liveToken,dependencies,value})
     while(projectionCache.size>64)projectionCache.delete(projectionCache.keys().next().value as string)
     return value
+    }
+    throw new ControlsError('revision-conflict','live projection sources did not stabilize')
   })}
   const activeSnapshot=async(caller:HostCaller,signal:AbortSignal):Promise<ConsumptionSnapshot>=>{
     const current=await snapshot(caller,caller.sessionId!,signal,true),view=await identity(caller,caller.sessionId!,signal,false)

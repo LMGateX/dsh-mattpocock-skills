@@ -774,6 +774,12 @@ class NativeRunningCounter {
   takeOpened(): readonly NativeSubagentStopEvent[] {
     return this.#opened.splice(0, this.#opened.length)
   }
+  /** Synchronous stored knowledge plus current service availability; no refresh or catalog IO. */
+  state(ownerSessionId: string): { readonly revision: number; readonly known: boolean; readonly reason: string | null; readonly available: boolean } {
+    const owner = String(ownerSessionId), membership = this.#members.get(owner), available = this.#lister() !== undefined
+    return { revision: this.revision(owner), available, known: available && membership?.known === true,
+      reason: !available ? 'native-subagent-service-unavailable' : membership?.reason ?? (membership === undefined ? 'native-subagent-membership-unestablished' : null) }
+  }
   /** Monotone count-state revision so a cached snapshot cannot mask an item or a count change. */
   revision(ownerSessionId: string): number {
     return this.#revisions.get(String(ownerSessionId)) ?? 0
@@ -996,6 +1002,8 @@ export interface HostPorts {
   nativeSubagentStops(ownerSessionId: string): readonly NativeSubagentStop[]
   /** Monotone native-count state revision; part of snapshot freshness, never a count. */
   nativeSubagentCountRevision(ownerSessionId: string): number
+  /** Optional synchronous freshness proof. Missing proof conservatively disables projection reuse. */
+  nativeSubagentCountState?(ownerSessionId: string): { readonly revision: number; readonly known: boolean; readonly reason: string | null; readonly available: boolean }
   openRuntimeStorage<T extends { readonly revision: number }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>
   openUnitStorage<T extends { readonly revision: number }>(suffix: string, parse: (value: unknown) => T): Promise<VersionedStorage<T>>
   readPolicyGrants(): Promise<PolicyGrants>
@@ -1665,6 +1673,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       nativeSubagentDrift(sessionId) { return nativeCounter.driftFacts(sessionId) },
       nativeSubagentStops(sessionId) { return nativeCounter.stops(sessionId) },
       nativeSubagentCountRevision(sessionId) { return nativeCounter.revision(sessionId) },
+      nativeSubagentCountState(sessionId) { return nativeCounter.state(sessionId) },
       async openRuntimeStorage(parse) { return ports.openUnitStorage('runtime_bindings', parse) },
       async openUnitStorage<T extends { readonly revision: number }>(suffix: string, parse: (value: unknown) => T) {
         if (closing) throw new ControlsError('access-denied', 'host is disposing')
