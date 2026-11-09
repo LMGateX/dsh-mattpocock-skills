@@ -36,6 +36,6 @@
   ],
   "exclude": [
     "src/client.ts",
-    "src/client-notifications.ts"
+    "src/client-*.ts"
   ]
 }

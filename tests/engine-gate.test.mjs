@@ -8,12 +8,12 @@ import { pathToFileURL } from 'node:url'
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT for the actual DSH compatibility gate' }
 
-test('0.17.0 engines gate rejects alpha.1 and admits the native alpha.2+ line', options, async () => {
+test('0.18.0 engines gate rejects alpha.1 and admits the native alpha.2+ line', options, async () => {
   assert(isAbsolute(hostRoot))
   const require = createRequire(join(hostRoot, 'package.json'))
   const { evaluatePluginCompatibility } = await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-app-boot')).href)
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
-  assert.equal(manifest.version, '0.17.0')
+  assert.equal(manifest.version, '0.18.0')
   assert.equal(manifest.engines.dsh, '~0.2.1-alpha.2')
   for (const version of ['0.2.1-alpha.1', '0.2.0-rc.2', '0.3.0-alpha.1']) {
     assert.notEqual(evaluatePluginCompatibility(manifest, {}, version), undefined, version + ' must be rejected')
