@@ -372,3 +372,78 @@ test('accepted history CAS settles after consumer abort, preserves capture marks
   assert.equal(retainedCalls, 1, 'successful accepted capture mark must not be discarded by caller abort')
 })
 
+
+for (const abort of [false, true]) test('scope preparation rejection ' + (abort ? 'does not invent a history failure after abort' : 'retains ordinary source failure health'), async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 2000 })
+  await f.read(); await new Promise(resolve => setImmediate(resolve)); await f.runtime.serializePolicyPermission(async () => {})
+  const control = new AbortController(), reason = new Error('abort pure capture scope'), fault = new Error('late scope storage fault')
+  const entered = deferred(), release = deferred()
+  const runtimeStore = f.units.get('runtime_bindings'), read = runtimeStore.read.bind(runtimeStore)
+  const worktreeStore = [...f.units].find(([name]) => name.startsWith('worktrees_'))[1], readWorktrees = worktreeStore.read.bind(worktreeStore)
+  const historyStore = [...f.units].find(([name]) => name.startsWith('history_'))[1], swap = historyStore.compareAndSwap.bind(historyStore)
+  let afterRegistry = false, blocked = false, writes = 0
+  worktreeStore.read = async (...args) => { const result = await readWorktrees(...args); afterRegistry = true; return result }
+  historyStore.compareAndSwap = async (...args) => { writes++; return swap(...args) }
+  runtimeStore.read = async (...args) => { if (afterRegistry && !blocked) { blocked = true; entered.resolve(); await release.promise; throw fault } return read(...args) }
+  const pending = f.runtime.preStep(caller('root'), control.signal, [], 'pure-scope-reject')
+  const result = abort ? assert.rejects(pending, error => error === reason) : pending
+  await entered.promise; if (abort) control.abort(reason); release.resolve(); await result
+  await f.runtime.serializePolicyPermission(async () => {})
+  runtimeStore.read = read
+  assert.equal(blocked, true)
+  assert.equal(writes, 0, 'no history producer write was begun in this pure preparation')
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  const history = current.collections.health.rows.filter(row => row.preview.scope === 'history')
+  if (abort) assert.deepEqual(history, [], 'pure preparatory abort must not be retained as history source failure')
+  else { assert.equal(history.length, 1); assert.match(history[0].preview.reason, /late scope storage fault/) }
+})
+
+
+test('accepted history write failure remains unknown even when its read consumer aborts', async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 2000 })
+  const previous = await f.read(); await new Promise(resolve => setImmediate(resolve))
+  assert.ok(await f.instrumentStorage.compareAndSwap(previous.instance.instrumentInstanceId, 0, { schemaVersion: 1, ...previous.instance, revision: 1, events: [{ revision: 1, recordedAt: 1, author: caller('root'), command: { action: 'put-workflow', operationId: 'failing-history-source', expectedRevision: 0, workflowId: 'retained', value: { title: 'Capture must retry', axes: [] } } }] }))
+  const store = [...f.units].find(([name]) => name.startsWith('history_'))[1], swap = store.compareAndSwap.bind(store)
+  const entered = deferred(), release = deferred(), control = new AbortController(), reason = new Error('abort accepted failing capture'), fault = new Error('accepted history write failed')
+  let attempted = 0
+  store.compareAndSwap = async () => { attempted++; entered.resolve(); await release.promise; throw fault }
+  const pending = f.runtime.preStep(caller('root'), control.signal, [], 'failing-accepted-capture')
+  const rejected = assert.rejects(pending, error => error === reason)
+  await entered.promise; control.abort(reason); release.resolve(); await rejected
+  await f.runtime.serializePolicyPermission(async () => {})
+  store.compareAndSwap = swap
+  assert.equal(attempted, 1)
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  const history = current.collections.health.rows.filter(row => row.preview.scope === 'history')
+  assert.equal(history.length, 1)
+  assert.equal(history[0].preview.status, 'unknown')
+  assert.match(history[0].preview.reason, /accepted history write failed/)
+  const messages = await f.runtime.preStep(caller('root'), signal(), [], 'capture-retry-after-failure')
+  assert.match(messages.flatMap(message => message.content.map(part => part.text ?? '')).join(''), /Capture must retry/)
+  assert.equal((await new core.SessionHistory(previous.instance, store).query({ kind: 'workflow' })).total, 1)
+})
+
+
+for (const abort of [false, true]) test('retained storage preparation rejection ' + (abort ? 'does not invent a history failure after abort' : 'retains ordinary source failure health'), async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 2000 })
+  const previous = await f.read(); await new Promise(resolve => setImmediate(resolve))
+  assert.ok(await f.instrumentStorage.compareAndSwap(previous.instance.instrumentInstanceId, 0, { schemaVersion: 1, ...previous.instance, revision: 1, events: [{ revision: 1, recordedAt: 1, author: caller('root'), command: { action: 'put-workflow', operationId: 'reject-retained-source', expectedRevision: 0, workflowId: 'retained', value: { title: 'Retained rejection source', axes: [] } } }] }))
+  const control = new AbortController(), reason = new Error('abort pure retained storage read'), fault = new Error('late retained storage fault')
+  const entered = deferred(), release = deferred(), read = f.instrumentStorage.read.bind(f.instrumentStorage)
+  const historyStore = [...f.units].find(([name]) => name.startsWith('history_'))[1], swap = historyStore.compareAndSwap.bind(historyStore)
+  let reads = 0, writes = 0
+  f.instrumentStorage.read = async (...args) => { if (++reads === 2) { entered.resolve(); await release.promise; throw fault } return read(...args) }
+  historyStore.compareAndSwap = async (...args) => { writes++; return swap(...args) }
+  const pending = f.runtime.preStep(caller('root'), control.signal, [], 'pure-retained-reject')
+  const result = abort ? assert.rejects(pending, error => error === reason) : pending
+  await entered.promise; if (abort) control.abort(reason); release.resolve(); await result
+  await f.runtime.serializePolicyPermission(async () => {})
+  assert.equal(reads, 2, 'current read followed by cold retained catchup read')
+  assert.equal(writes, 0, 'retained source failed before any capture write began')
+  f.instrumentStorage.read = read
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  const history = current.collections.health.rows.filter(row => row.preview.scope === 'history')
+  if (abort) assert.deepEqual(history, [])
+  else { assert.equal(history.length, 1); assert.match(history[0].preview.reason, /late retained storage fault/) }
+})
+

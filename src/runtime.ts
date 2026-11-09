@@ -492,7 +492,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const scope=async(principal:string,sessionId:string,view:SessionControlsView,signal?:AbortSignal):Promise<InstrumentScope>=>{
     signal?.throwIfAborted()
     if(principal===ports.operatorPrincipal)return {kind:'coordinator'}
-    return effectiveScope(await load(),sessionId,view,signal)
+    const current=await load().catch(error=>{signal?.throwIfAborted();throw error})
+    signal?.throwIfAborted()
+    return effectiveScope(current,sessionId,view,signal)
   }
   const authority:InstrumentAuthority={async resolveAccess(principal,sessionId,instance,_access,signal){
     const caller=callerFor(principal,sessionId,ports.operatorPrincipal)
@@ -893,7 +895,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if('changes' in records)await captureBusiness(view,records,signal)
         else if(marksFor(view.instance.instrumentInstanceId).business.get(view.association.sessionId)!==businessCaptureVersion(records)){
           signal.throwIfAborted()
-          const retained=await instruments.read(caller.principalId,sessionId,{},signal)
+          const retained=await instruments.read(caller.principalId,sessionId,{},signal).catch(error=>{signal.throwIfAborted();throw error})
           signal.throwIfAborted();await captureBusiness(view,retained,signal)
         }
       }
