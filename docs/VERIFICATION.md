@@ -2,7 +2,22 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
-## 协作摘要恢复稳定性：仅本地完成（2026-11-09）
+## 0.19.0 已发布、下载回验并安装本机（2026-11-10；仅 RC1 验收，激活另核）
+
+本记录与[机器摘要](<../dist/verification-0.19.0.json>)为发版后 main 的纯文档追加；不移动 tag、不重打包。精确制品复验须检出 `v0.19.0`／冻结 source，不能把后续文档 HEAD 作为该制品源。下方双宿主数字均为历史，不再是当前门禁。
+
+- **兼容范围已更正：** 本批只运行 **DSH 0.2.2-rc.1**，最低声明 **DSH >=0.2.2-rc.1 / Node >=24.9.0**。当前 rc.1 的真实兼容函数核对低版本号拒绝与最低／更高版本号接受；负例只是版本字符串，不启动旧 SDK。声明允许更高版本不等于已实测未来版本。
+- **功能与来源：** [本批契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>)的明确 0 隐藏／unknown 不当 0、默认关闭的 owner-instance 有限期推荐支持 B、same-decision 显式采用与真实 agent 来源、可撤销原生导航与只读宿主标题；承接恢复稳定性与冷校验线性修正。真实 rc.1 的 nullable subagent 投影过窄结构类型经严格 Client RED→GREEN 校正，运行时原本已用可空链安全回退，不伪称新 runtime RED。未改 vendor 正文、双渠道或 provider precedence。
+- **冻结与发布：** source **9fd1ff5e473425e4653905feb589bcc4db9a9bc0**，tree **087132636ed556a7c208a9fa99ca8d21793c6d0b**；annotated tag object **4b02c03bb2c7ab3ce063ea254cef1e21d0e421c3**，peeled 为该 source。非 force atomic main＋新 tag 已 push；[0.19.0 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.19.0) 为 published、非 draft／prerelease，五资产齐备。
+- **唯一 accepted 制品：** **562107 B**，SHA256 **8d8c6850cfda59244e527b79ad5d390cf17f59362f633a677bcbe84ba318d2c2**，pnpm **11.8.0**；**171 regular = 86 fixed＋85 vendor，0 symlink，66 JS/DTS**。封闭 Client **464470 B／13 模块**，仅 React／原生 primitives externals，SHA256 **d8fcefa4c1cb170d00f12ac64b51929cd572132071f3e0c3fc956d061a114a30**；公开声明 **17435 B／437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf**。源码、公开 exports 消费和完整生成树／vendor 对应通过。旧低版本声明 917…候选已作废，从未用于本次发布／安装。
+- **源码与同包完整回归：** 各 **1211 total／1205 pass／0 fail／6 legacy skip／0 cancel**；六项历史 native fiber／Loader 装配因 CLI 未提供 UI 程序集而原样 skip，不回填为 pass。独立实际 RC1 原生 **source 46/46、same-bundle 46/46、均 0 skip**，Chromium 两轮各 **4×69＝276**、运行／场景／宿主字节一致、无 console／page／external-network errors。source Host／Client **2/2** strict；归档 source＋真实 packed-public Root／Host／Client 消费 **4/4**。单项 Node SlotCore 使用校验原字节的公开 RC1 companion，非 CLI 预装可用性；四个其他浏览器补充包仍只作声明。
+- **Skill 与正式 headless：** 实际 Registry／native skill **216 calls**，四行各 54、每行 27 defs／source 11＋16／effective 27，拒绝无关 caller。actual RC1 的 source＋同归档 × stable／beta 正式契约通过，规范化报告逐字节一致；modelInvoked=false／webStarted=false。335 个当前 SDK／补充包的 manifest、2690 个原始声明及 SlotCore 9 文件前后原字节审计一致，无旧 SDK 回退、共享 SDK 补丁、模型或真实业务 campaign。
+- **独立审查：** fixed baseline **54b915f5c1024380b63782ea107a1f4b0cdab791**…冻结 source；Standards **0 未闭合必改**，1 项既有 exact-key predicate duplication P3 建议明确暂缓；Spec **0 confirmed／missing／partial／unasked scope**。完整 79 文件及每次精确增量已复核，不用历史 donor SDK 分数替代当前 RC1 证明。
+- **下载与安装实证：** 原五资产全部只读；发布后下载 **5/5 与 accepted 原文件逐字节一致**，下载包再做 source-bound strict、171 文件验证。仅此下载制品经官方 CLI 将本机 Web Profile 磁盘 **0.18.0 → 0.19.0**，**171/171 文件**与归档逐字节相同。已私密备份配置／lock、完整旧 167 文件与旧新归档；只允许 target dependency／lock 节点变更，无关 manifest、非目标 lock 图、Cordis／其他配置、共享 SDK manifest、原 dirty checkout HEAD／diff 与原 listener 指纹均保持。指纹只覆盖明确列出的对象，不是全盘证明。
+- **同 SDK 回退与 warnings：** 独立 fresh 私有 Profile 在同一 RC1 SDK 运行旧 0.18.0 167 → 新 0.19.0 171 → 旧 0.18.0 167，三步官方 CLI exit0、逐文件匹配且非目标配置保持。隔离及真实本机安装均请求 `--ignore-scripts --strict-peer-dependencies`，pnpm 仍有 peer WARN 后成功，不能声称 warning-free。无业务迁移的包级回退不证明写 V4 后可直接降版；详见[迁移边界](<../MIGRATION.md>)。
+- **激活边界：** 已确认磁盘安装，**未执行或证明当前 Host／GUI 已装载新版本**。同名 CLI 更新不能代替受支持的插件／宿主重载，普通页面刷新也不等于 Host 重载。本轮未自动重启／替换服务、未绕认证调隐藏 RPC、未启用管理或推荐预授权、未迁移／清理生产业务、未 npm publish。隔离工树和原始证据刻意保留供审计，未宣称物理清理；全部委派 QA jobs 已收集。
+
+## 历史：协作摘要恢复稳定性仅本地完成记录（2026-11-09，后续已纳入 0.19.0）
 
 最新授权与结果分别见 [修复契约](<CLIENT_RECOVERY_STABILITY.md>)、[本地验收摘要](<CLIENT_RECOVERY_VALIDATION.md>)。代码／唯一接受归档冻结 `80804ff3bfa45d0ccfa20083e6df5b321ba48591`；双宿主 source／精确归档输入四矩阵各 1127 总／1121 pass／6 已解释并补跑 native skip／0 fail，Standards／Spec 无未闭合必改。**本批未 push／发版、未为当前 DSH 安装或重启**，不继承旧批次授权，不改变下文历史发布记录，也不意味着先前版本从未安装。原始日志与本机快照仍仅本地保留。
 

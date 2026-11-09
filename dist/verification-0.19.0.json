@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "package": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.19.0",
+  "sourceCommit": "9fd1ff5e473425e4653905feb589bcc4db9a9bc0",
+  "sourceTree": "087132636ed556a7c208a9fa99ca8d21793c6d0b",
+  "tag": "v0.19.0",
+  "annotatedTagObject": "4b02c03bb2c7ab3ce063ea254cef1e21d0e421c3",
+  "releaseUrl": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.19.0",
+  "deliveryComplete": true,
+  "deliveryScope": "Accepted source, same archive, publication, five-asset download and verified local disk installation; live Host/GUI activation is not established.",
+  "declaredMinimum": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "testedDshVersion": "0.2.2-rc.1",
+  "onlyCurrentDshSdkTested": true,
+  "higherVersionsDeclaredNotClaimedTested": true,
+  "archive": {
+    "sha256": "8d8c6850cfda59244e527b79ad5d390cf17f59362f633a677bcbe84ba318d2c2",
+    "bytes": 562107,
+    "pnpm": "11.8.0",
+    "regularFiles": 171,
+    "buildOutputs": 66,
+    "vendorFiles": 85,
+    "packedManifestPrivate": true,
+    "publicMeansExportedApiNotNpmPublication": true,
+    "clientBytes": 464470,
+    "clientSHA256": "d8fcefa4c1cb170d00f12ac64b51929cd572132071f3e0c3fc956d061a114a30",
+    "clientDeclarationBytes": 17435,
+    "clientDeclarationSHA256": "437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf",
+    "closedLocalClientModules": 13,
+    "clientExternals": [
+      "react",
+      "@deepseek-ai/dsh-client-ui-primitives"
+    ]
+  },
+  "tests": {
+    "source": {
+      "total": 1211,
+      "pass": 1205,
+      "fail": 0,
+      "skip": 6,
+      "cancelled": 0
+    },
+    "sameArchive": {
+      "total": 1211,
+      "pass": 1205,
+      "fail": 0,
+      "skip": 6,
+      "cancelled": 0,
+      "scope": "Source-bound full regression; archive-aware Client and PluginManager consume exact archive; legacy source-only cases remain source tests."
+    },
+    "strictSourceProjects": 2,
+    "strictArchiveSourceAndPublicProjects": 4,
+    "nativeSource": {
+      "pass": 46,
+      "skip": 0
+    },
+    "nativeSameArchive": {
+      "pass": 46,
+      "skip": 0
+    },
+    "chromiumSourceAssertions": 276,
+    "chromiumSameArchiveAssertions": 276,
+    "registrySkillCalls": 216,
+    "registryRows": 4,
+    "definitionsPerRow": 27,
+    "originalInvocationCounts": {
+      "modelEnabled": 11,
+      "userOnly": 16
+    },
+    "effectiveDefinitions": 27,
+    "unrelatedCallerDenied": true,
+    "formalHeadless": {
+      "sources": [
+        "source",
+        "same-archive"
+      ],
+      "channels": [
+        "stable",
+        "beta"
+      ],
+      "actualSdk": "0.2.2-rc.1",
+      "normalizedReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false
+    },
+    "legacySkipNames": [
+      "ok 72 - native Client plugin fiber activates after self-mounting its declared Remote namespace # SKIP the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly",
+      "ok 73 - native Client teardown removes all namespace-owned UI and permits a clean remount # SKIP the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly",
+      "ok 74 - native Client dependent setup errors fail startup instead of reporting a false active entry # SKIP the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly",
+      "ok 75 - native browser module factory and Loader explicitly audit the plugin ACTIVE after boot settles # SKIP the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly",
+      "ok 76 - native browser loader settling is not a false success when the dependent UI scope fails # SKIP the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly",
+      "ok 77 - native browser graph removal and re-add replace the fiber without leaked or duplicate UI # SKIP the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly"
+    ],
+    "skipInterpretation": "Skipped cases remain skipped, not relabeled as passing. Native 46 and Chromium checks are independent evidence. Node SlotCore is a verified exact published RC1 companion, not CLI-preinstalled availability.",
+    "sdkDeclarationScope": {
+      "originalInstalledSdkPackages": 330,
+      "supplementalPublishedSlotCoreRuntimePackages": 1,
+      "additionalPublishedTypeOnlyPackages": 4,
+      "declarationFiles": 2690,
+      "originalBytesUnchanged": true
+    }
+  },
+  "reviews": {
+    "fixedBaseline": "54b915f5c1024380b63782ea107a1f4b0cdab791",
+    "target": "9fd1ff5e473425e4653905feb589bcc4db9a9bc0",
+    "standards": {
+      "mandatoryOpen": 0,
+      "optionalDeferred": 1,
+      "worstRemaining": "P3 exact-key predicate duplication"
+    },
+    "spec": {
+      "confirmed": 0,
+      "missingOrPartial": 0,
+      "unaskedScope": 0,
+      "worstRemaining": "none"
+    }
+  },
+  "isolatedOfficialCli": {
+    "sdkVersion": "0.2.2-rc.1",
+    "accepted": true,
+    "sequence": [
+      {
+        "version": "0.18.0",
+        "regularFiles": 167
+      },
+      {
+        "version": "0.19.0",
+        "regularFiles": 171
+      },
+      {
+        "version": "0.18.0",
+        "regularFiles": 167
+      }
+    ],
+    "allExitCodes": 0,
+    "nonTargetControlsPreserved": true,
+    "ignoreScriptsRequested": true,
+    "strictPeerDependenciesRequested": true,
+    "peerWarningsObserved": true,
+    "notWarningFree": true,
+    "hostBooted": false,
+    "businessDataMigrated": false
+  },
+  "publication": {
+    "nonForceAtomicPush": true,
+    "fiveAssets": [
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.19.0.tgz",
+        "bytes": 562107,
+        "sha256": "8d8c6850cfda59244e527b79ad5d390cf17f59362f633a677bcbe84ba318d2c2"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.19.0.tgz.sha256",
+        "bytes": 107,
+        "sha256": "318722b9d00c072531c91128053fb112e1b62abb6c3acbb019b8258735246850"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.19.0.tgz.size",
+        "bytes": 7,
+        "sha256": "661fa298eed3bab83c9f64da79e425ebe4affd6d708e3916ef55b4883be8f109"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.19.0.tgz.source-commit",
+        "bytes": 41,
+        "sha256": "474d7ba28bf6eebe90a912ced236f4c1f8f2898b08818a7db24a123b9c2f7e85"
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.19.0.tgz.pnpm-version",
+        "bytes": 7,
+        "sha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b"
+      }
+    ],
+    "downloadByteIdenticalToAcceptedAllFive": true,
+    "downloadStrictRegularFiles": 171,
+    "tagMovedAfterFreeze": false,
+    "repackedAfterAcceptance": false
+  },
+  "localDiskInstallation": {
+    "installed": true,
+    "from": "0.18.0",
+    "to": "0.19.0",
+    "profile": "web",
+    "sameVerifiedDownloadedArchive": true,
+    "regularFilesByteVerified": 171,
+    "backupCreated": true,
+    "nonTargetManifestUnchanged": true,
+    "nonTargetLockGraphUnchanged": true,
+    "profileCordisAndOtherControlsUnchanged": true,
+    "sharedSdkManifestUnchanged": true,
+    "originalCheckoutHeadAndDiffUnchanged": true,
+    "listenerUnchanged": true,
+    "peerWarningsObserved": true,
+    "liveHostActivationEstablished": false,
+    "productionGuiNewVersionEstablished": false,
+    "automaticRestartPerformed": false,
+    "hiddenRpcUsed": false,
+    "managementOrPreauthorizationEnabled": false,
+    "businessDataMigrated": false
+  },
+  "rollback": {
+    "isolatedSameSdkPackageRollbackProven": true,
+    "liveRollbackPerformed": false,
+    "caveat": "V1/V2/V3 remain readable. Once V4 is written, an old writer rejects it; package rollback is not a business-storage rollback."
+  },
+  "resourceDisposition": {
+    "ownedWorktreesAndPrivateEvidenceRetainedForAudit": true,
+    "physicalWorktreeCleanupClaimed": false,
+    "allDelegatedQaJobsCollected": true
+  },
+  "publicEvidencePolicy": "Counts and identities summarize actual private program receipts and authored independent reviews; raw logs and local snapshots are retained privately, not published as complete execution traces."
+}
