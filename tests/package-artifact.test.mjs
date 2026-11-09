@@ -110,16 +110,32 @@ test('locale metadata verification rejects unknown structure and changed public 
   ]) assert.throws(() => validatePackageLocale('locale/en.json', candidate), /locale|metadata/i)
 })
 
-test('exact package inventory contains 76 fixed files, 85 vendor files and 62 JS/DTS outputs', async () => {
-  assert.equal(FIXED_PACKED_FILES.length, 76)
-  assert.equal(EXPECTED_PACKED_FILES, 161)
+test('exact package inventory contains 82 fixed files, 85 vendor files and 62 JS/DTS outputs', async () => {
+  assert.equal(FIXED_PACKED_FILES.length, 82)
+  assert.equal(EXPECTED_PACKED_FILES, 167)
   assert.equal(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).length, 62)
   const inventory = JSON.parse(await readFile(resolve(root, 'vendor-files.json'), 'utf8'))
   assert.equal(inventory.fileCount, 85)
   const members = await expectedTarMembers(root, inventory)
-  assert.equal(members.size, 161)
+  assert.equal(members.size, 167)
   for (const path of ['locale/en.json', 'locale/zh.json']) assert.equal(members.get('package/' + path)?.type, 'file')
   for (const retired of ['compatibility/initial-cwd.recipe.json', 'locale/worktree-bridge/en.json', 'bin']) assert.equal(members.get('package/' + retired), undefined)
+})
+
+test('packaged notification audio and CC0 provenance are exact non-exported members', async () => {
+  const files = ['CC0-1.0.txt', 'SOURCE.json', 'bubble.mp3', 'modal.mp3', 'popup.mp3', 'toast.mp3'].map(name => 'assets/notification-sounds/' + name)
+  for (const inventory of [packageJson.files, PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES]) {
+    assert.deepEqual(inventory.filter(path => path.startsWith('assets/')).sort(), files)
+  }
+  const provenance = JSON.parse(await readFile(resolve(root, 'assets/notification-sounds/SOURCE.json'), 'utf8'))
+  assert.equal(provenance.sounds.length, 4)
+  for (const sound of provenance.sounds) {
+    const bytes = await readFile(resolve(root, 'assets/notification-sounds/' + sound.key + '.mp3'))
+    assert.equal(bytes.length, sound.bytes)
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), sound.sha256)
+    assert.equal(packageJson.exports['./assets/notification-sounds/' + sound.key + '.mp3'], undefined)
+    assert.equal(sound.license, 'CC0-1.0')
+  }
 })
 
 test('bounded model output modules are private exact package members, not public entry points', () => {

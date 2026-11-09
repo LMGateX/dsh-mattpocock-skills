@@ -88,6 +88,12 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'THIRD_PARTY_NOTICES.md',
   'locale/en.json',
   'locale/zh.json',
+  'assets/notification-sounds/CC0-1.0.txt',
+  'assets/notification-sounds/SOURCE.json',
+  'assets/notification-sounds/bubble.mp3',
+  'assets/notification-sounds/modal.mp3',
+  'assets/notification-sounds/popup.mp3',
+  'assets/notification-sounds/toast.mp3',
 ])
 
 export const FIXED_PACKED_FILES = Object.freeze([
@@ -167,6 +173,12 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'vendor-files.json',
   'locale/en.json',
   'locale/zh.json',
+  'assets/notification-sounds/CC0-1.0.txt',
+  'assets/notification-sounds/SOURCE.json',
+  'assets/notification-sounds/bubble.mp3',
+  'assets/notification-sounds/modal.mp3',
+  'assets/notification-sounds/popup.mp3',
+  'assets/notification-sounds/toast.mp3',
 ])
 
 const EXPECTED_VERSION = '0.18.0'
@@ -233,7 +245,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 76
+const EXPECTED_FIXED_PACKED_FILES = 82
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

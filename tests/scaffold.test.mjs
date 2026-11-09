@@ -78,10 +78,12 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   const entries = await readdir(join(root, 'src'), { recursive: true, withFileTypes: true })
   const sources = entries.filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
-  assert.equal(sources.filter(path => !path.includes('/')).length, 8)
+  const privateBrowserSources = ['client-notifications.ts', 'client-notification-sounds.ts', 'client-notification-sound-data.ts', 'client-subagents.ts']
+  assert.deepEqual(sources.filter(path => path.startsWith('client-')), [...privateBrowserSources].sort())
+  assert.equal(sources.filter(path => !path.includes('/')).length, 7 + privateBrowserSources.length)
   assert.equal(sources.filter(path => path.startsWith('controls/')).length, 24)
   assert.ok(sources.includes('client-notifications.ts'), 'private browser module is bundled into the existing closed Client')
-  const expected = sources.filter(path => path !== 'client-notifications.ts').flatMap(path => [
+  const expected = sources.filter(path => !privateBrowserSources.includes(path)).flatMap(path => [
     'lib/' + path.replace(/\.ts$/, '.js'),
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
@@ -91,8 +93,8 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), ['locale/en.json', 'locale/zh.json'])
-  assert.equal(FIXED_PACKED_FILES.length, 76)
+  assert.equal(FIXED_PACKED_FILES.length, 82)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 161)
+  assert.equal(EXPECTED_PACKED_FILES, 167)
 })

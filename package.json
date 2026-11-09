@@ -105,7 +105,13 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "locale/en.json",
-    "locale/zh.json"
+    "locale/zh.json",
+    "assets/notification-sounds/CC0-1.0.txt",
+    "assets/notification-sounds/SOURCE.json",
+    "assets/notification-sounds/bubble.mp3",
+    "assets/notification-sounds/modal.mp3",
+    "assets/notification-sounds/popup.mp3",
+    "assets/notification-sounds/toast.mp3"
   ],
   "keywords": [
     "deepseek-harness",

@@ -12,5 +12,6 @@ coverage/
 # Keep them locally without adding them to this public repository; publish only
 # the sanitized contract/verification summaries under docs/*.md.
 /docs/research/
+/.agents/evidence/
 /host-patches/*.tap
 /host-patches/source-typecheck.txt

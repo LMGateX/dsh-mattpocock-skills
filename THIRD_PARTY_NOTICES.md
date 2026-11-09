@@ -1,5 +1,9 @@
 # Third-Party Notices
 
+## Qvantor notification sounds (CC0 1.0)
+
+Four original Freesound compressed previews by Qvantor are distributed byte-for-byte and embedded as base64 in the browser bundle. Playback applies RMS-based gain calibration and short fades; it does not time-stretch the source. The source pages, authorship, durations, byte sizes and SHA-256 are listed in [audio provenance](<assets/notification-sounds/SOURCE.json>); the complete [CC0 1.0 Universal legal text](<assets/notification-sounds/CC0-1.0.txt>) is included. The default is UI Toast Notification; UI Modal Open Chime, UI Pop-up Open and UI Bubble Pop are selectable. No author endorsement or blanket clearance of third-party rights is implied. These are local package assets; the client does not contact Freesound during playback.
+
 ## Matt Pocock Skills
 
 This package is an unofficial DeepSeek Harness adapter for files selected from [mattpocock/skills](https://github.com/mattpocock/skills).
