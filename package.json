@@ -135,8 +135,8 @@
     "url": "https://github.com/LMGateX/dsh-mattpocock-skills/issues"
   },
   "engines": {
-    "node": ">=22",
-    "dsh": "~0.2.1-alpha.2"
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
   },
   "packageManager": "pnpm@11.8.0",
   "dsh": {
