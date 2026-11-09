@@ -199,7 +199,7 @@ type DecisionPolicyEventEffect =
 - 已存 opId 先经当前身份/范围再查同作者/原载荷重放，只有新操作再核策略/feature/CAS并产生 effect；关闭不能改变旧 fingerprint。创建 replay 要重验当前候选支持，采用 replay 的原 selection 与当前已修正 row 分别呈现，不拿历史回执作新许可。
 - policy save/global save/grant/assignment/put/adopt 共用现有 runtime FIFO/track；新 engine 不另嵌 queue，避免重入死锁。两个域无联写事务：binding+创建在一个 instrument CAS；policy 与 instrument 只受单 host/open handle/FIFO 顺序保证，不宣称跨进程事务。
 - 独立 owner-policy source revision+effective 状态桶必须进入 projection/readSession/model/消费 read gate/token；跨到期桶不能命中旧 active 缓存，不每读注入 now/倒计时抖动前缀。时钟无效或回拨到 enabledAt 前为 unknown，不新采用。
-- history capture 每版保留 selection/refs/source，currentIndex/full changes/技术去重与 checkpoint 同步；实际作者仍 agent。显式 included 的 contextConclusions 可携 policySelection 与 nullable result，不能因没有 result 字符串遗失已采用选项；excluded 保留，不自动 set-context/await 常驻。
+- history capture 每版保留 selection/refs/source，currentIndex/full changes/技术去重与 checkpoint 同步；实际作者仍 agent。旧无策略 metadata 的历史 capture payload 原形不改；只为新增采用源版本附加其 selection 与该版本 references，不为补格式重写同 source version，也不跳过真实 payload 冲突或 purge suppression。显式 included 的 contextConclusions 可携 policySelection 与 nullable result，不能因没有 result 字符串遗失已采用选项；excluded 保留，不自动 set-context/await 常驻。
 - 回执 schemaVersion2 保持既有有界 envelope；recommendation 为 candidate/adopted/not-eligible/unknown 判别联合，关键 key/sourceRevision/policyRef/commit 状态优先于 label。typed/render/PTC 同值，8KiB 写/64KiB 读预算，已提交后 DTO/历史/通知失败不能重执业务写。普通问题在 optional policy 源失败时无 binding+unknown；新采用 fail closed，不伪造成功。
 
 #### B1/B2/U2 单 writer 边界
