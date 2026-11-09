@@ -135,6 +135,9 @@ export class SessionObserver {
 
 export type SessionObservation = Pick<SessionObserver, 'sessionId' | 'getSnapshot' | 'getDisplay' | 'subscribe' | 'retain' | 'refresh'>
 const SESSION_UNKNOWN: Observation<ClientSessionSnapshot> = Object.freeze({ status: 'unknown', value: null, error: null })
+// Only registry-created lazy handles may share a lifetime. Weak keys neither retain
+// Sessions nor add a second handle cache; each handle still reacquires the live entry.
+const observationDomains = new WeakMap<SessionObservation, SessionObserverCache>()
 interface FullCacheEntry { readonly observer: SessionObserver; active: number; idleSince: number }
 /** Faces carry lazy handles, never bare evictable observers. A render-to-effect gap and
  * even a previously evicted native face can reacquire the single current Session entry.
@@ -158,12 +161,14 @@ export class SessionObserverCache {
       let released = false
       return () => { if (released) return; released = true; cleanup(); if (--held.active === 0) held.idleSince = Date.now(); this.prune() }
     }
-    return { sessionId,
+    const handle: SessionObservation = { sessionId,
       getSnapshot: () => this.entries.get(sessionId)?.observer.getSnapshot() ?? SESSION_UNKNOWN,
       getDisplay: () => this.entries.get(sessionId)?.observer.getDisplay(),
       subscribe: listener => acquire(observer => observer.subscribe(listener)), retain: () => acquire(observer => observer.retain()),
       refresh: async () => { await this.entries.get(sessionId)?.observer.refresh() },
     }
+    observationDomains.set(handle, this)
+    return handle
   }
   refreshAll(): void { for (const entry of this.entries.values()) if (entry.active > 0) void entry.observer.refresh() }
   dispose(): void { this.closed = true; for (const entry of this.entries.values()) entry.observer.dispose(); this.entries.clear() }
@@ -394,7 +399,20 @@ export function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIntent, wo
   return { readRevision: saved.revision, scope: workspaceId ?? 'global-defaults', changes, executionEffects: 'Intent only. Existing obligations/executions remain; inspect the authorized Session snapshot for actual usage/convergence.' }
 }
 function intentOf(snapshot: PolicySnapshot): PolicyIntent { return parsePolicyIntent({ extensionEnabled: snapshot.extensionEnabled, defaults: snapshot.defaults, workspaceOverrides: snapshot.workspaceOverrides }) }
-function useObservation(observer: SessionObservation): Observation<ClientSessionSnapshot> {
+/** Preserve mounted lifetimes across injection closures, never across registries or Sessions.
+ * The incoming port is evaluated every render, so a replacement callback is not frozen. */
+function useStableObservation(incoming: SessionObservation): { readonly observer: SessionObservation; readonly key: number } {
+  const domain = observationDomains.get(incoming) ?? incoming
+  const [held, setHeld] = useState(() => ({ domain, observer: incoming, key: 0 }))
+  if (held.domain !== domain || held.observer.sessionId !== incoming.sessionId) {
+    const next = { domain, observer: incoming, key: held.key + 1 }
+    setHeld(next)
+    return next
+  }
+  return held
+}
+function useObservation(incoming: SessionObservation): Observation<ClientSessionSnapshot> {
+  const { observer } = useStableObservation(incoming)
   useEffect(() => observer.retain(), [observer])
   return useSyncExternalStore(observer.subscribe, observer.getSnapshot, observer.getSnapshot)
 }
@@ -533,8 +551,8 @@ export function HeaderEntry(props: HeaderProps): ReactElement | null {
   return h(HeaderSnapshot, props)
 }
 function HeaderSnapshot(props: HeaderProps): ReactElement | null {
-  const observer = useMemo(props.observe, [props.observe])
-  return h(ObservedHeaderEntry, { ...props, observer })
+  const { observer, key } = useStableObservation(props.observe())
+  return h(ObservedHeaderEntry, { ...props, observer, key })
 }
 export function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.header.utilities'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
@@ -615,8 +633,8 @@ export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & Su
   return h(InputSnapshot, { ...props, key: allowed, summaryAvailable: current !== null, summaryIdentity: allowed })
 }
 function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryFace & { readonly summaryAvailable: boolean; readonly summaryIdentity: string }): ReactElement | null {
-  const observer = useMemo(props.observe, [props.observe])
-  return h(ObservedInputSummary, { ...props, observer })
+  const { observer, key } = useStableObservation(props.observe())
+  return h(ObservedInputSummary, { ...props, observer, key })
 }
 type InputDisclosure = 'T' | 'S' | 'pending' | 'awaiting'
 const INPUT_DISCLOSURES = {
@@ -881,9 +899,10 @@ function createNotificationReading(): NotificationReading {
 }
 /** Independent native header lifetime; no policy display gate or automatic navigation. */
 export function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement {
-  return h(DecisionNotifications, { sessionId: props.sessionId, observer: props.observer, onOpenDecision: (workflowId, decisionId) => {
-    const latest = props.observer.getSnapshot()
-    if (latest.status !== 'ready' || props.observer.sessionId !== props.sessionId || latest.value.sessionId !== props.sessionId || inputRecords(latest.value) === null) return
+  const { observer, key } = useStableObservation(props.observer)
+  return h(DecisionNotifications, { key, sessionId: props.sessionId, observer, onOpenDecision: (workflowId, decisionId) => {
+    const latest = observer.getSnapshot()
+    if (latest.status !== 'ready' || observer.sessionId !== props.sessionId || latest.value.sessionId !== props.sessionId || inputRecords(latest.value) === null) return
     const scope = notificationScope(latest.value), row = latest.value.records?.decisions.find(row => row.workflowId === workflowId && row.decisionId === decisionId)
     if (scope !== null && row !== undefined && isPendingUserDecision(row)) props.reading.select(latest.value, decisionRecordKey(row))
   } })
@@ -923,17 +942,18 @@ function inputRunningDetails(view: ClientSessionSnapshot, props: PropsRuntime<'c
       Object.entries(windows.S.depth.levels).map(([level, count]) => h('p', { key: level }, '距离 ' + level + '：' + countText(count)))))
 }
 export function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace & { readonly summaryAvailable?: boolean; readonly summaryIdentity?: string; readonly summary?: SummaryObserver }): ReactElement | null {
-  const observation = useObservation(props.observer)
-  const view = observation.status === 'ready' && props.sessionId === props.observer.sessionId && observation.value.sessionId === props.sessionId
+  const { observer, key } = useStableObservation(props.observer)
+  const observation = useObservation(observer)
+  const view = observation.status === 'ready' && props.sessionId === observer.sessionId && observation.value.sessionId === props.sessionId
     && (props.summaryIdentity === undefined || summaryReadingIdentity(observation.value) === props.summaryIdentity) ? observation.value : null
-  const shown = view !== null && view.policy.display.inputSummary && props.observer.getDisplay()?.inputSummary !== false
-  const [permit, setPermit] = useState<{ readonly observer: SessionObservation; readonly sessionId: string; readonly allowed: boolean }>(() => ({ observer: props.observer, sessionId: props.sessionId, allowed: false }))
-  const same = permit.observer === props.observer && permit.sessionId === props.sessionId
-  const allowed = view !== null ? shown : same && permit.allowed && props.observer.getDisplay()?.inputSummary !== false
-  if (!same || view !== null && permit.allowed !== shown) setPermit({ observer: props.observer, sessionId: props.sessionId, allowed: shown })
+  const shown = view !== null && view.policy.display.inputSummary && observer.getDisplay()?.inputSummary !== false
+  const [permit, setPermit] = useState<{ readonly observer: SessionObservation; readonly sessionId: string; readonly allowed: boolean }>(() => ({ observer, sessionId: props.sessionId, allowed: false }))
+  const same = permit.observer === observer && permit.sessionId === props.sessionId
+  const allowed = view !== null ? shown : same && permit.allowed && observer.getDisplay()?.inputSummary !== false
+  if (!same || view !== null && permit.allowed !== shown) setPermit({ observer, sessionId: props.sessionId, allowed: shown })
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
-  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view === null ? null : summaryReadingIdentity(view), view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
+  const identity = JSON.stringify([key, props.sessionId, observer.sessionId, shown, view === null ? null : summaryReadingIdentity(view), view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
     view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
   const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null; readonly decisionKeys: readonly string[] }>(() => ({ identity, category: null, decisionKeys: [] }))
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
@@ -997,7 +1017,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
         (selected === 'pending' || selected === 'awaiting') && needsRecordCheck(records) ? entrance('awaiting', '记录核对') : null,
         h('span', { style: { flex: 1 } }),
         h(Button, { variant: 'ghost', 'aria-label': '关闭详情', onClick: close }, '关闭详情')),
-      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, props) : inputDecisionDetails(view, selected, selection.decisionKeys, decisionTemplateAccess(props, view, 'inputSummary', () => {
+      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, { ...props, observer }) : inputDecisionDetails(view, selected, selection.decisionKeys, decisionTemplateAccess({ ...props, observer }, view, 'inputSummary', () => {
         const summary = props.summary?.getSnapshot()
         return summary === undefined || summary.status === 'ready' && summary.value.policy.display.inputSummary && summaryReadingIdentity(summary.value) === summaryReadingIdentity(view)
       })))))

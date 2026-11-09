@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import vm from 'node:vm'
+import { readFile } from 'node:fs/promises'
 import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../scripts/build-client.mjs'
@@ -8,9 +9,11 @@ import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mj
 
 // Accepted recovery seam: unchanged closed browser bundle, real mounted React and public observation ports.
 // No formatter-only proof, private state probes, live Profile or graphical-browser claims.
-const built = await buildClient()
+const code = process.env.DSH_CONTROLS_CLIENT_BUNDLE
+  ? await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8')
+  : (await buildClient()).code
 let registration
-vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
+vm.runInThisContext('(function(window){' + code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
 const primitives = clientPrimitives(React)
 const client = registration.factory(name => {
   if (name === 'react') return React
@@ -45,7 +48,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value })
   let current = snapshot(), calls = 0, version = 0, pending = false
-  const requests = [], caches = [], readings = []
+  const requests = [], caches = [], readings = [], warmHolders = []
   const makeCache = () => {
     const cache = new client.SessionObserverCache((sessionId, signal) => {
       calls++
@@ -78,7 +81,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
   })
   const settle = () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
   t.after(async () => {
-    try { await React.act(async () => root.unmount()); held?.(); scheduler.dispose(); for (const row of caches) row.dispose(); await window.happyDOM.close() }
+    try { await React.act(async () => root.unmount()); held?.(); for (const release of warmHolders) release(); scheduler.dispose(); for (const row of caches) row.dispose(); await window.happyDOM.close() }
     finally { for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key] } }
   })
   await render(); await settle()
@@ -86,8 +89,9 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
     get calls() { return calls },
     setPending(value = true) { pending = value },
     async full(next = current) { current = next; await React.act(async () => cache.observe(current.sessionId).refresh()) },
+    async beginFull() { await React.act(async () => { void cache.observe(current.sessionId).refresh() }) },
     async summary(next = current) { current = next; await React.act(async () => summary.refresh()); await settle() },
-    async replaceCache() { cache = makeCache(); await render() },
+    async replaceCache(warm = false) { cache = makeCache(); if (warm) { warmHolders.push(cache.observe(current.sessionId).retain()); await settle() } await render() },
     async finishRequests() { await React.act(async () => { for (const request of requests.splice(0)) request.resolve({ok: true, value: structuredClone(current)}) }) },
   }
 }
@@ -117,3 +121,54 @@ for (const fields of [['instance'], ['caller'], ['instance', 'caller']]) {
     assert.strictEqual(region(ui.container, category), details)
   })
 }
+
+for (const multipleSeats of [false, true]) for (const stableHolder of [false, true]) for (const pending of [false, true]) {
+  test('same cache reinjection keeps reading without extra RPC: ' + JSON.stringify({multipleSeats, stableHolder, pending}), async t => {
+    const ui = await mount(t, {multipleSeats, stableHolder})
+    await click(entry(ui.container, 'T'))
+    const button = entry(ui.container, 'T'), details = region(ui.container, 'T'), before = ui.calls
+    button.focus(); ui.setPending(pending)
+    await ui.render()
+    assert.equal(ui.calls, before, 'callback/handle reinjection must not restart a healthy full read')
+    assert.strictEqual(region(ui.container, 'T'), details)
+    assert.strictEqual(ui.window.document.activeElement, button)
+    assert.doesNotMatch(ui.container.textContent, /正在恢复/)
+  })
+}
+
+test('a different cache with the same Session revalidates and clears old reading', async t => {
+  const ui = await mount(t, {multipleSeats: true})
+  await click(entry(ui.container, 'T'))
+  const before = ui.calls
+  ui.setPending()
+  await ui.replaceCache()
+  assert.equal(ui.calls, before + 1, 'new registry is a genuine read boundary')
+  assert.equal(ui.container.querySelector('[aria-label="T 票窗口详情"]'), null)
+  assert.doesNotMatch(ui.container.textContent, /T 2[/]8|宿主在跑数：70/)
+  await ui.finishRequests()
+  assert.equal(entry(ui.container, 'T').getAttribute('aria-expanded'), 'false')
+})
+
+test('last real unmount aborts in-flight work and a remount is cold', async t => {
+  const ui = await mount(t, {multipleSeats: true})
+  ui.setPending()
+  await ui.beginFull()
+  assert.equal(ui.requests.length, 1)
+  const request = ui.requests[0], before = ui.calls
+  await ui.render(false)
+  assert.equal(request.signal.aborted, true, 'last release cancels immediately')
+  await ui.render()
+  assert.equal(ui.calls, before + 1, 'remount cannot use the previous current snapshot')
+  assert.doesNotMatch(ui.container.textContent, /T 2[/]8/)
+  await ui.finishRequests(); await ui.settle()
+  assert.equal(entry(ui.container, 'T').getAttribute('aria-expanded'), 'false')
+})
+
+test('a prewarmed replacement registry cannot inherit an open reading', async t => {
+  const ui = await mount(t)
+  await click(entry(ui.container, 'T'))
+  const before = ui.calls
+  await ui.replaceCache(true)
+  assert.equal(ui.calls, before + 1, 'new registry has independently read its current value')
+  assert.equal(entry(ui.container, 'T').getAttribute('aria-expanded'), 'false', 'equal ready identity is not equal observer authority')
+})
