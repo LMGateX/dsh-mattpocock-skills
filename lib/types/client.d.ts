@@ -160,11 +160,20 @@ export declare function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIn
     }[];
     readonly executionEffects: string;
 };
-interface SessionFace {
+interface SubagentFace {
+    readonly subagentNavigation?: {
+        available(id: string, parent: string): boolean;
+        open(id: string, parent: string, view: ClientSessionSnapshot): boolean;
+    };
+}
+interface DecisionInputFace {
+    readonly inputActions?: unknown;
+}
+interface SessionFace extends DecisionInputFace, SubagentFace {
     readonly observer: SessionObservation;
     readonly openDetails: () => void;
 }
-interface SummaryFace {
+interface SummaryFace extends DecisionInputFace, SubagentFace {
     readonly summary: SummaryObserver;
     readonly observe: () => SessionObservation;
     readonly openDetails: () => void;
@@ -216,7 +225,11 @@ export declare function DecisionNotificationReader(props: PropsRuntime<'conversa
     readonly observer: SessionObservation;
     readonly reading: NotificationReading;
 }): ReactElement | null;
-export declare function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null;
+export declare function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace & {
+    readonly summaryAvailable?: boolean;
+    readonly summaryIdentity?: string;
+    readonly summary?: SummaryObserver;
+}): ReactElement | null;
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
 export declare function decisionAnswerCommand(records: InstrumentSnapshot, decision: DecisionRecord, answer: string, status: string, pending: boolean, awaitingImplementation: boolean, operationId: string): InstrumentCommand;
 export declare function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & {
