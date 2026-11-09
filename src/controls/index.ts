@@ -46,10 +46,10 @@ export type TrustedSession =
  * Session role, parent and original control workspace are durable identity facts.
  */
 export interface ControlsAuthority {
-  authorizePolicy(principal: string, access: 'read' | 'write'): Promise<void>
-  authorizeSession(principal: string, sessionId: string, access: 'read' | 'register'): Promise<void>
-  resolveSession(sessionId: string): Promise<TrustedSession | undefined>
-  verifyWorkspace(workspaceId: string): Promise<boolean>
+  authorizePolicy(principal: string, access: 'read' | 'write', signal?: AbortSignal): Promise<void>
+  authorizeSession(principal: string, sessionId: string, access: 'read' | 'register', signal?: AbortSignal): Promise<void>
+  resolveSession(sessionId: string, signal?: AbortSignal): Promise<TrustedSession | undefined>
+  verifyWorkspace(workspaceId: string, signal?: AbortSignal): Promise<boolean>
 }
 export interface SessionControlsView {
   readonly documentRevision: number
@@ -133,25 +133,31 @@ export class WorkspaceControls {
     return this.view(saved, session, workspaceVerified)
   }
 
-  async readSession(principal: string, sessionId: string): Promise<SessionControlsView> {
+  async readSession(principal: string, sessionId: string, signal?: AbortSignal): Promise<SessionControlsView> {
     const session = id(sessionId, 'sessionId')
-    await this.authority.authorizeSession(id(principal, 'principal'), session, 'read')
-    const lineage = await this.lineage(session)
-    const current = await this.load()
+    signal?.throwIfAborted()
+    await this.authority.authorizeSession(id(principal, 'principal'), session, 'read', signal)
+    signal?.throwIfAborted()
+    const lineage = await this.lineage(session, signal)
+    const current = await this.load(signal)
+    signal?.throwIfAborted()
     this.checkLineage(current, lineage, true)
     const { instance } = this.lookup(current, session)!
-    const verified = boolean(await this.authority.verifyWorkspace(instance.controlWorkspaceId), 'workspace verification')
+    const verified = boolean(await this.authority.verifyWorkspace(instance.controlWorkspaceId, signal), 'workspace verification')
+    signal?.throwIfAborted()
     return this.view(current, session, verified)
   }
 
-  private async lineage(sessionId: string): Promise<readonly Lineage[]> {
+  private async lineage(sessionId: string, signal?: AbortSignal): Promise<readonly Lineage[]> {
     const result: Lineage[] = []
     const visited = new Set<string>()
     let cursor = sessionId
     while (true) {
       if (visited.has(cursor) || result.length >= 128) throw new ControlsError('association-conflict', 'cyclic or excessive host lineage')
       visited.add(cursor)
-      const raw = await this.authority.resolveSession(cursor)
+      signal?.throwIfAborted()
+      const raw = await this.authority.resolveSession(cursor, signal)
+      signal?.throwIfAborted()
       if (raw === undefined) throw new ControlsError('unknown-session', 'host identity unavailable for ' + cursor)
       const identity = parseIdentity(raw)
       result.push({ sessionId: cursor, identity })
@@ -190,8 +196,10 @@ export class WorkspaceControls {
       policy: resolvePolicy(current.policy, instance.controlWorkspaceId, verified) })
   }
 
-  private async load(): Promise<ControlsDocument> {
-    const raw = await this.storage.read()
+  private async load(signal?: AbortSignal): Promise<ControlsDocument> {
+    signal?.throwIfAborted()
+    const raw = await this.storage.read().catch(error => { signal?.throwIfAborted(); throw error })
+    signal?.throwIfAborted()
     return raw === undefined ? INITIAL_DOCUMENT : memoized(raw, parseControlsDocument)
   }
 

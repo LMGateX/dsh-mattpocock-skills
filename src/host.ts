@@ -1011,7 +1011,7 @@ export interface HostPorts {
   /** Native acceptance/live facts are not durability; false never certifies persistence. */
   flushSession?(sessionId: string, signal: AbortSignal): Promise<boolean>
   /** Authority checks are repeated at effect boundaries; never wire-supplied principals. */
-  authorizeCaller(caller: HostCaller, sessionId?: string): Promise<void>
+  authorizeCaller(caller: HostCaller, sessionId?: string, signal?: AbortSignal): Promise<void>
 }
 export interface HostOptions {
   createRuntime(ports: HostPorts): Promise<RuntimeFacade>
@@ -1112,9 +1112,10 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
     return session ?? agent?.session
   }
   const storedSnapshot = async (sessionId: SessionId, signal?: AbortSignal): Promise<StoredSnapshot | undefined> => {
+    signal?.throwIfAborted()
     const persistence = persistencePort()
     if (typeof persistence?.stat !== 'function') return undefined
-    const snapshot = await persistence.stat(sessionId, signal === undefined ? undefined : { signal })
+    const snapshot = await persistence.stat(sessionId, signal === undefined ? undefined : { signal }).catch(error => { signal?.throwIfAborted(); throw error })
     signal?.throwIfAborted()
     if (snapshot !== undefined) checkedHeader(sessionId, snapshot.header)
     return snapshot
@@ -1128,8 +1129,9 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       return Object.freeze({ header: checkedHeader(sessionId, live.header), events: EMPTY_EVENTS, live: true })
     }
     const snapshot = await storedSnapshot(sessionId, signal)
+    signal?.throwIfAborted()
     if (snapshot !== undefined) return Object.freeze({ header: checkedHeader(sessionId, snapshot.header), events: EMPTY_EVENTS, live: false })
-    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
+    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' }).catch(error => { signal?.throwIfAborted(); throw error })
     try {
       signal?.throwIfAborted()
       return Object.freeze({ header: checkedHeader(sessionId, observation.header), events: EMPTY_EVENTS, live: observation.source === 'live' })
@@ -1138,16 +1140,18 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
   const sessionFacts = async (raw: string, signal?: AbortSignal): Promise<SessionFacts> => {
     const sessionId = SessionId(id(raw, 'sessionId'))
     const facts = await sessionHeaderFacts(raw, signal)
+    signal?.throwIfAborted()
     if (facts.header.origin !== 'subagent') return facts
     const live = liveSource(sessionId)
     if (live !== undefined) return Object.freeze({ header: checkedHeader(sessionId, live.header), events: Object.freeze(live.ownEvents()), live: true })
-    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' })
+    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' }).catch(error => { signal?.throwIfAborted(); throw error })
     try {
       signal?.throwIfAborted()
       return freeze({ header: checkedHeader(sessionId, observation.header), events: observation.events.slice(observation.inheritedEventCount), live: observation.source === 'live' })
     } finally { observation[Symbol.dispose]() }
   }
-  const sessionIdentity = async (raw: string): Promise<IdentityFacts> => {
+  const sessionIdentity = async (raw: string, signal?: AbortSignal): Promise<IdentityFacts> => {
+    signal?.throwIfAborted()
     const sessionId = SessionId(id(raw, 'sessionId'))
     const live = liveSource(sessionId)
     if (live !== undefined) {
@@ -1172,7 +1176,8 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
     }
     liveIdentities.delete(sessionId)
     const persistence = persistencePort(), identity = persistence?.identity
-    const snapshot = await storedSnapshot(sessionId)
+    const snapshot = await storedSnapshot(sessionId, signal)
+    signal?.throwIfAborted()
     if (persistencePort()?.identity !== identity || liveSource(sessionId) !== undefined) deny('session source changed during identity stat')
     const sourceRevision = snapshot?.revision
     const key = snapshot === undefined ? undefined : fingerprint(snapshot.header)
@@ -1182,8 +1187,10 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
     // Owner classification needs no log. A child always folds its current OWN descriptor
     // at least once; retained associations can never hide a malformed current descriptor.
     if (snapshot !== undefined && snapshot.header.origin !== 'subagent') return { header: checkedHeader(sessionId, snapshot.header), hasDescriptor: false }
-    const observation = await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+    signal?.throwIfAborted()
+    const observation = await ctx.sessionQuery.observeSession(sessionId, { ...(signal ? { signal } : {}), projectionMode: 'none' }).catch(error => { signal?.throwIfAborted(); throw error })
     try {
+      signal?.throwIfAborted()
       const header = checkedHeader(sessionId, observation.header)
       if (snapshot !== undefined && fingerprint(header) !== key) deny('stored header conflicts with observed session identity')
       const facts = Object.freeze({ header, hasDescriptor: header.origin === 'subagent' && !!header.parentSession && foldSubagentDescriptor(observation.events.slice(observation.inheritedEventCount)) !== undefined })
@@ -1192,7 +1199,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       const observed = observation as typeof observation & { readonly revision?: unknown; readonly source?: string }
       if (typeof sourceRevision === 'string' && observed.revision !== undefined && observed.revision !== sourceRevision) deny('observed session source revision conflicts with current stat')
       if (snapshot !== undefined && typeof identity === 'symbol' && typeof sourceRevision === 'string' && sourceRevision.length > 0 && observed.source === 'prepared' && observed.revision === sourceRevision && fingerprint(header) === key) {
-        const after = await storedSnapshot(sessionId)
+        const after = await storedSnapshot(sessionId, signal)
         if (persistencePort()?.identity !== identity || after?.revision !== sourceRevision || fingerprint(after.header) !== key || liveSource(sessionId) !== undefined) deny('session source changed while verifying identity')
         coldIdentities.set(sessionId, { persistence: identity, revision: sourceRevision, fingerprint: key, facts })
         while (coldIdentities.size > IDENTITY_CACHE_MAX) coldIdentities.delete(coldIdentities.keys().next().value as string)
@@ -1200,9 +1207,11 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       return facts
     } finally { observation[Symbol.dispose]() }
   }
-  const resolveSession = async (sessionId: string): Promise<TrustedSession | undefined> => {
-    const facts = await sessionIdentity(sessionId)
-    const document = await storage.read()
+  const resolveSession = async (sessionId: string, signal?: AbortSignal): Promise<TrustedSession | undefined> => {
+    const facts = await sessionIdentity(sessionId, signal)
+    signal?.throwIfAborted()
+    const document = await storage.read().catch(error => { signal?.throwIfAborted(); throw error })
+    signal?.throwIfAborted()
     const saved = document === undefined ? undefined : memoized(document, parseControlsDocument)
     const association = saved?.associations.find(row => row.sessionId === sessionId)
     const instance = association && saved?.instances.find(row => row.instrumentInstanceId === association.instrumentInstanceId)
@@ -1214,6 +1223,7 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
     if (retained?.kind === 'owner') return retained
     if (facts.header.cwd === undefined) return undefined
     const workspace = await ctx.workspaceRegistry.resolveByPath(facts.header.cwd)
+    signal?.throwIfAborted()
     return workspace ? freeze({ kind: 'owner', controlWorkspaceId: workspace.id }) : undefined
   }
   const authenticate = (principal: string): void => {
@@ -1229,19 +1239,21 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       const state = await grants.read(), saved = state === undefined ? undefined : parsePolicyGrants(state)
       if (!saved?.grants.some(row => row.sessionId === principal.slice('agent:'.length) && row.enabled)) deny('agent policy write requires explicit operator delegation')
     },
-    async authorizeSession(principal, sessionId) {
+    async authorizeSession(principal, sessionId, _access, signal) {
+      signal?.throwIfAborted()
       authenticate(principal)
       if (principal !== operatorPrincipal && principal !== 'agent:' + sessionId) deny('agent cannot address another session as its own')
-      await sessionHeaderFacts(sessionId)
+      await sessionHeaderFacts(sessionId, signal)
     },
     resolveSession,
     async verifyWorkspace(workspaceId) { const row = ctx.workspaceRegistry.get(WorkspaceId(id(workspaceId, 'workspaceId'))); return row !== undefined && await row.status() === 'ok' },
   }
-  const authorizeCaller: HostPorts['authorizeCaller'] = async (caller, sessionId) => {
+  const authorizeCaller: HostPorts['authorizeCaller'] = async (caller, sessionId, signal) => {
+    signal?.throwIfAborted()
     if (caller.kind === 'user') { if (caller.principalId !== operatorPrincipal || caller.sessionId !== null) deny('invalid operator caller') }
     else if (caller.sessionId === null || caller.principalId !== 'agent:' + caller.sessionId) deny('invalid actual agent caller')
     authenticate(caller.principalId)
-    if (sessionId !== undefined) await authority.authorizeSession(caller.principalId, id(sessionId, 'sessionId'), 'read')
+    if (sessionId !== undefined) await authority.authorizeSession(caller.principalId, id(sessionId, 'sessionId'), 'read', signal)
   }
   return { authority, sessionFacts, authorizeCaller, operatorPrincipal }
 }
@@ -1303,13 +1315,15 @@ export class MattPocockControlsService extends TypertRemoteService {
     })
   }
   readSession(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<HostJson> { return this.run(async (caller, signal) => {
-    const sid = id(sessionId, 'sessionId'); await this.ports.authorizeCaller(caller, sid); signal.throwIfAborted()
-    return this.sessionRepresentation(await this.runtime.readSession(caller, sid, signal))
+    const sid = id(sessionId, 'sessionId'); await this.ports.authorizeCaller(caller, sid, signal); signal.throwIfAborted()
+    const snapshot = await this.runtime.readSession(caller, sid, signal)
+    signal.throwIfAborted()
+    return this.sessionRepresentation(snapshot)
   }, suppliedSignal) }
   readSummaries(request: unknown, suppliedSignal?: AbortSignal): Promise<SessionSummaryBatch> {
     const parsed=parseSessionSummaryRequest(request)
     return this.run(async (caller,signal)=>{
-      await this.ports.authorizeCaller(caller);signal.throwIfAborted()
+      await this.ports.authorizeCaller(caller,undefined,signal);signal.throwIfAborted()
       return parseSessionSummaryBatch(await this.runtime.readSummaries(caller,parsed,signal))
     },suppliedSignal)
   }

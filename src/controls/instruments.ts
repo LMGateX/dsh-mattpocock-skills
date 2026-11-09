@@ -15,7 +15,7 @@ export type InstrumentScope = { readonly kind: 'coordinator' }
 export interface InstrumentAccess { readonly author: InstrumentAuthor; readonly scope: InstrumentScope }
 /** The authenticated host derives actual author and delegated assignment, never the command. */
 export interface InstrumentAuthority {
-  resolveAccess(principal: string, sessionId: string, instance: InstrumentInstance, access: 'read' | 'write'): Promise<InstrumentAccess>
+  resolveAccess(principal: string, sessionId: string, instance: InstrumentInstance, access: 'read' | 'write', signal?: AbortSignal): Promise<InstrumentAccess>
 }
 export interface InstrumentFilter { readonly workflowId?: string; readonly afterRevision?: number }
 /** Optional additive READ metadata; absent on older hosts, null when first-version proof/access is unavailable. */
@@ -330,11 +330,14 @@ export class SessionInstruments {
       : command.action==='put-decision' ? snapshot.decisions.find(r=>r.workflowId===command.workflowId&&r.decisionId===command.decisionId)?.recommendationSupport : undefined
     return freeze({appliedRevision,replayed,snapshot,...(recommendation?{recommendation}:{})})
   }
-  async read(principal: string, sessionId: string, filter: InstrumentFilter = {}): Promise<InstrumentSnapshot> {
+  async read(principal: string, sessionId: string, filter: InstrumentFilter = {}, signal?: AbortSignal): Promise<InstrumentSnapshot> {
+    signal?.throwIfAborted()
     const parsedFilter = this.filter(filter)
-    const context = await this.context(principal, sessionId, 'read')
-    const document = await this.load(context.controls.instance)
-    return this.supportSnapshot(this.snapshot(document, context.access, parsedFilter),context.controls,await this.policyState(context.controls.instance))
+    const context = await this.context(principal, sessionId, 'read', signal)
+    const document = await this.load(context.controls.instance, signal)
+    const policy = await this.policyState(context.controls.instance)
+    signal?.throwIfAborted()
+    return this.supportSnapshot(this.snapshot(document, context.access, parsedFilter),context.controls,policy)
   }
 
   async readCurrent(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentCurrentSnapshot> {
@@ -541,9 +544,9 @@ export class SessionInstruments {
   private async context(principal: string, sessionId: string, mode: 'read' | 'write', signal?:AbortSignal): Promise<{ controls: SessionControlsView; access: InstrumentAccess }> {
     signal?.throwIfAborted()
     const actor = id(principal, 'principal'), session = id(sessionId, 'sessionId')
-    const controls = await this.controls.readSession(actor, session)
+    const controls = await this.controls.readSession(actor, session, mode === 'read' ? signal : undefined)
     signal?.throwIfAborted()
-    const rawAccess=await this.authority.resolveAccess(actor, session, controls.instance, mode)
+    const rawAccess=await this.authority.resolveAccess(actor, session, controls.instance, mode, mode === 'read' ? signal : undefined)
     signal?.throwIfAborted()
     const access = parseAccess(rawAccess, actor, session)
     return { controls, access }

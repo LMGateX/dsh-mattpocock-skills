@@ -359,12 +359,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const check=async(caller:HostCaller,sessionId?:string,signal?:AbortSignal)=>{
     if(closing)denied('instrument runtime is disposing')
-    signal?.throwIfAborted();await ports.authorizeCaller(caller,sessionId);signal?.throwIfAborted()
+    signal?.throwIfAborted();await ports.authorizeCaller(caller,sessionId,signal);signal?.throwIfAborted()
   }
   const policyView=(read:SessionControlsView):SessionControlsView=>read.policy.configurationRevision<savedPolicy.revision?{...read,policy:resolvePolicy(savedPolicy,read.instance.controlWorkspaceId,read.policy.workspaceVerified)}:read
   const identity=async(caller:HostCaller,sessionId:string,signal?:AbortSignal,register=true):Promise<SessionControlsView>=>{
     await check(caller,sessionId,signal)
-    const read=register?await controls.ensureSession(caller.principalId,sessionId):await controls.readSession(caller.principalId,sessionId)
+    const read=register?await controls.ensureSession(caller.principalId,sessionId):await controls.readSession(caller.principalId,sessionId,signal)
     const view=policyView(read)
     cachedSessions.set(sessionId,view);nativeWindows.set(sessionId,view.policy.extensionEnabled&&view.policy.features.windows.requested)
     signal?.throwIfAborted();return view
@@ -419,13 +419,15 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   /** Raw grants are upper bounds, not independent owner overrides. Verify every real edge
    * on each read/CAS attempt; restoring a parent scope intentionally restores its raw grants. */
-  const effectiveScope=async(doc:RuntimeDocument,sessionId:string,view:SessionControlsView):Promise<InstrumentScope>=>{
+  const effectiveScope=async(doc:RuntimeDocument,sessionId:string,view:SessionControlsView,signal?:AbortSignal):Promise<InstrumentScope>=>{
+    signal?.throwIfAborted()
     const chain:string[]=[],seen=new Set<string>()
     let cursor=sessionId
     while(cursor!==view.instance.ownerSessionId){
       if(seen.has(cursor))denied('cyclic task delegation chain')
       seen.add(cursor);chain.push(cursor)
-      const fact=await ports.authority.resolveSession(cursor)
+      const fact=await ports.authority.resolveSession(cursor,signal)
+      signal?.throwIfAborted()
       if(fact?.kind!=='managed-child')denied('task delegation parent chain unavailable')
       const row=doc.assignments.find(a=>a.sessionId===cursor)
       if(row&&(row.instrumentInstanceId!==view.instance.instrumentInstanceId||row.parentSessionId!==fact.parentSessionId))denied('task delegation parent or instance conflict')
@@ -441,16 +443,17 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     return permission
   }
-  const scope=async(principal:string,sessionId:string,view:SessionControlsView):Promise<InstrumentScope>=>{
+  const scope=async(principal:string,sessionId:string,view:SessionControlsView,signal?:AbortSignal):Promise<InstrumentScope>=>{
+    signal?.throwIfAborted()
     if(principal===ports.operatorPrincipal)return {kind:'coordinator'}
-    return effectiveScope(await load(),sessionId,view)
+    return effectiveScope(await load(),sessionId,view,signal)
   }
-  const authority:InstrumentAuthority={async resolveAccess(principal,sessionId,instance){
+  const authority:InstrumentAuthority={async resolveAccess(principal,sessionId,instance,_access,signal){
     const caller=callerFor(principal,sessionId,ports.operatorPrincipal)
-    await check(caller,sessionId)
-    const view=await controls.readSession(principal,sessionId)
+    await check(caller,sessionId,signal)
+    const view=await controls.readSession(principal,sessionId,signal)
     if(view.instance.instrumentInstanceId!==instance.instrumentInstanceId)denied('instrument authority identity mismatch')
-    return {author:caller.kind==='user'?{kind:'user',principalId:principal,sessionId:null}:{kind:'agent',principalId:principal,sessionId},scope:await scope(principal,sessionId,view)}
+    return {author:caller.kind==='user'?{kind:'user',principalId:principal,sessionId:null}:{kind:'agent',principalId:principal,sessionId},scope:await scope(principal,sessionId,view,signal)}
   }}
   const ownerPolicies=new OwnerDecisionPolicyStore({
     storageFor:instance=>ports.openUnitStorage(ownerDecisionPolicyTableName(instance.instrumentInstanceId),parseOwnerDecisionPolicyDocument),
@@ -483,7 +486,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   let windowsProgram!:WindowProgramPort, consumptionProgram!:ConsumptionProgramPort
   // S is the host's live run status (live Agent.status over event-maintained membership); the ledger stays audit only.
   const windows=new SessionWindows(controls,ports.windowStorage,authority,{runtimeId,capability:'cooperative',requireKnownRuntime:false,
-    nativeActivity:ownerSessionId=>ports.nativeSubagentActivity(ownerSessionId),
+    nativeActivity:(ownerSessionId,signal)=>ports.nativeSubagentActivity(ownerSessionId,signal),
     bindProgram:port=>{windowsProgram=port}})
   const ownerCaller:HostCaller={kind:'user',principalId:ports.operatorPrincipal,sessionId:null}
   // Repeating an observation is not new evidence: every start/status/end edge of a native child
@@ -556,7 +559,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       authority:{async authorize(principal,access,resource){
         if(principal!==caller.principalId)denied('resource caller mismatch')
         await check(caller,view.association.sessionId,signal)
-        const current=await controls.readSession(principal,view.association.sessionId),permission=await scope(principal,view.association.sessionId,current)
+        const readSignal=access==='read'?signal:undefined
+        const current=await controls.readSession(principal,view.association.sessionId,readSignal),permission=await scope(principal,view.association.sessionId,current,readSignal)
         if(resource&&resource.ownerInstanceId!==current.instance.instrumentInstanceId)denied('resource belongs to another owner')
         if(permission.kind!=='coordinator')denied('legacy resource access requires actual owner coordinator')
         if((access==='create'||access==='borrow')&&current.policy.features.binding.status!=='configured')throw new ControlsError('feature-disabled','new worktree resources require enabled binding intent')
@@ -576,7 +580,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         result=await queue.run(async():Promise<SessionSummaryResult>=>{
           await check(caller,selected.sessionId,signal)
           // List navigation neither registers sessions nor retains them as native-runtime handles.
-          const view=policyView(await controls.readSession(caller.principalId,selected.sessionId))
+          const view=policyView(await controls.readSession(caller.principalId,selected.sessionId,signal))
           let records:SessionSummary['records']=null,sourceRevision:number|null=null,permission:InstrumentScope|null=null
           const health:SessionSummary['health'][number][]=[]
           try{
@@ -613,7 +617,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   /** Model recovery is deliberately separate from snapshot(): no historical projection/capture. */
   const modelIdentity = async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<{identity:ModelIdentity;view:SessionControlsView}>=>{
     const view=await identity(caller,sessionId,signal,false)
-    return {view,identity:{instance:view.instance,caller,sessionId,scope:await scope(caller.principalId,sessionId,view)}}
+    return {view,identity:{instance:view.instance,caller,sessionId,scope:await scope(caller.principalId,sessionId,view,signal)}}
   }
   const validateModelIdentity=async(caller:HostCaller,sessionId:string,expected:ModelIdentity,signal:AbortSignal):Promise<void>=>{
     const current=(await modelIdentity(caller,sessionId,signal)).identity
@@ -649,7 +653,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const rows=records===null?[]:recordSources(records,ownerDecisionPolicy)
     for(const kind of ['workflow','ticket','task-reference','decision'])add(kind,rows.filter(row=>kind==='workflow'?row.preview.axisKey===undefined&&!(row.preview.localTicketId||row.preview.decisionId):kind==='task-reference'?row.preview.kind==='task-reference':kind==='ticket'?row.preview.localTicketId!==undefined&&row.preview.kind!=='task-reference':row.preview.decisionId!==undefined),records===null?null:[records.revision,records.viewerRevision,...(kind==='decision'?[ownerDecisionPolicy]:[])],records===null?'unknown':'current')
     add('status-count',rows.filter(row=>row.preview.axisKey!==undefined),records?.revision??null,records===null?'unknown':'current')
-    try{windowView=await windows.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
+    try{windowView=await windows.read(caller.principalId,sessionId,signal)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
     add('window-ticket',windowView?.tickets.map(row=>({...modelSource('windows',['ticket',row.workflowId,row.localTicketId],windowView!.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{...row}}))??[],windowView?.revision??null,windowView===null?'unknown':'current')
     add('window-execution',windowView?.executions.map(row=>({...modelSource('windows',['execution',row.executionId],windowView!.revision,row),recordId:row.executionId,durable:true,preview:{...row}}))??[],windowView?.revision??null,windowView===null?'unknown':'current')
     const runtime=await load(),coordinator=who.scope.kind==='coordinator'
@@ -657,8 +661,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     let bindingRows:readonly WorktreeBindingCurrentRow[]=[],observationRows:readonly WorktreeObservationCurrentRow[]=[]
     if(coordinator){
       // Live cleanup observations fence page cuts, never the durable binding body's version.
-      try{const registry=await(await openWorktrees(view)).readCurrent(view.instance);bindingRows=registry.rows;const projected=bindingRows.map(bindingSource);add('worktree-binding',projected,[registry.revision,projected.map(row=>[row.key,row.preview.cleanupDue])])}catch(error){signal.throwIfAborted();add('worktree-binding',[],null,'unknown',String(error))}
-      try{const registry=await(await openObservations(view)).readCurrent(view.instance);observationRows=registry.rows;add('worktree-observation',observationRows.map(row=>{
+      try{signal.throwIfAborted();const registryModule=await openWorktrees(view);signal.throwIfAborted();const registry=await registryModule.readCurrent(view.instance);signal.throwIfAborted();bindingRows=registry.rows;const projected=bindingRows.map(bindingSource);add('worktree-binding',projected,[registry.revision,projected.map(row=>[row.key,row.preview.cleanupDue])])}catch(error){signal.throwIfAborted();add('worktree-binding',[],null,'unknown',String(error))}
+      try{signal.throwIfAborted();const registryModule=await openObservations(view);signal.throwIfAborted();const registry=await registryModule.readCurrent(view.instance);signal.throwIfAborted();observationRows=registry.rows;add('worktree-observation',observationRows.map(row=>{
         const source=observationSource(row),agent=ports.liveAgent(row.value.creatorSessionId),assignment=runtime.assignments.find(item=>item.sessionId===row.value.creatorSessionId&&item.instrumentInstanceId===view.instance.instrumentInstanceId),binding=bindingRows.find(item=>item.value.plannedChildSessionId===row.value.creatorSessionId||item.value.actualChildSessionId===row.value.creatorSessionId)
         return {...source,preview:{...source.preview,creatorActivity:agent===undefined?'gone':(agent as unknown as {status?:string}).status==='running'?'running':'idle',lane:assignment===undefined&&binding===undefined?null:{workflowId:assignment?.workflowId??null,ticketIds:assignment?.ticketIds??binding?.value.ticketIds??[],task:binding?.value.task??null,source:'inferred'},nativeChildren:nativeChildrenForObservation(row.value.creatorSessionId,runtime.nativeExecutions.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId))}}
       }),[registry.revision,runtime.revision,bindingRows.map(row=>[row.bindingId,row.revision]),observationRows.map(row=>[row.value.creatorSessionId,(ports.liveAgent(row.value.creatorSessionId) as unknown as {status?:string}|undefined)?.status??'gone'])])}catch(error){signal.throwIfAborted();add('worktree-observation',[],null,'unknown',String(error))}
@@ -708,7 +712,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(key===sourceKey(domain,'defaults'))source=modelSource(domain,['defaults'],policy.revision,policy.defaults)
       else for(const [workspace,value]of Object.entries(policy.workspaceOverrides))if(key===sourceKey(domain,'workspace',workspace)){source=modelSource(domain,['workspace',workspace],policy.revision,value);break}
     }else if(domain==='windows'){
-      const current=await windows.read(caller.principalId,sessionId)
+      const current=await windows.read(caller.principalId,sessionId,signal)
       assertProjectionScope({records:null,windows:current},who.scope)
       source=[...current.tickets.map(row=>modelSource(domain,['ticket',row.workflowId,row.localTicketId],current.revision,row)),...current.executions.map(row=>modelSource(domain,['execution',row.executionId],current.revision,row))].find(row=>row.key===key)??null
     }else if(domain==='assignment'){
@@ -716,7 +720,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       for(const row of runtime.assignments){if(row.instrumentInstanceId!==who.instance.instrumentInstanceId||sourceKey(domain,row.sessionId)!==key)continue
         const allowed=row.sessionId===sessionId||row.parentSessionId===sessionId
         if(!allowed)denied('assignment detail requires self or authenticated direct parent')
-        const permission=await effectiveScope(runtime,row.sessionId,view)
+        const permission=await effectiveScope(runtime,row.sessionId,view,signal)
         const effective=permission.kind==='coordinator'?row:{...row,workflowId:permission.workflowId,ticketIds:permission.ticketIds}
         if(who.scope.kind==='assigned'&&(effective.workflowId!==null&&effective.workflowId!==who.scope.workflowId||effective.ticketIds.some(ticket=>who.scope.kind==='assigned'&&!who.scope.ticketIds.includes(ticket))))throw new ControlsError('revision-conflict','assignment body exceeds model authorization cut')
         source=modelSource(domain,[row.sessionId],sourceVersion(effective),effective);break
@@ -757,7 +761,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // Rebuild once under this same FIFO permit; never stamp B onto the discarded A body.
     for(let attempt=0;attempt<2;attempt++){
     const view=await identity(caller,sessionId,signal,false)
-    const permission=await scope(caller.principalId,sessionId,view)
+    const permission=await scope(caller.principalId,sessionId,view,signal)
     const projectionBase=caller.principalId+'|'+sessionId+'|'+(currentOnly?'current':'full')
     const ownerDecisionPolicy=await readOwnerPolicy(view,signal)
     const liveCut=captureLiveCut(view.instance.ownerSessionId)
@@ -771,13 +775,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     const health: {scope:string;status:string;reason:string|null}[]=[]
     const runtimeDocument=await load()
+    signal.throwIfAborted()
     let records:ConsumptionSnapshot['records']=null,windowView:RuntimeSnapshot['windows']=null,resources:RuntimeSnapshot['resources']=[]
-    try{records=currentOnly?await instruments.readCurrent(caller.principalId,sessionId,signal):await instruments.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
-    try{windowView=await windows.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
+    try{records=currentOnly?await instruments.readCurrent(caller.principalId,sessionId,signal):await instruments.read(caller.principalId,sessionId,{},signal)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
+    try{windowView=await windows.read(caller.principalId,sessionId,signal)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
     try{if(permission.kind==='coordinator')resources=await resourceModule(caller,view,signal).resources.list(caller.principalId,signal);else health.push({scope:'resources',status:'restricted',reason:'coordinator registry is not assigned-child task data'})}catch(error){signal.throwIfAborted();health.push({scope:'resources',status:'unknown',reason:String(error)})}
     let worktreeBindings:NonNullable<RuntimeSnapshot['worktreeBindings']>=[]
     let bindingRows:readonly WorktreeBindingRow[]=[]
-    try{if(permission.kind==='coordinator'){const registry=await (await openWorktrees(view)).query(view.instance);bindingRows=registry.rows;worktreeBindings=registry.current.map(row=>({...row,cleanupDue:row.value.business.state!=='cleaned'&&row.value.actualChildSessionId!==null&&ports.liveAgent(row.value.actualChildSessionId)===undefined}))}else health.push({scope:'worktree-bindings',status:'restricted',reason:'coordinator registry is not assigned-child task data'})}catch(error){signal.throwIfAborted();health.push({scope:'worktree-bindings',status:'unknown',reason:String(error)})}
+    try{signal.throwIfAborted();if(permission.kind==='coordinator'){const registryModule=await openWorktrees(view);signal.throwIfAborted();const registry=await registryModule.query(view.instance);signal.throwIfAborted();bindingRows=registry.rows;worktreeBindings=registry.current.map(row=>({...row,cleanupDue:row.value.business.state!=='cleaned'&&row.value.actualChildSessionId!==null&&ports.liveAgent(row.value.actualChildSessionId)===undefined}))}else health.push({scope:'worktree-bindings',status:'restricted',reason:'coordinator registry is not assigned-child task data'})}catch(error){signal.throwIfAborted();health.push({scope:'worktree-bindings',status:'unknown',reason:String(error)})}
     // Observed native creations are durable facts plus read-time live facts (creator activity and
     // ticket lane). The plugin never decides whether a tree is still wanted and never records who
     // "uses" it: directory use is not observable in DSH.
@@ -789,7 +794,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         // this read. Run it once per instance off the read path, and invalidate the projection
         // only when it recovers facts so completed or empty replay cannot dirty a hot read.
         void replayWorktreeObservations(view).catch(()=>undefined)
-        const registry=await (await openObservations(view)).query(view.instance),assignments=runtimeDocument.assignments
+        signal.throwIfAborted()
+        const registryModule=await openObservations(view);signal.throwIfAborted()
+        const registry=await registryModule.query(view.instance);signal.throwIfAborted()
+        const assignments=runtimeDocument.assignments
         observationRows=registry.rows
         // Child facts belong to this owner instance only; nativeChildren is a read-time observed
         // association, never a strong binding and never a directory-usage claim.
@@ -829,6 +837,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     try{const notifications=runtimeDocument.notifications.filter(n=>n.instrumentInstanceId===view.instance.instrumentInstanceId);const pending=notifications.filter(n=>n.state==='pending').length,accepted=notifications.filter(n=>n.state==='accepted').length
       health.push({scope:'notifications',status:pending>0?'pending':accepted>0?'accepted':'current',reason:pending>0||accepted>0?'pending='+pending+', accepted-not-consumed='+accepted:null})
     }catch(error){signal.throwIfAborted();health.push({scope:'notifications',status:'unknown',reason:String(error).slice(0,1024)})}
+    signal.throwIfAborted()
+    // Once capture has accepted a persistent write, let that obligation settle.
     await captureSafely(view,async()=>{
       if(records!==null){
         // Only a new source/scope version or failed prior capture pays for retained histories.
@@ -842,6 +852,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
       await captureOthers(view,caller)
     })
+    signal.throwIfAborted()
     const historyFailure=historyFailures.get(view.instance.instrumentInstanceId);if(historyFailure)health.push({scope:'history',status:'unknown',reason:historyFailure})
     // Execution admission coverage is the native running-count knowledge, not ledger reconciliation.
     if(windowView)health.push(windowView.S.countKnown
@@ -871,7 +882,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       health.push({scope:'native-count',status:'current',reason:nativeCount.reestablished?'re-established after runtime '+String(nativeCount.previousRuntimeId):null})
     }
     signal.throwIfAborted()
-    const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId),assignmentScope=assignment===undefined?null:await effectiveScope(runtimeDocument,sessionId,view)
+    const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId),assignmentScope=assignment===undefined?null:await effectiveScope(runtimeDocument,sessionId,view,signal)
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...runtimeDocument.assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
     const value=freeze({sessionId,caller,delegateRegistered,ownerDecisionPolicy,policyGrants:{...grants,grants:grants.grants.filter(row=>permission.kind==='coordinator'?managed.has(row.sessionId):row.sessionId===sessionId)},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:assignmentScope?.kind==='assigned'?{workflowId:assignmentScope.workflowId,ticketIds:assignmentScope.ticketIds}:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})

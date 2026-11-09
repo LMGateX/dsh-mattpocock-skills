@@ -241,7 +241,7 @@ export interface WindowOptions {
   /** Compatibility flag: marks uninspected runtime reconciling, but never blocks reservations. */
   readonly requireKnownRuntime?: boolean
   /** Native host descendant activity for one owner; absent means no native count is available. */
-  readonly nativeActivity?: (ownerSessionId: string) => Promise<NativeSubagentActivity>
+  readonly nativeActivity?: (ownerSessionId: string, signal?: AbortSignal) => Promise<NativeSubagentActivity>
   readonly bindProgram: (port: WindowProgramPort) => void
   readonly newLeaseId?: () => string
 }
@@ -727,10 +727,10 @@ export class SessionWindows {
       compactHistory: (principal: string, sessionId: string, request: WindowCompactRequest, signal?: AbortSignal) => this.#compact(principal, sessionId, request, signal),
       purgeHistory: (principal: string, sessionId: string, request: WindowPurgeRequest, signal?: AbortSignal) => this.#purge(principal, sessionId, request, signal) }))
   }
-  async read(principal: string, sessionId: string): Promise<WindowSnapshot> {
-    const context = await this.#context(principal, sessionId, 'read')
-    const native = await this.#nativeCount(context.controls.instance.ownerSessionId)
-    return this.#snapshot(await this.#load(context.controls.instance), context, native)
+  async read(principal: string, sessionId: string, signal?: AbortSignal): Promise<WindowSnapshot> {
+    const context = await this.#context(principal, sessionId, 'read', signal)
+    const native = await this.#nativeCount(context.controls.instance.ownerSessionId, signal)
+    return this.#snapshot(await this.#load(context.controls.instance, signal), context, native)
   }
   async apply(principal: string, sessionId: string, input: TicketWindowCommand): Promise<TicketWindowResult> {
     const command = parseTicketWindowCommand(input)
@@ -908,9 +908,9 @@ export class SessionWindows {
   async #context(principal: string, sessionId: string, access: 'read' | 'write', signal?: AbortSignal): Promise<Context> {
     signal?.throwIfAborted()
     const actor = id(principal, 'principal'); const session = id(sessionId, 'sessionId')
-    const controls = await this.#controls.readSession(actor, session)
+    const controls = await this.#controls.readSession(actor, session, access === 'read' ? signal : undefined)
     signal?.throwIfAborted()
-    const resolved = await this.#authority.resolveAccess(actor, session, controls.instance, access)
+    const resolved = await this.#authority.resolveAccess(actor, session, controls.instance, access, access === 'read' ? signal : undefined)
     signal?.throwIfAborted()
     const raw = record(resolved, 'window access', ['author', 'scope'])
     const author = parseAuthor(raw.author)
@@ -952,10 +952,11 @@ export class SessionWindows {
     return freeze({ appliedRevision, replayed, dispatchable, token: token(lease), snapshot })
   }
   /** S is the native host's live run status (live Agent.status), never catalog residency; the ledger below is audit only. */
-  async #nativeCount(ownerSessionId: string): Promise<NativeSubagentActivity> {
+  async #nativeCount(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> {
+    signal?.throwIfAborted()
     if (this.#nativeActivity === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unavailable', depth: null }
-    try { return parseNativeActivity(await this.#nativeActivity(ownerSessionId)) }
-    catch { return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unreadable', depth: null } }
+    try { const native = await this.#nativeActivity(ownerSessionId, signal); signal?.throwIfAborted(); return parseNativeActivity(native) }
+    catch { signal?.throwIfAborted(); return { known: false, running: 0, total: 0, reason: 'native-subagent-activity-unreadable', depth: null } }
   }
   #snapshot(document: WindowDocument, context: Context, native: NativeSubagentActivity): WindowSnapshot {
     const policy = context.controls.policy; const feature = policy.features.windows
