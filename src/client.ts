@@ -837,7 +837,7 @@ function DecisionQueues(props: { readonly view: ClientSessionSnapshot; readonly 
     h('details', { 'aria-label': '其他裁决记录' }, h('summary', { style: { fontSize: '13px', color: decisionSecondary, cursor: 'pointer' } }, '其他裁决记录（不是待你裁决） · ' + all.filter(matches.other).length + ' 条'), items('other')))
 }
 function decisionReadingIdentity(view: ClientSessionSnapshot): string {
-  return JSON.stringify([view.sessionId, view.instance, view.caller, view.policyGrants.revision, view.records?.scope, inputRecords(view) !== null])
+  return JSON.stringify([summaryReadingIdentity(view), view.policyGrants.revision, view.records?.scope, inputRecords(view) !== null])
 }
 function recordCheckFacts(records: InstrumentSnapshot): ReactElement {
   const rows = Array.isArray(records.decisions) ? uniqueDecisionRecords(records.decisions) : null
@@ -860,7 +860,10 @@ function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' |
 // One explicit navigation selection per plugin activation; no business content, polling or Session retention.
 interface NotificationReadingValue { readonly sessionId: string | null; readonly scope: string | null; readonly key: string | null; readonly identity: string | null }
 interface NotificationReading { readonly getSnapshot: () => NotificationReadingValue; readonly subscribe: (listener: () => void) => () => void; readonly select: (view: ClientSessionSnapshot | null, key: string | null) => void }
-function summaryReadingIdentity(view: Pick<ClientSessionSnapshot, 'sessionId' | 'instance' | 'caller'>): string { return JSON.stringify([view.sessionId, view.instance, view.caller]) }
+function summaryReadingIdentity(view: Pick<ClientSessionSnapshot, 'sessionId' | 'instance' | 'caller'>): string {
+  const i = view.instance, c = view.caller
+  return JSON.stringify([view.sessionId, i.instrumentInstanceId, i.ownerSessionId, i.controlWorkspaceId, c.kind, c.principalId, c.sessionId])
+}
 function notificationReadingIdentity(view: ClientSessionSnapshot): string {
   const c = view.caller, i = view.instance
   return JSON.stringify([view.sessionId, c.kind, c.principalId, c.sessionId, i?.instrumentInstanceId, i?.ownerSessionId, i?.controlWorkspaceId, view.policyGrants?.revision])
@@ -930,7 +933,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   if (!same || view !== null && permit.allowed !== shown) setPermit({ observer: props.observer, sessionId: props.sessionId, allowed: shown })
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
-  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance, view?.caller, view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
+  const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view === null ? null : summaryReadingIdentity(view), view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
     view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
   const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null; readonly decisionKeys: readonly string[] }>(() => ({ identity, category: null, decisionKeys: [] }))
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
@@ -1108,7 +1111,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
   const observation = useObservation(props.observer)
   const tab = props.useTabInfo()
   const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && props.observer.sessionId === props.sessionId ? observation.value : null
-  const readIdentity = JSON.stringify([props.sessionId, props.observer.sessionId, current?.instance, current?.caller, current?.policyGrants.revision, current?.records?.scope,
+  const readIdentity = JSON.stringify([props.sessionId, props.observer.sessionId, current === null ? null : summaryReadingIdentity(current), current?.policyGrants.revision, current?.records?.scope,
     current?.policy.display.rightPanel, current !== null && inputRecords(current) !== null])
   const [reading, setReading] = useState<{ readonly identity: string; readonly key: string | null }>({ identity: readIdentity, key: null })
   if (reading.identity !== readIdentity) setReading({ identity: readIdentity, key: null })
