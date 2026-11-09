@@ -60,9 +60,180 @@ U1 不依赖新增后端 wire：按照第 1、3 节在呈现层仅过滤明确 0
 
 U1 测试先锁明确 0/unknown/1→0 阅读/焦点与次级核对；使用真实 Cordis/plugin/inject、原始 session controller/原生 SlotCore 标准 hook、sidebarRight 导出的 apply/controller-store/resource/codec 装配，验证迟到/撤回/重加服务、旧点击、标题初次/rename、真 direct-parent 地址和 retain/release。无能力旧宿主必须基础激活，不把普通对象 ctx 的 GREEN 当依赖已覆盖。完整读取与当前 GUI 的证明边界仍依第 4 节。
 
-### 5.2 B 与 U2 策略/采用 wire（待冻结，不实施）
+### 5.2 B 与 U2 策略/采用 wire（已冻结）
 
-待后端/客户端精确接口核对后提交：受认证 owner 策略 Remote、策略/epoch/候选/采用持久位置与版本、模型严格请求与小回执、公开投影/消费、并发顺序及旧端兼容。独立设置页本批只用明确会话 selector，默认无选择；不扩 uiSession/current-selection bridge，不从 mounted/目录首项/cwd 猜 owner。新增预授权 Remote 应为独立可选 contribution/namespace，缺能力只使新控制降级，不破坏原有基础 mount/read。
+browser-pure 新模块 recommendation-contract 定义以下严格类型、parsers 和独立 RECOMMENDATION_REMOTE_CONTRIBUTION，namespace 为 mattpocockRecommendationSupport。旧 REMOTE_CONTRIBUTION/mattpocockControls 不增删方法；新增可选 mount/namespace 失败只使本控制 unsupported，不阻止基础 apply/read，不能只对 Remote Proxy 做 typeof 检测而假称能力存在。read 使用既有 transport cancellation，AbortSignal 不进 JSON。
+
+~~~ts
+type OperatorAuthor = {
+  readonly kind: 'user'; readonly principalId: string; readonly sessionId: null
+}
+interface OwnerDecisionPolicyEpoch {
+  readonly epochId: string
+  readonly policyRevision: number // opening save appliedRevision
+  readonly scope: 'new-decisions'
+  readonly enabledAt: number // server epoch ms
+  readonly expiresAt: number // immutable server epoch ms
+  readonly authorizedBy: OperatorAuthor
+}
+type OwnerDecisionPolicyStatus =
+  'active' | 'disabled' | 'expired' | 'feature-disabled' | 'unknown'
+type OwnerDecisionPolicySaveRequest = {
+  readonly operationId: string
+  readonly expectedRevision: number // owner policy, NOT config/business revision
+  readonly expectedScope: InstrumentInstance // equality-only ABA fence, NOT authority
+} & (
+  | {readonly action: 'enable'; readonly durationMs: number}
+  | {readonly action: 'disable'}
+)
+interface OwnerDecisionPolicySnapshot {
+  readonly schemaVersion: 1
+  readonly instance: InstrumentInstance
+  readonly revision: number
+  readonly saved: {readonly enabled: boolean; readonly epoch: OwnerDecisionPolicyEpoch | null}
+  readonly effective: {readonly status: OwnerDecisionPolicyStatus; readonly reason: string | null}
+}
+interface OwnerDecisionPolicySaveResult {
+  readonly appliedRevision: number
+  readonly replayed: boolean
+  readonly operation: {
+    readonly action: 'enable' | 'disable'
+    readonly epochId: string | null
+    readonly expiresAt: number | null
+  } // historical result, not renewed permission
+  readonly snapshot: OwnerDecisionPolicySnapshot // current authorized state
+}
+// 独立可选 namespace mattpocockRecommendationSupport Remote（原 namespace 不变）:
+readOwnerDecisionPolicy(sessionId: string, signal?: AbortSignal): Promise<OwnerDecisionPolicySnapshot>
+saveOwnerDecisionPolicy(sessionId: string, request: OwnerDecisionPolicySaveRequest): Promise<OwnerDecisionPolicySaveResult>
+~~~
+
+~~~ts
+// 原 mattpocock_record({action:'apply', command:...})，不增工具名
+{
+  operationId: string,
+  expectedRevision: number, // current businessRevision
+  action: 'adopt-decision-recommendation',
+  workflowId: string,
+  decisionId: string,
+  references?: readonly string[],
+  value: {
+    optionKey: string,
+    decisionRevision: number, // source revision, NOT business CAS
+    policyEpochId: string,
+    policyRevision: number
+  }
+}
+interface DecisionPolicyBinding {
+  readonly createdRevision: number
+  readonly optionKey: string
+  readonly policy: OwnerDecisionPolicyEpoch
+}
+interface DecisionPolicySelection {
+  readonly kind: 'owner-policy'
+  readonly selectedOptionKey: string
+  readonly decisionSourceRevision: number
+  readonly policy: OwnerDecisionPolicyEpoch
+  readonly authorizedAt: number // server final gate time; adopter is event.author
+}
+interface RecommendationCandidate {
+  readonly optionKey: string
+  readonly decisionRevision: number
+  readonly policyEpochId: string
+  readonly policyRevision: number
+  readonly expiresAt: number
+}
+type RecommendationReason =
+  'policy-disabled' | 'policy-expired' | 'feature-disabled' | 'no-creation-binding' |
+  'decision-changed' | 'not-pending-user' | 'no-exact-recommendation' |
+  'policy-epoch-changed' | 'different-addressee'
+type RecommendationOutcome =
+  {readonly status:'candidate'; readonly candidate:RecommendationCandidate} |
+  {readonly status:'adopted'; readonly selection:DecisionPolicySelection} |
+  {readonly status:'not-eligible'; readonly reason:RecommendationReason} |
+  {readonly status:'unknown'; readonly reason:'policy-unavailable'|'projection-unavailable'}
+interface OwnerDecisionPolicyPublic {
+  readonly revision: number | null
+  readonly status: OwnerDecisionPolicyStatus
+  readonly epochId: string | null
+  readonly expiresAt: number | null
+  readonly scope: 'new-decisions'
+  readonly reason: string | null
+}
+~~~
+
+#### 策略保存与权限
+
+- Route sessionId 是用户明确选定/当前已核验的目标会话，服务端重解析其真实 owner-instance；允许已登记受权 child 解析到同主实例，不要求用户从 label 猜 root。读不 ensure/创建/扫描/唤醒；未知或未归属实例返回明确 unavailable/unknown-session。save 仅操作既有真实实例。expectedScope 三 ID 仅作 ABA equality fence，不能据它授予/构造归属。
+- 仅真实 operatorCaller 经 this.run 可读写本控制，Runtime/store 重验 kind=user、principalId=当前 ports.operatorPrincipal、sessionId=null；没有 agent 自开入口，已有 agent policy-write grant 也不赋此权。模型只读受权的精简当前状态，不调用保存 Remote。
+- durationMs 为 1..86400000 的正安全整数，不 clamp。UI 仅 1/4/8 小时、默认8但显式确认，后端 enabledAt/expiresAt 为权威；读/刷新/重放不续期。不同 opId 的 enable（含续期）创建新 epoch；disable 保留旧 epoch 供历史显示但失效其未采用候选。
+- 新 enable 必须在当前管理/workspace/pending configured 时才允许；OFF 仍可 disable。既存意图在 feature OFF 时 effective=feature-disabled，不隐式开总闸；重新 ON 可恢复未过期且未关闭 epoch。先做 operator/归属/expectedScope 与既存 opId 重放核验，再对新 enable 作 feature gate，不能在 OFF 时把已成功 enable 的历史重放变成新写/错误续期。
+- save 结果分原 appliedRevision/operation 历史效果与当前 snapshot；同 opId+作者+规范载荷重放不写，不同载荷冲突，不自动换 expectedRevision。存储 uncertain fail closed，不用内存旧 active 兜底。
+- 独立设置页仅明确 selector，默认无选择；不扩 uiSession/current-selection bridge，不从 mounted/首项/cwd 猜 owner。管理/读取未知不能画成已确认 OFF；当前 scope 有效时关闭旧策略不依赖先启用管理。
+
+#### 采用与持久来源
+
+模型仍用 mattpocock_record 的 apply，不增加工具名；command.action=adopt-decision-recommendation，公共字段 operationId、expectedRevision（businessRevision）、workflowId、decisionId、可选 references；value 精确为 optionKey、decisionRevision、policyEpochId、policyRevision。agent-only；真实人工编辑继续 put-decision，不把 operator 伪装 adopter。
+
+首次 put 创建时，只对真实 agent、pending=true、addressee=user（明确 principal 必须等实际授权者）、当前策略/feature 有效、recommendation 严格等于唯一 options key 的新项生成 binding。binding 钉住 createdRevision，之后任何普通 put/reopen/改推荐都不能重获资格，viewer-only 不影响。首写无 exact key 或 policy 读失败仍可保存普通问题，但不追认绑定；工具分别说明 not-eligible/unknown。第二次采用不因为记录已存在就丢资格。
+
+~~~ts
+type DecisionPolicyEventEffect =
+  {readonly kind:'bound'; readonly binding:DecisionPolicyBinding} |
+  {readonly kind:'adopted'; readonly selection:DecisionPolicySelection}
+// V4 event: decisionPolicy?: DecisionPolicyEventEffect (OUTSIDE command)
+// decision row: policyBinding?:DecisionPolicyBinding; policySelection?:DecisionPolicySelection
+// retained decision Change: policySelection?:DecisionPolicySelection (OUTSIDE value)
+// V4 InstrumentCommandMetadata: decisionPolicy?:DecisionPolicyEventEffect (OUTSIDE digest)
+~~~
+
+采用重验当前 auth/assignment（变更前后全引用/无票 creator）、business CAS、current row revision=创建 binding revision、候选精确 key 和原推荐/选项、当前同一 epoch/revision、pending user/feature/时间。所有 awaited read 后，紧贴 instrument CAS 开始前采样 authorizedAt/recordedAt 重验到期；[enabledAt,expiresAt) 半开区间，等于到期即拒绝。CAS 已开始且 ack 晚于到期属于在途已授权提交，不承诺 fsync 在期限前完成。
+
+仅一个实际 agent authored event 明确 pending=false，保留原 status/question/result/await/context/options/recommendation/addressee/task references/约束；references 是旧当前与本次的稳定并集。selection 放 command 外可信 metadata，模型不得通过 DecisionValue 写入 policyBinding/policySelection/author；旧 command fingerprint/digest 仍只规范 command+actual author。普通后续 put 产生新业务事实并撤下当前 policySelection，但历史版本与创建 binding 保留；不把旧 policy 选择冒充人工修正后的最新来源。
+
+#### 存储版本、幂等、缓存和消费
+
+- 新 owner policy engine 通过 openUnitStorage、按 instance 派生独占表名 owner_decision_policy_ + sha256(instanceId).slice(0,32)。文档 schemaVersion=1，绑定真实三 ID，含 revision/enabled/epoch/updatedAt/updatedBy 与持久技术幂等 receipts；无副作用虚拟缺省 revision0/disabled。坏文档不是空/关闭。所有真实保存保留去重回执，不静默驱逐旧 opId。
+- Instrument V4 沿 V3 checkpoint/taskReferences layout 加上上述可信 event/row/version/technical-command metadata；仅首次 qualified bound creation 与 decision 同一 CAS 升 V4。开策略本身不升级，读与普通旧项不批量迁移，V1/2/3 仍严格可读，V4 taskReferences/current/full/changes/compact/purge 不能漏字段。未知版本不 reset。旧 binary 不读 V4，须在迁移说明写明首次 V4 后仅换旧包不足回滚；停止旧 writer/备份边界不通过恢复旧账覆盖真实新写。
+- records.capabilities 增 decisionRecommendationAdoption=true，storageVersions=[1,2,3,4]；current/detail 授权行带只读 policyBinding/policySelection、临时 recommendationSupport。Runtime/current/消费顶层可选 ownerDecisionPolicy（缺失不是 active）。
+- 已存 opId 先经当前身份/范围再查同作者/原载荷重放，只有新操作再核策略/feature/CAS并产生 effect；关闭不能改变旧 fingerprint。创建 replay 要重验当前候选支持，采用 replay 的原 selection 与当前已修正 row 分别呈现，不拿历史回执作新许可。
+- policy save/global save/grant/assignment/put/adopt 共用现有 runtime FIFO/track；新 engine 不另嵌 queue，避免重入死锁。两个域无联写事务：binding+创建在一个 instrument CAS；policy 与 instrument 只受单 host/open handle/FIFO 顺序保证，不宣称跨进程事务。
+- 独立 owner-policy source revision+effective 状态桶必须进入 projection/readSession/model/消费 read gate/token；跨到期桶不能命中旧 active 缓存，不每读注入 now/倒计时抖动前缀。时钟无效或回拨到 enabledAt 前为 unknown，不新采用。
+- history capture 每版保留 selection/refs/source，currentIndex/full changes/技术去重与 checkpoint 同步；实际作者仍 agent。显式 included 的 contextConclusions 可携 policySelection 与 nullable result，不能因没有 result 字符串遗失已采用选项；excluded 保留，不自动 set-context/await 常驻。
+- 回执 schemaVersion2 保持既有有界 envelope；recommendation 为 candidate/adopted/not-eligible/unknown 判别联合，关键 key/sourceRevision/policyRef/commit 状态优先于 label。typed/render/PTC 同值，8KiB 写/64KiB 读预算，已提交后 DTO/历史/通知失败不能重执业务写。普通问题在 optional policy 源失败时无 binding+unknown；新采用 fail closed，不伪造成功。
+
+#### B1/B2/U2 单 writer 边界
+
+~~~ts
+// recommendation-contract.ts: browser safe; implementation-specific storage imports forbidden
+interface OwnerDecisionPolicyState {
+  readonly revision:number
+  readonly enabled:boolean
+  readonly epoch:OwnerDecisionPolicyEpoch|null
+}
+interface DecisionPolicyReader {
+  read(instance:InstrumentInstance):Promise<OwnerDecisionPolicyState>
+}
+// owner-decision-policy.ts: backend-only, supports the same reader
+interface OwnerDecisionPolicyStore extends DecisionPolicyReader {
+  save(instance:InstrumentInstance, request:OwnerDecisionPolicySaveRequest,
+       author:OperatorAuthor):Promise<{
+    readonly appliedRevision:number; readonly replayed:boolean;
+    readonly operation:OwnerDecisionPolicySaveResult['operation'];
+    readonly state:OwnerDecisionPolicyState
+  }>
+}
+// constructor deps: storageFor(instance) -> VersionedStorage<OwnerDecisionPolicyDocument>,
+// now, newEpochId, authorizeOperator(author,instance) callback (mandatory).
+// No default allowing author; B2 binds callback to current ports.operatorPrincipal.
+// B1 SessionInstruments constructor gets decisionPolicy?:DecisionPolicyReader,
+// and existing core now clock. Missing reader: no binding + adoption unsupported.
+~~~
+
+补充 store constructor 的 authorizeEnable(instance) mandatory callback：在 operator/expectedScope/dedup/CAS 后，仅对新 enable 调用；B2 在现有 FIFO 内绑定 fresh feature configured 检查，关闭不要求 feature ON，历史 replay 不因当前 OFF 被误拦。authorizeOperator 仍是独立 mandatory 真实 operator 检查，没有默认放行。
+
+B1 独占 recommendation-contract types/parsers/contribution、owner-decision-policy engine、instrument-state/instruments/controls index 与 domain tests。B2 独占 runtime/host/model-tools/consumption 与装配 tests，并通过上述 reader/store 连接 FIFO、源 token、真实 Remote/作者、投影/消费/历史。U2 由 client writer 在 U1 交付后消费 B1 的只读契约，只写 client 图与 UI tests，不并发修改 client.ts。主代理串行生成 lib/声明、包清单与版本。
+
 
 ### 5.3 R/I 安装激活边界（已冻结）
 
