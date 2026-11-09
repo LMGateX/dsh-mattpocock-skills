@@ -1,5 +1,12 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.21.0 active-read performance
+
+- Keeps DSH >=0.2.2-rc.1 and Node >=24.9.0; tests only DSH 0.2.2-rc.1.
+- Only plugin-owned read freshness, trusted positive live descriptor lifetime and optional read cancellation change. Missing proof stays conservative; physical/source/permission validation remains required. Read aborts do not revoke accepted writes or their durability obligations.
+- No new storage version, business migration, policy default, management enablement, channel or provider-precedence change. The 0.20.0 persistent-value/old-reader boundary below remains applicable; this optimization is not a data downgrade utility.
+- Use the exact verified release artifact with the official Profile manager after isolated gates. Disk installation, running-host activation and browser loading remain separate facts; do not patch the SDK or restart the current service automatically. See the [contract](<docs/PERFORMANCE_ACTIVE_READS.md>).
+
 ## Plugin 0.20.0 persistent recommendation authorization
 
 This section records the 2026-11-10 accepted follow-up. It is a compatibility boundary, not a claim that the host has loaded the new bytes.
