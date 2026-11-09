@@ -356,7 +356,7 @@ export class SessionInstruments {
     }))
     const snapshot:InstrumentCurrentSnapshot=freeze({ instance: context.controls.instance, revision: document.revision, businessRevision: state.businessRevision,
       viewerRevision: Object.hasOwn(state.viewerRevisions, access.author.principalId) ? state.viewerRevisions[access.author.principalId]! : 0,
-      scope: access.scope, focusedWorkflowId: null, capabilities: RECORD_CAPABILITIES, workflows, tickets, taskReferences, decisions,
+      scope: access.scope, focusedWorkflowId: null, capabilities: { ...RECORD_CAPABILITIES, decisionRecommendationAdoption:this.decisionPolicy!==undefined }, workflows, tickets, taskReferences, decisions,
       summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', totalTickets: tickets.length, totalTaskReferences: taskReferences.length, statusCounts,
         pendingDecisionCount: decisions.filter(row => row.value.pending).length,
         pendingUserDecisionCount: decisions.filter(row => row.value.pending && row.value.addressee?.kind === 'user').length,
@@ -627,7 +627,7 @@ export class SessionInstruments {
     }))
     return freeze({ instance: { instrumentInstanceId: document.instrumentInstanceId, ownerSessionId: document.ownerSessionId, controlWorkspaceId: document.controlWorkspaceId },
       revision: document.revision, businessRevision: state.businessRevision, viewerRevision: this.viewerRevision(state, access.author.principalId), scope: access.scope,
-      capabilities: RECORD_CAPABILITIES, focusedWorkflowId: filter.workflowId ?? null, workflows: workflows.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId),
+      capabilities: { ...RECORD_CAPABILITIES, decisionRecommendationAdoption:this.decisionPolicy!==undefined }, focusedWorkflowId: filter.workflowId ?? null, workflows: workflows.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId),
       tickets: tickets.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId), taskReferences: taskReferences.filter(row => filter.workflowId === undefined || row.workflowId === filter.workflowId), decisions, changes,
       ...(document.schemaVersion!==1 && document.checkpoint.throughRevision>0 ? {historyCoverage:{checkpointRevision:document.checkpoint.throughRevision,purged:document.coverage.some(c=>c.removedVersions>0)}} : {}),
       summary: { countingScope: access.scope.kind === 'coordinator' ? 'instance' : 'assignment', totalTickets: tickets.length, totalTaskReferences: taskReferences.length, statusCounts,

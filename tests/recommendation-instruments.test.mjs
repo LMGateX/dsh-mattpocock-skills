@@ -114,6 +114,8 @@ test('optional policy failure saves an ordinary question with unknown support an
  assert.equal((await f.instruments.read('A','A')).decisions[0].recommendationSupport.reason,'no-creation-binding')
  const noReader=new SessionInstruments(f.controls,f.storage,f.authority,()=>12345)
  assert.equal((await noReader.read('A','A')).capabilities.decisionRecommendationAdoption,false)
+ const compacted=await noReader.compact('A','A',{operationId:'unsupported-compact',expectedRevision:2})
+ assert.equal(compacted.snapshot.capabilities.decisionRecommendationAdoption,false)
  await assert.rejects(noReader.apply('A','A',{operationId:'unsupported',expectedRevision:2,workflowId:'flow',decisionId:'D',action:'adopt-decision-recommendation',value:{optionKey:'B',decisionRevision:2,policyEpochId:'epoch',policyRevision:1}}))
 })
 test('expiry is a half-open interval checked after awaited policy reads; an in-flight CAS can acknowledge after expiry',async()=>{
