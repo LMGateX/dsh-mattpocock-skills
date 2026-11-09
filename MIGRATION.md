@@ -1,5 +1,17 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.20.0 persistent recommendation authorization
+
+This section records the 2026-11-10 accepted follow-up. It is a compatibility boundary, not a claim that the host has loaded the new bytes.
+
+- 0.20.0 keeps the same host floor as 0.19.0: DSH >=0.2.2-rc.1 and Node >=24.9.0; only DSH 0.2.2-rc.1 is tested. Installation still does not enable management or recommendation support.
+- Finite presets are now 1/2/4/8/12/24 hours with a 12-hour form default. The form default is not an enable action. The new **持续生效** mode is represented by `expiresAt:null` (and enable request `durationMs:null`); it has no automatic expiry and remains active until the operator disables it or the pending-decision feature is turned off. It is not a sentinel timestamp and does not auto-renew.
+- Persistent authorization is stored in the existing owner-policy `schemaVersion:1` document (the epoch value domain is widened) and in the existing V4 decision metadata; no V5 layout or new storage version is introduced. `RecommendationCandidate.expiresAt` may be null and mirrors the persistent epoch.
+- **After a persistent epoch is written, rollback to 0.19.0 is not a package-only downgrade.** The 0.19.0 parser rejects a null `expiresAt` as `invalid-state`; reading the policy control fails closed rather than treating it as active or disabled. If that epoch is also embedded in a V4 decision binding/selection, the 0.19.0 instrument parser rejects that document as well. Establish a verified backup, stop the old writer and decide whether to remain on 0.20.0 or perform a controlled data migration; do not edit schema versions, substitute a fake expiry, replay stale backups or run mixed-version writers.
+- A policy-only persistent write does not rewrite instrument documents. Finite 0.19.0 epochs remain readable by 0.20.0 without migration. A later ordinary human answer or a new finite epoch does not erase the retained persistent epoch/history, so the old-reader rejection can persist after the mode is changed back.
+- The status row marker “推荐支持 开” is a read-only display of an active policy; it is not a new approval, does not add counts and does not change the decision author. Purple subagent titles are display-only and do not grant navigation or session access.
+- Disk installation, running-host activation and browser loading remain separate checks. A same-package CLI update may not recompose the selected bundle; use a supported PluginManager action when available, otherwise report installed-but-awaiting-reload. Do not restart the current service automatically or edit unrelated configuration to force HMR.
+
 ## Plugin 0.19.0 recommendation-support compatibility
 
 This section fixes the accepted upgrade and rollback boundary before implementation. It is not a claim that a new version has shipped or that the running host has loaded it. See the [accepted collaboration contract](<docs/COLLABORATION_RECOMMENDATION_SUPPORT.md>) for the exact API and delivery gates.

@@ -4,6 +4,8 @@
 
 > **2026-11-10 兼容范围更正（覆盖原双宿主门禁）：** 仅 DSH v0.2.2-rc.1 实测；安装兼容下限 `>=0.2.2-rc.1`，Node `>=24.9.0`。低版本号负例由当前 rc.1 的真实兼容函数判定，不启动 alpha.4；更高版本号允许不等于已实测。旧低下限未发布候选必须更正并新冻结，旧日志仅留证。不改变存储兼容、权限、缺能力安全降级或不擅重启边界。
 
+> **2026-11-10 期限与呈现调整（所有者认可）：** 限时预选扩为 1/2/4/8/12/24 小时并默认 12 小时；另增“持续生效”模式（`durationMs:null` / `expiresAt:null`），不自动到期，只能由同一 switch 显式启用或关闭。到期字段保持可空，不引入哨兵时间或自动续期。预授权生效时在裁决/T/S 状态行显示一个短标记“推荐支持 开”，完整状态放悬停/可访问名称，不向状态行塞计数或长句。可导航子代理标题复用 S 的紫色；父链未知/不可导航标题仍为次级灰色。旧 0.19.0 解析器拒绝空到期，写入持续策略或含该 epoch 的 V4 决策后回滚不是换包即可；详见迁移边界。
+
 ## 1. 已认可范围与非目标
 
 - 删摘要“裁决 · ”冗余前缀，仅明确受权计数 0 时隐藏待你裁决主提醒；未知不当 0，不删除裁决详情 tab，不清记录。
@@ -20,7 +22,7 @@
 预授权是用户事前作出的范围/期限安排，不是代理自报“批准”，也不代表用户在每项出现时亲自答复。提出候选、支持候选、持久采用、决定落实分别成立。
 
 - 默认关闭。用户控制需要受认证 operator 后端保存，不能用 localStorage/agent policy-write grant 作来源。子代理可消费范围内策略但不能自行开启/延长。
-- 开启界面明确显示当前主会话任务组与到期时间；建议 1/4/8 小时预选，默认 8 小时但必须显式开启。刷新不续期，后台使用真实时钟检查到期。正有限期限的机械限制在技术附录冻结，不猜“今夜”绝对时刻。
+- 开启界面明确显示当前主会话任务组与期限；限时预选 1/2/4/8/12/24 小时，默认 12 小时但必须显式开启；也可选择“持续生效”，此时没有自动到期，只能显式关闭。刷新不续期，限时模式由后台真实时钟检查到期，持续模式不伪造绝对时刻。所有模式都必须显式开启，不因安装、刷新或重启自动启用。
 - 只对 recommendation 严格等于唯一 options key 的新项给支持；自由文本/label 仍可显示，不能猜、模糊匹配或解析业务含义。理由可放背景，不强迁旧记录。
 - 有效采用后明确 pending=false，显示“按预授权策略选择”，真实采用作者仍是 agent；来源保留真实授权者、策略/源修订与精确选项。保留原 awaiting/result/references/任务约束，不默认新建 await，不推断任务完成。
 - 候选不是可永久重用的权限令牌。采用时重验当前策略、源 decision 修订、business CAS、实际 assignment、推荐仍明确且引用范围仍受权。真实人工答复先提交则旧采用冲突，不无声覆盖。
@@ -30,12 +32,14 @@
 
 ## 3. 用户入口与生命周期
 
-- 裁决展开区有就地 switch、范围/到期、保存中/失败/失效状态；0 待答时也能主动配置。
+- 裁决展开区有就地 switch、范围/期限（限时或持续）、保存中/失败/失效状态；0 待答时也能主动配置。
+- 预授权生效时，在“待你裁决”/T/S 状态行只显示一个短标记“推荐支持 开”；悬停/可访问名称给出“持续生效”或到期信息，不在该行重复计数、授权者或长解释。非生效（关闭/到期/功能关闭/未知）不显示该标记，避免把未知画成关闭。
 - 独立设置入口提供同一 owner-instance 控制，不另存全局/浏览器副本；无可核验会话上下文时明确不可配置/需要选择会话，不猜 owner。
 - 切换 session/真实实例、caller/grant/scope 变化清理旧草稿/在途结果，保存不跨会话；健康刷新保留合法阅读和 CAS 草稿。
 - sessions 增强注入负责有界导航 port 的安装、撤销及重渲染；无 service/method 基础注册继续，旧点击立即失效，不捕获永远 null 的闭包，不靠 ctx.get 绕服务生命周期。
 - 点击仍检查 mounted session、当前合法快照/显示、真父链和当前可解析 subagentAddress。区分依赖/调用错误与能力真的不存在，不把所有错误归咎宿主。
 - 标题优先宿主持久 title，未取得时可用宿主 displayTitle/label/短 id；技术详情可核对来源，不另持久化副本。初始/改名/回退都需验收。
+- 可导航子代理标题使用与 S 相同的 `--dsw-alias-state-done-primary` 强调色并保留粗体/下划线/focus；父链未知或不可导航标题保持次级灰色，折叠控件不抢标题强调。颜色只表达“真实可导航的 S 子代理”，不改变权限、地址或计数。
 
 ## 4. 预先确认测试 seams 与证明边界
 
@@ -77,7 +81,7 @@ interface OwnerDecisionPolicyEpoch {
   readonly policyRevision: number // opening save appliedRevision
   readonly scope: 'new-decisions'
   readonly enabledAt: number // server epoch ms
-  readonly expiresAt: number // immutable server epoch ms
+  readonly expiresAt: number | null // immutable server epoch ms; null = persistent, no automatic expiry
   readonly authorizedBy: OperatorAuthor
 }
 type OwnerDecisionPolicyStatus =
@@ -87,7 +91,7 @@ type OwnerDecisionPolicySaveRequest = {
   readonly expectedRevision: number // owner policy, NOT config/business revision
   readonly expectedScope: InstrumentInstance // equality-only ABA fence, NOT authority
 } & (
-  | {readonly action: 'enable'; readonly durationMs: number}
+  | {readonly action: 'enable'; readonly durationMs: number | null} // null = persistent
   | {readonly action: 'disable'}
 )
 interface OwnerDecisionPolicySnapshot {
@@ -145,7 +149,7 @@ interface RecommendationCandidate {
   readonly decisionRevision: number
   readonly policyEpochId: string
   readonly policyRevision: number
-  readonly expiresAt: number
+  readonly expiresAt: number | null // null mirrors a persistent epoch
 }
 type RecommendationReason =
   'policy-disabled' | 'policy-expired' | 'feature-disabled' | 'no-creation-binding' |
@@ -166,11 +170,15 @@ interface OwnerDecisionPolicyPublic {
 }
 ~~~
 
+`expiresAt:null` 的唯一含义是“持续生效、无自动到期”，不是未知、0 或哨兵时间；`enabledAt` 仍是服务端授权的下界。持续 epoch 在 feature 配置且未关闭时始终 `active`，不会进入 `expired`；关闭仍保留该 epoch 供历史显示。限时 epoch 继续使用半开区间 `[enabledAt, expiresAt)`，`expiresAt-enabledAt` 为 `1..86400000` 的正安全整数。`durationMs:null` 只允许出现在 enable；disable 的两个 operation 字段仍为 null。`RecommendationCandidate.expiresAt:null` 只是镜像当前持续 epoch，不是新的权限来源。
+
+持续值仍写入既有 policy 文档 schemaVersion 1 和 V4 决策 metadata，不新增 V5、不改 checkpoint 布局；旧 0.19.0 的 epoch parser 会把 null 当作 invalid-state 拒绝（fail closed，不会误当有效或无限期）。因此写入持续策略或含该 epoch 的 V4 binding 后，回滚到 0.19.0 不是只换包；必须按迁移边界保留新版本或停止写入并做受控数据处理。
+
 #### 策略保存与权限
 
 - Route sessionId 是用户明确选定/当前已核验的目标会话，服务端重解析其真实 owner-instance；允许已登记受权 child 解析到同主实例，不要求用户从 label 猜 root。读不 ensure/创建/扫描/唤醒；未知或未归属实例返回明确 unavailable/unknown-session。save 仅操作既有真实实例。expectedScope 三 ID 仅作 ABA equality fence，不能据它授予/构造归属。
 - 仅真实 operatorCaller 经 this.run 可读写本控制，Runtime/store 重验 kind=user、principalId=当前 ports.operatorPrincipal、sessionId=null；没有 agent 自开入口，已有 agent policy-write grant 也不赋此权。模型只读受权的精简当前状态，不调用保存 Remote。
-- durationMs 为 1..86400000 的正安全整数，不 clamp。UI 仅 1/4/8 小时、默认8但显式确认，后端 enabledAt/expiresAt 为权威；读/刷新/重放不续期。不同 opId 的 enable（含续期）创建新 epoch；disable 保留旧 epoch 供历史显示但失效其未采用候选。
+- durationMs 为 null（持续）或 1..86400000 的正安全整数（限时），不 clamp；null 只表示不自动到期，不表示未知。UI 限时预选 1/2/4/8/12/24 小时、默认 12，另有“持续生效”；都必须显式确认。后端 enabledAt/expiresAt 为权威；限时读/刷新/重放不续期，持续模式只由 switch 关闭。不同 opId 的 enable（含续期或切换模式）创建新 epoch；disable 保留旧 epoch 供历史显示但失效其未采用候选。
 - 新 enable 必须在当前管理/workspace/pending configured 时才允许；OFF 仍可 disable。既存意图在 feature OFF 时 effective=feature-disabled，不隐式开总闸；重新 ON 可恢复未过期且未关闭 epoch。先做 operator/归属/expectedScope 与既存 opId 重放核验，再对新 enable 作 feature gate，不能在 OFF 时把已成功 enable 的历史重放变成新写/错误续期。
 - save 结果分原 appliedRevision/operation 历史效果与当前 snapshot；同 opId+作者+规范载荷重放不写，不同载荷冲突，不自动换 expectedRevision。存储 uncertain fail closed，不用内存旧 active 兜底。
 - 独立设置页仅明确 selector，默认无选择；不扩 uiSession/current-selection bridge，不从 mounted/首项/cwd 猜 owner。管理/读取未知不能画成已确认 OFF；当前 scope 有效时关闭旧策略不依赖先启用管理。
@@ -191,18 +199,18 @@ type DecisionPolicyEventEffect =
 // V4 InstrumentCommandMetadata: decisionPolicy?:DecisionPolicyEventEffect (OUTSIDE digest)
 ~~~
 
-采用重验当前 auth/assignment（变更前后全引用/无票 creator）、business CAS、current row revision=创建 binding revision、候选精确 key 和原推荐/选项、当前同一 epoch/revision、pending user/feature/时间。所有 awaited read 后，紧贴 instrument CAS 开始前采样 authorizedAt/recordedAt 重验到期；[enabledAt,expiresAt) 半开区间，等于到期即拒绝。CAS 已开始且 ack 晚于到期属于在途已授权提交，不承诺 fsync 在期限前完成。
+采用重验当前 auth/assignment（变更前后全引用/无票 creator）、business CAS、current row revision=创建 binding revision、候选精确 key 和原推荐/选项、当前同一 epoch/revision、pending user/feature/时间。所有 awaited read 后，紧贴 instrument CAS 开始前采样 authorizedAt/recordedAt 重验期限；限时 epoch 为 [enabledAt,expiresAt) 半开区间，等于到期即拒绝；持续 epoch 只要求 authorizedAt/recordedAt>=enabledAt，无上界。CAS 已开始且 ack 晚于限时到期属于在途已授权提交，不承诺 fsync 在期限前完成。
 
 仅一个实际 agent authored event 明确 pending=false，保留原 status/question/result/await/context/options/recommendation/addressee/task references/约束；references 是旧当前与本次的稳定并集。selection 放 command 外可信 metadata，模型不得通过 DecisionValue 写入 policyBinding/policySelection/author；旧 command fingerprint/digest 仍只规范 command+actual author。普通后续 put 产生新业务事实并撤下当前 policySelection，但历史版本与创建 binding 保留；不把旧 policy 选择冒充人工修正后的最新来源。
 
 #### 存储版本、幂等、缓存和消费
 
-- 新 owner policy engine 通过 openUnitStorage、按 instance 派生独占表名 owner_decision_policy_ + sha256(instanceId).slice(0,32)。文档 schemaVersion=1，绑定真实三 ID，含 revision/enabled/epoch/updatedAt/updatedBy 与持久技术幂等 receipts；无副作用虚拟缺省 revision0/disabled。坏文档不是空/关闭。所有真实保存保留去重回执，不静默驱逐旧 opId。
-- Instrument V4 沿 V3 checkpoint/taskReferences layout 加上上述可信 event/row/version/technical-command metadata；仅首次 qualified bound creation 与 decision 同一 CAS 升 V4。开策略本身不升级，读与普通旧项不批量迁移，V1/2/3 仍严格可读，V4 taskReferences/current/full/changes/compact/purge 不能漏字段。未知版本不 reset。旧 binary 不读 V4，须在迁移说明写明首次 V4 后仅换旧包不足回滚；停止旧 writer/备份边界不通过恢复旧账覆盖真实新写。
+- 新 owner policy engine 通过 openUnitStorage、按 instance 派生独占表名 owner_decision_policy_ + sha256(instanceId).slice(0,32)。文档 schemaVersion=1，绑定真实三 ID，含 revision/enabled/epoch/updatedAt/updatedBy 与持久技术幂等 receipts；无副作用虚拟缺省 revision0/disabled。本次只把 epoch.expiresAt 的值域扩为 number|null，不新增字段或版本；持续 epoch 的 opening receipt 也记录 null。坏文档不是空/关闭。所有真实保存保留去重回执，不静默驱逐旧 opId。
+- Instrument V4 沿 V3 checkpoint/taskReferences layout 加上上述可信 event/row/version/technical-command metadata；仅首次 qualified bound creation 与 decision 同一 CAS 升 V4。开策略本身不升级，读与普通旧项不批量迁移，V1/2/3 仍严格可读，V4 taskReferences/current/full/changes/compact/purge 不能漏字段。未知版本不 reset。旧 binary 不读 V4，须在迁移说明写明首次 V4 后仅换旧包不足回滚；停止旧 writer/备份边界不通过恢复旧账覆盖真实新写。持续 epoch 仍是 V4 metadata；旧 0.19.0 虽认识 V4，却会把 null 到期判 invalid-state，所以持续 binding/adoption 写入后回滚边界比普通 V4 更明确，迁移文档必须写明。
 - records.capabilities 增 decisionRecommendationAdoption=true，storageVersions=[1,2,3,4]；current/detail 授权行带只读 policyBinding/policySelection、临时 recommendationSupport。Runtime/current/消费顶层可选 ownerDecisionPolicy（缺失不是 active）。
 - 已存 opId 先经当前身份/范围再查同作者/原载荷重放，只有新操作再核策略/feature/CAS并产生 effect；关闭不能改变旧 fingerprint。创建 replay 要重验当前候选支持，采用 replay 的原 selection 与当前已修正 row 分别呈现，不拿历史回执作新许可。
 - policy save/global save/grant/assignment/put/adopt 共用现有 runtime FIFO/track；新 engine 不另嵌 queue，避免重入死锁。两个域无联写事务：binding+创建在一个 instrument CAS；policy 与 instrument 只受单 host/open handle/FIFO 顺序保证，不宣称跨进程事务。
-- 独立 owner-policy source revision+effective 状态桶必须进入 projection/readSession/model/消费 read gate/token；跨到期桶不能命中旧 active 缓存，不每读注入 now/倒计时抖动前缀。时钟无效或回拨到 enabledAt 前为 unknown，不新采用。
+- 独立 owner-policy source revision+effective 状态桶必须进入 projection/readSession/model/消费 read gate/token；限时跨到期桶、持续跨关闭/feature 桶都不能命中旧 active 缓存，不每读注入 now/倒计时抖动前缀。时钟无效或回拨到 enabledAt 前为 unknown，不新采用。持续模式没有到期桶，但仍受 revision/关闭/feature 桶约束。
 - history capture 每版保留 selection/refs/source，currentIndex/full changes/技术去重与 checkpoint 同步；实际作者仍 agent。旧无策略 metadata 的历史 capture payload 原形不改；只为新增采用源版本附加其 selection 与该版本 references，不为补格式重写同 source version，也不跳过真实 payload 冲突或 purge suppression。显式 included 的 contextConclusions 可携 policySelection 与 nullable result，不能因没有 result 字符串遗失已采用选项；excluded 保留，不自动 set-context/await 常驻。
 - 回执 schemaVersion2 保持既有有界 envelope；recommendation 为 candidate/adopted/not-eligible/unknown 判别联合，关键 key/sourceRevision/policyRef/commit 状态优先于 label。typed/render/PTC 同值，8KiB 写/64KiB 读预算，已提交后 DTO/历史/通知失败不能重执业务写。普通问题在 optional policy 源失败时无 binding+unknown；新采用 fail closed，不伪造成功。
 

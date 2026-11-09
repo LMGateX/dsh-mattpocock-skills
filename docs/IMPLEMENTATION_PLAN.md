@@ -25,6 +25,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 技术表征细化尚在 D 阶段时不得提前写实施代码；实现者各自独立工作树，交付前同步 integration，由串行 merger 合入。
 
+## 0.20.0 期限预设、持续预授权与标题层次（2026-11-10，已认可）
+
+在 0.19.0 已验证基线上小步扩展：限时预选 1/2/4/8/12/24、默认 12；新增 `expiresAt:null` 的持续模式与同一 switch 关闭；状态行只加“推荐支持 开”短标记；可导航子代理标题用 S 紫。先提交契约/迁移文档，再改 contract/store/runtime/instrument/UI 与测试；不新增 V5、不改 V4 布局、不改共享 SDK。只对 DSH 0.2.2-rc.1 验源、唯一归档、类型、原生、浏览器与包安装；持续模式写入后旧 0.19.0 回滚边界必须在迁移文档和 Release notes 明示。
+
 ## 协作摘要短暂恢复闪烁（2026-11-09，本地实施）
 
 以 [修复契约](<CLIENT_RECOVERY_STABILITY.md>) 与 [DESIGN](<DESIGN.md>) 为准；先文档提交、再隔离 subagent 单writer 实施、主代理串行集成与源／精确包／隔离浏览器验证、独立 Standards／Spec 复核、本地结果记录。按真实挂载与原生 slot 竖切保留 RED→GREEN，测试语义身份与同域订阅稳定，同时覆盖真正换域、撤权、失败和最后卸载。

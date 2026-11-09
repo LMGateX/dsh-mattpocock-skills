@@ -26,6 +26,12 @@ This document is the authoritative implementation contract. A later implementati
 
 S 标题仍只读宿主 useSessions/catalog，不加模型标题字段/第二账本；在真实 Cordis 服务生命周期下修补 sessions 依赖，缺能力时保留基础阅读并撤销导航能力，点击重验真实地址/父链/当前身份。客户端/制品成功不等当前 GUI 已加载；安装、热激活与页面刷新分别核验，不改共享 SDK、不启动替代服务器，不擅自重启当前服务，不 npm publish。
 
+## 0.20.0 预授权期限、持续模式与标题层次（2026-11-10，已认可）
+
+所有者确认在 0.19.0 基础上调整两项：限时预选扩为 1/2/4/8/12/24 小时并默认 12 小时，另增不自动到期的“持续生效”模式；预授权生效时在裁决/T/S 状态行仅显示短标记“推荐支持 开”。可导航子代理标题复用 S 的紫色，父链未知/不可导航标题仍为灰色。
+
+持续模式仍要求真实 operator 显式开启，不自动续期、不因安装/刷新/重启启用，关闭仍由同一 switch 完成。表示上以 `expiresAt:null`/`durationMs:null` 表达持续，不引入哨兵时间；限时仍为 1..86400000ms。持续 epoch 写入既有 policy schemaVersion 1 与 V4 metadata，不新增 V5；旧 0.19.0 会把 null 到期判 invalid-state，因此持续策略或含该 epoch 的 V4 写入后，回滚不是只换包。细化契约与迁移边界以 [本批契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>) 和 [MIGRATION](<MIGRATION.md>) 为准。
+
 ## 协作摘要短暂恢复闪烁（2026-11-09，已认可；仅本地隔离开发／测试）
 
 所有者认可两条客户端误恢复机制的诊断与候选方向，要求先固定文档，再在隔离环境与 subagents 中完成开发和测试；**暂时不要 push／发版，不要为本机 DSH 安装**。唯一细化契约为 [CLIENT_RECOVERY_STABILITY.md](<CLIENT_RECOVERY_STABILITY.md>)。允许本地提交、闭合生成物与精确包验证，不分配发布版本，不继承此前任何发布／安装权限，不改当前 Profile／共享 SDK／运行 GUI，不重启或写生产数据。
