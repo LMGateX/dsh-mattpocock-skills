@@ -75,6 +75,21 @@ async function mount(t, initial = snapshot(), catalog = { child: { title: 'Nativ
 const button = (f, title) => [...f.container.querySelectorAll('button')].find(node => node.textContent === title)
 const click = async node => { assert(node, 'expected actionable title'); await React.act(async () => node.click()) }
 
+test('native title and fold controls inherit theme typography without default white button surfaces', async t => {
+  const view = snapshot(); view.nativeExecutions = [row('child', 'parent')]
+  const f = await mount(t, view, {parent: {title: 'Native parent', parentId: 'owner'}, child: {title: 'Native child', parentId: 'parent'}})
+  const controls = [...f.container.querySelectorAll('article button')]
+  assert.equal(controls.length, 3)
+  for (const control of controls) {
+    assert.match(control.style.background, /^none(?: none)?$/) // happy-dom serializes the reset twice
+    assert.equal(control.style.fontFamily, 'inherit')
+    assert.equal(control.style.fontSize, 'inherit')
+    assert.match(control.style.color, /var\(--dsw-alias-label-/)
+    assert.equal(control.style.outline, '', 'do not remove native keyboard focus')
+  }
+  assert.equal(button(f, 'Native child').style.fontWeight, '600')
+})
+
 test('actual input seat reads changing native titles and opens native direct-parent chat without RPC dispatch', async t => {
   const f = await mount(t)
   assert(button(f, 'Native readable title'), 'S uses the host title rather than an execution id')
