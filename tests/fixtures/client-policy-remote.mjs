@@ -16,7 +16,7 @@ export function policyRemote(t, options = {}) {
       calls.push({ id, request: structuredClone(request) })
       if (options.save) return options.save(id, request)
       assert.equal(request.expectedRevision, snapshot.revision)
-      const epoch = request.action === 'disable' ? snapshot.saved.epoch : { epochId: 'server-epoch', policyRevision: snapshot.revision + 1, scope: 'new-decisions', enabledAt: 1000, expiresAt: 1000 + request.durationMs, authorizedBy: { kind: 'user', principalId: 'operator', sessionId: null } }
+      const epoch = request.action === 'disable' ? snapshot.saved.epoch : { epochId: 'server-epoch', policyRevision: snapshot.revision + 1, scope: 'new-decisions', enabledAt: 1000, expiresAt: request.durationMs === null ? null : 1000 + request.durationMs, authorizedBy: { kind: 'user', principalId: 'operator', sessionId: null } }
       snapshot = { ...snapshot, revision: snapshot.revision + 1, saved: { enabled: request.action === 'enable', epoch }, effective: { status: request.action === 'enable' ? 'active' : 'disabled', reason: request.action === 'enable' ? null : 'policy-disabled' } }
       return { appliedRevision: snapshot.revision, replayed: false, operation: { action: request.action, epochId: epoch?.epochId ?? null, expiresAt: epoch?.expiresAt ?? null }, snapshot: structuredClone(snapshot) }
     } }

@@ -599,3 +599,27 @@ test('rightPanel=false still permits all four local disclosures while closed man
     assert(region(container, kind))
   }
 })
+
+test('active recommendation policy adds one compact status marker and non-active states stay silent', async t => {
+  const view = snapshot()
+  view.ownerDecisionPolicy = { revision: 1, status: 'active', epochId: 'epoch', expiresAt: null, scope: 'new-decisions', reason: null }
+  const f = await mount(t, view)
+  const badge = f.container.querySelector('[data-recommendation-policy="active"]')
+  assert(badge, 'active policy is visible in the decision/T/S row')
+  assert.equal(badge.textContent, '推荐支持 启用')
+  assert.match(badge.getAttribute('title'), /持续生效/)
+  assert.match(badge.getAttribute('style'), /--dsw-alias-state-success-primary/)
+  assert.equal(badge.getAttribute('aria-label'), '推荐支持预授权已启用（持续生效）')
+  assert.equal(f.container.querySelectorAll('[data-recommendation-policy]').length, 1)
+  const finite = structuredClone(view); finite.ownerDecisionPolicy.expiresAt = 5000
+  await f.refresh(finite)
+  const finiteBadge = f.container.querySelector('[data-recommendation-policy]')
+  assert.equal(finiteBadge.textContent, '推荐支持 启用')
+  assert.doesNotMatch(finiteBadge.getAttribute('title'), /持续生效/)
+  assert.equal(finiteBadge.getAttribute('aria-label'), '推荐支持预授权已启用')
+  for (const status of ['disabled', 'expired', 'feature-disabled', 'unknown']) {
+    const next = structuredClone(view); next.ownerDecisionPolicy.status = status
+    await f.refresh(next)
+    assert.equal(f.container.querySelector('[data-recommendation-policy]'), null, status + ' is not portrayed as active')
+  }
+})

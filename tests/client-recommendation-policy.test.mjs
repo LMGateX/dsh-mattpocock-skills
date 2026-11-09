@@ -22,7 +22,7 @@ test('zero pending keeps policy configuration reachable without mounting optiona
   assert.equal(f.opened.length, 0)
 })
 
-test('real optional Remote read confirms OFF; explicit switch saves server-scoped 8h epoch with no automatic adopt', options, async t => {
+test('real optional Remote read confirms OFF; explicit switch saves server-scoped 12h epoch with no automatic adopt', options, async t => {
   const remote = rpc.policyRemote(t), view = native.snapshot(); view.policy.features.pendingDecisions = { status: 'configured', requested: true, reason: null }
   const f = await native.mount(t, { view, installRemote: remote.install })
   assert(f.container.querySelector('[aria-label="查看待你裁决事项"]'), JSON.stringify({ text: f.container.textContent, wire: remote.wire }))
@@ -30,17 +30,38 @@ test('real optional Remote read confirms OFF; explicit switch saves server-scope
   assert.equal(remote.reads.length, 1, 'a mounted proxy is not yet evidence of support')
   const toggle = f.container.querySelector('[role="switch"]'); assert(toggle, 'confirmed operator control')
   assert.equal(toggle.getAttribute('aria-checked'), 'false')
-  assert.equal(remote.calls.length, 0, 'reading/default 8h never enables')
-  assert.equal(f.container.querySelector('[aria-label="预授权时长"]').value, '8')
+  assert.equal(remote.calls.length, 0, 'reading/default 12h never enables')
+  assert.equal(f.container.querySelector('[aria-label="预授权时长"]').value, '12')
   await click(toggle)
   assert.equal(remote.calls.length, 1)
   assert.equal(remote.calls[0].id, 'owner')
   assert.deepEqual(Object.keys(remote.calls[0].request).sort(), ['action', 'durationMs', 'expectedRevision', 'expectedScope', 'operationId'])
-  assert.equal(remote.calls[0].request.durationMs, 28800000)
+  assert.equal(remote.calls[0].request.durationMs, 43200000)
   assert.equal(remote.calls[0].request.expectedRevision, 0)
   assert.equal(remote.calls[0].request.expectedScope.ownerSessionId, 'owner')
   assert.match(f.container.textContent, /服务端.*生效|服务端.*active/)
   assert(remote.mounts.includes('@lmgatex/dsh-mattpocock-skills/recommendation-support'))
+})
+
+test('persistent mode saves a null duration and the same switch disables it', options, async t => {
+  const remote = rpc.policyRemote(t), view = native.snapshot(); view.policy.features.pendingDecisions = { status: 'configured', requested: true, reason: null }
+  const f = await native.mount(t, { view, installRemote: remote.install })
+  await click(f.container.querySelector('[aria-label="查看待你裁决事项"]'))
+  const select = f.container.querySelector('[aria-label="预授权时长"]')
+  assert.deepEqual([...select.querySelectorAll('option')].map(option => option.value), ['1', '2', '4', '8', '12', '24', 'persistent'])
+  await host.React.act(async () => { select.value = 'persistent'; select.dispatchEvent(new host.window.Event('change', { bubbles: true })); await host.settle() })
+  assert.match(f.container.textContent, /持续生效会一直保留/)
+  await click(f.container.querySelector('[role="switch"]'))
+  assert.equal(remote.calls[0].request.durationMs, null)
+  assert.match(f.container.textContent, /服务端期限：持续生效（无固定到期）/)
+  assert.equal(f.container.querySelector('[role="switch"]').getAttribute('aria-checked'), 'true')
+  await click(f.container.querySelector('[role="switch"]'))
+  assert.equal(remote.calls.length, 2)
+  assert.deepEqual(remote.calls[1].request, { operationId: remote.calls[1].request.operationId, expectedRevision: 1, expectedScope: remote.calls[1].request.expectedScope, action: 'disable' })
+  assert.equal(f.container.querySelector('[role="switch"]').getAttribute('aria-checked'), 'false')
+  assert.match(f.container.textContent, /显式开启推荐支持/)
+  assert.match(f.container.textContent, /历史保存结果：disable/)
+  assert.match(f.container.textContent, /原期限：.*无固定到期/)
 })
 
 test('standalone Settings uses explicit default-none target even when management read is unavailable', options, async t => {
@@ -246,4 +267,14 @@ test('supported candidate remains pending and an ephemeral adopted outcome canno
   f.view = structuredClone(f.view); f.view.records.decisions[0].recommendationSupport = { status: 'candidate' }
   await f.refresh(); assert.match(f.container.textContent, /候选未知/)
   assert.equal(writes, 0)
+})
+
+test('persistent candidate renders continuous validity instead of a fixed cutoff', options, async t => {
+  const view = native.snapshot(), value = { question: '持续候选', status: 'pending', pending: true, addressee: { kind: 'user' }, options: [{ key: 'exact-key', label: '明确选项' }], recommendation: 'exact-key' }
+  view.records.decisions = [{ workflowId: 'wf', decisionId: 'candidate', revision: 2, value, history: [], recommendationSupport: { status: 'candidate', candidate: { optionKey: 'exact-key', decisionRevision: 2, policyEpochId: 'candidate-epoch', policyRevision: 4, expiresAt: null } } }]
+  const f = await native.mount(t, { view })
+  await click(f.container.querySelector('[aria-label="查看待你裁决事项"]'))
+  assert.match(f.container.textContent, /支持候选（尚未采用）/)
+  assert.match(f.container.textContent, /服务端候选：持续有效（无固定截止）/)
+  assert.doesNotMatch(f.container.textContent, /服务端候选固定截止/)
 })

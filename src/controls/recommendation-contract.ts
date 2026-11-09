@@ -6,11 +6,11 @@ import { boolean, freeze, id, invalid, record, revision } from './validation.js'
 export interface OperatorAuthor { readonly kind:'user'; readonly principalId:string; readonly sessionId:null }
 export interface OwnerDecisionPolicyEpoch {
  readonly epochId:string; readonly policyRevision:number; readonly scope:'new-decisions'
- readonly enabledAt:number; readonly expiresAt:number; readonly authorizedBy:OperatorAuthor
+ readonly enabledAt:number; readonly expiresAt:number|null; readonly authorizedBy:OperatorAuthor
 }
 export type OwnerDecisionPolicyStatus='active'|'disabled'|'expired'|'feature-disabled'|'unknown'
 export type OwnerDecisionPolicySaveRequest={readonly operationId:string;readonly expectedRevision:number;readonly expectedScope:InstrumentInstance}&(
- {readonly action:'enable';readonly durationMs:number}|{readonly action:'disable'})
+ {readonly action:'enable';readonly durationMs:number|null}|{readonly action:'disable'})
 export interface OwnerDecisionPolicyState { readonly revision:number;readonly enabled:boolean;readonly epoch:OwnerDecisionPolicyEpoch|null }
 export interface DecisionPolicyReader { read(instance:InstrumentInstance):Promise<OwnerDecisionPolicyState> }
 export interface OwnerDecisionPolicySnapshot {
@@ -29,7 +29,7 @@ export interface DecisionPolicySelection {
  readonly policy:OwnerDecisionPolicyEpoch;readonly authorizedAt:number
 }
 export type DecisionPolicyEventEffect={readonly kind:'bound';readonly binding:DecisionPolicyBinding}|{readonly kind:'adopted';readonly selection:DecisionPolicySelection}
-export interface RecommendationCandidate {readonly optionKey:string;readonly decisionRevision:number;readonly policyEpochId:string;readonly policyRevision:number;readonly expiresAt:number}
+export interface RecommendationCandidate {readonly optionKey:string;readonly decisionRevision:number;readonly policyEpochId:string;readonly policyRevision:number;readonly expiresAt:number|null}
 export type RecommendationReason='policy-disabled'|'policy-expired'|'feature-disabled'|'no-creation-binding'|'decision-changed'|'not-pending-user'|'no-exact-recommendation'|'policy-epoch-changed'|'different-addressee'
 export type RecommendationOutcome={readonly status:'candidate';readonly candidate:RecommendationCandidate}|{readonly status:'adopted';readonly selection:DecisionPolicySelection}|{readonly status:'not-eligible';readonly reason:RecommendationReason}|{readonly status:'unknown';readonly reason:'policy-unavailable'|'projection-unavailable'}
 export interface OwnerDecisionPolicyPublic {readonly revision:number|null;readonly status:OwnerDecisionPolicyStatus;readonly epochId:string|null;readonly expiresAt:number|null;readonly scope:'new-decisions';readonly reason:string|null}
@@ -52,8 +52,8 @@ function positive(value:unknown,where:string):number {const n=revision(value,whe
 export function parseOwnerDecisionPolicyEpoch(value:unknown):OwnerDecisionPolicyEpoch {
  const r=record(value,'policy epoch',['epochId','policyRevision','scope','enabledAt','expiresAt','authorizedBy'])
  if(r.scope!=='new-decisions') invalid('policy scope must be new-decisions')
- const enabledAt=revision(r.enabledAt,'enabledAt'),expiresAt=revision(r.expiresAt,'expiresAt')
- if(expiresAt<=enabledAt||expiresAt-enabledAt>86400000) invalid('policy epoch must have a finite 1..86400000ms duration')
+ const enabledAt=revision(r.enabledAt,'enabledAt'),expiresAt=r.expiresAt===null?null:revision(r.expiresAt,'expiresAt')
+ if(expiresAt!==null&&(expiresAt<=enabledAt||expiresAt-enabledAt>86400000)) invalid('policy epoch must be 1..86400000ms or persistent')
  return freeze({epochId:id(r.epochId,'epochId'),policyRevision:positive(r.policyRevision,'policyRevision'),scope:'new-decisions',enabledAt,expiresAt,authorizedBy:parseOperatorAuthor(r.authorizedBy)})
 }
 export function parseOwnerDecisionPolicyState(value:unknown):OwnerDecisionPolicyState {
@@ -68,7 +68,8 @@ export function parseOwnerDecisionPolicySaveRequest(value:unknown):OwnerDecision
  record(value,'policy save request',['operationId','expectedRevision','expectedScope','action',...(r.action==='enable'?['durationMs']:[])])
  const base={operationId:id(r.operationId,'operationId'),expectedRevision:revision(r.expectedRevision,'expectedRevision'),expectedScope:parseRecommendationInstance(r.expectedScope)}
  if(r.action==='disable') return freeze({...base,action:'disable'})
- const durationMs=positive(r.durationMs,'durationMs');if(durationMs>86400000) invalid('durationMs must be 1..86400000')
+ if(r.durationMs===null) return freeze({...base,action:'enable',durationMs:null})
+ const durationMs=positive(r.durationMs,'durationMs');if(durationMs>86400000) invalid('durationMs must be 1..86400000 or null')
  return freeze({...base,action:'enable',durationMs})
 }
 export function parseOwnerDecisionPolicySnapshot(value:unknown):OwnerDecisionPolicySnapshot {
@@ -84,7 +85,8 @@ export function parseOwnerDecisionPolicyOperation(value:unknown):OwnerDecisionPo
  const r=record(value,'policy operation',['action','epochId','expiresAt'])
  if(r.action!=='enable'&&r.action!=='disable') invalid('unknown policy operation')
  const epochId=r.epochId===null?null:id(r.epochId,'epochId'),expiresAt=r.expiresAt===null?null:revision(r.expiresAt,'expiresAt')
- if((epochId===null)!==(expiresAt===null)||r.action==='enable'&&epochId===null) invalid('policy operation epoch mismatch')
+ // Enable always opens an epoch; disable may retain a persistent epoch (epochId set, expiresAt null).
+ if(r.action==='enable' ? epochId===null : epochId===null&&expiresAt!==null) invalid('policy operation epoch mismatch')
  return freeze({action:r.action,epochId,expiresAt})
 }
 export function parseOwnerDecisionPolicySaveResult(value:unknown):OwnerDecisionPolicySaveResult {
@@ -99,7 +101,7 @@ export function parseDecisionPolicySelection(value:unknown):DecisionPolicySelect
  const r=record(value,'decision policy selection',['kind','selectedOptionKey','decisionSourceRevision','policy','authorizedAt'])
  if(r.kind!=='owner-policy') invalid('unknown decision selection kind')
  const policy=parseOwnerDecisionPolicyEpoch(r.policy),authorizedAt=revision(r.authorizedAt,'authorizedAt')
- if(authorizedAt<policy.enabledAt||authorizedAt>=policy.expiresAt) invalid('selection time outside authorization epoch')
+ if(authorizedAt<policy.enabledAt||policy.expiresAt!==null&&authorizedAt>=policy.expiresAt) invalid('selection time outside authorization epoch')
  return freeze({kind:'owner-policy',selectedOptionKey:id(r.selectedOptionKey,'selectedOptionKey'),decisionSourceRevision:positive(r.decisionSourceRevision,'decisionSourceRevision'),policy,authorizedAt})
 }
 export function parseDecisionPolicyEventEffect(value:unknown):DecisionPolicyEventEffect {
@@ -113,7 +115,7 @@ export function evaluateOwnerDecisionPolicy(state:OwnerDecisionPolicyState,featu
  if(!featureConfigured) return freeze({status:'feature-disabled',reason:'feature-disabled'})
  if(!state.enabled||!state.epoch) return freeze({status:'disabled',reason:'policy-disabled'})
  if(!Number.isSafeInteger(now)||now<state.epoch.enabledAt) return freeze({status:'unknown',reason:'clock-unavailable'})
- if(now>=state.epoch.expiresAt) return freeze({status:'expired',reason:'policy-expired'})
+ if(state.epoch.expiresAt!==null&&now>=state.epoch.expiresAt) return freeze({status:'expired',reason:'policy-expired'})
  return freeze({status:'active',reason:null})
 }
 /** Decision-local eligibility; no task/business semantic inference. */

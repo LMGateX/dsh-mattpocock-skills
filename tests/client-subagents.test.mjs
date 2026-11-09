@@ -84,9 +84,11 @@ test('native title and fold controls inherit theme typography without default wh
     assert.match(control.style.background, /^none(?: none)?$/) // happy-dom serializes the reset twice
     assert.equal(control.style.fontFamily, 'inherit')
     assert.equal(control.style.fontSize, 'inherit')
-    assert.match(control.style.color, /var\(--dsw-alias-label-/)
     assert.equal(control.style.outline, '', 'do not remove native keyboard focus')
   }
+  const titles = [button(f, 'Native parent'), button(f, 'Native child')]
+  for (const title of titles) assert.equal(title.style.color, 'var(--dsw-alias-state-done-primary, #7460c8)', 'navigable titles reuse the S accent')
+  for (const control of controls.filter(control => !titles.includes(control))) assert.match(control.style.color, /var\(--dsw-alias-label-secondary/)
   assert.equal(button(f, 'Native child').style.fontWeight, '600')
 })
 
@@ -163,6 +165,8 @@ test('unknown, missing, conflicting and cyclic parent chains preserve running ro
     assert(unknown.contains(node))
   }
   assert.equal(button(f, 'Valid child').disabled, false)
+  assert.equal(button(f, 'Valid child').style.color, 'var(--dsw-alias-state-done-primary, #7460c8)')
+  for (const name of ['orphan', 'cycle-a', 'cycle-b', 'Conflicting child']) assert.match(button(f, name).style.color, /var\(--dsw-alias-label-secondary/)
   assert(!unknown.contains(button(f, 'Valid child')))
   assert.equal(button(f, 'missing'), undefined, 'unknown ancestors are not invented as owner children')
   assert.deepEqual(f.opened, [])

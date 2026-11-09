@@ -72,7 +72,7 @@ function PolicyControl(props: PanelProps): ReactElement {
   const authority = policyAuthority(props.view)
   const policySource = policySourceIdentity(props.view)
   const [snapshot, setSnapshot] = useState<OwnerDecisionPolicySnapshot | null>(null)
-  const [duration, setDuration] = useState(8)
+  const [duration, setDuration] = useState<number | 'persistent'>(12)
   const [reading, setReading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -88,7 +88,7 @@ function PolicyControl(props: PanelProps): ReactElement {
   useEffect(() => {
     const generation = ++lifetime.current, abort = new AbortController()
     saving.current = null; setBusy(false)
-    if (basePort.current !== port) { base.current = null; basePort.current = port; setDuration(8) }
+    if (basePort.current !== port) { base.current = null; basePort.current = port; setDuration(12) }
     setSnapshot(null); setReading(true); setMessage(null); setReceipt(null)
     if (port !== null && props.view.caller.kind === 'user') void Promise.resolve().then(() => port.readOwnerDecisionPolicy(props.view.sessionId, abort.signal)).then(result => {
       if (!result.ok) throw result.error
@@ -103,7 +103,7 @@ function PolicyControl(props: PanelProps): ReactElement {
     const latest = props.observer.getSnapshot()
     if (action === 'enable' && (latest.status !== 'ready' || latest.value.policy.features.pendingDecisions?.status !== 'configured')) return
     const generation = lifetime.current
-    const request: OwnerDecisionPolicySaveRequest = { operationId: 'owner-policy:' + crypto.randomUUID(), expectedRevision: base.current!.revision, expectedScope: base.current!.instance, ...(action === 'enable' ? { action, durationMs: duration * 3600000 } : { action }) }
+    const request: OwnerDecisionPolicySaveRequest = { operationId: 'owner-policy:' + crypto.randomUUID(), expectedRevision: base.current!.revision, expectedScope: base.current!.instance, ...(action === 'enable' ? { action, durationMs: duration === 'persistent' ? null : duration * 3600000 } : { action }) }
     saving.current = generation; setBusy(true); setMessage(null)
     try {
       const result = await port!.saveOwnerDecisionPolicy(props.view.sessionId, request)
@@ -123,14 +123,17 @@ function PolicyControl(props: PanelProps): ReactElement {
       status('草稿依据策略修订 ' + base.current?.revision + '；后台事实刷新不会升级保存 CAS。'),
       snapshot.effective.reason === null ? null : status('原因：' + snapshot.effective.reason),
       h('p', null, '范围：主会话 ' + snapshot.instance.ownerSessionId + ' / 实例 ' + snapshot.instance.instrumentInstanceId + ' 与当前受权后代；仅开启后新建事项，不扫描旧 backlog，不复制到独立会话或 fork。'),
-      snapshot.saved.epoch === null ? null : h('p', null, '服务端固定到期：', serverTime(snapshot.saved.epoch.expiresAt), ' · epoch ' + snapshot.saved.epoch.epochId + ' · 授权者 user / ' + snapshot.saved.epoch.authorizedBy.principalId),
-      h('label', null, '新期限 ', h('select', { 'aria-label': '预授权时长', value: String(duration), disabled: busy, onChange: (event: ChangeEvent<HTMLSelectElement>) => setDuration(Number(event.target.value)) }, ...[1, 4, 8].map(hours => h('option', { key: hours, value: String(hours) }, hours + ' 小时')))),
-      snapshot.effective.status === 'unknown' ? status('有效状态未知；请重新读取后配置。') : h(Button, { type: 'button', role: 'switch', 'aria-label': '推荐支持预授权（已保存意图，不代表当前生效）', 'aria-checked': snapshot.saved.enabled, disabled: busy || !snapshot.saved.enabled && props.view.policy.features.pendingDecisions?.status !== 'configured', onClick: () => { void save(snapshot.saved.enabled ? 'disable' : 'enable') } }, busy ? '保存中…' : snapshot.saved.enabled ? '关闭推荐支持预授权' : '显式开启限时推荐支持'),
-      receipt === null ? null : h('p', { role: 'status' }, '历史保存结果：' + receipt.operation.action + ' · appliedRevision ' + receipt.appliedRevision + (receipt.replayed ? ' · 重放（不续期）' : '') + ' · 历史epoch ' + (receipt.operation.epochId ?? '无') + ' · 原到期：', serverTime(receipt.operation.expiresAt), '；当前 snapshot 修订 ' + receipt.snapshot.revision),
+      snapshot.saved.epoch === null ? null : h('p', null, '服务端期限：', snapshot.saved.epoch.expiresAt === null ? '持续生效（无固定到期）' : serverTime(snapshot.saved.epoch.expiresAt), ' · epoch ' + snapshot.saved.epoch.epochId + ' · 授权者 user / ' + snapshot.saved.epoch.authorizedBy.principalId),
+      h('label', null, '新期限 ', h('select', { 'aria-label': '预授权时长', value: String(duration), disabled: busy, onChange: (event: ChangeEvent<HTMLSelectElement>) => { const value = event.target.value; setDuration(value === 'persistent' ? 'persistent' : Number(value)) } },
+        h('optgroup', { label: '限时' }, ...[1, 2, 4, 8, 12, 24].map(hours => h('option', { key: hours, value: String(hours) }, hours + ' 小时'))),
+        h('optgroup', { label: '不限时' }, h('option', { key: 'persistent', value: 'persistent' }, '持续生效（不自动到期）')))),
+      duration === 'persistent' ? h('p', { style: { color: secondary, fontSize: '12px' } }, '持续生效会一直保留，直到你关闭；不自动到期。') : null,
+      snapshot.effective.status === 'unknown' ? status('有效状态未知；请重新读取后配置。') : h(Button, { type: 'button', role: 'switch', 'aria-label': '推荐支持预授权（已保存意图，不代表当前生效）', 'aria-checked': snapshot.saved.enabled, disabled: busy || !snapshot.saved.enabled && props.view.policy.features.pendingDecisions?.status !== 'configured', onClick: () => { void save(snapshot.saved.enabled ? 'disable' : 'enable') } }, busy ? '保存中…' : snapshot.saved.enabled ? '关闭推荐支持预授权' : '显式开启推荐支持'),
+      receipt === null ? null : h('p', { role: 'status' }, '历史保存结果：' + receipt.operation.action + ' · appliedRevision ' + receipt.appliedRevision + (receipt.replayed ? ' · 重放（不续期）' : '') + ' · 历史epoch ' + (receipt.operation.epochId ?? '无') + ' · 原期限：', serverTime(receipt.operation.expiresAt), '；当前 snapshot 修订 ' + receipt.snapshot.revision),
       message === null ? null : status(message))
   return h('section', { 'aria-label': '推荐支持预授权', style: box }, h('h4', null, '推荐支持预授权'), body,
-    h('p', { style: { color: secondary, fontSize: '12px' } }, '默认 8 小时但必须显式开启，刷新不续期。仅对范围内新建且推荐精确对应唯一选项 key 的待用户项提供支持；agent 仍须显式记录采用同一事项后继续，不是用户逐项人工答复。界面不代替 agent 采用，不新增执行或发布权限。关闭/到期阻止尚未采用候选的新采用，不撤回已执行副作用。'),
-    port === null || props.view.caller.kind !== 'user' ? null : h(Button, { type: 'button', disabled: busy, onClick: () => { base.current = null; setDuration(8); setReload(value => value + 1) } }, '重新读取预授权策略（丢弃草稿）'))
+    h('p', { style: { color: secondary, fontSize: '12px' } }, '默认 12 小时但必须显式开启；可选 1/2/4/8/12/24 小时或持续生效。限时到点失效，持续生效直至关闭；刷新不续期。仅对范围内新建且推荐精确对应唯一选项 key 的待用户项提供支持；agent 仍须显式记录采用同一事项后继续，不是用户逐项人工答复。界面不代替 agent 采用，不新增执行或发布权限。关闭/到期阻止尚未采用候选的新采用，不撤回已执行副作用。'),
+    port === null || props.view.caller.kind !== 'user' ? null : h(Button, { type: 'button', disabled: busy, onClick: () => { base.current = null; setDuration(12); setReload(value => value + 1) } }, '重新读取预授权策略（丢弃草稿）'))
 }
 
 /** Render only durable current-version selection metadata. Never manufacture a user reply or adopt. */
@@ -143,10 +146,13 @@ export function DecisionRecommendationProvenance(props: { readonly row: Decision
     if (candidate === undefined || candidate === null || typeof candidate !== 'object') return status('推荐支持候选未知：未返回完整候选，不当作支持或采用。')
     if (row.value.pending !== true || row.value.addressee?.kind !== 'user' || candidate.decisionRevision !== row.revision
       || typeof candidate.optionKey !== 'string' || row.value.recommendation !== candidate.optionKey || row.value.options?.filter(option => option.key === candidate.optionKey).length !== 1
-      || typeof candidate.policyEpochId !== 'string' || !candidate.policyEpochId.trim() || !Number.isSafeInteger(candidate.policyRevision) || candidate.policyRevision < 1 || !Number.isSafeInteger(candidate.expiresAt) || candidate.expiresAt < 0) return status('推荐支持候选未知：当前事项或来源已变化，请重新读取。')
+      || typeof candidate.policyEpochId !== 'string' || !candidate.policyEpochId.trim() || !Number.isSafeInteger(candidate.policyRevision) || candidate.policyRevision < 1
+      || candidate.expiresAt !== null && (!Number.isSafeInteger(candidate.expiresAt) || candidate.expiresAt < 0)) return status('推荐支持候选未知：当前事项或来源已变化，请重新读取。')
     return h('section', { 'aria-label': '推荐支持候选', style: box }, h('strong', null, '支持候选（尚未采用）'),
       h('p', null, '精确 key：' + candidate.optionKey + ' · 源事项修订 ' + candidate.decisionRevision + ' · policyRef / epoch ' + candidate.policyEpochId + ' · 策略修订 ' + candidate.policyRevision),
-      h('p', null, '服务端候选固定截止：', serverTime(candidate.expiresAt), '；采用时仍须重验。界面不自动采用，也不修改 pending/await。'))
+      candidate.expiresAt === null
+        ? h('p', null, '服务端候选：持续有效（无固定截止）；采用时仍须重验。界面不自动采用，也不修改 pending/await。')
+        : h('p', null, '服务端候选固定截止：', serverTime(candidate.expiresAt), '；采用时仍须重验。界面不自动采用，也不修改 pending/await。'))
   }
   try {
     const selection = parseDecisionPolicySelection(props.row.policySelection)

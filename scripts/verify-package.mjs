@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, posix, relative, resolve } from 'node:path'
@@ -189,7 +189,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'assets/notification-sounds/toast.mp3',
 ])
 
-const EXPECTED_VERSION = '0.19.0'
+const EXPECTED_VERSION = '0.20.0'
 // This batch is tested only on DSH 0.2.2-rc.1, whose Node floor is >=24.9.0.
 // Its real evaluator gives own `engines.dsh` precedence over component peers and
 // includes prereleases. Older version strings are refused; the floor admits RC1
@@ -547,8 +547,11 @@ export async function compareCommittedBuild(root) {
       exclude: [join(root, 'src/client.ts'), join(root, 'src/client-*.ts')],
     }))
     const previousUmask = process.umask(0o022)
+    // Prefer the repository's own compiler: pnpm exec may try to repair a shared
+    // node_modules in a no-TTY session before it ever starts tsc.
+    const localTsc = join(root, 'node_modules/typescript/bin/tsc'), useLocalTsc = existsSync(localTsc)
     try {
-      execFileSync('pnpm', ['exec', 'tsc', '-p', scratchConfig],
+      execFileSync(useLocalTsc ? process.execPath : 'pnpm', useLocalTsc ? [localTsc, '-p', scratchConfig] : ['exec', 'tsc', '-p', scratchConfig],
         { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
     } catch (error) {
       const detail = error.stderr?.toString().trim() || error.stdout?.toString().trim() || error.message

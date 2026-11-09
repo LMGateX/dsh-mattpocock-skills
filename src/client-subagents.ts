@@ -131,7 +131,7 @@ function SubagentRows(props: SubagentProps & { readonly catalog: Catalog | undef
     const children = childrenByParent.get(node.id) ?? []
     const folded = collapsed.has(node.id)
     return h('article', { key: node.id, style: { minWidth: 0, overflowWrap: 'anywhere' } },
-      h('button', { type: 'button', disabled: !enabled, style: { ...nativeTextButtonStyle, color: enabled ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)', fontWeight: 600, cursor: enabled ? 'pointer' : 'default', textDecoration: enabled ? 'underline' : undefined },
+      h('button', { type: 'button', disabled: !enabled, style: { ...nativeTextButtonStyle, color: enabled ? 'var(--dsw-alias-state-done-primary, #7460c8)' : 'var(--dsw-alias-label-secondary)', fontWeight: 600, cursor: enabled ? 'pointer' : 'default', textDecoration: enabled ? 'underline' : undefined },
         onClick: () => { if (!navigation?.open(node.id, node.parent, props.view)) setMessage('原生侧栏暂不可用：会话、显示权限或地址已变化。') } }, label),
       children.length === 0 ? null : h('button', { type: 'button', style: { ...nativeTextButtonStyle, color: 'var(--dsw-alias-label-secondary)', marginInlineStart: '12px', cursor: 'pointer' }, 'aria-expanded': !folded, 'aria-label': (folded ? '展开 ' : '折叠 ') + label + ' 的子代理',
         onClick: () => { const ids = new Set(collapsed); if (folded) ids.delete(node.id); else ids.add(node.id); setFolds({ scope, ids }) } }, folded ? '展开子代理' : '折叠子代理'),

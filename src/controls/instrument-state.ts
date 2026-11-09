@@ -388,7 +388,7 @@ function validateCheckpointAuthors(state:InstrumentState,dedup:readonly Instrume
       const decision=row as DecisionRecord,source=byTarget.get(targetKey)??[]
       const opening=source[0]!,bound=opening.command!.decisionPolicy,latest=source.at(-1)!.command!.decisionPolicy
       if(bound?.kind==='bound') {
-        if(opening.author.kind!=='agent'||bound.binding.createdRevision!==opening.appliedRevision||opening.command!.recordedAt<bound.binding.policy.enabledAt||opening.command!.recordedAt>=bound.binding.policy.expiresAt||JSON.stringify(bound.binding)!==JSON.stringify(decision.policyBinding)) invalid('checkpoint binding differs from first source receipt')
+        if(opening.author.kind!=='agent'||bound.binding.createdRevision!==opening.appliedRevision||opening.command!.recordedAt<bound.binding.policy.enabledAt||bound.binding.policy.expiresAt!==null&&opening.command!.recordedAt>=bound.binding.policy.expiresAt||JSON.stringify(bound.binding)!==JSON.stringify(decision.policyBinding)) invalid('checkpoint binding differs from first source receipt')
       }else if(decision.policyBinding) invalid('checkpoint binding has no first source receipt')
       if(source.slice(1).some(d=>d.command!.decisionPolicy?.kind==='bound')) invalid('binding cannot be recreated by a later command')
       const expectedSelection=latest?.kind==='adopted'?latest.selection:undefined
@@ -523,7 +523,7 @@ export function projectInstrumentDocument(document: InstrumentDocument): Instrum
         if(document.schemaVersion!==4 || event.decisionPolicy.kind!=='bound' || previous || event.author.kind!=='agent' || event.decisionPolicy.binding.createdRevision!==event.revision
           || value.pending!==true || value.addressee?.kind!=='user' || value.addressee.principalId!=null&&value.addressee.principalId!==event.decisionPolicy.binding.policy.authorizedBy.principalId
           || value.recommendation!==event.decisionPolicy.binding.optionKey || value.options?.filter(o=>o.key===value.recommendation).length!==1
-          || event.recordedAt<event.decisionPolicy.binding.policy.enabledAt || event.recordedAt>=event.decisionPolicy.binding.policy.expiresAt) invalid('invalid qualified creation binding')
+          || event.recordedAt<event.decisionPolicy.binding.policy.enabledAt || event.decisionPolicy.binding.policy.expiresAt!==null&&event.recordedAt>=event.decisionPolicy.binding.policy.expiresAt) invalid('invalid qualified creation binding')
       }
     } else {
       if (!decisions.has(entityKey(command.workflowId, command.decisionId))) invalid('view refers to unknown decision')

@@ -11,7 +11,7 @@ export interface OwnerDecisionPolicyEpoch {
     readonly policyRevision: number;
     readonly scope: 'new-decisions';
     readonly enabledAt: number;
-    readonly expiresAt: number;
+    readonly expiresAt: number | null;
     readonly authorizedBy: OperatorAuthor;
 }
 export type OwnerDecisionPolicyStatus = 'active' | 'disabled' | 'expired' | 'feature-disabled' | 'unknown';
@@ -21,7 +21,7 @@ export type OwnerDecisionPolicySaveRequest = {
     readonly expectedScope: InstrumentInstance;
 } & ({
     readonly action: 'enable';
-    readonly durationMs: number;
+    readonly durationMs: number | null;
 } | {
     readonly action: 'disable';
 });
@@ -80,7 +80,7 @@ export interface RecommendationCandidate {
     readonly decisionRevision: number;
     readonly policyEpochId: string;
     readonly policyRevision: number;
-    readonly expiresAt: number;
+    readonly expiresAt: number | null;
 }
 export type RecommendationReason = 'policy-disabled' | 'policy-expired' | 'feature-disabled' | 'no-creation-binding' | 'decision-changed' | 'not-pending-user' | 'no-exact-recommendation' | 'policy-epoch-changed' | 'different-addressee';
 export type RecommendationOutcome = {

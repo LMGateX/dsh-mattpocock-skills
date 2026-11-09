@@ -148,6 +148,27 @@ test('retained adoption history keeps exact version references and provenance, n
   assert.equal(JSON.stringify((await details()).rows[0]), legacyHash)
 })
 
+test('persistent policy keeps a null candidate expiry and supports V4 adoption at an arbitrarily later server time', async t => {
+  let clock = 1000
+  const f = await fixture(t, { initialPolicy: policy(), now: () => clock })
+  const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
+  const enabled = await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'open', expectedRevision: 0, expectedScope: initial.instance, action: 'enable', durationMs: null }, signal())
+  assert.equal(enabled.snapshot.effective.status, 'active')
+  assert.equal(enabled.snapshot.saved.epoch.expiresAt, null)
+  await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'flow', expectedRevision: 0, workflowId: 'flow', action: 'put-workflow', value: { title: 'Delivery', axes: [] } }, signal())
+  f.instance = initial.instance
+  const put = await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'question', expectedRevision: 1, workflowId: 'flow', decisionId: 'D', action: 'put-decision', references: ['task:source'], value: question }, signal())
+  assert.equal(put.recommendation.status, 'candidate')
+  const candidate = put.recommendation.candidate
+  assert.equal(candidate.expiresAt, null)
+  clock = Number.MAX_SAFE_INTEGER
+  const adopted = await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'adopt', expectedRevision: 2, workflowId: 'flow', decisionId: 'D', action: 'adopt-decision-recommendation', references: ['adopt:source'], value: { optionKey: candidate.optionKey, decisionRevision: candidate.decisionRevision, policyEpochId: candidate.policyEpochId, policyRevision: candidate.policyRevision } }, signal())
+  assert.equal(adopted.recommendation.status, 'adopted')
+  assert.equal(adopted.snapshot.decisions[0].policySelection.policy.expiresAt, null)
+  assert.equal(adopted.snapshot.decisions[0].policySelection.authorizedAt, Number.MAX_SAFE_INTEGER)
+  assert.equal((await f.read()).ownerDecisionPolicy.status, 'active')
+})
+
 test('decision model source and collection tokens include policy revision and expiry bucket, not the moving clock', async t => {
   let clock = 1000
   const f = await fixture(t, { initialPolicy: policy(), now: () => clock })

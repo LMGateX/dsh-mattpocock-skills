@@ -978,6 +978,8 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
   const records = view === null ? null : inputRecords(view)
   const pending = records?.summary.pendingUserDecisionCount
+  const policy = view?.ownerDecisionPolicy
+  const policyActive = policy?.status === 'active'
   const selected = selection.identity === identity && shown ? selection.category : null
   if (selection.identity !== identity) setSelection({ identity, category: null, decisionKeys: [] })
   const root = useRef<HTMLElement | null>(null)
@@ -1036,6 +1038,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
         pending === 0 ? h('button', { type: 'button', 'aria-label': '裁决设置', 'aria-expanded': selected === 'pending', 'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: decisionSecondary }, onClick: () => selected === 'pending' ? close() : select('pending') }, '裁决设置') : entrance('pending', '待你裁决 ' + countText(pending)),
         windowEntrance('T'), windowEntrance('S'),
+        policyActive ? h('span', { key: 'recommendation-policy', 'data-recommendation-policy': 'active', title: '推荐支持预授权已启用' + (policy?.expiresAt === null ? ' · 持续生效' : ''), 'aria-label': '推荐支持预授权已启用' + (policy?.expiresAt === null ? '（持续生效）' : ''), style: { color: 'var(--dsw-alias-state-success-primary, #2f855a)', fontWeight: 600, whiteSpace: 'nowrap' } }, '推荐支持 启用') : null,
         pending === 0 && needsRecordCheck(records) ? entrance('awaiting', '记录核对', true) : null)),
     h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
       ...visible.flatMap(workflow => workflow.referenceCount !== null && workflow.referenceCount > 0
