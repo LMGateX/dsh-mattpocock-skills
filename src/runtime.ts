@@ -178,10 +178,28 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     }
     const countState=ports.nativeSubagentCountState?.(owner)
-    // A revision alone cannot detect a silently removed native service.
-    if(countState===undefined)reusable=false
+    // Stored native membership may outlive a live parent-chain change. Its compact IDs,
+    // not that chain or the stored revision alone, prove which live objects can affect S.
+    const members=countState?.memberSessionIds===undefined?null:[...countState.memberSessionIds].sort()
+    if(members===null)reusable=false
+    else for(const sid of members){
+      related.add(sid)
+      // Native depth follows all live parents, including independent root/fork identities.
+      // Keep their fields/absence in A as well; no membership reclassification occurs here.
+      const seen=new Set<string>([sid])
+      let cursor=rows.get(sid)?.parent
+      while(cursor!==undefined){
+        related.add(cursor)
+        if(cursor===owner)break
+        if(seen.has(cursor)||seen.size>=64){reusable=false;break}
+        seen.add(cursor)
+        const parent=rows.get(cursor)
+        if(parent===undefined){reusable=false;break}
+        cursor=parent.parent
+      }
+    }
     const countRevision=ports.nativeSubagentCountRevision?.(owner)??0
-    const countToken=countState===undefined?null:[countState.revision,countState.known,countState.reason,countState.available]
+    const countToken=countState===undefined?null:[countState.revision,countState.known,countState.reason,countState.available,members]
     const capabilities=Object.entries(ports.capabilities).map(([key,value])=>[key,value])
     const token=(dependencies:readonly string[]):string=>sourceVersion([countRevision,countToken,capabilities,
       [...new Set([...related,...dependencies,...(reusable?[]:rows.keys())])].sort().map(sid=>[sid,rows.get(sid)?.token??null])])

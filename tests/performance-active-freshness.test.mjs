@@ -247,3 +247,63 @@ test('hot projection reuse still checks current caller and source authorization'
   f.ports.authority.resolveSession = async () => { throw new Error('current identity source denied') }
   await assert.rejects(f.read(), /current identity source denied/)
 })
+
+test('stored native members remain live dependencies after their parent moves outside the owner chain', async t => {
+  let ports
+  const f = await mountedFixture(t, {
+    configureBeforeMount({ ctx }) { ctx.provide('subagents', { async listDescendants() { return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }) },
+    runtimeCreated(_runtime, value) { ports = value },
+  })
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const read = () => f.runtime.readSession(caller('root'), 'root', signal())
+  await read(); await new Promise(resolve => setImmediate(resolve)); await read()
+  assert.deepEqual((await f.runtimeStorage.read())?.nativeExecutions ?? [], [], 'no persisted native execution may accidentally supply this dependency')
+  f.agents.set('other', actualAgent('other'))
+  f.agents.set('child', Object.assign(actualAgent('child', { parent: 'other', managed: true }), { status: 'idle' }))
+  await read(); await new Promise(resolve => setImmediate(resolve))
+  const before = await read()
+  assert.equal(before.windows.S.used, 0)
+  const memberProof = ports.nativeSubagentCountState('root')
+  assert.deepEqual(memberProof.memberSessionIds, ['child'])
+  memberProof.memberSessionIds.length = 0
+  assert.deepEqual(ports.nativeSubagentCountState('root').memberSessionIds, ['child'], 'public compact proof is copied, not the counter-owned Set')
+  const reads = fullReads(t)
+  f.agents.get('child').status = 'running' // no lifecycle event and no counter revision bump
+  const after = await read(), activity = await ports.nativeSubagentActivity('root', signal())
+  assert.equal(activity.running, 1, 'native stored membership remains the actual count authority')
+  assert.equal(after.windows.S.used, 1, 'hot projection must not exclude a stored member using only its new parent')
+  assert.notEqual(after, before)
+  assert.equal(after.windows.S.depth.unknown, 1)
+  f.agents.get('other').session.header.parentSession = 'root'
+  const reconnected = await read()
+  assert.equal(reconnected.windows.S.depth.levels['2'], 1, 'native depth uses the member parent even when it is an external fork/root identity')
+  f.agents.set('child', Object.assign(actualAgent('child', { parent: 'other', managed: true }), { status: 'idle' }))
+  assert.equal((await read()).windows.S.used, 0, 'same-id Agent replacement is relevant without an execution record')
+  const child = f.agents.get('child')
+  child.session = { ...child.session, header: { ...child.session.header } }
+  await read()
+  assert.equal(reads(), 4, 'same Agent with a replaced Session is also a new native-member cut')
+  f.agents.delete('child')
+  assert.equal((await read()).windows.S.used, 0)
+  f.agents.set('child', Object.assign(actualAgent('child', { parent: 'other', managed: true }), { status: 'running' }))
+  assert.equal((await read()).windows.S.used, 1, 'retained membership sees the same id return after absence')
+  f.agents.set('other', actualAgent('other'))
+  assert.equal((await read()).windows.S.depth.unknown, 1, 'external ancestor same-id replacement cannot reuse measured depth')
+  assert.equal(reads(), 7)
+  const stable = await read()
+  f.agents.set('unrelated-native-cut', actualAgent('unrelated-native-cut'))
+  assert.deepEqual(await read(), stable)
+  f.agents.delete('unrelated-native-cut')
+  assert.deepEqual(await read(), stable)
+  assert.equal(reads(), 7, 'unrelated roots still cause zero extra full reads with native membership proof')
+})
+
+test('a legacy count-state seam without membership proof remains readable but cannot certify reuse', async t => {
+  const { f, reads } = await warm(t), state = f.ports.nativeSubagentCountState
+  f.ports.nativeSubagentCountState = (...args) => {
+    const { memberSessionIds, ...legacy } = state(...args)
+    return legacy
+  }
+  await f.read(); await f.read()
+  assert.equal(reads(), 2, 'known/revision/live-parent-only evidence is insufficient without native membership coverage')
+})

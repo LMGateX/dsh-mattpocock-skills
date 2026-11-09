@@ -132,7 +132,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     nativeSubagentStops() { return stops },
     nativeSubagentCountRevision() { return stopRevision + nativeRevision },
     // Controlled Adapter knowledge, not an SDK execution receipt or a private-counter probe.
-    nativeSubagentCountState() { return { revision: stopRevision + nativeRevision, known, reason: known ? null : 'native-subagent-activity-lower-bound', available: true } },
+    nativeSubagentCountState() { return { revision: stopRevision + nativeRevision, known, reason: known ? null : 'native-subagent-activity-lower-bound', available: true, memberSessionIds: [...nativeLive] } },
     installNativeGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     installManagedGuard(guard) { guards.push(guard); return () => { guards.splice(guards.indexOf(guard), 1) } },
     async openRuntimeStorage(parse) { return ports.openUnitStorage('runtime_bindings', parse) },
