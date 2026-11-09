@@ -116,12 +116,31 @@ export function evaluateOwnerDecisionPolicy(state:OwnerDecisionPolicyState,featu
  if(now>=state.epoch.expiresAt) return freeze({status:'expired',reason:'policy-expired'})
  return freeze({status:'active',reason:null})
 }
+/** Decision-local eligibility; no task/business semantic inference. */
+export function evaluateRecommendationSupport(row:{readonly revision:number;readonly value:{readonly pending?:boolean;readonly recommendation?:string|null;readonly options?:readonly {readonly key:string}[];readonly addressee?:{readonly kind:string;readonly principalId?:string|null}};readonly policyBinding?:DecisionPolicyBinding;readonly policySelection?:DecisionPolicySelection},state:OwnerDecisionPolicyState|undefined,featureConfigured:boolean,now:number):RecommendationOutcome {
+ if(row.policySelection) return freeze({status:'adopted',selection:row.policySelection})
+ if(!state) return freeze({status:'unknown',reason:'policy-unavailable'})
+ const effective=evaluateOwnerDecisionPolicy(state,featureConfigured,now)
+ if(effective.status==='unknown') return freeze({status:'unknown',reason:'policy-unavailable'})
+ const ineligible=(reason:RecommendationReason):RecommendationOutcome=>freeze({status:'not-eligible',reason})
+ if(effective.status==='feature-disabled') return ineligible('feature-disabled')
+ if(effective.status==='disabled') return ineligible('policy-disabled')
+ if(effective.status==='expired') return ineligible('policy-expired')
+ const binding=row.policyBinding
+ if(!binding) return ineligible('no-creation-binding')
+ if(row.revision!==binding.createdRevision) return ineligible('decision-changed')
+ if(row.value.pending!==true||row.value.addressee?.kind!=='user') return ineligible('not-pending-user')
+ if(row.value.addressee.principalId!=null&&row.value.addressee.principalId!==state.epoch!.authorizedBy.principalId) return ineligible('different-addressee')
+ if(row.value.recommendation!==binding.optionKey||row.value.options?.filter(o=>o.key===binding.optionKey).length!==1) return ineligible('no-exact-recommendation')
+ if(state.epoch!.epochId!==binding.policy.epochId||state.epoch!.policyRevision!==binding.policy.policyRevision||JSON.stringify(state.epoch)!==JSON.stringify(binding.policy)) return ineligible('policy-epoch-changed')
+ return freeze({status:'candidate',candidate:{optionKey:binding.optionKey,decisionRevision:row.revision,policyEpochId:binding.policy.epochId,policyRevision:binding.policy.policyRevision,expiresAt:binding.policy.expiresAt}})
+}
 function strict(name:string,parse:(value:unknown)=>unknown):TypertCodec {return {mode:'strict',typeSymbol:RECOMMENDATION_REMOTE_NAMESPACE+'#'+name,create:()=>({parse})}}
 function descriptor(method:typeof RECOMMENDATION_REMOTE_METHODS[number],parameters:readonly [string,TypertCodec][],result:TypertCodec):InvocationDescriptor {
  return {id:'@lmgatex/dsh-mattpocock-skills#'+RECOMMENDATION_REMOTE_NAMESPACE+'/'+method,service:RECOMMENDATION_REMOTE_NAMESPACE,namespace:RECOMMENDATION_REMOTE_NAMESPACE,method,invocation:{kind:'direct'},parameters:parameters.map(([name,codec])=>({name,wire:name,source:'json',codec})),result,...(method==='readOwnerDecisionPolicy'?{cancellation:{parameter:'signal' as const}}:{})}
 }
 const sessionCodec=strict('SessionId',v=>id(v,'sessionId'))
-export const RECOMMENDATION_REMOTE_CONTRIBUTION:TypertRemoteContribution=freeze({package:'@lmgatex/dsh-mattpocock-skills',descriptors:[
+export const RECOMMENDATION_REMOTE_CONTRIBUTION:TypertRemoteContribution=freeze({package:'@lmgatex/dsh-mattpocock-skills/recommendation-support',descriptors:[
  descriptor('readOwnerDecisionPolicy',[['sessionId',sessionCodec]],strict('OwnerDecisionPolicySnapshot',parseOwnerDecisionPolicySnapshot)),
  descriptor('saveOwnerDecisionPolicy',[['sessionId',sessionCodec],['request',strict('OwnerDecisionPolicySaveRequest',parseOwnerDecisionPolicySaveRequest)]],strict('OwnerDecisionPolicySaveResult',parseOwnerDecisionPolicySaveResult)),
 ]})
