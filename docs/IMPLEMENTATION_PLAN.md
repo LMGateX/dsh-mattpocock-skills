@@ -6,6 +6,18 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.18.0 协作信息区与可选铃声（2026-11-09，实施中）
+
+以 [DESIGN](<DESIGN.md>) 与 [COLLABORATION_UI_REFRESH](<COLLABORATION_UI_REFRESH.md>) 为准；最新授权为隔离开发/测试、push/新Release，**不安装本机**。
+
+| 阶段 | 交付与门槛 |
+|---|---|
+| A 文档/隔离 | 最新origin/main独立工作树，保护原树dirty；先提交显示/权限/原生读取/模板/声音契约 |
+| B 并行实现 | 单writer子树，实际React/公开host/input/notification seams竖切RED→GREEN；标题仅读、不加agent字段；真实本地CC0声音与设置选择 |
+| C 集成/复审 | 串行集成、严格类型/生成物/完整回归、明暗窄屏键盘与独立Standards/Spec必改关闭；不宣称现场闪烁已复现 |
+| D 制品/发布 | 冻结唯一clean source/精确归档，source-bound strict/双宿主门禁、新tag/五资产Release和下载逐字节回验 |
+| E 本机安装 | 明确不执行；Profile/共享SDK/当前服务与生产记录不变，不启用管理/重启/n​​pm publish |
+
 ## 0.17.0 Skill 正文获取实施（2026-11-09，A–E已交付；磁盘已安装，当前宿主待重载）
 
 接受范围见 [DESIGN](<DESIGN.md>) 与唯一细化 [SKILL_CONTENT_ACCESS](<SKILL_CONTENT_ACCESS.md>)。默认正文可获取、user-only 交模型理解，不做自然语言特批或严格兼容模式；既有权限与来源完整性不变。本轮用户明确授权push／发版／安装，旧轮次“不安装”不限制本批。

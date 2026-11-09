@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.18.0 协作信息区与可选铃声（2026-11-09，已认可；隔离实施／发布，不安装本机）
+
+所有者认可稳定无旧正文的恢复外壳、裁决/T/S统一三切换、次级记录核对、T票号层次、S原生标题读取/侧栏/父子折叠、裁决文字选项插入模板与多个已试听CC0声音备选。唯一细化契约为 [COLLABORATION_UI_REFRESH.md](<COLLABORATION_UI_REFRESH.md>)，先固定文档再开发测试与独立复核，完成后非force push与新版本Release；**暂不为本机DSH安装**，不继承0.17.0本机安装许可，不改当前Profile/共享SDK/GUI/生产数据或自动重启。
+
+S标题仅调用宿主读取API，不增加agent派发必填字段、模型工具/仪器负担或持久标题拓扑账本。unknown不继续显示旧正文/数字，明确撤权/关闭/身份变化仍清理；中性外壳是对旧input ready整区门控的限定改进，不放宽事实新鲜度。模板只插入不提交不登记批准；保留既有权限/CAS/义务与T/S口径。本批不修改vendor/channel/provider precedence，不新增业务schema或运行时第三方抓取。通过源/精确包与独立双轴门禁后发布，不覆盖旧tag/资产、不npm publish。
+
 ## 0.17.0 Skill 正文可获取与 user-only 行为提示（2026-11-09，已认可；文档先行）
 
 所有者认可默认开放 agent 获取 Skill 正文、上游 user-only 作为行为提示而非程序禁读；要求先固定文档，再在隔离环境／subagents 开发测试，push、发版并安装。唯一细化契约为 [SKILL_CONTENT_ACCESS.md](<SKILL_CONTENT_ACCESS.md>)。本节取代旧 provider 逐值映射和裸正文返回的相关限制，不改 vendor 原文、原始 catalog、channel 或 provider precedence。
