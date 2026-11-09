@@ -58,7 +58,7 @@ function fakePorts(extra = {}, data = new Map()) {
 function episode(id = 'decision', revision = 1) { return { id: JSON.stringify(['scope', id, revision]), scope: 'scope', workflowId: 'workflow', decisionId: id, entryRevision: revision, pendingCount: 1 } }
 
 test('closed graph has only verified native primitives/react and no runtime circular import', () => {
-  assert.deepEqual(built.modules, ['src/client-notifications.ts'])
+  assert.deepEqual(built.modules, ['src/client-notification-sound-data.ts', 'src/client-notification-sounds.ts', 'src/client-notifications.ts'])
   assert.deepEqual(built.externals, ['@deepseek-ai/dsh-client-ui-primitives', 'react'])
   assert(!built.code.includes('node:'))
 })
@@ -69,7 +69,7 @@ test('private browser module passes strict actual public primitive types without
   assert.equal(errors.length, 0, ts.formatDiagnostics(errors, { getCanonicalFileName: x => x, getCurrentDirectory: () => process.cwd(), getNewLine: () => '\n' }))
 })
 test('safe defaults and exact integer preference boundaries', () => {
-  assert.deepEqual(defaults, { sound: false, soundSeconds: 5, volume: 50, toast: true, toastSeconds: 8, desktop: false })
+  assert.deepEqual(defaults, { sound: false, soundChoice: 'toast', soundSeconds: 5, volume: 50, toast: true, toastSeconds: 8, desktop: false })
   for (const soundSeconds of [1, 60]) for (const volume of [0, 100]) for (const toastSeconds of [0, 60]) assert.doesNotThrow(() => n.parseBrowserNotificationPreferences({ ...defaults, soundSeconds, volume, toastSeconds }))
   for (const invalid of [{ soundSeconds: 0 }, { soundSeconds: 61 }, { soundSeconds: 3.5 }, { volume: -1 }, { volume: 101 }, { toastSeconds: -1 }, { toastSeconds: 61 }, { extra: true }, { desktop: 'true' }]) assert.throws(() => n.parseBrowserNotificationPreferences({ ...defaults, ...invalid }))
 })
@@ -230,8 +230,9 @@ test('native browser adapter only touches fake audio/Notification and preserves 
   const contexts = [], osNotices = [], data = new Map(), storageEvents = new Set(); let permissions = 0, locked = 0
   class AudioContext {
     constructor() { this.state = 'suspended'; this.currentTime = 100; this.destination = {}; this.stops = []; contexts.push(this) }
-    createOscillator() { const node = { frequency: {}, connect() {}, disconnect() {}, start: () => { this.started = true }, stop: at => this.stops.push(at) }; return node }
-    createGain() { return this.gain = { gain: {}, connect() {}, disconnect() {} } }
+    async decodeAudioData() { return { duration: 0.63 } }
+    createBufferSource() { const node = { connect() {}, disconnect() {}, start: () => { this.started = true }, stop: at => this.stops.push(at) }; return node }
+    createGain() { return this.gain = { gain: { setValueAtTime() {}, linearRampToValueAtTime() {} }, connect() {}, disconnect() {} } }
     async resume() { this.state = 'running' }
     async close() { this.state = 'closed' }
   }
@@ -250,9 +251,9 @@ test('native browser adapter only touches fake audio/Notification and preserves 
   vm.runInThisContext('(function(window){' + built.code + '\n})')(window)
   const module = entry.factory(name => name === 'react' ? React : primitives), ports = module.createBrowserNotificationPorts()
   assert.deepEqual(ports.capabilities(), { secure: true, audio: true, desktop: 'default', hidden: true })
-  assert.equal(permissions, 0); const sound = ports.createSound(); await sound.start(3, 100)
-  assert.equal(contexts[0].started, true); assert.equal(contexts[0].stops[0], 103); assert.equal(contexts[0].gain.gain.value, 0.12)
-  sound.stop(); sound.stop(); assert.equal(contexts[0].state, 'closed'); assert.equal(contexts[0].stops.length, 2)
+  assert.equal(permissions, 0); const sound = ports.createSound('toast', true); await sound.start(3, 100)
+  assert.equal(contexts[0].started, true); assert.equal(contexts[0].stops.length, 3); assert(contexts[0].stops.every(at => at <= 103))
+  sound.stop(); sound.stop(); assert.equal(contexts[0].state, 'closed'); assert.equal(contexts[0].stops.length, 6)
   await ports.requestDesktopPermission(); assert.equal(permissions, 1); assert(await ports.withLock('x', async () => true)); assert.equal(locked, 1)
   const notice = ports.showDesktop('generic', 'count only', () => {}); assert.equal(osNotices[0].options.body, 'count only'); notice.close(); assert.equal(osNotices[0].onclick, null)
   const off = ports.onStorage(() => {}); assert.equal(storageEvents.size, 1); off(); assert.equal(storageEvents.size, 0)

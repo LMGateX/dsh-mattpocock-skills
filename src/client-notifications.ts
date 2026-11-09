@@ -3,6 +3,7 @@ import type { ChangeEvent, CSSProperties, ReactElement } from 'react'
 import { Button, Checkbox, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientSessionSnapshot, SessionObservation } from './client.js'
 import type { DecisionValue } from './controls/instrument-state.js'
+import { localNotificationSoundFactory } from './client-notification-sounds.js'
 
 /** Browser-only private module. No imports of Host/runtime and no work at module load. */
 export const NOTIFICATION_PREFS_KEY = '@lmgatex/mattpocock:browser-notifications:v1'
@@ -12,19 +13,20 @@ export const NOTIFICATION_LEDGER_LIMIT = 256
 const LEDGER_TTL = 24 * 60 * 60 * 1000
 export interface BrowserNotificationPreferences {
   readonly sound: boolean
+  readonly soundChoice: 'toast' | 'modal' | 'popup' | 'bubble'
   readonly soundSeconds: number
   readonly volume: number
   readonly toast: boolean
   readonly toastSeconds: number
   readonly desktop: boolean
 }
-export const DEFAULT_BROWSER_NOTIFICATION_PREFERENCES: BrowserNotificationPreferences = Object.freeze({ sound: false, soundSeconds: 5, volume: 50, toast: true, toastSeconds: 8, desktop: false })
+export const DEFAULT_BROWSER_NOTIFICATION_PREFERENCES: BrowserNotificationPreferences = Object.freeze({ sound: false, soundChoice: 'toast', soundSeconds: 5, volume: 50, toast: true, toastSeconds: 8, desktop: false })
 function integer(value: unknown, min: number, max: number): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max }
 export function parseBrowserNotificationPreferences(raw: unknown): BrowserNotificationPreferences {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('提醒设置格式无效')
   const p = raw as Record<string, unknown>
-  if (Object.keys(p).length !== 6 || typeof p.sound !== 'boolean' || typeof p.toast !== 'boolean' || typeof p.desktop !== 'boolean' || !integer(p.soundSeconds, 1, 60) || !integer(p.volume, 0, 100) || !integer(p.toastSeconds, 0, 60)) throw new Error('声长须为 1–60 秒，音量 0–100，页面通知时长 0–60 秒（整数）')
-  return Object.freeze({ sound: p.sound, soundSeconds: p.soundSeconds, volume: p.volume, toast: p.toast, toastSeconds: p.toastSeconds, desktop: p.desktop })
+  if (Object.keys(p).some(key => !['sound', 'soundChoice', 'soundSeconds', 'volume', 'toast', 'toastSeconds', 'desktop'].includes(key)) || ('soundChoice' in p && !['toast', 'modal', 'popup', 'bubble'].includes(p.soundChoice as string)) || typeof p.sound !== 'boolean' || typeof p.toast !== 'boolean' || typeof p.desktop !== 'boolean' || !integer(p.soundSeconds, 1, 60) || !integer(p.volume, 0, 100) || !integer(p.toastSeconds, 0, 60)) throw new Error('声长须为 1–60 秒，音量 0–100，页面通知时长 0–60 秒（整数）')
+  return Object.freeze({ sound: p.sound, soundChoice: (p.soundChoice ?? 'toast') as BrowserNotificationPreferences['soundChoice'], soundSeconds: p.soundSeconds, volume: p.volume, toast: p.toast, toastSeconds: p.toastSeconds, desktop: p.desktop })
 }
 const pendingUser = (value: DecisionValue): boolean => value.pending === true && value.addressee?.kind === 'user'
 const rowKey = (row: { workflowId: string; decisionId: string }): string => JSON.stringify([row.workflowId, row.decisionId])
@@ -104,7 +106,7 @@ export interface BrowserNotificationPorts {
   readonly withLock?: (name: string, operation: () => Promise<boolean>) => Promise<boolean>
   readonly onStorage?: (listener: () => void) => () => void
   readonly capabilities: () => NotificationCapabilities
-  readonly createSound?: () => NotificationSound
+  readonly createSound?: (choice?: BrowserNotificationPreferences['soundChoice'], gesture?: boolean) => NotificationSound
   readonly requestDesktopPermission?: () => Promise<NotificationPermission>
   readonly showDesktop?: (title: string, body: string, onClick: () => void) => { close(): void }
   readonly now: () => number
@@ -123,15 +125,7 @@ export function createBrowserNotificationPorts(): BrowserNotificationPorts {
     ...(locks ? { withLock: async (name: string, operation: () => Promise<boolean>) => await locks.request(name, operation) } : {}),
     ...(w && typeof w.addEventListener === 'function' && typeof w.removeEventListener === 'function' ? { onStorage: (listener: () => void) => { const handler = (event: StorageEvent) => { if (event.key === NOTIFICATION_PREFS_KEY || event.key === null) listener() }; w.addEventListener('storage', handler); return () => w.removeEventListener('storage', handler) } } : {}),
     capabilities: () => ({ secure: w?.isSecureContext === true, audio: !!audio, desktop: notification ? notification.permission : 'unsupported', hidden: w?.document?.visibilityState === 'hidden' }),
-    ...(audio ? { createSound: () => {
-      const context = new audio(), oscillator = context.createOscillator(), gain = context.createGain()
-      let stopped = false
-      oscillator.type = 'sine'; oscillator.frequency.value = 660; oscillator.connect(gain); gain.connect(context.destination)
-      return { state: () => context.state,
-        start: async (seconds: number, volume: number) => { gain.gain.value = volume / 100 * 0.12; oscillator.start(); oscillator.stop(context.currentTime + seconds); if (context.state === 'suspended') await context.resume() },
-        stop: () => { if (stopped) return; stopped = true; try { oscillator.stop() } catch { /* already ended */ } oscillator.disconnect(); gain.disconnect(); void context.close().catch(() => {}) },
-      }
-    } } : {}),
+    ...(audio ? { createSound: localNotificationSoundFactory(audio) } : {}),
     ...(notification ? { requestDesktopPermission: () => notification.requestPermission(), showDesktop: (title: string, body: string, onClick: () => void) => { const notice = new notification(title, { body }); notice.onclick = onClick; return { close: () => { notice.onclick = null; notice.close() } } } } : {}),
     now: () => Date.now(), later: (callback, ms) => setTimeout(callback, ms), cancel: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
   }
@@ -229,18 +223,18 @@ export class MountedNotificationDelivery {
   stopSound = (): void => { if (this.soundTimer !== undefined) this.center.ports.cancel(this.soundTimer); this.soundTimer = undefined; this.sound?.stop(); this.sound = undefined; this.soundCurrent = undefined }
   private closeDesktops(): void { for (const notice of this.desktops.keys()) notice.close(); this.desktops.clear() }
   clear(): void { this.stopSound(); this.closeDesktops() }
-  preview(preferences = this.center.getSnapshot().preferences): void {
+  preview(preferences = this.center.getSnapshot().preferences, gesture = true): void {
     this.stopSound()
     if (this.disposed) return
     this.releaseSoundStop ??= this.center.registerSoundStop(this.stopSound)
     const ports = this.center.ports
     if (!ports.createSound) { this.center.report('声音不可用：浏览器不支持 AudioContext'); return }
     try {
-      const sound = ports.createSound(); this.sound = sound
+      const sound = ports.createSound(preferences.soundChoice, gesture); this.sound = sound
       this.soundTimer = ports.later(() => this.stopSound(), preferences.soundSeconds * 1000)
       const playing = sound.start(preferences.soundSeconds, preferences.volume)
-      this.center.report(sound.state() === 'running' ? '声音已启动；浏览器/操作系统 静音仍可能阻止听见' : '声音被挂起或自动播放受限；请显式试听，后台也可能节流')
-      void playing.then(() => { if (this.sound === sound && !this.disposed) this.center.report(sound.state() === 'running' ? '声音已启动；不代表用户已听见' : '声音仍被挂起或不可用') }, () => { if (this.sound === sound) { this.stopSound(); this.center.report('声音启动失败或自动播放被拒绝') } })
+      this.center.report(preferences.volume === 0 ? '音量为 0；本次静音，不解锁或播放声音' : sound.state() === 'running' ? '声音已启动；浏览器/操作系统 静音仍可能阻止听见' : '声音被挂起或自动播放受限；请显式试听，后台也可能节流')
+      void playing.then(() => { if (this.sound === sound && !this.disposed) this.center.report(preferences.volume === 0 ? '音量为 0；本次静音，不解锁或播放声音' : sound.state() === 'running' ? '声音已启动；不代表用户已听见' : '声音仍被挂起或不可用') }, () => { if (this.sound === sound) { this.stopSound(); this.center.report('声音启动失败或自动播放被拒绝') } })
     } catch { this.stopSound(); this.center.report('声音启动失败或浏览器拒绝') }
   }
   async deliver(episode: DecisionNotificationEpisode, current: () => boolean, onOpen: () => void): Promise<boolean> {
@@ -248,7 +242,7 @@ export class MountedNotificationDelivery {
     const p = this.center.getSnapshot().preferences
     if (!valid() || !p.sound && !p.toast && !p.desktop || !await this.center.claim(episode.id, valid) || !valid()) return false
     const preferences = this.center.getSnapshot().preferences
-    if (preferences.sound) { this.preview(preferences); this.soundCurrent = valid }
+    if (preferences.sound) { this.preview(preferences, false); this.soundCurrent = valid }
     if (preferences.desktop) {
       const ports = this.center.ports, capabilities = ports.capabilities()
       if (!capabilities.secure || capabilities.desktop !== 'granted' || !ports.showDesktop) this.center.report('桌面通知未发送：需显式授权、安全环境与浏览器支持')
@@ -293,12 +287,16 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
       h('fieldset', { style: channel },
         h('legend', { style: legend }, '声音提醒'),
         h(Checkbox, { label: '声音通知', checked: draft.sound, onChange: sound => setDraft({ ...draft, sound }) }),
-        h('p', { style: description }, '有限时长铃声；可先试听，停止铃声不改变提醒设置。'),
+        h('p', { style: description }, '本地 CC0 作者音频；时长是含静音间隔的提醒预算，不拉伸或叠音。请显式试听解锁声音，浏览器/OS 仍可能静音或节流。'),
+        h('label', { style: { display: 'grid', gap: 6, maxWidth: '100%', fontSize: 13 } }, '铃声选择',
+          h('select', { 'aria-label': '铃声选择', value: draft.soundChoice, style: { maxWidth: '100%', color: 'var(--dsw-alias-label-primary)', background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 6, padding: 8 }, onChange: (event: ChangeEvent<HTMLSelectElement>) => { preview.stopSound(); setDraft({ ...draft, soundChoice: event.target.value as BrowserNotificationPreferences['soundChoice'] }) } },
+            ...[['toast', '三音上行 · Toast（默认）'], ['modal', '五度双音 · Modal'], ['popup', '上滑音 · Pop-up'], ['bubble', '八度上滑 · Bubble']].map(([key, label]) => h('option', { key, value: key }, label)))),
         h('div', { style: { ...actions, alignItems: 'flex-start', gap: 16 } },
           h('div', { style: { display: 'grid', gap: 8, minWidth: 0, maxWidth: '100%' } },
             number('soundSeconds', '铃声持续秒数', 1, 60),
             h('div', { style: actions }, ...[3, 5, 10, 30].map(soundSeconds => h(Button, { key: soundSeconds, type: 'button', variant: 'outline', size: 'sm', onClick: () => setDraft({ ...draft, soundSeconds }) }, soundSeconds + ' 秒')))),
           number('volume', '音量百分比', 0, 100)),
+        h('p', { role: 'status', 'aria-label': '声音状态', style: description }, saved.delivery),
         h('div', { style: actions },
           h(Button, { type: 'button', variant: 'outline', onClick: () => { try { preview.preview(parseBrowserNotificationPreferences(draft)) } catch (error) { setMessage(String(error)) } } }, '试听'),
           h(Button, { type: 'button', variant: 'ghost', onClick: () => center.stopAllSounds() }, '停止当前铃声'))),
