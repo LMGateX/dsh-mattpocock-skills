@@ -171,6 +171,15 @@ test('V4 retained adoption cannot manufacture a different recommendation or disc
  assert.throws(()=>parseInstrumentDocument(forged),e=>e.code==='invalid-state')
  for(const field of ['policyBinding','policySelection','author']) assert.throws(()=>parseInstrumentCommand({operationId:'forged',expectedRevision:3,workflowId:'flow',decisionId:'D',action:'put-decision',value:{...question,[field]:decision[field]??user}}))
 })
+test('historical creation replay cannot return stale authority after the optional policy read revokes its caller',async()=>{
+ const f=await setup(),command={operationId:'creation-replay-auth',expectedRevision:1,workflowId:'flow',decisionId:'D',action:'put-decision',value:question}
+ await f.instruments.apply('A','A',command)
+ const reader={read:async instance=>{const state=await f.policy.read(instance);f.revoked.add('A');return state}}
+ const instruments=new SessionInstruments(f.controls,f.storage,f.authority,()=>12345,reader)
+ await assert.rejects(instruments.apply('A','A',command),/permission denied/)
+ f.revoked.delete('A')
+ assert.equal((await f.instruments.read('A','A')).revision,2)
+})
 test('new pending exact-key agent question binds in its creation CAS and returns a candidate, not adoption',async()=>{
  const f=await setup()
  const result=await f.apply('put-decision',{decisionId:'D',value:question,references:['source:task']})

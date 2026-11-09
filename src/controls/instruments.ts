@@ -388,13 +388,17 @@ export class SessionInstruments {
       const receipt=current.schemaVersion!==1 ? current.dedup.find(d=>d.operationId===command.operationId) : undefined
       if(receipt) {
         if(receipt.kind!=='command' || receipt.digest!==digest(command,context.access.author)) throw new ControlsError('operation-conflict','operationId already belongs to another author or payload')
-        const snapshot=this.supportSnapshot(this.snapshot(current,context.access,{}),context.controls,await this.policyState(context.controls.instance))
+        const policy=await this.policyState(context.controls.instance)
+        if(this.decisionPolicy) context=await this.refreshWriteContext(principal,sessionId,context,state,command)
+        const snapshot=this.supportSnapshot(this.snapshot(current,context.access,{}),context.controls,policy)
         return this.applyResult(command,receipt.appliedRevision,true,snapshot,receipt.command?.decisionPolicy)
       }
       const prior = current.events.find(event => event.command.operationId === command.operationId)
       if (prior) {
         if (JSON.stringify(prior.command) !== JSON.stringify(command) || JSON.stringify(prior.author) !== JSON.stringify(context.access.author)) throw new ControlsError('operation-conflict', 'operationId already belongs to another author or payload')
-        const snapshot=this.supportSnapshot(this.snapshot(current,context.access,{}),context.controls,await this.policyState(context.controls.instance))
+        const policy=await this.policyState(context.controls.instance)
+        if(this.decisionPolicy) context=await this.refreshWriteContext(principal,sessionId,context,state,command)
+        const snapshot=this.supportSnapshot(this.snapshot(current,context.access,{}),context.controls,policy)
         return this.applyResult(command,prior.revision,true,snapshot,prior.decisionPolicy)
       }
       const targetRevision = command.action === 'set-decision-view' ? this.viewerRevision(state, principal) : state.businessRevision
