@@ -33,6 +33,7 @@ export interface ModelCollection {
   readonly reason?: string
 }
 export interface ModelCurrent extends ModelIdentity {
+  readonly ownerDecisionPolicy?: import('./controls/recommendation-contract.js').OwnerDecisionPolicyPublic
   readonly policy: unknown
   readonly revisions: Readonly<Record<string, number | null>>
   readonly records: Readonly<Record<string, unknown>> | null
@@ -81,8 +82,9 @@ export function createModelTools(runtime: RuntimeFacade) {
   let auditReader: ((caller:HostCaller,signal:AbortSignal)=>Promise<unknown>)|undefined
   const requireReads=()=>{if(!runtime.readModelIdentity||!runtime.readModelCurrent||!runtime.readModelSource)throw new ControlsError('feature-disabled','current-only model read capability unavailable; full snapshot fallback is not supported')}
   const identity=async(caller:HostCaller,signal:AbortSignal)=>{requireReads();return runtime.readModelIdentity!(caller,caller.sessionId!,signal)}
+  const recommendationRowFacts=(preview:Readonly<Record<string,unknown>>)=>Object.fromEntries(['recommendationSupport','policyBinding','policySelection'].filter(key=>preview[key]!==undefined).map(key=>[key,preview[key]]))
   const rowValue=(who:ModelIdentity,row:ModelRow)=>({recordId:row.recordId,...(row.workflowId===undefined?{}:{workflowId:row.workflowId}),sourceVersion:row.sourceVersion,
-    ...previewFields(row.preview),...(row.durable?{detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(row))}}:{observation:{recordId:row.recordId,coverage:'live-current-only; reopen query after a change'}})})
+    ...previewFields(Object.fromEntries(Object.entries(row.preview).filter(([key])=>!['recommendationSupport','policyBinding','policySelection'].includes(key)))),...recommendationRowFacts(row.preview),...(row.durable?{detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(row))}}:{observation:{recordId:row.recordId,coverage:'live-current-only; reopen query after a change'}})})
   const page=(who:ModelIdentity,collection:ModelCollection,query:ReturnType<typeof parseQuery>,tool:string,kind:string,extra:object={})=>{
     const filter={kind,...(query.workflowId===undefined?{}:{workflowId:query.workflowId}),...(query.recordId===undefined?{}:{recordId:query.recordId})}
     const selected=collection.rows.filter(row=>(query.workflowId===undefined||row.workflowId===query.workflowId)&&(query.recordId===undefined||row.recordId===query.recordId)).slice().sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
@@ -100,7 +102,7 @@ export function createModelTools(runtime: RuntimeFacade) {
     const effective=modelSource('policy',['effective',view.instance.controlWorkspaceId],view.revisions.configuration??0,view.policy)
     const ownAssignment=view.scope.kind==='assigned'?await runtime.readModelSource!(caller,caller.sessionId!,{domain:'assignment',key:sourceKey('assignment',view.sessionId)},signal):null
     const scopeDetail=ownAssignment?.source===null||ownAssignment===null?{}:{scopeDetail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(view),contentSource(ownAssignment.source))}}
-    return modelEnvelope('current',identityFields(view),{...scopeDetail,revisions:view.revisions,policy:{configurationRevision:policy.configurationRevision,workspaceVerified:policy.workspaceVerified,extensionEnabled:policy.extensionEnabled,workspaceEnabled:policy.workspaceEnabled,features:policy.features,windows:policy.windows,pendingDecisions:policy.pendingDecisions,sources:policy.sources,detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(view),contentSource(effective))}},records:view.records,windows:view.windows,nativeCount:view.nativeCount,collections})
+    return modelEnvelope('current',identityFields(view),{...scopeDetail,revisions:view.revisions,ownerDecisionPolicy:view.ownerDecisionPolicy??null,policy:{configurationRevision:policy.configurationRevision,workspaceVerified:policy.workspaceVerified,extensionEnabled:policy.extensionEnabled,workspaceEnabled:policy.workspaceEnabled,features:policy.features,windows:policy.windows,pendingDecisions:policy.pendingDecisions,sources:policy.sources,detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(view),contentSource(effective))}},records:view.records,windows:view.windows,nativeCount:view.nativeCount,collections})
   }
   const auditSources=(data:unknown):ModelRow[]=>list(object(data).episodes).map((entry,index)=>{const row=object(entry),id=String(row.episodeId??index);return {...modelSource('audit',[id],sourceVersion([object(data).episodeRevision??null,id,row.at]),row),recordId:id,durable:true,preview:{episodeId:id,observed:row.observed,possibleIssue:row.possibleIssue,severity:row.severity,verdict:row.verdict}}})
   const detail=async(caller:HostCaller,request:Record<string,unknown>,signal:AbortSignal)=>{
@@ -161,6 +163,12 @@ export function createModelTools(runtime: RuntimeFacade) {
     }})
   }
   const mutationOutcome=(result:unknown)=>{const outcome=runtime.modelMutationOutcome?.(result);return outcome?{historyCapture:{status:outcome.historyCapture.status,diagnostic:outcome.historyCapture.diagnostic===null?null:previewText(outcome.historyCapture.diagnostic,384).text}}:{}}
+  const recommendationFacts=(data:Record<string,unknown>,command:Record<string,unknown>):Record<string,unknown>=>{
+    if(data.recommendation===undefined)return {}
+    const row=list(object(data.snapshot).decisions).map(object).find(row=>row.workflowId===command.workflowId&&row.decisionId===command.decisionId)
+    const current=row?.recommendationSupport
+    return {recommendation:data.recommendation,...(current===undefined?{}:canonicalJson(current)===canonicalJson(data.recommendation)?{recommendationSupportMatchesOperation:true}:{currentRecommendationSupport:current})}
+  }
   function receipt(name:string,who:ModelIdentity,raw:Record<string,unknown>,data:Record<string,unknown>) {
     const command=object(raw.command),snapshot=object(data.snapshot),action=raw.action??name.replace('mattpocock_','')
     const operationId=command.operationId??raw.operationId
@@ -168,6 +176,7 @@ export function createModelTools(runtime: RuntimeFacade) {
     const facts:Record<string,unknown>={action,...(operationId===undefined?{}:{operationId}),...Object.fromEntries(Object.entries(target).filter(([,value])=>value!==undefined)),...mutationOutcome(data)}
     for(const key of ['appliedRevision','replayed','ignored','generation','revision','businessRevision','viewerRevision','phase','domain','derivedHistoryDeleted','derivedOutcome','acknowledgedSuppressionRows','sourceRecordsDeleted','sourceOutcome','nativeConversationDeleted','checkpointAppliedRevision','receiptRecording','removedVersions','checkpointRev','checkpointRevision','compactedThroughRevision','notificationRecording','recording','persistence','accepted','creation','binding','assignment','childId','messageId','recovery'])if(data[key]!==undefined)facts[key]=data[key]
     for(const key of ['revision','businessRevision','viewerRevision'])if(snapshot[key]!==undefined)facts[key]=snapshot[key]
+    Object.assign(facts,recommendationFacts(data,command))
     if(data.scope!==undefined)facts.sourceScope=data.scope
     if(name==='mattpocock_record')facts.read={tool:'mattpocock_record',action:'read',query:{kind:command.action==='put-workflow'?'workflow':command.action==='put-ticket'?'ticket':command.action==='put-task-reference'?'task-reference':'decision',workflowId:command.workflowId,recordId:command.action==='put-workflow'?command.workflowId:JSON.stringify([command.workflowId,command.localTicketId??command.decisionId])}}
     if(name==='mattpocock_window')facts.read={tool:'mattpocock_record',action:'read',query:{kind:'window-ticket',workflowId:raw.workflowId,recordId:JSON.stringify([raw.workflowId,raw.localTicketId])}}
@@ -232,7 +241,7 @@ export function createModelTools(runtime: RuntimeFacade) {
     const facts:Record<string,unknown>={action:raw.action??name.replace('mattpocock_',''),projection:'failed',effect:'action-returned',commit:data.accepted===null||data.phase==='partial'||data.sourceOutcome==='failed-or-uncertain'||data.persistence==='failed'?'unknown':data.appliedRevision!==undefined||data.revision!==undefined?'confirmed':'not-reported',diagnostic:previewText(error instanceof Error?error.message:'Model projection unavailable',192).text}
     for(const key of ['appliedRevision','replayed','ignored','generation','revision','businessRevision','viewerRevision','phase','domain','derivedHistoryDeleted','derivedOutcome','acknowledgedSuppressionRows','sourceRecordsDeleted','sourceOutcome','nativeConversationDeleted','checkpointAppliedRevision','receiptRecording','notificationRecording','recording','persistence','accepted','creation','binding','assignment','childId','messageId'])if(data[key]!==undefined)facts[key]=data[key]
     for(const key of ['revision','businessRevision','viewerRevision'])if(snapshot[key]!==undefined)facts[key]=snapshot[key]
-    Object.assign(facts,mutationOutcome(data))
+    Object.assign(facts,recommendationFacts(data,command),mutationOutcome(data))
     if(name==='mattpocock_worktree'&&data.value!==undefined)Object.assign(facts,{commit:'not-reported',businessRevision:data.revision,businessState:object(object(data.value).business).state,appliedRevision:null,appliedRevisionCoverage:'source-does-not-report-original-commit',replayed:null,replayCoverage:'source-does-not-report-replay'})
     if(data.recovery!==undefined)facts.recovery=previewFields(object(data.recovery),128)
     const operationId=command.operationId??raw.operationId;if(operationId!==undefined)facts.operationId=operationId

@@ -1,4 +1,5 @@
 import type { InstrumentInstance } from './state.js'
+import type { OwnerDecisionPolicyPublic } from './recommendation-contract.js'
 import type { EffectivePolicy } from './policy.js'
 import type { InstrumentSnapshot, InstrumentCurrentSnapshot, InstrumentCurrentProvenance } from './instruments.js'
 import type { WindowSnapshot } from './windows.js'
@@ -16,6 +17,8 @@ export interface ConsumptionIdentity {
   readonly ownerSessionId: string
   /** Trusted current authorization partition, not a credential; omitted only for legacy callers. */
   readonly scopeFingerprint?: string
+  /** Source revision/effective expiry bucket; never a permission credential. */
+  readonly sourceToken?: string
 }
 export interface ConsumptionSnapshot {
   /** Held T slots whose ticket already sits in a terminal status; the agent releases them. */
@@ -23,6 +26,7 @@ export interface ConsumptionSnapshot {
   readonly sessionId: string
   readonly instance: InstrumentInstance
   readonly policy: EffectivePolicy
+  readonly ownerDecisionPolicy?: OwnerDecisionPolicyPublic
   readonly records: InstrumentSnapshot | InstrumentCurrentSnapshot | null
   readonly windows: WindowSnapshot | null
   readonly resources: readonly ResourceView[]
@@ -39,7 +43,8 @@ export interface ConsumptionSnapshot {
   /** Observed native creations with read-time creator activity; never a directory-usage claim. */
   readonly worktreeObservations?: readonly WorktreeObservationView[]
   /** Explicitly retained effective conclusions, not resolved question/option histories. */
-  readonly contextConclusions?: readonly { readonly decisionId: string; readonly workflowId: string; readonly result: string;
+  readonly contextConclusions?: readonly { readonly decisionId: string; readonly workflowId: string; readonly result: string | null;
+    readonly policySelection?: import('./recommendation-contract.js').DecisionPolicySelection; readonly references?: readonly string[];
     readonly sourceRevision: number; readonly source: unknown }[]
   readonly capabilities: readonly { readonly key: string; readonly status: string; readonly reason: string | null }[]
   readonly health: readonly { readonly scope: string; readonly status: string; readonly reason: string | null }[]
@@ -79,10 +84,11 @@ function checkedIdentity(identity: ConsumptionIdentity): ConsumptionIdentity {
   if (scope !== undefined && (typeof scope !== 'string' || !scope.trim() || scope.length > 1024 || scope.includes('\0'))) throw new TypeError('trusted identity requires scopeFingerprint of 1..1024 characters without NUL')
   return Object.freeze({ principalId: identity.principalId, sessionId: identity.sessionId,
     instrumentInstanceId: identity.instrumentInstanceId, ownerSessionId: identity.ownerSessionId,
-    ...(scope === undefined ? {} : { scopeFingerprint: scope }) })
+    ...(scope === undefined ? {} : { scopeFingerprint: scope }),
+    ...(identity.sourceToken === undefined ? {} : { sourceToken: identity.sourceToken }) })
 }
 function cacheKey(identity: ConsumptionIdentity): string {
-  return JSON.stringify([identity.principalId, identity.sessionId, identity.instrumentInstanceId, identity.ownerSessionId, identity.scopeFingerprint ?? null])
+  return JSON.stringify([identity.principalId, identity.sessionId, identity.instrumentInstanceId, identity.ownerSessionId, identity.scopeFingerprint ?? null, identity.sourceToken ?? null])
 }
 function sameInstance(a: InstrumentInstance, b: InstrumentInstance): boolean {
   return a.instrumentInstanceId === b.instrumentInstanceId && a.ownerSessionId === b.ownerSessionId && a.controlWorkspaceId === b.controlWorkspaceId
@@ -210,6 +216,7 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
   const taskReferencesAvailable = records?.capabilities?.taskReferences === true && Array.isArray(records.taskReferences)
   return {
     sessionId: snapshot.sessionId, instance: snapshot.instance, delegateRegistered: snapshot.delegateRegistered === true,
+    ownerDecisionPolicy: snapshot.ownerDecisionPolicy ?? null,
     policy: brief({ configRevision: snapshot.policy.configurationRevision, extensionEnabled: snapshot.policy.extensionEnabled,
       workspaceVerified: snapshot.policy.workspaceVerified, features: snapshot.policy.features, windows: snapshot.policy.windows,
       pendingDecisions: snapshot.policy.pendingDecisions, sources: snapshot.policy.sources }, { kind: 'configuration' }),
@@ -284,8 +291,8 @@ function decisionGuidance(snapshot: ConsumptionSnapshot): string {
     : child ? 'let the main agent receive the answer through its permitted native question flow'
     : 'receive the answer through the native question flow'
   return 'Decision interaction preference: ' + mode + ' (active). New decisions: genuine unresolved user questions only, pending=true/addressee.kind=user. Implementation/research/completion: existing spec/ADR/tasks, no self-question/answer ledger; '
-    + channel + '; ' + waiting + '. '
-    + 'Skip/cancel/silence is not approval. Block only actions that actually depend on the decision. With no independent work, end the current turn normally; do not claim overall completion. Native failure/cancel: keep unresolved, explain fallback; no retry loop. Owned children hand questions to the main agent. Never claim registration after a failed write or silently enable a feature. Higher-priority/confirmation/host/task restrictions prevail.'
+    + (snapshot.ownerDecisionPolicy?.status === 'active' ? 'Without an adoptable exact-key candidate, ordinary flow applies: ' : '') + channel + '; ' + waiting + '. '
+    + 'Skip/cancel/silence is not approval. Block only actions that actually depend on the decision. With no independent work, end the current turn normally; do not claim overall completion. Native failure/cancel: keep unresolved, explain fallback; no retry loop. ' + (snapshot.ownerDecisionPolicy?.status === 'active' ? 'Owned children hand questions with neither an adoptable candidate nor an adopted selection to the main agent. ' : 'Owned children hand questions to the main agent. ') + 'Never claim registration after a failed write or silently enable a feature. Higher-priority/confirmation/host/task restrictions prevail.'
 }
 
 function referenceGuidance(snapshot: ConsumptionSnapshot): string {
@@ -308,6 +315,10 @@ function protocol(snapshot: ConsumptionSnapshot): string {
   // Management ON adds action guidance. Management OFF keeps existing records, obligations and source
   // limits visible, but does not command new managed trees, bindings or reservations.
   lines.push(decisionGuidance(snapshot))
+  const ownerPolicy = snapshot.ownerDecisionPolicy
+  if (ownerPolicy === undefined) lines.push('Recommendation support: unsupported. Missing owner policy capability is not active authorization; continue the ordinary user-question flow.')
+  else if (ownerPolicy.status !== 'active' || !p.extensionEnabled || p.workspaceEnabled === false || p.features.pendingDecisions.status !== 'configured') lines.push('Recommendation support: ' + (ownerPolicy.status === 'active' ? 'feature-disabled' : ownerPolicy.status) + '. No new adoption authorization; continue the ordinary user-question flow. Historical adoption remains an agent-authored source, not a new permission.')
+  else lines.push('Recommendation support: active for this owner instance and currently authorized descendants, new decisions only. First put-decision must state a genuine pending user question with recommendation exactly equal to one unique options key. A candidate is not adoption: use mattpocock_record apply action=adopt-decision-recommendation on the SAME decisionId with the returned exact optionKey/decisionRevision/policyEpochId/policyRevision and current business CAS. Only an adopted receipt records selection; preserve result, references, awaitingImplementation and task constraints. It is prior operator authorization, not a fresh human reply or additional operation permission; do not self-enable, extend or replay it as new authorization.')
   lines.push(referenceGuidance(snapshot))
   lines.push('Replies: SAME decisionId + source; agent author stays agent. pending=false only for explicit resolution; partial replies stay pending; refusal/withdrawal is not approval. Answers preserve awaitingImplementation=true; no default new await. awaitingImplementationCount: raw compatibility markers, not unfinished tasks; review task evidence. Handoff is not completion. Clear explicitly only with commitments/constraints/source pointers carried by effective task/document context. Preserve result/included/excluded/contextConclusions; review in context. Old agent/unspecified/no-addressee updates legal; OFF no new records. Never infer clearance from status/count/hidden/links.')
   const managementOn = p.extensionEnabled && p.workspaceEnabled !== false

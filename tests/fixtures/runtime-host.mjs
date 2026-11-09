@@ -86,7 +86,7 @@ export const policy = (windows = { enabled: true, ticketWindowSize: 2, runningSu
 export const workflow = { title: '任务自定义', axes: [{ axisKey: 'delivery', label: '业务交付', counting: 'exclusive', statuses: [{ statusKey: 'partial', label: '部分' }, { statusKey: 'repair', label: '回访' }] }] }
 export const ticket = (status = 'partial', summary = '原样业务报告') => ({ title: '任务票', statuses: { delivery: [status] }, summary })
 let serial = 0
-export async function fixture(t, { known = false, initialPolicy, consumptionTimeoutMs = 200 } = {}) {
+export async function fixture(t, { known = false, initialPolicy, consumptionTimeoutMs = 200, now } = {}) {
   const agents = new Map()
   for (const a of [actualAgent('root'), actualAgent('other'), actualAgent('fork', { parent: 'root' }),
     actualAgent('old-child', { parent: 'root', managed: true, cwd: '/different-worktree' })]) agents.set(a.id, a)
@@ -158,13 +158,13 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
     }
     return instance
   }
-  runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs }))
+  runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs, ...(now ? { now } : {}) }))
   t.after(() => runtime.dispose())
   if (initialPolicy) await runtime.savePolicy(operator, initialPolicy, 0, signal())
   const f = { runtime, ports, agents, nativeLive, cold, stops, ctx, controlsStorage, instrumentStorage, windowStorage, resourceStorage,
     units, grants, observations, gitCalls, guards, notificationCalls,
     setNotify(fn) { notify = fn },
-    async reopen() { await runtime.dispose(); runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs })); f.runtime = runtime; return runtime },
+    async reopen() { await runtime.dispose(); runtime = wrapRuntime(await createRuntime(ports, { runtimeId: 'fixture-' + ++serial, consumptionTimeoutMs, ...(now ? { now } : {}) })); f.runtime = runtime; return runtime },
     setRunner(fn) { runnerFactory = fn },
     async read(id = 'root', who = caller(id)) { return runtime.readSession(who, id, signal()) },
     async save(intent) { return runtime.savePolicy(operator, intent, (await runtime.readPolicy(operator, signal())).revision, signal()) },

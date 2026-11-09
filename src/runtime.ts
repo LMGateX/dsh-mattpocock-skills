@@ -9,6 +9,9 @@ import type { HostEvent, HostPorts, RuntimeFacade } from './host.js'
 import { WorkspaceControls } from './controls/index.js'
 import type { SessionControlsView } from './controls/index.js'
 import { SessionInstruments } from './controls/instruments.js'
+import { OwnerDecisionPolicyStore, ownerDecisionPolicyTableName, parseOwnerDecisionPolicyDocument } from './controls/owner-decision-policy.js'
+import { evaluateOwnerDecisionPolicy, parseOwnerDecisionPolicySaveRequest } from './controls/recommendation-contract.js'
+import type { OwnerDecisionPolicyState, OwnerDecisionPolicySnapshot, OwnerDecisionPolicyPublic } from './controls/recommendation-contract.js'
 import type { InstrumentAuthority, InstrumentScope, InstrumentCurrentSnapshot } from './controls/instruments.js'
 import { modelSource, sourceKey, sourceVersion } from './model-tools.js'
 import type { ModelIdentity, ModelSource, ModelRow, ModelCollection, ModelCurrent } from './model-tools.js'
@@ -127,9 +130,9 @@ function scanObservedCreations(events:readonly {readonly type:string;readonly da
   }
   return creations
 }
-export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number }
+export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number; readonly now?: () => number }
 export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
-  const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects()
+  const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects(), now=options.now??Date.now
   // Only model read methods may re-enter an active read permit. Mutation/capture queues stay unchanged.
   const modelReadContext=new AsyncLocalStorage<{open:boolean}>()
   const modelReadOrder=<T>(effect:()=>Promise<T>):Promise<T>=>modelReadContext.getStore()?.open===true?effect():queue.run(effect)
@@ -199,7 +202,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const observations:HistoryObservation[]=[]
     for(const [kind,rows]of [['workflow',records.workflows],['ticket',records.tickets],['task-reference',records.taskReferences],['decision',records.decisions]] as const){
       for(const row of rows){const recordId=kind==='workflow'?row.workflowId:JSON.stringify([row.workflowId,'localTicketId' in row?row.localTicketId:'decisionId' in row?row.decisionId:null])
-        for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
+        for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.policySelection===undefined?h.value:{...h.value,policySelection:h.policySelection,references:h.references}),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
       }
     }
     if(observations.length>0)await (await historyFor(view)).capture(observations)
@@ -408,7 +411,34 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     if(view.instance.instrumentInstanceId!==instance.instrumentInstanceId)denied('instrument authority identity mismatch')
     return {author:caller.kind==='user'?{kind:'user',principalId:principal,sessionId:null}:{kind:'agent',principalId:principal,sessionId},scope:await scope(principal,sessionId,view)}
   }}
-  const instruments=new SessionInstruments(controls,ports.instrumentStorage,authority)
+  const ownerPolicies=new OwnerDecisionPolicyStore({
+    storageFor:instance=>ports.openUnitStorage(ownerDecisionPolicyTableName(instance.instrumentInstanceId),parseOwnerDecisionPolicyDocument),
+    now,
+    async authorizeOperator(author,instance){
+      if(author.kind!=='user'||author.principalId!==ports.operatorPrincipal||author.sessionId!==null)denied('owner recommendation policy requires the authenticated operator')
+      const view=await identity(author,instance.ownerSessionId,undefined,false)
+      if(canonical(view.instance)!==canonical(instance))throw new ControlsError('association-conflict','owner policy instance changed')
+    },
+    async authorizeEnable(instance){
+      const view=await identity({kind:'user',principalId:ports.operatorPrincipal,sessionId:null},instance.ownerSessionId,undefined,false)
+      if(canonical(view.instance)!==canonical(instance))throw new ControlsError('association-conflict','owner policy instance changed')
+      if(!recommendationConfigured(view))throw new ControlsError('feature-disabled','new recommendation authorization requires configured pending-decisions management')
+    },
+  })
+  const recommendationConfigured=(view:SessionControlsView):boolean=>view.policy.extensionEnabled&&view.policy.workspaceEnabled&&view.policy.features.pendingDecisions.status==='configured'
+  const policySnapshot=(view:SessionControlsView,state:OwnerDecisionPolicyState):OwnerDecisionPolicySnapshot=>freeze({schemaVersion:1,instance:view.instance,revision:state.revision,saved:{enabled:state.enabled,epoch:state.epoch},effective:evaluateOwnerDecisionPolicy(state,recommendationConfigured(view),now())})
+  const readOwnerPolicy=async(view:SessionControlsView,signal?:AbortSignal):Promise<OwnerDecisionPolicyPublic>=>{
+    try {
+      const state=await ownerPolicies.read(view.instance);signal?.throwIfAborted()
+      const effective=evaluateOwnerDecisionPolicy(state,recommendationConfigured(view),now())
+      return freeze({revision:state.revision,...effective,epochId:state.epoch?.epochId??null,expiresAt:state.epoch?.expiresAt??null,scope:'new-decisions'})
+    } catch {signal?.throwIfAborted();return freeze({revision:null,status:'unknown',epochId:null,expiresAt:null,scope:'new-decisions',reason:'policy-unavailable'})}
+  }
+  const requireOperator=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<SessionControlsView>=>{
+    if(caller.kind!=='user'||caller.principalId!==ports.operatorPrincipal||caller.sessionId!==null)denied('owner recommendation policy requires the authenticated operator')
+    return identity(caller,id(sessionId,'sessionId'),signal,false)
+  }
+  const instruments=new SessionInstruments(controls,ports.instrumentStorage,authority,now,ownerPolicies)
   let windowsProgram!:WindowProgramPort, consumptionProgram!:ConsumptionProgramPort
   // S is the host's live run status (live Agent.status over event-maintained membership); the ledger stays audit only.
   const windows=new SessionWindows(controls,ports.windowStorage,authority,{runtimeId,capability:'cooperative',requireKnownRuntime:false,
@@ -548,11 +578,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const current=(await modelIdentity(caller,sessionId,signal)).identity
     if(canonical(current)!==canonical(expected))throw new ControlsError('revision-conflict','model identity or authorization changed')
   }
-  const recordSources=(records:InstrumentCurrentSnapshot):ModelRow[]=>[
+  const recordSources=(records:InstrumentCurrentSnapshot,ownerDecisionPolicy:OwnerDecisionPolicyPublic):ModelRow[]=>[
     ...records.workflows.map(row=>({...modelSource('records',['workflow',row.workflowId],row.revision,row),recordId:row.workflowId,workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,revision:row.revision,title:row.value.title}})),
     ...records.taskReferences.map(row=>({...modelSource('records',['task-reference',row.workflowId,row.localTicketId],row.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{kind:'task-reference',workflowId:row.workflowId,localTicketId:row.localTicketId,revision:row.revision,label:row.value.label,source:row.value.source,locator:row.value.locator,sourceObservation:'authored-unverified'}})),
     ...records.tickets.map(row=>({...modelSource('records',['ticket',row.workflowId,row.localTicketId],row.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,localTicketId:row.localTicketId,revision:row.revision,title:row.value.title,statuses:row.value.statuses}})),
-    ...records.decisions.map(row=>({...modelSource('records',['decision',row.workflowId,row.decisionId],String(row.revision)+':'+records.viewerRevision,row),recordId:JSON.stringify([row.workflowId,row.decisionId]),workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,decisionId:row.decisionId,revision:row.revision,question:row.value.question,status:row.value.status,pending:row.value.pending,awaitingImplementation:row.value.awaitingImplementation,view:row.view}})),
+    ...records.decisions.map(row=>({...modelSource('records',['decision',row.workflowId,row.decisionId],sourceVersion([row.revision,records.viewerRevision,ownerDecisionPolicy]),row),recordId:JSON.stringify([row.workflowId,row.decisionId]),workflowId:row.workflowId,durable:true,preview:{workflowId:row.workflowId,decisionId:row.decisionId,revision:row.revision,question:row.value.question,status:row.value.status,pending:row.value.pending,awaitingImplementation:row.value.awaitingImplementation,view:row.view,recommendationSupport:row.recommendationSupport,policyBinding:row.policyBinding,policySelection:row.policySelection}})),
     ...records.summary.statusCounts.map(value=>({...modelSource('records',['status-count',value.workflowId,value.axisKey],records.revision,value),recordId:JSON.stringify([value.workflowId,value.axisKey]),workflowId:value.workflowId,durable:true,preview:{...value}})),
   ]
   const bindingSource=(row:WorktreeBindingCurrentRow):ModelRow=>{
@@ -567,6 +597,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const modelCurrent=async(caller:HostCaller,sessionId:string,signal:AbortSignal):Promise<ModelCurrent>=>modelReadOrder(async()=>{
     const {identity:who,view}=await modelIdentity(caller,sessionId,signal)
+    const ownerDecisionPolicy=await readOwnerPolicy(view,signal)
     const collections:Record<string,ModelCollection>={}
     const health:{scope:string;status:string;reason:string|null}[]=[]
     const add=(kind:string,rows:readonly ModelRow[],version:unknown,coverage:ModelCollection['coverage']='current',reason?:string)=>{
@@ -574,8 +605,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     let records:InstrumentCurrentSnapshot|null=null,windowView:RuntimeSnapshot['windows']=null
     try{records=await instruments.readCurrent(caller.principalId,sessionId,signal)}catch(error){signal.throwIfAborted();health.push({scope:'records',status:'unknown',reason:String(error)})}
-    const rows=records===null?[]:recordSources(records)
-    for(const kind of ['workflow','ticket','task-reference','decision'])add(kind,rows.filter(row=>kind==='workflow'?row.preview.axisKey===undefined&&!(row.preview.localTicketId||row.preview.decisionId):kind==='task-reference'?row.preview.kind==='task-reference':kind==='ticket'?row.preview.localTicketId!==undefined&&row.preview.kind!=='task-reference':row.preview.decisionId!==undefined),records===null?null:[records.revision,records.viewerRevision],records===null?'unknown':'current')
+    const rows=records===null?[]:recordSources(records,ownerDecisionPolicy)
+    for(const kind of ['workflow','ticket','task-reference','decision'])add(kind,rows.filter(row=>kind==='workflow'?row.preview.axisKey===undefined&&!(row.preview.localTicketId||row.preview.decisionId):kind==='task-reference'?row.preview.kind==='task-reference':kind==='ticket'?row.preview.localTicketId!==undefined&&row.preview.kind!=='task-reference':row.preview.decisionId!==undefined),records===null?null:[records.revision,records.viewerRevision,...(kind==='decision'?[ownerDecisionPolicy]:[])],records===null?'unknown':'current')
     add('status-count',rows.filter(row=>row.preview.axisKey!==undefined),records?.revision??null,records===null?'unknown':'current')
     try{windowView=await windows.read(caller.principalId,sessionId)}catch(error){signal.throwIfAborted();health.push({scope:'windows',status:'unknown',reason:String(error)})}
     add('window-ticket',windowView?.tickets.map(row=>({...modelSource('windows',['ticket',row.workflowId,row.localTicketId],windowView!.revision,row),recordId:JSON.stringify([row.workflowId,row.localTicketId]),workflowId:row.workflowId,durable:true,preview:{...row}}))??[],windowView?.revision??null,windowView===null?'unknown':'current')
@@ -617,15 +648,17 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     signal.throwIfAborted()
     assertProjectionScope({records,windows:windowView},who.scope)
     await validateModelIdentity(caller,sessionId,who,signal)
-    return {...who,policy:view.policy,revisions:{configuration:view.policy.configurationRevision,records:records?.revision??null,business:records?.businessRevision??null,viewer:records?.viewerRevision??null,windows:windowView?.revision??null},records:records===null?null:{capabilities:records.capabilities,localCoverage:'local-current',sourceObservation:'authored-unverified',revision:records.revision,businessRevision:records.businessRevision,viewerRevision:records.viewerRevision,summary:{...records.summary,statusCounts:undefined}},windows:windowView===null?null:{revision:windowView.revision,configurationRevision:windowView.configurationRevision,status:windowView.status,reason:windowView.reason,runtimeKnowledge:windowView.runtimeKnowledge,T:windowView.T,S:windowView.S},nativeCount:windowView?.nativeBaseline??null,collections}
+    if(sourceVersion(ownerDecisionPolicy)!==sourceVersion(await readOwnerPolicy((await modelIdentity(caller,sessionId,signal)).view,signal)))throw new ControlsError('revision-conflict','owner policy source changed during model projection')
+    return {...who,ownerDecisionPolicy,policy:view.policy,revisions:{configuration:view.policy.configurationRevision,records:records?.revision??null,business:records?.businessRevision??null,viewer:records?.viewerRevision??null,windows:windowView?.revision??null},records:records===null?null:{capabilities:records.capabilities,localCoverage:'local-current',sourceObservation:'authored-unverified',revision:records.revision,businessRevision:records.businessRevision,viewerRevision:records.viewerRevision,summary:{...records.summary,statusCounts:undefined}},windows:windowView===null?null:{revision:windowView.revision,configurationRevision:windowView.configurationRevision,status:windowView.status,reason:windowView.reason,runtimeKnowledge:windowView.runtimeKnowledge,T:windowView.T,S:windowView.S},nativeCount:windowView?.nativeBaseline??null,collections}
   })
   const modelReadSource=async(caller:HostCaller,sessionId:string,selector:{domain:string;key:string},signal:AbortSignal)=>modelReadOrder(async()=>{
     const {identity:who,view}=await modelIdentity(caller,sessionId,signal),domain=selector.domain,key=selector.key
-    let source:ModelSource|null=null
+    let source:ModelSource|null=null,ownerPolicyToken:string|null=null
     if(domain==='records'){
+      const ownerDecisionPolicy=await readOwnerPolicy(view,signal);ownerPolicyToken=sourceVersion(ownerDecisionPolicy)
       const current=await instruments.readCurrent(caller.principalId,sessionId,signal)
       assertProjectionScope({records:current,windows:null},who.scope)
-      source=recordSources(current).find(row=>row.key===key)??null
+      source=recordSources(current,ownerDecisionPolicy).find(row=>row.key===key)??null
     }
     else if(domain==='policy'&&key===sourceKey(domain,'effective',view.instance.controlWorkspaceId))source=modelSource(domain,['effective',view.instance.controlWorkspaceId],view.policy.configurationRevision,view.policy)
     else if(domain==='policy'){
@@ -662,6 +695,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     }else throw new ControlsError('invalid-input','unsupported detail source domain')
     await validateModelIdentity(caller,sessionId,who,signal)
+    if(ownerPolicyToken!==null&&ownerPolicyToken!==sourceVersion(await readOwnerPolicy((await modelIdentity(caller,sessionId,signal)).view,signal)))throw new ControlsError('revision-conflict','owner policy source changed during model content selection')
     signal.throwIfAborted();return {identity:who,source}
   })
   /** Every body must belong to the same authorization cut as its cache/publication key. */
@@ -672,6 +706,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const validateProjection=async(caller:HostCaller,value:RuntimeReadSnapshot,permission:InstrumentScope,signal:AbortSignal):Promise<void>=>{
     const current=(await modelIdentity(caller,value.sessionId,signal)).identity
     if(canonical(current.instance)!==canonical(value.instance)||sourceVersion(current.scope)!==sourceVersion(permission))throw new ControlsError('revision-conflict','snapshot identity or authorization changed')
+    if(sourceVersion(value.ownerDecisionPolicy)!==sourceVersion(await readOwnerPolicy((await modelIdentity(caller,value.sessionId,signal)).view,signal)))throw new ControlsError('revision-conflict','owner policy source or expiry bucket changed during projection')
     assertProjectionScope(value,permission)
   }
   function snapshot(caller:HostCaller,sessionId:string,signal:AbortSignal,currentOnly?:false):Promise<RuntimeSnapshot>
@@ -683,7 +718,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // The native running count is derived from live Agents and the counter's state, so both are
     // part of the freshness key: a newly live child rebuilds the projection even with no document
     // write, and a counter stop/degradation is never masked by a cached snapshot.
-    const projectionKey=projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length+'|'+sourceVersion(permission)
+    const ownerDecisionPolicy=await readOwnerPolicy(view,signal)
+    const projectionKey=sourceVersion(ownerDecisionPolicy)+'|'+projectionBase+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+(ports.nativeSubagentCountRevision?.(view.instance.ownerSessionId)??0)+'|'+ports.liveAgents().length+'|'+sourceVersion(permission)
     const epoch=project.epoch(view.instance.instrumentInstanceId)
     const projection=projectionCache.get(projectionBase)
     if(projection!==undefined&&!historyFailures.has(view.instance.instrumentInstanceId)&&projection.key===projectionKey&&!project.shouldRefresh(projectionBase,view.instance.instrumentInstanceId)){await validateProjection(caller,projection.value,permission,signal);return projection.value}
@@ -791,7 +827,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     signal.throwIfAborted()
     const assignment=runtimeDocument.assignments.find(row=>row.sessionId===sessionId),assignmentScope=assignment===undefined?null:await effectiveScope(runtimeDocument,sessionId,view)
     const grants=await ports.readPolicyGrants(),managed=new Set([view.instance.ownerSessionId,...runtimeDocument.assignments.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId).map(row=>row.sessionId)])
-    const value=freeze({sessionId,caller,delegateRegistered,policyGrants:{...grants,grants:grants.grants.filter(row=>permission.kind==='coordinator'?managed.has(row.sessionId):row.sessionId===sessionId)},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:assignmentScope?.kind==='assigned'?{workflowId:assignmentScope.workflowId,ticketIds:assignmentScope.ticketIds}:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
+    const value=freeze({sessionId,caller,delegateRegistered,ownerDecisionPolicy,policyGrants:{...grants,grants:grants.grants.filter(row=>permission.kind==='coordinator'?managed.has(row.sessionId):row.sessionId===sessionId)},instance:view.instance,policy:view.policy,...(assignment===undefined?{}:{assignment:assignmentScope?.kind==='assigned'?{workflowId:assignmentScope.workflowId,ticketIds:assignmentScope.ticketIds}:{workflowId:assignment.workflowId,ticketIds:assignment.ticketIds}}),records,windows:windowView,resources,worktreeBindings,worktreeObservations,pendingRelease:pendingReleaseFor(records,windowView),nativeStops,...(permission.kind==='coordinator'?{nativeExecutions}:{}),...(nativeCount===undefined?{}:{nativeCount}),
       capabilities:Object.entries(ports.capabilities).map(([key,status])=>({key,status,reason:status==='unsupported'?key+'-host-seam-unavailable':null})),health})
     await validateProjection(caller,value,permission,signal)
     project.record(projectionBase,epoch,view.instance.instrumentInstanceId)
@@ -812,7 +848,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const workflows=records.workflows.filter(row=>requiredFlows.has(row.workflowId)||included.has(JSON.stringify(['workflow',row.workflowId])))
       const tickets=records.tickets.filter(row=>required.has(JSON.stringify([row.workflowId,row.localTicketId]))||included.has(JSON.stringify(['ticket',JSON.stringify([row.workflowId,row.localTicketId])])) )
       const taskReferences=records.taskReferences.filter(row=>required.has(JSON.stringify([row.workflowId,row.localTicketId]))||included.has(JSON.stringify(['task-reference',JSON.stringify([row.workflowId,row.localTicketId])])) )
-      const contextConclusions=records.decisions.filter(row=>row.value.pending!==true&&row.value.awaitingImplementation!==true&&typeof row.value.result==='string'&&included.has(JSON.stringify(['decision',JSON.stringify([row.workflowId,row.decisionId])]))).map(row=>({decisionId:row.decisionId,workflowId:row.workflowId,result:row.value.result!,sourceRevision:row.revision,source:{kind:'authored',domain:'instruments',author:row.provenance.author,recordedAt:row.provenance.recordedAt}}))
+      const contextConclusions=records.decisions.filter(row=>row.value.pending!==true&&row.value.awaitingImplementation!==true&&(typeof row.value.result==='string'||row.policySelection!==undefined)&&included.has(JSON.stringify(['decision',JSON.stringify([row.workflowId,row.decisionId])]))).map(row=>({decisionId:row.decisionId,workflowId:row.workflowId,result:row.value.result??null,...(row.policySelection===undefined?{}:{policySelection:row.policySelection,references:row.provenance.references}),sourceRevision:row.revision,source:{kind:'authored',domain:'instruments',author:row.provenance.author,recordedAt:row.provenance.recordedAt}}))
       const statusCounts=records.summary.statusCounts.filter(row=>workflows.some(w=>w.workflowId===row.workflowId)).map(row=>{const active=tickets.filter(ticket=>ticket.workflowId===row.workflowId);return {...row,unreported:active.filter(ticket=>(ticket.value.statuses[row.axisKey]??[]).length===0).length,statuses:row.statuses.map(status=>({...status,count:active.filter(ticket=>ticket.value.statuses[row.axisKey]?.includes(status.statusKey)).length}))}})
       return {...current,records:{...records,workflows,tickets,taskReferences,decisions,summary:{...records.summary,totalTickets:tickets.length,totalTaskReferences:taskReferences.length,statusCounts}},contextConclusions}
     }catch(error){signal.throwIfAborted();return {...current,health:[...current.health,{scope:'active-context',status:'unknown',reason:String(error)}]}}
@@ -822,6 +858,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       const actual=callerFor(caller.principalId,caller.sessionId,ports.operatorPrincipal),value=await activeSnapshot(actual,signal)
       const current=(await modelIdentity(actual,caller.sessionId,signal)).identity
       if(current.instance.instrumentInstanceId!==caller.instrumentInstanceId||current.instance.ownerSessionId!==caller.ownerSessionId||canonical(current.instance)!==canonical(value.instance)||caller.scopeFingerprint!==sourceVersion(current.scope))throw new ControlsError('revision-conflict','consumption authorization binding changed')
+      if(caller.sourceToken!==sourceVersion(value.ownerDecisionPolicy))throw new ControlsError('revision-conflict','owner policy source changed before consumption')
       assertProjectionScope(value,current.scope)
       return value
     }})
@@ -839,7 +876,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     consumptionProgram.trackCommit(instanceId,commit.then(()=>undefined,error=>{if(preCommit(error))return;throw error}))
     return commit
   }
-  const consumptionIdentity=(caller:HostCaller,view:SessionControlsView,permission:InstrumentScope):ConsumptionIdentity=>Object.assign({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId},{scopeFingerprint:sourceVersion(permission)})
+  const consumptionIdentity=(caller:HostCaller,view:SessionControlsView,permission:InstrumentScope,ownerPolicy:OwnerDecisionPolicyPublic):ConsumptionIdentity=>Object.assign({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId},{scopeFingerprint:sourceVersion(permission),sourceToken:sourceVersion(ownerPolicy)})
   // Creation observation covers only the native create_worktree tool executed through this
   // pipeline (including PTC sub-dispatches). Failed calls write nothing; the tool result itself
   // is never replaced or delayed, and an unparsable value is reported as observation failure.
@@ -1156,14 +1193,15 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // No current identity/scope proof means no cached body, even as explicitly stale text.
       return deliverFailure(caller,acceptedMessages,error)
     }
-    const key=consumptionIdentity(caller,view,permission)
+    const ownerDecisionPolicy=await queue.run(()=>readOwnerPolicy(view,signal))
+    const key=consumptionIdentity(caller,view,permission,ownerDecisionPolicy)
     // Rebuilding the projection re-reads every document, clones it and appends a history
     // observation, per step *and* per tool result (measured: 32 of 41 rebuilds produced no
     // message at all). The gate watches the revisions this projection derives from plus an
     // epoch bumped by every runtime/window mutation; while they are unchanged the verified
     // projection is reused. Delivery is still decided below, so an undelivered snapshot is
     // re-offered exactly as before, and a degraded cache still takes the full read.
-    const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+sourceVersion(permission)
+    const refreshKey=caller.principalId+'|'+view.association.sessionId+'|'+view.documentRevision+'|'+savedPolicy.revision+'|'+sourceVersion(permission)+'|'+sourceVersion(ownerDecisionPolicy)
     const refreshEpoch=refresh.epoch(view.instance.instrumentInstanceId)
     const mayReuse=!historyFailures.has(view.instance.instrumentInstanceId)&&!refresh.shouldRefresh(refreshKey,view.instance.instrumentInstanceId)
     // Within the gate window the last prepared projection is reused, including the explicitly
@@ -1184,7 +1222,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // Re-prove the publication scope even for prepared/stale text; the initial proof is not enough.
     try{
       const current=(await modelIdentity(caller,caller.sessionId,signal)).identity
-      if(canonical(current.instance)!==canonical(view.instance)||sourceVersion(current.scope)!==key.scopeFingerprint)throw new ControlsError('revision-conflict','snapshot publication authorization changed')
+      if(canonical(current.instance)!==canonical(view.instance)||sourceVersion(current.scope)!==key.scopeFingerprint||key.sourceToken!==sourceVersion(await queue.run(()=>readOwnerPolicy(view,signal))))throw new ControlsError('revision-conflict','snapshot publication authorization or owner policy source changed')
     }catch(error){signal.throwIfAborted();return deliverFailure(caller,acceptedMessages,error)}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId,sourceVersion(permission)])
     try{
@@ -1228,6 +1266,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     async readModelIdentity(caller,sessionId,signal){return modelReadOrder(async()=>(await modelIdentity(caller,id(sessionId,'sessionId'),signal)).identity)},
     async readModelCurrent(caller,sessionId,signal){return modelCurrent(caller,id(sessionId,'sessionId'),signal)},
     async readModelSource(caller,sessionId,selector,signal){return modelReadSource(caller,id(sessionId,'sessionId'),selector,signal)},
+    async readOwnerDecisionPolicy(caller,sessionId,signal){return queue.run(async()=>{
+      const view=await requireOperator(caller,sessionId,signal),state=await ownerPolicies.read(view.instance)
+      signal.throwIfAborted();return policySnapshot(view,state)
+    })},
+    async saveOwnerDecisionPolicy(caller,sessionId,input,signal){
+      const request=parseOwnerDecisionPolicySaveRequest(input),view=await requireOperator(caller,sessionId,signal)
+      return track(view.instance.instrumentInstanceId,async()=>{
+        const current=await requireOperator(caller,sessionId,signal)
+        if(canonical(current.instance)!==canonical(view.instance))throw new ControlsError('association-conflict','owner policy route changed')
+        const saved=await ownerPolicies.save(current.instance,request,{kind:'user',principalId:caller.principalId,sessionId:null})
+        return freeze({appliedRevision:saved.appliedRevision,replayed:saved.replayed,operation:saved.operation,snapshot:policySnapshot(current,saved.state)})
+      })
+    },
     async readSession(caller,sessionId,signal){return snapshot(caller,id(sessionId,'sessionId'),signal)},
     async readSummaries(caller,request,signal){return summaries(caller,request,signal)},
     async applyInstrument(caller,sessionId,command:InstrumentCommand,signal){

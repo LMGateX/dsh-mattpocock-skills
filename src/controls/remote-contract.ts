@@ -48,6 +48,7 @@ export interface RuntimeSnapshot {
   readonly instance: InstrumentInstance
   /** The live task assignment for this Session, when one was recorded. */
   readonly assignment?: { readonly workflowId: string | null; readonly ticketIds: readonly string[] }
+  readonly ownerDecisionPolicy?: import('./recommendation-contract.js').OwnerDecisionPolicyPublic
   readonly policy: EffectivePolicy
   readonly records: InstrumentSnapshot | null
   readonly windows: WindowSnapshot | null

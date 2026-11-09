@@ -86,6 +86,32 @@ async function consume(feed, nativeMessages, signal) {
   return { result, messages }
 }
 
+test('legacy consumption without owner policy explicitly reports recommendation unsupported, never active', async () => {
+  const f = fixture()
+  const { result } = await consume(f.feed, [])
+  assert.match(result.text, /Recommendation support: unsupported/)
+  assert.doesNotMatch(result.text, /Recommendation support: active/)
+})
+
+test('active owner recommendation authorization instructs exact-key creation then explicit same-ID adoption, expiry returns ordinary flow', async () => {
+  const f = fixture()
+  f.current = { ...f.current, ownerDecisionPolicy: { revision: 2, status: 'active', epochId: 'epoch-2', expiresAt: 5000, scope: 'new-decisions', reason: null } }
+  let { result } = await consume(f.feed, [])
+  assert.match(result.text, /Recommendation support: active/)
+  assert.match(result.text, /Without an adoptable exact-key candidate, ordinary flow applies:/)
+  assert.match(result.text, /recommendation exactly equal to one unique options key/)
+  assert.match(result.text, /adopt-decision-recommendation/)
+  assert.match(result.text, /SAME decisionId/)
+  assert.match(result.text, /candidate is not adoption/)
+  assert.match(result.text, /not a fresh human reply or additional operation permission/)
+  const facts = JSON.parse(result.text.split('Current runtime facts (null means unavailable/unknown, not zero):\n')[1])
+  assert.equal(facts.ownerDecisionPolicy.epochId, 'epoch-2')
+  f.current = { ...f.current, ownerDecisionPolicy: { ...f.current.ownerDecisionPolicy, status: 'expired' } }
+  ;({ result } = await consume(f.feed, []))
+  assert.match(result.text, /Recommendation support: expired/)
+  assert.doesNotMatch(result.text, /Recommendation support: active/)
+})
+
 test('a held window slot whose ticket sits in a terminal status is reported for authored release', async () => {
   const f = fixture()
   f.current = { ...f.current, pendingRelease: [{ workflowId: 'flow', localTicketId: 'A', generation: 2, label: '已交付' }] }
