@@ -403,8 +403,29 @@ function diagnostic(message: string): ReactElement { return h('p', { role: 'stat
 function pretty(value: unknown): ReactElement { return h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(value, null, 2)) }
 
 interface SubagentFace { readonly subagentNavigation?: { available(id: string, parent: string): boolean; open(id: string, parent: string, view: ClientSessionSnapshot): boolean } }
-interface SessionFace extends SubagentFace { readonly observer: SessionObservation; readonly openDetails: () => void }
-interface SummaryFace extends SubagentFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
+interface DecisionInputFace { readonly inputActions?: unknown }
+interface InsertionSpan { readonly start: number; readonly end: number; readonly draftRev: number }
+interface DecisionInputActions { captureInsertion(): InsertionSpan; insertText(text: string, span: InsertionSpan): boolean }
+interface DecisionTemplateAccess { readonly actions: DecisionInputActions | null; readonly current: (decision: DecisionRecord) => boolean }
+/** Structural capability check: older hosts keep reading without an InputActions dependency. */
+function decisionInputActions(value: unknown): DecisionInputActions | null {
+  if (value === null || typeof value !== 'object') return null
+  const actions = value as Partial<DecisionInputActions>
+  return typeof actions.captureInsertion === 'function' && typeof actions.insertText === 'function' ? actions as DecisionInputActions : null
+}
+function decisionTemplateAccess(props: DecisionInputFace & { readonly sessionId: string; readonly observer: SessionObservation }, view: ClientSessionSnapshot,
+  display: 'inputSummary' | 'rightPanel' | null, extra: () => boolean = () => true): DecisionTemplateAccess {
+  const identity = decisionReadingIdentity(view)
+  return { actions: decisionInputActions(props.inputActions), current: row => {
+    const latest = props.observer.getSnapshot()
+    if (!extra() || latest.status !== 'ready' || props.sessionId !== props.observer.sessionId || latest.value.sessionId !== props.sessionId
+      || display !== null && (!latest.value.policy.display[display] || props.observer.getDisplay()?.[display] === false) || decisionReadingIdentity(latest.value) !== identity) return false
+    const current = inputRecords(latest.value)?.decisions.find(item => decisionRecordKey(item) === decisionRecordKey(row))
+    return current !== undefined && current.revision === row.revision && isPendingUserDecision(current)
+  } }
+}
+interface SessionFace extends DecisionInputFace, SubagentFace { readonly observer: SessionObservation; readonly openDetails: () => void }
+interface SummaryFace extends DecisionInputFace, SubagentFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
 type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SummaryFace
 function useSummaryObservation(observer: SummaryObserver, active = true): Observation<SessionSummary> {
   useEffect(() => active ? observer.retain() : undefined, [observer, active])
@@ -583,10 +604,17 @@ function workflowSummaryLine(workflowId: string, axis: InputSummaryAxis): ReactE
 }
 export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
   const observation = useSummaryObservation(props.summary)
-  if (observation.status !== 'ready' || !observation.value.policy.display.inputSummary) return null
-  return h(InputSnapshot, props)
+  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && props.summary.sessionId === props.sessionId ? observation.value : null
+  // Keep only permission/identity metadata, never an old summary or its counts.
+  const [permit, setPermit] = useState<{ readonly sessionId: string; readonly summary: SummaryObserver; readonly identity: string | null }>(() => ({ sessionId: props.sessionId, summary: props.summary, identity: null }))
+  const identity = current?.policy.display.inputSummary ? summaryReadingIdentity(current) : null
+  const same = permit.sessionId === props.sessionId && permit.summary === props.summary
+  const allowed = current !== null ? identity : same && props.summary.getDisplay()?.inputSummary !== false ? permit.identity : null
+  if (!same || current !== null && permit.identity !== identity) setPermit({ sessionId: props.sessionId, summary: props.summary, identity })
+  if (allowed === null) return null
+  return h(InputSnapshot, { ...props, key: allowed, summaryAvailable: current !== null, summaryIdentity: allowed })
 }
-function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
+function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryFace & { readonly summaryAvailable: boolean; readonly summaryIdentity: string }): ReactElement | null {
   const observer = useMemo(props.observe, [props.observe])
   return h(ObservedInputSummary, { ...props, observer })
 }
@@ -597,6 +625,7 @@ const INPUT_DISCLOSURES = {
   pending: { entrance: '查看待你裁决事项', region: '待你裁决详情', color: 'var(--dsw-alias-state-error-primary, #dc4444)' },
   awaiting: { entrance: '查看记录核对', region: '记录核对详情', color: 'var(--dsw-alias-label-secondary, #61666b)' },
 } as const
+const inputSummaryStyle = { boxSizing: 'border-box' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', textAlign: 'center' as const, width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, overflowWrap: 'anywhere' as const, gap: '4px', lineHeight: 1.5 }
 const inputTextButtonStyle = { background: 'none', border: 0, padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '2px' } as const
 let nextInputDisclosureId = 0
 function signedCountText(value: unknown): string { return typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '未知' }
@@ -702,8 +731,10 @@ function inputTicketDetails(view: ClientSessionSnapshot): ReactElement {
         const reference = taskReferenceRows(records)?.find(reference => reference.workflowId === row.workflowId && reference.localTicketId === row.localTicketId)
         const ticket = records?.tickets?.find(ticket => ticket.workflowId === row.workflowId && ticket.localTicketId === row.localTicketId)
         return h('article', { key: row.workflowId + ':' + row.localTicketId },
-          h('p', null, ticketIdentity(records, row.workflowId, row.localTicketId)),
-          h('p', null, '工作流：' + workflowIdentity(records, row.workflowId)),
+          h('p', { style: { margin: '8px 0 4px' } }, h('strong', null,
+            (reference?.value.source.kind === 'external' ? reference.value.source.taskId : '本地 handle：' + row.localTicketId)
+              + (reference?.value.label ? ' · ' + reference.value.label : ticket === undefined ? '' : ' · ' + ticket.value.title))),
+          h('p', { style: { color: decisionSecondary, fontSize: '12px' } }, '工作流：' + workflowIdentity(records, row.workflowId) + ' · held=true 占位 · ' + ticketIdentity(records, row.workflowId, row.localTicketId)),
           reference === undefined ? h('p', null, ticket === undefined || records === null ? '票标题/状态未在当前授权账本返回。' : ticketStatusText(records, ticket)) : h(TaskReferenceItem, { row: reference }), technicalDetails(row))
       })),
     records === null ? null : h('details', null, h('summary', null, '全部状态定义与计数（含零值）'),
@@ -730,8 +761,40 @@ function decisionTime(label: string, value: number | undefined, unknown: string)
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'longOffset',
   }).format(value)))
 }
+function DecisionOptions(props: { readonly decision: DecisionRecord; readonly access?: DecisionTemplateAccess | undefined }): ReactElement {
+  const { decision: row, access } = props, value = row.value
+  const [message, setMessage] = useState<string | null>(null)
+  const options = value.options ?? [], recommendation = value.recommendation?.trim()
+  const matches = recommendation ? options.filter(option => option.key === recommendation || option.label === recommendation) : []
+  const recommended = matches.length === 1 ? matches[0] : undefined
+  const ordered = recommended === undefined ? options : [recommended, ...options.filter(option => option !== recommended)]
+  const available = access?.actions !== null && access?.actions !== undefined && isPendingUserDecision(row)
+  const insert = (label: string | null): void => {
+    if (!access?.actions || !access.current(row)) { setMessage('未插入：会话、显示许可或事项已变更，请重新读取。'); return }
+    try {
+      const span = access.actions.captureInsertion()
+      if (!span || !Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) || !Number.isSafeInteger(span.draftRev) || span.start < 0 || span.end < 0 || span.draftRev < 0) {
+        setMessage('未插入：无法确认当前输入位置，请重新读取。'); return
+      }
+      if (span.start !== span.end) { setMessage('未插入：请取消输入框中的非空选区后重试，不会覆盖已有选择。'); return }
+      if (!access.current(row)) { setMessage('未插入：会话或事项已变更，请重新读取。'); return }
+      const text = '关于待裁决项: ”' + value.question + '”\n' + (label === null ? '我认为：' : '我认可 “' + label + '”')
+      setMessage(access.actions.insertText(text, span) === true ? '仅插入输入框，尚未发送或记录裁决。' : '未插入：草稿已变更或输入框已锁定，请重试。')
+    } catch (error) { setMessage('未插入：' + errorText(error)) }
+  }
+  return h('div', { 'aria-label': '裁决文字模板' },
+    ordered.map(option => h('p', { key: option.key, 'data-decision-option': option.key, style: { ...decisionBodyStyle,
+      padding: option === recommended ? '8px' : '4px 0', border: option === recommended ? '1px solid var(--dsw-alias-state-done-primary, #7460c8)' : undefined,
+      color: option === recommended ? 'var(--dsw-alias-state-done-primary, #7460c8)' : 'var(--dsw-alias-state-business-primary, #2563eb)' } },
+      access === undefined ? (option === recommended ? '推荐 · ' : '') + option.key + '：' + option.label : h('button', { type: 'button', 'aria-label': '插入选项：' + option.label, disabled: !available, onClick: () => insert(option.label),
+        style: { ...inputTextButtonStyle, textAlign: 'left', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' } },
+        (option === recommended ? '推荐 · ' : '') + option.key + '：' + option.label))),
+    access === undefined ? null : h('button', { type: 'button', 'aria-label': '我有自己的看法……', disabled: !available, onClick: () => insert(null), style: inputTextButtonStyle }, '我有自己的看法……'),
+    available ? null : h('p', { style: { color: decisionSecondary, fontSize: '12px' } }, '文字模板不可用：宿主缺少公开输入 API 或此事项已不属于待你裁决；仍可阅读并在原聊天中答复。'),
+    message === null ? null : diagnostic(message))
+}
 /** Semantic details supports multi-line previews and native keyboard/touch disclosure without truncating the full question. */
-function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; readonly records: InstrumentSnapshot; readonly updated?: boolean; readonly edit?: (() => void) | undefined; readonly onOpen?: (open: boolean) => void }): ReactElement {
+function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; readonly records: InstrumentSnapshot; readonly updated?: boolean; readonly edit?: (() => void) | undefined; readonly onOpen?: (open: boolean) => void; readonly template?: DecisionTemplateAccess | undefined }): ReactElement {
   const row = props.decision, value = row.value
   const source = row.history?.find(change => change.revision === row.revision)
   const workflow = props.records.workflows?.find(item => item.workflowId === row.workflowId)?.value.title ?? row.workflowId
@@ -742,7 +805,7 @@ function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; rea
       h('span', { style: { display: 'block', color: decisionSecondary, fontSize: '12px' } }, workflow + ' · ' + value.status + ' · ', decisionTime('首次登记', row.registration?.recordedAt, '创建时间未知'), ' · ', decisionTime('业务更新', row.updatedAt, '业务更新时间未知'), props.updated ? ' · 已更新 / 已解决：此事项已不在原分类' : null)),
     h('div', { style: { padding: '4px 0 0 12px', lineHeight: 1.65, minWidth: 0 } },
       h('p', { style: { ...decisionBodyStyle, fontWeight: 600 } }, value.question),
-      value.options?.length ? h('div', null, h('strong', null, '选项'), h('ul', { style: { margin: '6px 0', paddingInlineStart: '24px' } }, value.options.map(option => h('li', { key: option.key, style: { whiteSpace: 'pre-wrap' } }, option.key + '：' + option.label)))) : null,
+      h(DecisionOptions, { key: row.revision, decision: row, access: props.template }),
       value.recommendation ? h('p', { style: decisionBodyStyle }, '建议：' + value.recommendation) : null,
       value.impact ? h('p', { style: decisionBodyStyle }, '影响：' + value.impact) : null,
       value.ticketIds?.length ? h('p', { style: decisionBodyStyle }, '关联任务（引用 / 旧票报告）：' + value.ticketIds.map(id => ticketIdentity(props.records, row.workflowId, id)).join('；')) : null,
@@ -754,7 +817,7 @@ function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; rea
       props.edit ? h(Button, { variant: 'ghost', onClick: props.edit, size: 'sm', style: { marginTop: '8px', maxWidth: '100%', height: 'auto', whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' } }, '阅读 / 编辑：' + preview) : null))
 }
 /** Mount with an authorization identity key. Open items retain their original region on classification changes. */
-function DecisionQueues(props: { readonly view: ClientSessionSnapshot; readonly edit?: (row: DecisionRecord) => void }): ReactElement {
+function DecisionQueues(props: { readonly view: ClientSessionSnapshot; readonly edit?: (row: DecisionRecord) => void; readonly template?: DecisionTemplateAccess }): ReactElement {
   const records = inputRecords(props.view)
   const [opened, setOpened] = useState<Record<string, readonly string[]>>({ pending: [], check: [], other: [] })
   if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：未返回授权事项列表，不作空清单或 0。')
@@ -762,7 +825,7 @@ function DecisionQueues(props: { readonly view: ClientSessionSnapshot; readonly 
   const matches = { pending: isPendingUserDecision, check: (row: DecisionRecord) => isAwaitingImplementation(row) || isNonUserPending(row), other: (row: DecisionRecord) => !isPendingUserDecision(row) && !isAwaitingImplementation(row) && !isNonUserPending(row) }
   const rows = (group: keyof typeof matches): readonly DecisionRecord[] => all.filter(row => matches[group](row) || opened[group]!.includes(decisionRecordKey(row)))
   const items = (group: keyof typeof matches): readonly ReactElement[] => rows(group).map(row => h('article', { key: decisionRecordKey(row), 'data-decision-key': props.view.sessionId + ':' + row.workflowId + ':' + row.decisionId },
-    h(DecisionReadingItem, { decision: row, records, updated: !matches[group](row), edit: props.edit === undefined ? undefined : () => props.edit!(row),
+    h(DecisionReadingItem, { decision: row, records, template: props.template, updated: !matches[group](row), edit: props.edit === undefined ? undefined : () => props.edit!(row),
       onOpen: (open: boolean) => setOpened(current => { const key = decisionRecordKey(row), keys = current[group]!; return { ...current, [group]: open ? [...new Set([...keys, key])] : keys.filter(item => item !== key) } }) })))
   return h('div', { style: { minWidth: 0, textAlign: 'left' } },
     h('section', { 'aria-label': '待你裁决' }, h('h4', { style: { fontSize: '14px', margin: '12px 0 6px' } }, '待你裁决 ' + countText(records.summary.pendingUserDecisionCount)),
@@ -781,7 +844,7 @@ function recordCheckFacts(records: InstrumentSnapshot): ReactElement {
     h('p', { style: { margin: '6px 0' } }, '非用户 pending 记录：' + (rows === null ? '未知' : rows.filter(isNonUserPending).length) + '（当前授权列表）；与原待落实标记可重叠，不能相加。'),
     rows === null ? diagnostic('核对清单未知：未返回授权事项列表，不作空清单或 0。') : decisionSummaryMismatch('原待落实标记', records.summary.awaitingImplementationCount, rows.filter(isAwaitingImplementation).length))
 }
-function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting', openedKeys: readonly string[]): ReactElement {
+function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting', openedKeys: readonly string[], template?: DecisionTemplateAccess): ReactElement {
   const records = inputRecords(view)
   if (records === null || !Array.isArray(records.decisions)) return diagnostic('裁决账本未知：' + (inputReadFailure(view, 'records') ?? '未返回可读事项'))
   // Keep deliberately opened identities; bodies always come from the current authorized projection.
@@ -789,12 +852,13 @@ function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' |
   return h('div', null, h('p', { style: { color: decisionSecondary, margin: '6px 0', fontSize: '12px' } }, countingScopeText(records.summary.countingScope) + '；只读查看，不标记已读或解决事项。可在原聊天中回答。'),
     decisions.length === 0 ? diagnostic('本次授权账本未返回此类事项；不从空明细重算摘要计数。') : null,
     category === 'awaiting' ? recordCheckFacts(records) : decisionSummaryMismatch('待你裁决', records.summary.pendingUserDecisionCount, uniqueDecisionRecords(records.decisions).filter(isPendingUserDecision).length),
-    decisions.map(decision => h(DecisionReadingItem, { key: decisionRecordKey(decision), decision, records,
+    decisions.map(decision => h(DecisionReadingItem, { key: decisionRecordKey(decision), decision, records, template,
       updated: category === 'pending' ? !isPendingUserDecision(decision) : !(isAwaitingImplementation(decision) || isNonUserPending(decision)) })))
 }
 // One explicit navigation selection per plugin activation; no business content, polling or Session retention.
 interface NotificationReadingValue { readonly sessionId: string | null; readonly scope: string | null; readonly key: string | null; readonly identity: string | null }
 interface NotificationReading { readonly getSnapshot: () => NotificationReadingValue; readonly subscribe: (listener: () => void) => () => void; readonly select: (view: ClientSessionSnapshot | null, key: string | null) => void }
+function summaryReadingIdentity(view: Pick<ClientSessionSnapshot, 'sessionId' | 'instance' | 'caller'>): string { return JSON.stringify([view.sessionId, view.instance, view.caller]) }
 function notificationReadingIdentity(view: ClientSessionSnapshot): string {
   const c = view.caller, i = view.instance
   return JSON.stringify([view.sessionId, c.kind, c.principalId, c.sessionId, i?.instrumentInstanceId, i?.ownerSessionId, i?.controlWorkspaceId, view.policyGrants?.revision])
@@ -833,7 +897,7 @@ export function DecisionNotificationReader(props: PropsRuntime<'conversation.inp
   useEffect(() => () => { if (store.getSnapshot().sessionId === props.sessionId) store.select(null, null) }, [store, props.sessionId])
   if (!valid) return null
   return h('section', { 'aria-label': '通知裁决阅读', style: { boxSizing: 'border-box', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', maxHeight: '50vh', overflow: 'auto', overflowWrap: 'anywhere' } },
-    h(Button, { type: 'button', onClick: () => store.select(null, null) }, '关闭通知阅读'), unknown || view === null ? diagnostic('裁决读取未知；暂停显示正文，待相同授权范围恢复后继续阅读。') : inputDecisionDetails(view, 'pending', [selection.key!]))
+    h(Button, { type: 'button', onClick: () => store.select(null, null) }, '关闭通知阅读'), unknown || view === null ? diagnostic('裁决读取未知；暂停显示正文，待相同授权范围恢复后继续阅读。') : inputDecisionDetails(view, 'pending', [selection.key!], decisionTemplateAccess(props, view, null, () => store.getSnapshot() === selection && notificationScope(view) === selection.scope)))
 }
 
 function inputRunningDetails(view: ClientSessionSnapshot, props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement {
@@ -853,10 +917,15 @@ function inputRunningDetails(view: ClientSessionSnapshot, props: PropsRuntime<'c
       diagnostic('深度结构：直接 ' + countText(windows.S.depth.direct) + ' · 更深 ' + countText(windows.S.depth.deeper) + ' · 深度未知 ' + countText(windows.S.depth.unknown)),
       Object.entries(windows.S.depth.levels).map(([level, count]) => h('p', { key: level }, '距离 ' + level + '：' + countText(count)))))
 }
-export function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement | null {
+export function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace & { readonly summaryAvailable?: boolean; readonly summaryIdentity?: string; readonly summary?: SummaryObserver }): ReactElement | null {
   const observation = useObservation(props.observer)
-  const view = observation.status === 'ready' && props.sessionId === props.observer.sessionId && observation.value.sessionId === props.sessionId ? observation.value : null
+  const view = observation.status === 'ready' && props.sessionId === props.observer.sessionId && observation.value.sessionId === props.sessionId
+    && (props.summaryIdentity === undefined || summaryReadingIdentity(observation.value) === props.summaryIdentity) ? observation.value : null
   const shown = view !== null && view.policy.display.inputSummary && props.observer.getDisplay()?.inputSummary !== false
+  const [permit, setPermit] = useState<{ readonly observer: SessionObservation; readonly sessionId: string; readonly allowed: boolean }>(() => ({ observer: props.observer, sessionId: props.sessionId, allowed: false }))
+  const same = permit.observer === props.observer && permit.sessionId === props.sessionId
+  const allowed = view !== null ? shown : same && permit.allowed && props.observer.getDisplay()?.inputSummary !== false
+  if (!same || view !== null && permit.allowed !== shown) setPermit({ observer: props.observer, sessionId: props.sessionId, allowed: shown })
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
   const identity = JSON.stringify([props.sessionId, props.observer.sessionId, shown, view?.instance, view?.caller, view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
@@ -864,20 +933,22 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null; readonly decisionKeys: readonly string[] }>(() => ({ identity, category: null, decisionKeys: [] }))
   const [regionPrefix] = useState(() => 'mattpocock-input-details-' + ++nextInputDisclosureId)
   const records = view === null ? null : inputRecords(view)
-  const pending = records?.summary.pendingUserDecisionCount, awaiting = records?.summary.awaitingImplementationCount
+  const pending = records?.summary.pendingUserDecisionCount
   const selected = selection.identity === identity && shown ? selection.category : null
   if (selection.identity !== identity) setSelection({ identity, category: null, decisionKeys: [] })
   const close = (): void => setSelection({ identity, category: null, decisionKeys: [] })
-  if (!shown || view === null) return null
+  if (!allowed) return null
+  if (view === null || props.summaryAvailable === false) return h('section', { 'aria-label': '协作进度摘要', style: inputSummaryStyle }, diagnostic('协作状态暂不可用，正在恢复；不显示旧正文或计数。'))
   const inactive = view.policy.extensionEnabled === false ? '全局总闸已关闭' : view.policy.workspaceEnabled === false ? '本工作区总闸已关闭' : null
   const workflows = records === null ? [] : inputSummaryWorkflows(records)
   // Collapsing without an enabled details entrance would make the omitted rows unreachable.
   const visible = view.policy.display.rightPanel ? workflows.slice(0, INPUT_SUMMARY_WORKFLOW_LIMIT) : workflows
   const hidden = view.policy.display.rightPanel ? workflows.slice(INPUT_SUMMARY_WORKFLOW_LIMIT) : []
+  const select = (category: InputDisclosure): void => setSelection({ identity, category, decisionKeys: uniqueDecisionRecords(records?.decisions ?? []).filter(row => category === 'pending' ? isPendingUserDecision(row) : category === 'awaiting' && (isAwaitingImplementation(row) || isNonUserPending(row))).map(decisionRecordKey) })
   const entrance = (category: InputDisclosure, text: string): ReactElement => h('button', {
     key: category, type: 'button', 'aria-label': INPUT_DISCLOSURES[category].entrance, 'aria-expanded': selected === category,
     'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: INPUT_DISCLOSURES[category].color },
-    onClick: () => selected === category ? close() : setSelection({ identity, category, decisionKeys: uniqueDecisionRecords(records?.decisions ?? []).filter(row => category === 'pending' ? isPendingUserDecision(row) : category === 'awaiting' && (isAwaitingImplementation(row) || isNonUserPending(row))).map(decisionRecordKey) }),
+    onClick: () => selected === category ? close() : select(category),
   }, text)
   const windows = inputWindows(view)
   const windowEntrance = (category: 'T' | 'S'): ReactElement => {
@@ -891,14 +962,13 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
         usage.overage === 0 ? null : h('span', { style: { color: 'var(--dsw-alias-state-warn-label, #b7791f)' } }, ' · 超出 ' + countText(usage.overage)),
         h('span', { style: { color: 'inherit', fontWeight: 'normal' } }, ' · 差额 ' + signedCountText(usage.gap))))
   }
-  return h('section', { 'aria-label': '协作进度摘要', style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', minWidth: 0, overflowWrap: 'anywhere', gap: '4px', lineHeight: 1.5 } },
+  return h('section', { 'aria-label': '协作进度摘要', style: inputSummaryStyle },
     h('div', { 'aria-label': '常驻协作提醒', style: { flexShrink: 0, width: '100%' } },
       inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新（非实时更新）。'),
       records === null ? diagnostic('任务引用与旧票报告未知') : h('span', null, '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + countText(records.summary.totalTickets) + '（业务报告） · ' + countingScopeText(records.summary.countingScope)),
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
-        pending === 0 ? null : entrance('pending', '待你裁决 ' + countText(pending)),
+        entrance('pending', '裁决 · 待你裁决 ' + countText(pending)),
         windowEntrance('T'), windowEntrance('S'))),
-    needsRecordCheck(records) ? h('div', { 'aria-label': '次级记录入口', style: { alignSelf: 'flex-end', fontSize: '12px' } }, entrance('awaiting', '记录核对')) : null,
     h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
       ...visible.flatMap(workflow => workflow.referenceCount !== null && workflow.referenceCount > 0
         ? [h('div', { key: workflow.workflowId + ':references' }, workflow.workflowId + ' · 任务引用 ' + workflow.referenceCount + ' · 旧票 ' + countText(workflow.ticketCount) + '（业务报告）'), ...workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))]
@@ -911,10 +981,21 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       id: regionPrefix, role: 'region', 'aria-label': selected === null ? undefined : INPUT_DISCLOSURES[selected].region,
       hidden: selected === null, style: { width: '100%', minWidth: 0, maxHeight: 'min(320px, 35vh)', overflowY: 'auto', textAlign: 'left' },
     }, selected === null ? null : h('div', null,
-      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', borderBottom: decisionBorder, padding: '4px 0' } },
-        h('h3', { style: { fontSize: '14px', margin: 0, fontWeight: 600 } }, INPUT_DISCLOSURES[selected].region),
+      h('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: decisionBorder, padding: '4px 0' } },
+        h('nav', { 'aria-label': '协作详情导航', style: { display: 'flex', flexWrap: 'wrap', gap: '12px' } },
+          (['pending', 'T', 'S'] as const).map(category => {
+            const active = selected === category || category === 'pending' && selected === 'awaiting'
+            const label = category === 'pending' ? '裁决' : category
+            return h('button', { key: category, type: 'button', 'aria-label': '切换到' + label, 'aria-pressed': active,
+              style: { ...inputTextButtonStyle, color: INPUT_DISCLOSURES[category].color, fontWeight: active ? 700 : 400 }, onClick: () => select(category) }, (active ? '✓ ' : '') + label)
+          })),
+        (selected === 'pending' || selected === 'awaiting') && needsRecordCheck(records) ? entrance('awaiting', '记录核对') : null,
+        h('span', { style: { flex: 1 } }),
         h(Button, { variant: 'ghost', 'aria-label': '关闭详情', onClick: close }, '关闭详情')),
-      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, props) : inputDecisionDetails(view, selected, selection.decisionKeys))))
+      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, props) : inputDecisionDetails(view, selected, selection.decisionKeys, decisionTemplateAccess(props, view, 'inputSummary', () => {
+        const summary = props.summary?.getSnapshot()
+        return summary === undefined || summary.status === 'ready' && summary.value.policy.display.inputSummary && summaryReadingIdentity(summary.value) === summaryReadingIdentity(view)
+      })))))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
@@ -1057,7 +1138,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
       records.workflows.map(workflow => h('section', { key: workflow.workflowId }, h('h4', null, workflow.value.title),
         workflow.value.axes.map(axis => h('div', { key: axis.axisKey }, h('p', null, axis.label + ' · ' + axis.counting), axis.statuses.map(status => h('span', { key: status.statusKey, title: status.meaning ?? undefined }, status.label + ' ')))),
         records.tickets.filter(ticket => ticket.workflowId === workflow.workflowId).map(ticket => h('article', { key: ticket.localTicketId }, h('strong', null, ticket.value.title), pretty(ticket.value))))),
-      h(DecisionQueues, { key: readIdentity, view, edit: (decision: DecisionRecord) => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) })),
+      h(DecisionQueues, { key: readIdentity, view, template: decisionTemplateAccess(props, view, 'rightPanel'), edit: (decision: DecisionRecord) => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) })),
     reader,
     h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
     h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),

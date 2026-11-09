@@ -357,7 +357,8 @@ test('settings shared T owns long handle text wrapping instead of relying on sid
   assert.equal(Number.parseFloat(body.style.minWidth), 0)
   const articles = [...body.querySelectorAll('article')]
   assert.equal(articles.length, 2)
-  assert(articles[0].querySelector('p').textContent.includes(handle))
+  assert(articles[0].textContent.includes(handle), 'local handle remains secondary to the genuine external task id')
+  assert(articles[0].querySelector('p').textContent.includes(row.value.source.taskId))
   assert(articles[0].querySelector('p').textContent.includes(row.value.label))
   assert(articles[1].querySelector('p').textContent.includes(view.records.tickets[0].value.title))
   await expand(articles[0].querySelector('details'))

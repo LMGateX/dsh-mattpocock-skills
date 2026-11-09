@@ -103,6 +103,7 @@ test('record check is secondary and keeps raw markers with a unique non-user pen
   const f = await mount(t, view), main = named(f.container, '常驻协作提醒')
   assert.match(main.textContent, /待你裁决\s*3/)
   assert.doesNotMatch(main.textContent, /待落实|记录核对\s*\d/)
+  await click(entry(f.container, 'pending'))
   const check = named(f.container, '查看记录核对')
   assert.equal(check.textContent, '记录核对')
   await click(check)
@@ -198,11 +199,11 @@ function nativeRow(sessionId, activity, state = 'running') {
     lane: { workflowId: 'flow-observed', ticketIds: ['ticket-observed'], task: '可观测任务', source: 'inferred' } }
 }
 
-test('four native text entries toggle, switch one local region and expose stable ARIA relations without extra buttons', async t => {
+test('three native main entries and secondary record check switch one local region with stable ARIA relations', async t => {
   const { container, window } = await mount(t)
   assertClosed(container)
-  assert.equal(container.querySelectorAll('button').length, 4, 'no extra view icon, pill or giant summary button')
-  for (const kind of Object.keys(labels)) {
+  assert.equal(container.querySelectorAll('button').length, 3, 'three fixed main entries; record check lives in the decision title')
+  for (const kind of ['pending', 'T', 'S']) {
     const node = entry(container, kind)
     assert.equal(node.tagName, 'BUTTON')
     assert.equal(node.type, 'button')
@@ -223,7 +224,10 @@ test('four native text entries toggle, switch one local region and expose stable
     assert.equal(detail.id, entry(container, kind).getAttribute('aria-controls'))
     assert.equal(entry(container, kind).getAttribute('aria-expanded'), 'true')
     assert.equal(Object.values(regions).filter(name => container.querySelector('[aria-label="' + name + '"]')).length, 1)
-    for (const other of Object.keys(labels).filter(other => other !== kind)) assert.equal(entry(container, other).getAttribute('aria-expanded'), 'false')
+    for (const other of Object.keys(labels).filter(other => other !== kind)) {
+      const node = container.querySelector('[aria-label="' + labels[other] + '"]')
+      if (node) assert.equal(node.getAttribute('aria-expanded'), 'false')
+    }
   }
   await click(entry(container, 'awaiting'))
   assertClosed(container)
@@ -242,13 +246,15 @@ test('sticky reminders, 96px workflow progress and independently scrolling detai
   assert(detail.style.maxHeight && detail.style.maxHeight !== '96px', 'details have their own bounded height')
   assert.equal(detail.style.overflowY, 'auto')
   assert.match(reminders.textContent, /待你裁决\s*3/)
-  assert.doesNotMatch(reminders.textContent, /待落实/); assert.match(named(container, '次级记录入口').textContent, /记录核对/)
+  assert.doesNotMatch(reminders.textContent, /待落实|记录核对/)
+  await click(entry(container, 'pending')); assert.match(region(container, 'pending').textContent, /记录核对/)
   assert.match(progress.textContent, /工作进行\s*1/)
 })
 
 test('T S pending and neutral record check remain distinguishable in both themes while every signed gap inherits neutral body color', async t => {
   const view = snapshot(); view.windows.T.gap = -2; view.windows.S.gap = 0
   const { container, window } = await mount(t, view)
+  await click(entry(container, 'pending'))
   // Resolve author CSS in the DOM, rather than accepting four unequal helper strings.
   for (const neutral of ['rgb(23, 24, 25)', 'rgb(230, 231, 232)']) {
     container.style.color = neutral
@@ -310,21 +316,22 @@ test('ticketless and all-zero-with-tickets workflows have honest readable empty 
   assert.match(named(f.container, '工作流进度').textContent, /暂无票/)
 })
 
-test('known zero decision entries disappear but unreadable ledgers and malformed counts remain explicitly unknown', async t => {
+test('three main entries remain at known zero while unreadable ledgers and malformed counts remain explicitly unknown', async t => {
   const view = snapshot(); view.records.summary.pendingDecisionCount = 0; view.records.summary.pendingUserDecisionCount = 0; view.records.summary.awaitingImplementationCount = 0
   const f = await mount(t, view)
-  assert.equal(f.container.querySelector('[aria-label="' + labels.pending + '"]'), null)
+  assert.match(entry(f.container, 'pending').textContent, /裁决.*0/)
   assert.equal(f.container.querySelector('[aria-label="' + labels.awaiting + '"]'), null)
-  assert.equal(f.container.querySelectorAll('button').length, 2)
+  assert.equal(f.container.querySelectorAll('button').length, 3)
   const unreadable = structuredClone(view); unreadable.records = null; unreadable.health = [{ scope: 'records', status: 'unknown', reason: 'ledger-read-denied' }]
   await f.refresh(unreadable)
   assert.match(f.container.textContent, /裁决.*未知/)
-  assert.match(entry(f.container, 'awaiting').textContent, /记录核对/)
   await click(entry(f.container, 'pending'))
+  assert.match(entry(f.container, 'awaiting').textContent, /记录核对/)
   assert.match(region(f.container, 'pending').textContent, /未知|不可读|不可用/)
   const malformed = structuredClone(view); malformed.records.summary.pendingUserDecisionCount = null; malformed.records.summary.awaitingImplementationCount = 'bad-count'
   await f.refresh(malformed)
   assert.match(entry(f.container, 'pending').textContent, /未知/)
+  await click(entry(f.container, 'pending'))
   await click(entry(f.container, 'awaiting')); assert.match(region(f.container, 'awaiting').textContent, /原待落实标记 未知/)
   assert.doesNotMatch(entry(f.container, 'pending').textContent, /裁决\s*0/)
 })
@@ -350,7 +357,7 @@ test('pending is strictly user-addressed, awaiting independent, and inline decis
   for (const expected of ['事项-both', '事项-user-only', 'decision-flow', 'linked-ticket', '任务自定状态', '背景事实', '选项甲', '建议甲', '影响说明', '已有结果不清旗标']) assert(pending.textContent.includes(expected), expected)
   assert.doesNotMatch(pending.textContent, /事项-agent-pending|事项-unspecified|事项-no-addressee|事项-await-only|事项-status-is-not-flag/)
   assert.equal(pending.querySelectorAll('input,textarea,select').length, 0, 'no editor, save, mark-read or hidden writes')
-  assert.deepEqual([...pending.querySelectorAll('button')].map(row => row.textContent), ['关闭详情'])
+  assert.deepEqual([...pending.querySelectorAll('button')].filter(row => !row.disabled).map(row => row.getAttribute('aria-label')), ['切换到裁决', '切换到T', '切换到S', '查看记录核对', '关闭详情'])
   for (const details of pending.querySelectorAll('details')) await React.act(async () => { details.open = true; details.dispatchEvent(new details.ownerDocument.defaultView.Event('toggle')) })
   await click(entry(container, 'awaiting'))
   const awaiting = region(container, 'awaiting')
@@ -358,7 +365,7 @@ test('pending is strictly user-addressed, awaiting independent, and inline decis
   assert.match(awaiting.textContent, /事项-await-only/)
   assert.doesNotMatch(awaiting.textContent, /事项-user-only|事项-status-is-not-flag/); assert.match(awaiting.textContent, /事项-agent-pending|事项-unspecified|事项-no-addressee/)
   assert.equal(awaiting.querySelectorAll('input,textarea,select').length, 0)
-  assert.deepEqual([...awaiting.querySelectorAll('button')].map(row => row.textContent), ['关闭详情'])
+  assert.deepEqual([...awaiting.querySelectorAll('button')].filter(row => !row.disabled).map(row => row.getAttribute('aria-label')), ['切换到裁决', '切换到T', '切换到S', '查看记录核对', '关闭详情'])
 })
 
 test('T uses only held leases, keeps unmatched identity and instance total while assigned details remain a subset', async t => {
