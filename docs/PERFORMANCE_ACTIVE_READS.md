@@ -4,7 +4,7 @@
 
 2026-11-10，所有者认可代码性能审计的推荐顺序，明确要求“先固定到文档；在 subagents、隔离环境中完成开发和测试；push 发版，为本机 DSH 安装”。本页为实施前冻结的最新细化契约；当前状态为 **Implemented / independent review and artifact gates pending**，不是已发布或已部署结果。初轮固定提交审查发现的 freshness／取消边界必须修复并独立复验后才能进入发布。
 
-本批只实施第一批三项：**owner 相关完整投影失效、live descriptor 紧凑事实寿命、已开始读取的协作取消传播**。发布目标 0.21.0，仅以 DSH 0.2.2-rc.1 和 Node >=24.9.0 验收；engines.dsh 仍为 >=0.2.2-rc.1。更高版本是声明范围而非已实测承诺。
+本批性能优化范围仍只实施第一批三项：**owner 相关完整投影失效、live descriptor 紧凑事实寿命、已开始读取的协作取消传播**。发布目标 0.21.0，仅以 DSH 0.2.2-rc.1 和 Node >=24.9.0 验收；engines.dsh 仍为 >=0.2.2-rc.1。更高版本是声明范围而非已实测承诺。
 
 允许：先提交本契约，再建独立 implementer 工作树，主代理串行集成；完成源码、生成物、唯一精确制品、独立 Standards/Spec 审查和 RC1 装载/安装门禁后非 force push main＋新 tag、新 GitHub Release、下载逐字节回验、通过官方 CLI 安装同一回验包到本机 Web Profile。安装前备份旧包、Profile manifest/lock/patch，保留明确回退边界。
 
@@ -75,6 +75,12 @@
 4. **仅 RC1 的 source/精确包完整回归、Host/Client严格类型、真实装载/官方PluginManager/正式headless**：证明相同制品及兼容；浏览器离线fixture只覆盖相关UI回归，不起替代生产服务器、不调用生产数据。
 
 测试以真实 RED→GREEN tracer bullet 单切片推进；工作计数是公开调用者 seam 的行为契约，不为测试导出私有 Map 或改 SDK。原16/64/256历史扫描、65冷缓存悬崖、full/summary合并及单item授权去重属于后续候选，**不纳入本批实现**。
+
+### 6.1 N：所有者追加认可的最小客户端生命周期修复
+
+2026-11-10，所有者在原生提问明确选择“纳入最小客户端修复（推荐）”。同一 RC1 gateway 公开双 namespace 复现显示：依赖 Controls 的 child 持有可选 Recommendation namespace，会与 gateway 串行 namespace dispose 互等。只把 installRecommendationPolicy 的所有权移到 Controls mount 后、进入 Controls inject child 前的既有 bootstrap context，把原 source 传入 child；保持可选异步安装和缺失／撤销降级，不等待可选端点阻塞基础阅读。不得修改共享 SDK、wire、授权、显示设计、请求预算、业务持久化或无关 UI。
+
+N 先文档提交，再隔离子代理 RED→GREEN，真实 RC1 gateway／原生离线装配验证 Client ACTIVE、实际 dispose 完成、namespace／全部 seats／tabs 清理、重复装卸与 browser Loader remove/re-add、失败可见；同时保持 base-only server 和 optional capability regression。原6项测试不得删断言、用 process.exit 或跳过 teardown 伪称通过。原生 package 缺 slots 的默认6 skip必须与单独标注的同 RC1 public-slots 装配结果分别报告。最终对新 Client bundle 重建、严格类型／封闭模块图／精确包和独立双轴复验，不继续沿用此前“Client 与0.20字节相同”的阶段证据。既有服务不自动重启，磁盘安装与运行 GUI 激活仍分开；该循环不是原 CPU 事故根因证明。
 
 ## 7. 实施、集成与发布门禁
 

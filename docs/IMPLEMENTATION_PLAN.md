@@ -10,7 +10,9 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 以 [本批契约](<PERFORMANCE_ACTIVE_READS.md>) 为实施与验收权威。D 文档先提交；F owner相关freshness、I live descriptor事实寿命、C 协作取消分别在独立worktree／subagent单writer实施并保留真实RED→GREEN。主代理串行合入，冲突解决后重测；仅RC1的源码完整回归、严格类型、生成物／公开exports／wire／vendor与独立Standards／Spec门禁后，冻结0.21.0与唯一精确制品，完成同包验收、非force push／新Release／下载回验／官方本机安装。管理OFF不造仪器业务票，直接以本契约切片标识推进。
 
-F/I/C 不扩入下一批候选，不增加timeout、减新鲜度、跳来源／授权、拆FIFO或改共享SDK。公开测试seams与竞态／取消／durability矩阵先按本批契约冻结。安装前备份、只改目标依赖与lock节点；保留原dirty检出，不自动重启或宣称当前GUI已激活。当前状态为待实施，未获得执行证据前不提前标完成。
+F/I/C 不扩入下一批候选，不增加timeout、减新鲜度、跳来源／授权、拆FIFO或改共享SDK。公开测试seams与竞态／取消／durability矩阵先按本批契约冻结。安装前备份、只改目标依赖与lock节点；保留原dirty检出，不自动重启或宣称当前GUI已激活。当前实现已串行集成，独立复审和制品门禁未完成，不提前标完成。
+
+2026-11-10 所有者额外明确选择纳入 N：客户端 Remote namespace 所有权最小修复。先将追加授权写入 DESIGN／本批契约；N 在独立子代理／工树以真实 RC1 gateway RED→GREEN 实施，只移动可选挂载归属、不改共享 SDK 或无关 UI。必须补原生激活／实际卸载／清理／重挂与 Loader 失败验证，保留 optional 端点缺失／撤销时基础阅读。F/C 复审反例仍分别关闭，N 不替代它们；最终再统一重建、双轴复审、源与同包完整验收。
 
 ## 裁决摘要、推荐支持 B 与原生子代理导航（2026-11-09，已认可，实施前冻结）
 

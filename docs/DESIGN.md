@@ -18,6 +18,10 @@ This document is the authoritative implementation contract. A later implementati
 
 本批精化既有 PERFORMANCE_READ_PATHS 的身份事实有效期与内部可选 signal Interface，仍保留每次当前权限／来源健康、相关 live 变化即时可见、历史／durability frontier／FIFO、unknown／stale 与完整 Remote。仅 DSH 0.2.2-rc.1（Node >=24.9.0）验源与唯一精确包；通过独立 Standards／Spec 与兼容门禁后非 force 发布安装。不得自动重启当前服务、修改业务数据或共享 SDK、启用管理／预授权或 npm publish；磁盘、Host、浏览器激活分别核验，不把优化计数当现场根因或生产 CPU 降幅。
 
+## 0.21.0 追加：客户端 Remote 卸载最小修复（2026-11-10，所有者明确选择纳入）
+
+原生 RC1 公共 gateway 双 namespace 复现暴露：把可选 Recommendation namespace 挂在依赖 Controls namespace 的子作用域内，会在串行卸载时形成依赖循环。所有者在原生提问明确选择“纳入最小客户端修复（推荐）”。该项追加到本版，不是把三项性能范围泛化：只将可选 namespace 贡献移归既有 bootstrap owner，再把同一 source 传给既有 Controls 依赖 child；基础 reading、可选能力缺失／撤销回退、policy 授权、UI 内容／设置与请求预算保持。先提交本条和细化契约，再独立子代理／工树 RED→GREEN，真实 RC1 激活／卸载／重挂／loader failure、source／同包完整门禁及双轴复审后才发布安装。不改共享 SDK、不以跳过 teardown／process.exit 算原生生命周期通过，不自动重启。最小复现支持所有权循环，不证明此前 CPU99% 的现场根因。
+
 ## 本批兼容范围更正（2026-11-10，所有者明确要求）
 
 本批仅在 **DSH v0.2.2-rc.1** 运行兼容验收，不再沿用 alpha.4 或双宿主发布门禁。插件安装兼容声明改为 `engines.dsh: >=0.2.2-rc.1`，Node 前提跟随该宿主的 `>=24.9.0`；用当前 rc.1 的真实兼容判定函数验证低版本号拒绝与最低版本／更高版本号接受，不为负例启动旧 SDK。安装声明覆盖的版本范围不是实测范围：只实测 rc.1，不承诺未来版本都已验证；DSH 内部组件自身的 peer 版本号不等同宿主版本。旧批次的双宿主结果仅作历史，不能继续决定本批成本或兼容范围。保留同版本缺能力／旧服务安全降级、旧数据与权限回归，不据版本下限移除这些围栏。
