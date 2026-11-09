@@ -74,4 +74,8 @@
 - 独立 Standards 第一轮 0 必改；Spec 第一轮发现 1 项 P2：两个真实 registry 都预热 ready、Session／wire 身份完全相同，Details 已开的编辑器草稿／base 仍可能跨到新 remote。内存 public-port probe 对旧基线和中间候选均可复现，因此是本轮既有 3.1／3.2／4 节域隔离要求未闭合，**不是声称新增回归，也不是现场闪烁的另一个已确认根因**。
 - 该中间归档已明确标为 superseded，原字节和 sidecars 保留作证；不得发布、安装或称为最终通过。修复必须围栏真正新域的整个 reader／draft／action 子树，并以同域新 handle 与健康刷新保留草稿作控制；设置检查中同类域属子状态也须检查。旧域不可操作，显式在新域重新打开后只使用新域 base。
 
-当前阶段：独立 Spec P2 正由原单 writer 实施子代理按公开 mounted seam 先 RED 后修复；最终源码、生成物、唯一最终归档、双轴复核和交付记录仍待完成。
+- 后续候选 `0ffca73dd7b805214e77e588a40ddf92a54333e6` 已补齐不同 registry 的 Details 草稿与两个检查面的 pending history 取消，24 项 mounted／13 项 native 通过，source 与精确归档 input 图形各 32／32，双宿主 source／archive-input 四矩阵各 1121 项、1115 pass／6 已解释 native 装配 skip／0 fail；严格四类型门禁与精确包源绑定亦通过。旧域草稿 P2 已闭合，但该候选仍不是最终接受结果。
+- 新鲜第二轮 Standards 为 0 必改、1 条非阻断测试 DOM／global lifetime 代码去重启发式建议（本批不为此扩一般性重构）；Spec 仍有 1 项继承的 P2：同一 registry／Session／Remote 下真实 caller、grant revision 或 scope 改变，历史面板不取消旧授权时发出的 pending 请求，迟到合法旧响应仍可进入新投影。两个 surface、三类变化的 6 个公开挂载 probe 可复现；旧基线 grant 控制亦同样失败。**这是客户端失效围栏未闭合，不是已证明生产越权。** 该候选归档也已另标 superseded，原字节不改。
+- 补修继续限定在既有根阅读／授权身份：真实身份变化取消并卸载旧域属子状态，不能只在 registry epoch 变化时处理；同一授权下 business／viewer revision 的健康更新以及对象字段重排，不得误伤 pending history、草稿、焦点或原始 CAS。不加 Remote／model／schema 字段，不改变历史读取的显式点击行为。
+
+当前阶段：第二轮 Spec 授权元数据围栏 P2 正由原单 writer 子代理先 RED 后修复；最终候选必须重新生成、源绑定归档、完整门禁与独立复核。此前通过结果不代替最终验收。
