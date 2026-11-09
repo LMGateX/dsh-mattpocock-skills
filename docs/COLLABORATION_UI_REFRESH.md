@@ -44,7 +44,7 @@ T 首行突出真实外部 source.taskId（若有）或明确本地 handle，并
 我认为：
 ```
 
-不得 setDraft 拼接全文而删除 chips，不用私有 editor/DOM。现有非空选区不默认覆盖；提示取消选择后重试。revision变更/发送锁导致 insertText=false 时提示未插入，不强行覆盖；一次插入一个 undo。缺公开 API 的旧宿主说明不可用并保留阅读。只在用户实际发送后按既有真实消息和 SAME decisionId 处理裁决；同名标题用阅读元信息辅助，不擅改两行模板或猜归属。
+模板动态占位（问题、选项label）中的CRLF/CR/LF/NEL/Unicode行段分隔符以单个空格作单行表示，保证仅模板自身分隔为两行；阅读区原文保留，不改记录/schema。不得 setDraft 拼接全文而删除 chips，不用私有 editor/DOM。现有非空选区不默认覆盖；提示取消选择后重试。revision变更/发送锁导致 insertText=false 时提示未插入，不强行覆盖；一次插入一个 undo。缺公开 API 的旧宿主说明不可用并保留阅读。只在用户实际发送后按既有真实消息和 SAME decisionId 处理裁决；同名标题用阅读元信息辅助，不擅改两行模板或猜归属。
 
 ## 5. 本地可选铃声
 

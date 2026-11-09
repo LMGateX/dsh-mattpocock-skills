@@ -761,6 +761,8 @@ function decisionTime(label: string, value: number | undefined, unknown: string)
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'longOffset',
   }).format(value)))
 }
+/** Template placeholders are one line; authored reading text remains untouched. */
+function templateLine(value: string): string { return value.replace(/\r\n|[\n\r\u0085\u2028\u2029]/g, ' ') }
 function DecisionOptions(props: { readonly decision: DecisionRecord; readonly access?: DecisionTemplateAccess | undefined }): ReactElement {
   const { decision: row, access } = props, value = row.value
   const [message, setMessage] = useState<string | null>(null)
@@ -778,7 +780,7 @@ function DecisionOptions(props: { readonly decision: DecisionRecord; readonly ac
       }
       if (span.start !== span.end) { setMessage('未插入：请取消输入框中的非空选区后重试，不会覆盖已有选择。'); return }
       if (!access.current(row)) { setMessage('未插入：会话或事项已变更，请重新读取。'); return }
-      const text = '关于待裁决项: ”' + value.question + '”\n' + (label === null ? '我认为：' : '我认可 “' + label + '”')
+      const text = '关于待裁决项: ”' + templateLine(value.question) + '”\n' + (label === null ? '我认为：' : '我认可 “' + templateLine(label) + '”')
       setMessage(access.actions.insertText(text, span) === true ? '仅插入输入框，尚未发送或记录裁决。' : '未插入：草稿已变更或输入框已锁定，请重试。')
     } catch (error) { setMessage('未插入：' + errorText(error)) }
   }

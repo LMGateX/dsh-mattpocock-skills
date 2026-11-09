@@ -136,6 +136,26 @@ test('decision options uniquely recommend first and insert exactly two plain-tex
   assert.match(ui.container.textContent, /仅插入|尚未发送/)
 })
 
+for (const seat of ['InputSummary', 'Details']) test('multiline dynamic text stays exactly two template lines without changing reading text: ' + seat, async t => {
+  const view = decisionView()
+  const question = '发布方向\r\n保留原文\r下一段\u2028段落\u2029末段\u0085结尾'
+  view.records.decisions[0].value.question = question
+  const calls = []
+  const span = {start: 0, end: 0, draftRev: 1}
+  const actions = {captureInsertion: () => span, insertText: (text, captured) => {calls.push({text, captured}); return true},
+    setDraft: () => assert.fail('must not replace draft'), submit: () => assert.fail('must not send')}
+  const ui = await mount(t, view, actions, seat)
+  if (seat === 'InputSummary') await click(entry(ui.container, 'pending'))
+  const option = ui.container.querySelector('[data-decision-option="A"]')
+  assert.match(option.textContent, /保持现状\n完整的第二行/)
+  assert(ui.container.textContent.includes(question), 'reading keeps the original authored question')
+  await click(option.querySelector('button'))
+  assert.deepEqual(calls[0], {text: '关于待裁决项: ”发布方向 保留原文 下一段 段落 末段 结尾”\n我认可 “保持现状 完整的第二行”', captured: span})
+  await click(named(ui.container, '我有自己的看法……'))
+  assert.equal(calls[1].text, '关于待裁决项: ”发布方向 保留原文 下一段 段落 末段 结尾”\n我认为：')
+  for (const {text} of calls) { assert.equal(text.split('\n').length, 2); assert.doesNotMatch(text, /[\r\u0085\u2028\u2029]/) }
+})
+
 test('native session details reading connects the same safe input template actions', async t => {
   const calls = []
   const actions = {captureInsertion: () => ({start: 0, end: 0, draftRev: 1}), insertText: text => {calls.push(text); return true}}
