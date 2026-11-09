@@ -307,3 +307,76 @@ test('a legacy count-state seam without membership proof remains readable but ca
   await f.read(); await f.read()
   assert.equal(reads(), 2, 'known/revision/live-parent-only evidence is insufficient without native membership coverage')
 })
+
+test('unrecorded live descendants of an external stored member enter the next snapshot', async t => {
+  let ports
+  const f = await mountedFixture(t, {
+    configureBeforeMount({ ctx }) { ctx.provide('subagents', { async listDescendants() { return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }) },
+    runtimeCreated(_runtime, value) { ports = value },
+  })
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const read = () => f.runtime.readSession(caller('root'), 'root', signal())
+  await read(); await new Promise(resolve => setImmediate(resolve)); await read()
+  f.agents.set('other', actualAgent('other'))
+  f.agents.set('child', Object.assign(actualAgent('child', { parent: 'other', managed: true }), { status: 'running' }))
+  await read(); await new Promise(resolve => setImmediate(resolve))
+  const before = await read()
+  assert.equal(before.windows.S.used, 1)
+  assert.deepEqual((await f.runtimeStorage.read())?.nativeExecutions ?? [], [])
+  const reads = fullReads(t)
+  f.agents.set('new-grandchild', Object.assign(actualAgent('new-grandchild', { parent: 'child', managed: true }), { status: 'running' }))
+  const after = await read(), actual = await ports.nativeSubagentActivity('root', signal())
+  assert.equal(actual.running, 2)
+  assert.equal(after.windows.S.used, 2, 'prospective native descendants cannot remain behind a hot body')
+  assert.notEqual(after, before)
+  assert.equal(reads(), 2, 'membership self-absorption reconstructs at most once under the same permit')
+  // Reverse insertion order forces more than one in-memory closure pass.
+  const native = (sid, parent, status = 'running') => Object.assign(actualAgent(sid, { parent, managed: true }), { status })
+  f.agents.set('deepest', native('deepest', 'deeper'))
+  f.agents.set('deeper', native('deeper', 'new-grandchild'))
+  assert.equal((await read()).windows.S.used, 4, 'all prospective native depths enter without lifecycle events')
+  f.agents.delete('deepest'); f.agents.set('same-count-replacement', native('same-count-replacement', 'deeper'))
+  const beforeSwap = reads(), swapped = await read()
+  assert.equal(swapped.windows.S.used, 4)
+  assert.equal(reads(), beforeSwap + 2, 'equal-size/count swap still sees a new prospective identity and membership cut')
+  const replacement = f.agents.get('same-count-replacement')
+  replacement.session.header.parentSession = 'other'
+  replacement.status = 'idle'
+  assert.equal((await read()).windows.S.used, 3, 'absorbed child stays relevant after reparenting away from the member')
+  replacement.status = 'running'
+  assert.equal((await read()).windows.S.used, 4)
+  f.agents.set('same-count-replacement', native('same-count-replacement', 'other', 'idle'))
+  assert.equal((await read()).windows.S.used, 3, 'same-id replacement outside the owner chain remains relevant')
+  f.agents.delete('deeper')
+  assert.equal((await read()).windows.S.used, 2, 'absence of a prospective descendant cannot keep its old running count')
+  const stable = await read(), hot = reads()
+  f.agents.set('other-owner-root', actualAgent('other-owner-root'))
+  assert.deepEqual(await read(), stable)
+  f.agents.delete('other-owner-root')
+  assert.deepEqual(await read(), stable)
+  assert.equal(reads(), hot, 'unrelated root changes still perform zero full rebuilds')
+  assert.deepEqual((await f.runtimeStorage.read())?.nativeExecutions ?? [], [], 'closure must not manufacture execution records')
+})
+
+test('prospective native closure does not turn ordinary forks into membership bridges', async t => {
+  let ports
+  const f = await mountedFixture(t, {
+    configureBeforeMount({ ctx }) { ctx.provide('subagents', { async listDescendants() { return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }) },
+    runtimeCreated(_runtime, value) { ports = value },
+  })
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const read = () => f.runtime.readSession(caller('root'), 'root', signal())
+  await read(); await new Promise(resolve => setImmediate(resolve)); await read()
+  f.agents.set('other', actualAgent('other'))
+  f.agents.set('child', Object.assign(actualAgent('child', { parent: 'other', managed: true }), { status: 'running' }))
+  await read(); await new Promise(resolve => setImmediate(resolve)); await read()
+  f.agents.set('ordinary-fork', Object.assign(actualAgent('ordinary-fork', { parent: 'child' }), { status: 'running' }))
+  f.agents.set('fork-native-child', Object.assign(actualAgent('fork-native-child', { parent: 'ordinary-fork', managed: true }), { status: 'running' }))
+  const after = await read(), actual = await ports.nativeSubagentActivity('root', signal())
+  assert.equal(actual.running, 1, 'native authority does not absorb a newly observed ordinary-fork bridge')
+  assert.equal(after.windows.S.used, 1, 'projection cannot reclassify independent fork descendants')
+  assert.deepEqual(ports.nativeSubagentCountState('root').memberSessionIds, ['child'])
+  // A real native child at the same parent, unlike the fork, is prospective membership.
+  f.agents.set('direct-native-child', Object.assign(actualAgent('direct-native-child', { parent: 'child', managed: true }), { status: 'running' }))
+  assert.equal((await read()).windows.S.used, 2)
+})

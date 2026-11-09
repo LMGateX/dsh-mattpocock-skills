@@ -182,8 +182,20 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // not that chain or the stored revision alone, prove which live objects can affect S.
     const members=countState?.memberSessionIds===undefined?null:[...countState.memberSessionIds].sort()
     if(members===null)reusable=false
-    else for(const sid of members){
+    // Mirror only the counter's prospective live membership: native children of the owner
+    // or a stored member, transitively. Ordinary forks are not new membership bridges.
+    const prospective=new Set<string>([owner,...(members??[])])
+    for(let pass=0;pass<64;pass++){
+      let grew=false
+      for(const [sid,row]of rows){
+        if(row.origin!=='subagent'||prospective.has(sid)||row.parent===undefined||!prospective.has(row.parent))continue
+        prospective.add(sid);grew=true
+      }
+      if(!grew)break
+    }
+    for(const sid of prospective){
       related.add(sid)
+      if(sid===owner)continue
       // Native depth follows all live parents, including independent root/fork identities.
       // Keep their fields/absence in A as well; no membership reclassification occurs here.
       const seen=new Set<string>([sid])
