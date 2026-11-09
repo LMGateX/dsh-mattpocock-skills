@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 运行中读取性能三项优化（2026-11-10，已认可；先文档、隔离实施／测试、发布并安装本机）
+
+所有者认可性能审计推荐的第一批三项，并明确授权先固定文档，再在 subagents／独立工作树完成开发测试，push、新 Release 与同一回验制品本机安装。最新细化契约为 [运行中读取性能](<PERFORMANCE_ACTIVE_READS.md>)：目标 0.21.0，只实施 owner 相关投影 freshness、真实 live Session 首个 owned descriptor 的紧凑事实复用、读取协作取消贯通；不包含后续 full/summary 合并、cold 缓存扩容或跨 item 授权复用。
+
+本批精化既有 PERFORMANCE_READ_PATHS 的身份事实有效期与内部可选 signal Interface，仍保留每次当前权限／来源健康、相关 live 变化即时可见、历史／durability frontier／FIFO、unknown／stale 与完整 Remote。仅 DSH 0.2.2-rc.1（Node >=24.9.0）验源与唯一精确包；通过独立 Standards／Spec 与兼容门禁后非 force 发布安装。不得自动重启当前服务、修改业务数据或共享 SDK、启用管理／预授权或 npm publish；磁盘、Host、浏览器激活分别核验，不把优化计数当现场根因或生产 CPU 降幅。
+
 ## 本批兼容范围更正（2026-11-10，所有者明确要求）
 
 本批仅在 **DSH v0.2.2-rc.1** 运行兼容验收，不再沿用 alpha.4 或双宿主发布门禁。插件安装兼容声明改为 `engines.dsh: >=0.2.2-rc.1`，Node 前提跟随该宿主的 `>=24.9.0`；用当前 rc.1 的真实兼容判定函数验证低版本号拒绝与最低版本／更高版本号接受，不为负例启动旧 SDK。安装声明覆盖的版本范围不是实测范围：只实测 rc.1，不承诺未来版本都已验证；DSH 内部组件自身的 peer 版本号不等同宿主版本。旧批次的双宿主结果仅作历史，不能继续决定本批成本或兼容范围。保留同版本缺能力／旧服务安全降级、旧数据与权限回归，不据版本下限移除这些围栏。

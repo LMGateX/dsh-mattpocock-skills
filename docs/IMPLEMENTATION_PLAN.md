@@ -6,6 +6,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.21.0 运行中读取性能（2026-11-10，已认可，先文档）
+
+以 [本批契约](<PERFORMANCE_ACTIVE_READS.md>) 为实施与验收权威。D 文档先提交；F owner相关freshness、I live descriptor事实寿命、C 协作取消分别在独立worktree／subagent单writer实施并保留真实RED→GREEN。主代理串行合入，冲突解决后重测；仅RC1的源码完整回归、严格类型、生成物／公开exports／wire／vendor与独立Standards／Spec门禁后，冻结0.21.0与唯一精确制品，完成同包验收、非force push／新Release／下载回验／官方本机安装。管理OFF不造仪器业务票，直接以本契约切片标识推进。
+
+F/I/C 不扩入下一批候选，不增加timeout、减新鲜度、跳来源／授权、拆FIFO或改共享SDK。公开测试seams与竞态／取消／durability矩阵先按本批契约冻结。安装前备份、只改目标依赖与lock节点；保留原dirty检出，不自动重启或宣称当前GUI已激活。当前状态为待实施，未获得执行证据前不提前标完成。
+
 ## 裁决摘要、推荐支持 B 与原生子代理导航（2026-11-09，已认可，实施前冻结）
 
 最新范围以 [DESIGN](<DESIGN.md>) 与 [本批契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>) 为准：先文档，隔离 subagents 单 writer，主代理串行集成，真实公开 seam RED→GREEN，独立双轴复核，源/精确包及兼容门禁后非 force push、新版本 Release、下载回验并安装同一制品到本机。无人值守默认关闭，不迁移业务，不擅重启。采用当前本地恢复修复基线，保护旧 dirty 检出/共享依赖。

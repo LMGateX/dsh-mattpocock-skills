@@ -1,5 +1,7 @@
 # 插件读取路径性能优化（0.11.0）
 
+> **2026-11-10 accepted follow-up（0.21.0，实施前）：** [运行中读取性能](<PERFORMANCE_ACTIVE_READS.md>) 精化本文 live descriptor 事实寿命及内部协作取消，并增加 owner 相关投影 freshness；不放宽当前来源／授权、历史／frontier／FIFO义务。仅验RC1，获准在门禁后发布并安装本机，不自动重启。本文其余0.11.0实施／历史边界保留；最新具体范围以前述契约为准。
+
 ## 状态、授权与范围
 
 2026-11-04 所有者认可三项风险分析，并指示先固定文档，再由 subagents 在隔离环境实施、测试、push 与 GitHub Release。目标版本 0.11.0；本页为当前实施契约，已先单独固定设计，再完成并合入三个隔离切片；统一双轴复核与全量 source、唯一精确制品/双 SDK headless/发布/五资产下载 strict 回验均已完成；冻结 source e5d25cf，对应 0/A/B/C/D/E/F 全部完成，完成证据在 [验证摘要](<VERIFICATION.md>) 与 [机器验证摘要](<../dist/verification-0.11.0.json>)。本机 Profile 未安装此版本。完成证据追加到 VERIFICATION，不改写 0.10.x 历史。
