@@ -6,7 +6,7 @@ import { Window } from 'happy-dom'
 import { buildClient } from '../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
-const built = await buildClient()
+const built = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? { code: await (await import('node:fs/promises')).readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') } : await buildClient()
 let registration
 vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
 const client = registration.factory(name => {
@@ -188,7 +188,7 @@ test('legacy hosts keep shortened ID, full technical identity and capability exp
   const f = await mount(t, view, {}, { legacy: true })
   assert.equal(button(f, 'child-123456…').disabled, true)
   assert.match(f.container.textContent, /child-12345678901234567890/)
-  assert.match(f.container.textContent, /宿主缺少可用原生子代理导航能力或真实地址/)
+  assert.match(f.container.textContent, /原生子代理导航暂不可用，或真实地址尚未确认/)
   assert.deepEqual(f.opened, [])
 })
 

@@ -11,7 +11,7 @@ const mockReact = {
   createElement: (type, props, ...children) => ({ type, props: { ...(props ?? {}), children } }),
   useEffect: () => {}, useState: value => [typeof value === 'function' ? value() : value, () => {}],
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
-  useMemo: create => create(),
+  useMemo: create => create(), useCallback: callback => callback, useRef: current => ({ current }), useLayoutEffect: () => {},
 }
 const built = await buildClient()
 const requests = []
@@ -52,7 +52,10 @@ function contextFixture() {
       listWorkspaces: async () => ok([]), readSession: async id => ok(snapshot(id)), readSupervision: async () => ok(null),
       readSummaries: async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'a'.repeat(64), summary: summarySnapshot(sessionId) })) }), applyInstrument: async () => ok({}),
       historyAction: async () => ok({}), worktreeAction: async () => ok({}) } }
-  const ctx = { remote, inject: (dependencies, callback) => { assert.deepEqual(dependencies, ['remote.mattpocockControls']); return callback(ctx) },
+  const ctx = { remote, inject: (dependencies, callback) => {
+    if (dependencies.length === 1 && dependencies[0] === 'sessions') return // this legacy read fixture has no optional navigation service
+    assert.deepEqual(dependencies, ['remote.mattpocockControls']); return callback(ctx)
+  },
     effect: callback => { const cleanup = callback(); effects.push(cleanup); return cleanup },
     slots: { inject: (key, callback) => { assert(declarations.has(key), 'unknown native slot'); return callback() },
       register: (options, component) => { assert(declarations.has(options.name)); assert.equal(typeof component, 'function');

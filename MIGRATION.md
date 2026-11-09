@@ -1,5 +1,21 @@
 # Migrating an existing repository across Skills v1.3
 
+## Upcoming recommendation-support compatibility (implementation contract)
+
+This section fixes the accepted upgrade and rollback boundary before implementation. It is not a claim that a new version has shipped or that the running host has loaded it. See the [accepted collaboration contract](<docs/COLLABORATION_RECOMMENDATION_SUPPORT.md>) for the exact API and delivery gates.
+
+- Installation does not enable management or recommendation support. Existing global/workspace policy, pending records, results, awaiting markers, task references and context inclusion/exclusion are not migrated or cleared. New support is an explicit, finite, owner-instance operator authorization; it does not confer filesystem, spending, publication or other tool permissions.
+- A recommendation candidate is not a resolved question. Only a second, explicit agent adoption on the same decision ID can resolve it under the still-valid policy. The actual author stays the agent; the durable source distinguishes a prior owner-policy selection from a fresh human answer. Ordinary manual replies keep the existing user-authenticated path.
+- Only a qualified first creation during the current policy epoch can obtain a creation binding. Existing backlog, an initially unqualified question, edits and reopening do not acquire eligibility later. Closing or expiry blocks unused candidates; reopening support creates a new epoch and does not revive old candidates. Previously adopted history is retained, not undone.
+- Policy data uses a separate owner-instance unit. Reading it or enabling the policy does not rewrite instrument documents. V1/V2/V3 remain readable; the first qualified bound creation upgrades that instance to **V4 in the same instrument CAS**. V4 preserves task references, event authors, command fingerprints, idempotency proofs, checkpoints and choice provenance. There is no bulk migration or downgrade utility.
+- **After V4 writes, rollback is not a package-only downgrade.** Older binaries reject V4 instead of interpreting it as an empty store. If rollback is required, establish a verified backup and stop the old writer before the first V4 write. Do not edit version numbers, discard choice metadata, run mixed-version writers or restore stale business backups over concurrent work. A policy-only unit left on disk is not authority for an older binary to adopt anything.
+- The new UI uses a separate optional Remote namespace. A missing namespace is unsupported, not permission to fall back to a global policy write or to portray unknown state as disabled. The original control namespace and ordinary reading remain available. Server-derived scope comparisons protect saving against owner/instance remapping; client-provided IDs never grant authority.
+- A durable operation receipt and its current projection have different meanings. Replaying an old enable must not extend or reopen it; a historical adopted receipt must not override a later human correction. A transport or storage-uncertain outcome is not proof that a write did or did not commit. Preserve the original operation ID/payload when checking a retry.
+- Use the official Profile package manager with the exact release artifact after isolated source, artifact and compatibility verification. Back up the Profile configuration/lock, the old verified package and any required stores without exposing credentials. Compare the installed regular files with the verified archive; do not patch installed JavaScript or the shared SDK.
+- Disk installation, running-host activation and browser loading must be reported separately. A same-package CLI update can leave the selected bundle list unchanged, so it may not trigger recomposition. Use a supported authenticated PluginManager action when available; otherwise report installed-but-awaiting-reload. Do not touch unrelated configuration to manufacture HMR, bypass authentication or restart the current service automatically.
+
+Historical version sections below retain their original delivery scopes.
+
 ## Plugin 0.17.0 advisory Skill body access
 
 - No source upgrade, vendor rewrite, channel/precedence change or business-storage migration. Raw `CATALOG` invocation and source provenance remain authoritative and unchanged.
