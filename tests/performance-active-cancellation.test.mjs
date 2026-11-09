@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fixture, operator, actualAgent, deferred, caller, signal, policy, mountedFixture, loadSDK } from './fixtures/runtime-host.mjs'
+import { fixture, operator, actualAgent, deferred, caller, signal, policy, mountedFixture, loadSDK, core } from './fixtures/runtime-host.mjs'
 
 // Public Runtime callers, real createHostAuthority closure and controlled source ports.
 // Metadata doubles are not SDK Agents or running models; leases belong to observeSession.
@@ -263,5 +263,112 @@ test('proofless fallback checks cancellation after awaiting an unavailable stat 
   assert.equal(f.counts.stats, 0)
   assert.equal(f.counts.afterAbort, 0, 'fallback observe may not start after the stat boundary aborted')
   assert.equal(f.counts.observes, 0)
+})
+
+test('preStep retained-history preparation receives its signal and stops immediately without false history failure', async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 2000 })
+  await new Promise(resolve => setImmediate(resolve))
+  const previous = await f.read()
+  await new Promise(resolve => setImmediate(resolve)) // independent replay producer settles before measurement
+  assert.ok(await f.instrumentStorage.compareAndSwap(previous.instance.instrumentInstanceId, 0, { schemaVersion: 1, ...previous.instance, revision: 1, events: [{ revision: 1, recordedAt: 1, author: caller('root'), command: { action: 'put-workflow', operationId: 'retained-source', expectedRevision: 0, workflowId: 'flow', value: { title: 'Retained source', axes: [] } } }] }))
+  const control = new AbortController(), reason = new Error('abort retained read before capture')
+  const original = core.SessionInstruments.prototype.read
+  let retained = false, calls = 0, received, afterAbortReads = 0, afterAbortIdentities = 0
+  core.SessionInstruments.prototype.read = async function(...args) {
+    retained = true; calls++; received = args[3]
+    try { return await original.apply(this, args) } finally { retained = false }
+  }
+  t.after(() => { core.SessionInstruments.prototype.read = original })
+  const read = f.controlsStorage.read.bind(f.controlsStorage)
+  f.controlsStorage.read = async (...args) => {
+    if (control.signal.aborted) afterAbortReads++
+    const result = await read(...args)
+    if (retained && !control.signal.aborted) control.abort(reason)
+    return result
+  }
+  const resolve = f.ports.authority.resolveSession
+  f.ports.authority.resolveSession = async (...args) => { if (control.signal.aborted) afterAbortIdentities++; return resolve(...args) }
+  await assert.rejects(f.runtime.preStep(caller('root'), control.signal, [], 'retained-cancel'), error => error === reason)
+  await f.runtime.serializePolicyPermission(async () => {})
+  assert.equal(calls, 1)
+  assert.ok(received instanceof AbortSignal)
+  assert.equal(received.reason, reason)
+  assert.equal(afterAbortReads, 0)
+  assert.equal(afterAbortIdentities, 0)
+  core.SessionInstruments.prototype.read = original
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  assert.ok(!current.collections.health.rows.some(row => row.preview.scope === 'history'), 'caller abort is not a history source failure')
+})
+
+
+test('preStep stops captureOthers preparation before the next independent source or capture', async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 2000 })
+  await f.read(); await new Promise(resolve => setImmediate(resolve))
+  const control = new AbortController(), reason = new Error('abort other history preparation')
+  let windows = 0, afterAbortReads = 0
+  const readWindow = f.windowStorage.read.bind(f.windowStorage)
+  f.windowStorage.read = async (...args) => { const result = await readWindow(...args); if (++windows === 2) control.abort(reason); return result }
+  const wrap = store => { const read = store.read.bind(store); store.read = async (...args) => { if (control.signal.aborted) afterAbortReads++; return read(...args) } }
+  for (const store of f.units.values()) wrap(store)
+  wrap(f.controlsStorage); wrap(f.resourceStorage)
+  await assert.rejects(f.runtime.preStep(caller('root'), control.signal, [], 'other-capture-cancel'), error => error === reason)
+  await f.runtime.serializePolicyPermission(async () => {})
+  assert.equal(windows, 2)
+  assert.equal(afterAbortReads, 0)
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  assert.ok(!current.collections.health.rows.some(row => row.preview.scope === 'history'))
+})
+
+
+for (const [method, stage] of [['readSession', 'workspace'], ['readModelCurrent', 'workspace'], ['readSession', 'runtime'], ['readModelCurrent', 'runtime'], ['readSession', 'grants']]) {
+  for (const abort of [false, true]) test(method + ' ' + stage + ' rejected await ' + (abort ? 'preserves original abort' : 'preserves normal source fault'), async t => {
+    const f = await fixture(t, { known: true, initialPolicy: policy() })
+    await f.read(); await new Promise(resolve => setImmediate(resolve))
+    await f.runtime.serializePolicyPermission(async () => {})
+    const control = new AbortController(), reason = new Error('caller abort'), fault = new Error('late ' + stage + ' fault')
+    const entered = deferred(), release = deferred()
+    const reject = async () => { entered.resolve(); await release.promise; throw fault }
+    if (stage === 'workspace') {
+      const get = f.ctx.workspaceRegistry.get
+      f.ctx.workspaceRegistry.get = id => { const row = get(id); return row && { ...row, status: reject } }
+    } else if (stage === 'runtime') f.units.get('runtime_bindings').read = reject
+    else f.ports.readPolicyGrants = reject
+    const pending = f.runtime[method](operator, 'root', control.signal)
+    const rejected = assert.rejects(pending, error => error === (abort ? reason : fault))
+    await entered.promise; if (abort) control.abort(reason); release.resolve(); await rejected
+  })
+}
+
+
+test('accepted history CAS settles after consumer abort, preserves capture marks and starts no next source', async t => {
+  const f = await fixture(t, { known: true, initialPolicy: policy(), consumptionTimeoutMs: 2000 })
+  const previous = await f.read(); await new Promise(resolve => setImmediate(resolve))
+  assert.ok(await f.instrumentStorage.compareAndSwap(previous.instance.instrumentInstanceId, 0, { schemaVersion: 1, ...previous.instance, revision: 1, events: [{ revision: 1, recordedAt: 1, author: caller('root'), command: { action: 'put-workflow', operationId: 'accepted-history-source', expectedRevision: 0, workflowId: 'retained', value: { title: 'History commit survives abort', axes: [] } } }] }))
+  const store = [...f.units].find(([name]) => name.startsWith('history_'))[1]
+  const entered = deferred(), release = deferred(), control = new AbortController(), reason = new Error('cancel accepted capture consumer')
+  const swap = store.compareAndSwap.bind(store)
+  let settled = false, afterAbortReads = 0, retainedCalls = 0
+  store.compareAndSwap = async (...args) => { entered.resolve(); await release.promise; const result = await swap(...args); settled = true; return result }
+  const fullRead = core.SessionInstruments.prototype.read
+  core.SessionInstruments.prototype.read = async function(...args) { retainedCalls++; return fullRead.apply(this, args) }
+  t.after(() => { core.SessionInstruments.prototype.read = fullRead; release.resolve() })
+  for (const source of [f.controlsStorage, f.windowStorage, f.resourceStorage]) {
+    const read = source.read.bind(source)
+    source.read = async (...args) => { if (control.signal.aborted) afterAbortReads++; return read(...args) }
+  }
+  const pending = f.runtime.preStep(caller('root'), control.signal, [], 'accepted-capture')
+  const rejected = assert.rejects(pending, error => error === reason)
+  await entered.promise; control.abort(reason); release.resolve(); await rejected
+  await f.runtime.serializePolicyPermission(async () => {})
+  assert.equal(settled, true)
+  assert.equal(afterAbortReads, 0, 'accepted history write may settle but no next capture source may start')
+  const retained = await new core.SessionHistory(previous.instance, store).query({ kind: 'workflow' })
+  assert.equal(retained.total, 1)
+  assert.equal(retainedCalls, 1)
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  assert.ok(!current.collections.health.rows.some(row => row.preview.scope === 'history'))
+  const messages = await f.runtime.preStep(caller('root'), signal(), [], 'capture-recovered')
+  assert.match(messages.flatMap(message => message.content.map(part => part.text ?? '')).join(''), /History commit survives abort/)
+  assert.equal(retainedCalls, 1, 'successful accepted capture mark must not be discarded by caller abort')
 })
 

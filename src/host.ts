@@ -1246,7 +1246,12 @@ export function createHostAuthority(ctx: Context, storage: ControlsStorage, gran
       await sessionHeaderFacts(sessionId, signal)
     },
     resolveSession,
-    async verifyWorkspace(workspaceId) { const row = ctx.workspaceRegistry.get(WorkspaceId(id(workspaceId, 'workspaceId'))); return row !== undefined && await row.status() === 'ok' },
+    async verifyWorkspace(workspaceId, signal) {
+      signal?.throwIfAborted()
+      const row = ctx.workspaceRegistry.get(WorkspaceId(id(workspaceId, 'workspaceId')))
+      const status = row === undefined ? undefined : await row.status().catch(error => { signal?.throwIfAborted(); throw error })
+      signal?.throwIfAborted(); return status === 'ok'
+    },
   }
   const authorizeCaller: HostPorts['authorizeCaller'] = async (caller, sessionId, signal) => {
     signal?.throwIfAborted()
