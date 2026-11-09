@@ -54,6 +54,8 @@
 
 ### 5.1 U1 摘要与导航（已冻结，可独立实施）
 
+DSH 0.2.2-rc.1 的真实 `SessionSummary.projectionValues.subagent` 是 `SubagentIdentityProjection | null`；客户端只读目录边界必须接受这个合法空投影，继续按宿主 title/displayTitle/label/短 id 回退，不能用断言抹去 null、修改 SDK 类型或把空投影当成 S=0/失权。对应真实 rc.1 Client 严格类型门禁与空投影标题回归必须通过；这只校正结构类型，不改变运行时导航／权限语义。
+
 U1 不依赖新增后端 wire：按照第 1、3 节在呈现层仅过滤明确 0，灰色核对直达；维持阅读选择、原计数来源和受权围栏。只在被移除的触发按钮真正持焦点时，将焦点无滚动地移至现有裁决切换（阅读仍开）或邻近 T；关闭详情不 focus 已脱离 DOM 的旧触发器。
 
 导航 source 为本 activation 内私有、可订阅的 SubagentNavigationSource：subscribe(listener) 返回 unsubscribe；getSnapshot() 返回稳定的 SubagentNavigationPort 或 null。Port 保持 available(id,parent): boolean 与 open(id,parent,expectedSnapshot): boolean。每次 sessions 增强 scope publication 发布新 port/token，方法首先核验 token 仍当前；teardown 撤销并通知 UI，重新提供服务也不能使旧 port/旧 click 借新授权成功。React 用公开 useSyncExternalStore，getSnapshot 在没有实际 publication 变化时保持同对象；不创建无界 session map 或永久 retain。
