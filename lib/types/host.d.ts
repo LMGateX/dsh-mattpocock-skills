@@ -260,6 +260,13 @@ export interface HostPorts {
     nativeSubagentStops(ownerSessionId: string): readonly NativeSubagentStop[];
     /** Monotone native-count state revision; part of snapshot freshness, never a count. */
     nativeSubagentCountRevision(ownerSessionId: string): number;
+    /** Optional synchronous freshness proof. Missing proof conservatively disables projection reuse. */
+    nativeSubagentCountState?(ownerSessionId: string): {
+        readonly revision: number;
+        readonly known: boolean;
+        readonly reason: string | null;
+        readonly available: boolean;
+    };
     openRuntimeStorage<T extends {
         readonly revision: number;
     }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>;
@@ -271,7 +278,7 @@ export interface HostPorts {
     /** Native acceptance/live facts are not durability; false never certifies persistence. */
     flushSession?(sessionId: string, signal: AbortSignal): Promise<boolean>;
     /** Authority checks are repeated at effect boundaries; never wire-supplied principals. */
-    authorizeCaller(caller: HostCaller, sessionId?: string): Promise<void>;
+    authorizeCaller(caller: HostCaller, sessionId?: string, signal?: AbortSignal): Promise<void>;
 }
 export interface HostOptions {
     createRuntime(ports: HostPorts): Promise<RuntimeFacade>;

@@ -42,10 +42,10 @@ export type TrustedSession = {
  * Session role, parent and original control workspace are durable identity facts.
  */
 export interface ControlsAuthority {
-    authorizePolicy(principal: string, access: 'read' | 'write'): Promise<void>;
-    authorizeSession(principal: string, sessionId: string, access: 'read' | 'register'): Promise<void>;
-    resolveSession(sessionId: string): Promise<TrustedSession | undefined>;
-    verifyWorkspace(workspaceId: string): Promise<boolean>;
+    authorizePolicy(principal: string, access: 'read' | 'write', signal?: AbortSignal): Promise<void>;
+    authorizeSession(principal: string, sessionId: string, access: 'read' | 'register', signal?: AbortSignal): Promise<void>;
+    resolveSession(sessionId: string, signal?: AbortSignal): Promise<TrustedSession | undefined>;
+    verifyWorkspace(workspaceId: string, signal?: AbortSignal): Promise<boolean>;
 }
 export interface SessionControlsView {
     readonly documentRevision: number;
@@ -67,7 +67,7 @@ export declare class WorkspaceControls {
      * preserves identity; missing host lineage never defaults a child to a new owner.
      */
     ensureSession(principal: string, sessionId: string): Promise<SessionControlsView>;
-    readSession(principal: string, sessionId: string): Promise<SessionControlsView>;
+    readSession(principal: string, sessionId: string, signal?: AbortSignal): Promise<SessionControlsView>;
     private lineage;
     private checkLineage;
     /** load/transact validate referential integrity before this internal lookup. */

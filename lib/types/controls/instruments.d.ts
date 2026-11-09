@@ -16,7 +16,7 @@ export interface InstrumentAccess {
 }
 /** The authenticated host derives actual author and delegated assignment, never the command. */
 export interface InstrumentAuthority {
-    resolveAccess(principal: string, sessionId: string, instance: InstrumentInstance, access: 'read' | 'write'): Promise<InstrumentAccess>;
+    resolveAccess(principal: string, sessionId: string, instance: InstrumentInstance, access: 'read' | 'write', signal?: AbortSignal): Promise<InstrumentAccess>;
 }
 export interface InstrumentFilter {
     readonly workflowId?: string;
@@ -142,7 +142,7 @@ export declare class SessionInstruments {
     private supportSnapshot;
     private refreshWriteContext;
     private applyResult;
-    read(principal: string, sessionId: string, filter?: InstrumentFilter): Promise<InstrumentSnapshot>;
+    read(principal: string, sessionId: string, filter?: InstrumentFilter, signal?: AbortSignal): Promise<InstrumentSnapshot>;
     readCurrent(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentCurrentSnapshot>;
     readSummary(principal: string, sessionId: string, signal?: AbortSignal): Promise<InstrumentSummary>;
     apply(principal: string, sessionId: string, input: InstrumentCommand): Promise<InstrumentApplyResult>;

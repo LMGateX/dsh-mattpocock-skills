@@ -256,7 +256,7 @@ export interface WindowOptions {
     /** Compatibility flag: marks uninspected runtime reconciling, but never blocks reservations. */
     readonly requireKnownRuntime?: boolean;
     /** Native host descendant activity for one owner; absent means no native count is available. */
-    readonly nativeActivity?: (ownerSessionId: string) => Promise<NativeSubagentActivity>;
+    readonly nativeActivity?: (ownerSessionId: string, signal?: AbortSignal) => Promise<NativeSubagentActivity>;
     readonly bindProgram: (port: WindowProgramPort) => void;
     readonly newLeaseId?: () => string;
 }
@@ -275,6 +275,6 @@ export declare function createDomainWindowStorage(table: VersionedTable<WindowDo
 export declare class SessionWindows {
     #private;
     constructor(controls: WorkspaceControls, storage: WindowStorage, authority: InstrumentAuthority, options: WindowOptions);
-    read(principal: string, sessionId: string): Promise<WindowSnapshot>;
+    read(principal: string, sessionId: string, signal?: AbortSignal): Promise<WindowSnapshot>;
     apply(principal: string, sessionId: string, input: TicketWindowCommand): Promise<TicketWindowResult>;
 }
