@@ -102,6 +102,28 @@ test('actual input seat reads changing native titles and opens native direct-par
   assert.match(f.container.textContent, /64 行/)
 })
 
+test('null native descriptors keep title, display title and ID fallbacks without losing counts or navigation', async t => {
+  const id = 'child-12345678901234567890', view = snapshot()
+  view.nativeExecutions = [row(id, 'owner')]
+  const f = await mount(t, view, { [id]: { title: 'Native title with null descriptor', parentId: 'owner', projectionValues: { subagent: null } } })
+  const baseline = [...f.calls]
+  for (const [catalog, label] of [
+    [{ title: 'Native title with null descriptor' }, 'Native title with null descriptor'],
+    [{ displayTitle: 'Native display title with null descriptor' }, 'Native display title with null descriptor'],
+    [{}, 'child-123456…'],
+  ]) {
+    await f.catalog({ [id]: { ...catalog, parentId: 'owner', projectionValues: { subagent: null } } })
+    assert.equal(button(f, label).disabled, false, 'a missing descriptor is not loss of navigation authority')
+    assert.match(f.container.textContent, /宿主在跑数：70/, 'a missing descriptor must not erase program running counts')
+    assert.match(f.container.textContent, /child-12345678901234567890/, 'technical identity remains inspectable')
+    await click(button(f, label))
+  }
+  assert.deepEqual(f.opened, Array.from({ length: 3 }, () => [
+    'dsh-resource://subagentchat/session/' + id + '?parent=owner&mode=continuable', { preferNewPane: true },
+  ]))
+  assert.deepEqual(f.calls, baseline, 'null descriptor title updates and clicks add no RPC, dispatch or writes')
+})
+
 test('grandchildren retain non-running catalog ancestors, fold by real parent and navigate to that parent', async t => {
   const view = snapshot(); view.nativeExecutions = [row('grandchild', 'parent')]
   const f = await mount(t, view, { parent: { displayTitle: 'Idle parent', parentId: 'owner' }, grandchild: { projectionValues: { subagent: { label: 'Grandchild label' } }, parentId: 'parent' } })

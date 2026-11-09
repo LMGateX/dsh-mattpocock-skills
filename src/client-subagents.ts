@@ -7,7 +7,7 @@ interface CatalogRow {
   readonly title?: string
   readonly displayTitle?: string
   readonly parentId?: string
-  readonly projectionValues?: { readonly subagent?: { readonly label?: string } }
+  readonly projectionValues?: { readonly subagent?: { readonly label?: string } | null }
 }
 interface Catalog { readonly byId: Readonly<Record<string, CatalogRow>> }
 export interface SubagentHost {
