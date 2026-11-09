@@ -34,6 +34,8 @@ export * from './worktree-observations.js'
 export * from './supervision-config.js'
 export * from './supervision-ledger.js'
 export * from './supervision-audit.js'
+export * from './recommendation-contract.js'
+export * from './owner-decision-policy.js'
 
 export type TrustedSession =
   | { readonly kind: 'owner'; readonly controlWorkspaceId: string }

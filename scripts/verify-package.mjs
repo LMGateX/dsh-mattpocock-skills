@@ -59,6 +59,8 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/controls/git-worktrees.js',
   'lib/controls/consumption.js',
   'lib/controls/remote-contract.js',
+  'lib/controls/recommendation-contract.js',
+  'lib/controls/owner-decision-policy.js',
   'lib/controls/runtime-state.js',
   'lib/controls/native-executions.js',
   'lib/controls/history.js',
@@ -72,6 +74,8 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/controls/git-worktrees.d.ts',
   'lib/types/controls/consumption.d.ts',
   'lib/types/controls/remote-contract.d.ts',
+  'lib/types/controls/recommendation-contract.d.ts',
+  'lib/types/controls/owner-decision-policy.d.ts',
   'lib/types/controls/runtime-state.d.ts',
   'lib/types/controls/native-executions.d.ts',
   'cordis.patch.yml',
@@ -146,6 +150,8 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/controls/git-worktrees.js',
   'lib/controls/consumption.js',
   'lib/controls/remote-contract.js',
+  'lib/controls/recommendation-contract.js',
+  'lib/controls/owner-decision-policy.js',
   'lib/controls/runtime-state.js',
   'lib/controls/native-executions.js',
   'lib/controls/history.js',
@@ -159,6 +165,8 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/controls/git-worktrees.d.ts',
   'lib/types/controls/consumption.d.ts',
   'lib/types/controls/remote-contract.d.ts',
+  'lib/types/controls/recommendation-contract.d.ts',
+  'lib/types/controls/owner-decision-policy.d.ts',
   'lib/types/controls/runtime-state.d.ts',
   'lib/types/controls/native-executions.d.ts',
   'LICENSE',
@@ -245,7 +253,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 82
+const EXPECTED_FIXED_PACKED_FILES = 86
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024
