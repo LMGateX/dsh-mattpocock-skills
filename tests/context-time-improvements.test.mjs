@@ -253,7 +253,7 @@ test('authored task references join held T and pending questions without creatin
   const feed = new InstrumentConsumption({ readSnapshot: async () => current })
   const result = await feed.readForConsumption(who)
   const facts = JSON.parse(result.text.split(factsMarker)[1])
-  assert.deepEqual(facts.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3] })
+  assert.deepEqual(facts.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3, 4], decisionRecommendationAdoption: false })
   assert.equal(facts.records.summary.totalTaskReferences, 1)
   assert.equal(facts.records.summary.totalTickets, 0)
   assert.equal(facts.records.tickets.total, 0)

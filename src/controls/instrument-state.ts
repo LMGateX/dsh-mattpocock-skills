@@ -370,18 +370,22 @@ function validateCheckpointCounters(state:InstrumentState,dedup:readonly Instrum
   if(state.decisionViews.length!==latestViews.size || state.decisionViews.some(view=>latestViews.get(JSON.stringify([view.workflowId,view.decisionId,view.principalId]))!==view.revision)) invalid('checkpoint personal view inventory/revision differs from actual viewer receipts')
 }
 function validateCheckpointAuthors(state:InstrumentState,dedup:readonly InstrumentDedup[]):void {
-  const receipts=new Map(dedup.map(d=>[d.appliedRevision,d])),firstCreators=new Map<string,InstrumentAuthor>()
-  for(const receipt of dedup) if(receipt.kind==='command' && receipt.command!.action==='put-decision') {
-    const key=JSON.stringify(receipt.command!.target)
-    if(!firstCreators.has(key)) firstCreators.set(key,receipt.author)
+  const receipts=new Map(dedup.map(d=>[d.appliedRevision,d])),firstCreators=new Map<string,InstrumentAuthor>(),byTarget=new Map<string,InstrumentDedup[]>()
+  // Cold validation indexes each ordered business receipt once. Re-scanning the
+  // full dedup chain per decision makes both legacy and V4 checkpoints quadratic.
+  for(const receipt of dedup) if(receipt.kind==='command' && receipt.command!.action!=='set-decision-view') {
+    const key=JSON.stringify(receipt.command!.target),source=byTarget.get(key)??[]
+    source.push(receipt);byTarget.set(key,source)
+    if(receipt.command!.action==='put-decision'&&!firstCreators.has(key)) firstCreators.set(key,receipt.author)
   }
   const groups:{kind:'workflow'|'ticket'|'task-reference'|'decision';rows:readonly (WorkflowRecord|TicketRecord|TaskReferenceRecord|DecisionRecord)[]}[]=[{kind:'workflow',rows:state.workflows},{kind:'ticket',rows:state.tickets},{kind:'task-reference',rows:state.taskReferences},{kind:'decision',rows:state.decisions}]
   for(const group of groups) for(const row of group.rows) {
     const target:InstrumentHistoryTarget=group.kind==='workflow' ? {kind:'workflow',workflowId:row.workflowId} : (group.kind==='ticket' || group.kind==='task-reference') && 'localTicketId' in row ? {kind:group.kind,workflowId:row.workflowId,localTicketId:row.localTicketId} : 'decisionId' in row ? {kind:'decision',workflowId:row.workflowId,decisionId:row.decisionId} : invalid('invalid checkpoint object target')
+    const targetKey=JSON.stringify(target)
     if(group.kind==='decision') {
-      const first=firstCreators.get(JSON.stringify(target)),creator='creator' in row ? row.creator : undefined
+      const first=firstCreators.get(targetKey),creator='creator' in row ? row.creator : undefined
       if(!first || JSON.stringify(first)!==JSON.stringify(creator)) invalid('checkpoint decision creator differs from first source target receipt')
-      const decision=row as DecisionRecord,source=dedup.filter(d=>d.kind==='command'&&d.command!.action!=='set-decision-view'&&JSON.stringify(d.command!.target)===JSON.stringify(target))
+      const decision=row as DecisionRecord,source=byTarget.get(targetKey)??[]
       const opening=source[0]!,bound=opening.command!.decisionPolicy,latest=source.at(-1)!.command!.decisionPolicy
       if(bound?.kind==='bound') {
         if(opening.author.kind!=='agent'||bound.binding.createdRevision!==opening.appliedRevision||opening.command!.recordedAt<bound.binding.policy.enabledAt||opening.command!.recordedAt>=bound.binding.policy.expiresAt||JSON.stringify(bound.binding)!==JSON.stringify(decision.policyBinding)) invalid('checkpoint binding differs from first source receipt')
@@ -402,7 +406,7 @@ function validateCheckpointAuthors(state:InstrumentState,dedup:readonly Instrume
     }
     for(const version of row.history) {
       const receipt=receipts.get(version.revision),meta=receipt?.command
-      if(!receipt || receipt.kind!=='command' || !meta || (meta.action!=='put-'+group.kind && !(group.kind==='decision'&&meta.action==='adopt-decision-recommendation')) || JSON.stringify(meta.target)!==JSON.stringify(target) || meta.recordedAt!==version.recordedAt || JSON.stringify(receipt.author)!==JSON.stringify(version.author)) invalid('checkpoint retained version metadata differs from source receipt')
+      if(!receipt || receipt.kind!=='command' || !meta || (meta.action!=='put-'+group.kind && !(group.kind==='decision'&&meta.action==='adopt-decision-recommendation')) || JSON.stringify(meta.target)!==targetKey || meta.recordedAt!==version.recordedAt || JSON.stringify(receipt.author)!==JSON.stringify(version.author)) invalid('checkpoint retained version metadata differs from source receipt')
       const expectedSelection=meta.decisionPolicy?.kind==='adopted'?meta.decisionPolicy.selection:undefined
       if(JSON.stringify(version.policySelection)!==JSON.stringify(expectedSelection)) invalid('retained policy selection differs from source receipt')
     }

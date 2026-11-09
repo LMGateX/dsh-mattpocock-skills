@@ -95,6 +95,105 @@ test('V2 checkpoint validation indexes entity references and first creators with
   t.diagnostic('1000 checkpoint entities: ' + visits + ' search candidates')
 })
 
+// Observe real target serializations across a cold PUBLIC parser call. No private
+// validator hooks/cache access, elapsed-time threshold or production instrumentation.
+function targetSerializationWork(input) {
+  const stringify = JSON.stringify
+  let visits = 0
+  JSON.stringify = function (value, ...args) {
+    if (value && typeof value === 'object' && typeof value.workflowId === 'string'
+      && ['workflow', 'ticket', 'task-reference', 'decision'].includes(value.kind)) visits++
+    return Reflect.apply(stringify, this, [value, ...args])
+  }
+  try { return { parsed: parseInstrumentDocument(input), visits } } finally { JSON.stringify = stringify }
+}
+async function checkpointFromSource(document) {
+  const values = new Map()
+  const table = { get: key => values.get(key), async put(key, value) { values.set(key, value) },
+    async update(key, change) { const value = change(values.get(key)); values.set(key, value); return value } }
+  const storage = createDomainInstrumentStorage(table), f = await instrumentFixture({ storage })
+  const { instance } = await f.controls.readSession('A', 'A')
+  values.set(instance.instrumentInstanceId, { ...document, ...instance })
+  await f.instruments.compact('A', 'A', { operationId: 'performance-compact', expectedRevision: document.revision })
+  // Every measurement parses a new mutable graph, so immutable-source reuse cannot
+  // conceal a cold quadratic algorithm.
+  return structuredClone(await storage.read(instance.instrumentInstanceId))
+}
+async function adoptedSourceFactory() {
+  const { SessionInstruments, OwnerDecisionPolicyStore, parseOwnerDecisionPolicyDocument } = await import('../lib/controls/index.js')
+  const { MemoryVersionedStorage } = await import('../lib/controls/versioned-storage.js')
+  const f = await instrumentFixture(), instance = (await f.read()).instance
+  // Stable backing storage, and genuine public save/create/adopt seams, establish
+  // the V4 fixture template before any controlled replication of public IDs.
+  const backing = new MemoryVersionedStorage(parseOwnerDecisionPolicyDocument)
+  const store = new OwnerDecisionPolicyStore({ storageFor: () => backing, now: () => 12345,
+    newEpochId: () => 'performance-epoch', authorizeOperator: async () => {}, authorizeEnable: async () => {} })
+  await store.save(instance, { operationId: 'enable', expectedRevision: 0, expectedScope: instance, action: 'enable', durationMs: 3600000 }, { kind: 'user', principalId: 'user', sessionId: null })
+  const instruments = new SessionInstruments(f.controls, f.storage, f.authority, () => 12345, store)
+  await instruments.apply('A', 'A', { operationId: 'workflow', expectedRevision: 0, workflowId: 'flow', action: 'put-workflow', value: { title: 'Workflow', axes: [] } })
+  const created = await instruments.apply('A', 'A', { operationId: 'bound', expectedRevision: 1, workflowId: 'flow', decisionId: 'D', action: 'put-decision', references: ['task:original'],
+    value: { question: 'Choose', status: 'open', pending: true, addressee: { kind: 'user', principalId: 'user' }, options: [{ key: 'B', label: 'Recommended' }], recommendation: 'B', result: 'Preserved result' } })
+  const candidate = created.recommendation.candidate
+  await instruments.apply('A', 'A', { operationId: 'adopted', expectedRevision: 2, workflowId: 'flow', decisionId: 'D', action: 'adopt-decision-recommendation', references: ['task:adoption'],
+    value: { optionKey: candidate.optionKey, decisionRevision: candidate.decisionRevision, policyEpochId: candidate.policyEpochId, policyRevision: candidate.policyRevision } })
+  const template = await f.storage.read(instance.instrumentInstanceId)
+  assert.equal(template.schemaVersion, 4)
+  return entities => {
+    const events = [structuredClone(template.events[0])]
+    for (let i = 0; i < entities; i++) {
+      const bound = structuredClone(template.events[1]), adopted = structuredClone(template.events[2]), sourceRevision = 2 + 2 * i
+      for (const [event, action] of [[bound, 'bound'], [adopted, 'adopted']]) {
+        event.revision = events.length + 1; event.command.expectedRevision = events.length
+        event.command.operationId = action + '-' + i; event.command.decisionId = 'D' + i
+        events.push(event)
+      }
+      bound.decisionPolicy.binding.createdRevision = sourceRevision
+      adopted.command.value.decisionRevision = sourceRevision
+      adopted.decisionPolicy.selection.decisionSourceRevision = sourceRevision
+    }
+    return { ...structuredClone(template), revision: events.length, events }
+  }
+}
+for (const version of [2, 4]) test('cold V' + version + ' checkpoint target validation grows linearly across decision entities', async t => {
+  const document = version === 4 ? await adoptedSourceFactory() : entities => source(entities, entities)
+  const measurements = []
+  for (const entities of [200, 400, 800, 1600]) {
+    const raw = await checkpointFromSource(document(entities))
+    assert.equal(raw.schemaVersion, version)
+    const { parsed, visits } = targetSerializationWork(raw)
+    assert.equal(projectInstrumentDocument(parsed).decisions.length, entities)
+    if (version === 4) assert.equal(projectInstrumentDocument(parsed).decisions.at(-1).policySelection.selectedOptionKey, 'B')
+    measurements.push({ entities, visits })
+    t.diagnostic(entities + ' V' + version + ' entities: ' + visits + ' target serializations')
+  }
+  for (const { entities, visits } of measurements) assert(visits <= entities * 32, 'cold V' + version + ': ' + entities + ' entities serialized ' + visits + ' targets, exceeding a linear work budget')
+  for (let i = 1; i < measurements.length; i++) assert(measurements[i].visits <= measurements[i - 1].visits * 2.1, 'doubling entities must not quadruple cold validation work')
+})
+
+test('indexed V4 receipt chains still reject changed options, discarded refs and inconsistent authors or source metadata', async () => {
+  const source = await adoptedSourceFactory(), raw = await checkpointFromSource(source(3))
+  const mutations = [
+    ['current options', d => { const row = d.checkpoint.state.decisions[0]; row.value.options = [{ key: 'A', label: 'Other' }]; row.history.at(-1).value.options = row.value.options }],
+    ['original refs', d => { d.checkpoint.state.decisions[0].history.at(-1).references = ['task:adoption'] }],
+    ['creator', d => { d.checkpoint.state.decisions[0].creator.principalId = 'other' }],
+    ['opening binding', d => { d.checkpoint.state.decisions[0].policyBinding.createdRevision = 4 }],
+    ['adoption preceding source', d => { d.dedup[2].command.decisionPolicy.selection.decisionSourceRevision = 4 }],
+    ['current selection', d => { delete d.checkpoint.state.decisions[0].policySelection }],
+    ['retained selection', d => { delete d.checkpoint.state.decisions[0].history.at(-1).policySelection }],
+    ['retained author', d => { d.checkpoint.state.decisions[0].history.at(-1).author.principalId = 'other' }],
+    ['duplicate operation', d => { d.dedup[2].operationId = d.dedup[1].operationId }],
+    ['receipt target', d => { d.dedup[2].command.target.decisionId = 'D1' }],
+  ]
+  for (const [label, mutate] of mutations) {
+    const corrupted = structuredClone(raw); mutate(corrupted)
+    assert.throws(() => parseInstrumentDocument(corrupted), error => error.code === 'invalid-state', label)
+  }
+  const valid = projectInstrumentDocument(parseInstrumentDocument(structuredClone(raw)))
+  assert.equal(valid.decisions[0].policySelection.selectedOptionKey, 'B')
+  assert.equal(valid.decisions[0].history[0].author.principalId, 'A')
+  assert.deepEqual(valid.decisions[0].history.at(-1).references, ['task:original', 'task:adoption'])
+})
+
 test('checkpoint plus tail appends copy each retained history only once and never mutate the checkpoint', t => {
   for (const versions of [500, 1000, 2000, 4000]) {
     const raw = source(versions), cut = Math.floor(versions / 2)
