@@ -260,12 +260,13 @@ export interface HostPorts {
     nativeSubagentStops(ownerSessionId: string): readonly NativeSubagentStop[];
     /** Monotone native-count state revision; part of snapshot freshness, never a count. */
     nativeSubagentCountRevision(ownerSessionId: string): number;
-    /** Optional synchronous freshness proof. Missing proof conservatively disables projection reuse. */
+    /** Optional synchronous freshness proof. Missing membership coverage conservatively disables projection reuse. */
     nativeSubagentCountState?(ownerSessionId: string): {
         readonly revision: number;
         readonly known: boolean;
         readonly reason: string | null;
         readonly available: boolean;
+        readonly memberSessionIds?: readonly string[];
     };
     openRuntimeStorage<T extends {
         readonly revision: number;
