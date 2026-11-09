@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "version": "0.18.0",
+  "status": "published-not-installed-in-existing-profile",
+  "source": {
+    "commit": "54ac66fa9ff3a5bd14ea071d163e0045e70f120c",
+    "tag": "v0.18.0",
+    "annotatedTagObject": "f2e974c8886f07de46cd130b2305d3d8dde6dd17",
+    "cleanAtFreeze": true,
+    "postReleaseDocumentationOnly": true
+  },
+  "release": {
+    "assets": [
+      {
+        "digest": "sha256:ba18dc4693a099211d6ed7d8dd8f8d1a760dce09390df9e1d706158d1611f53f",
+        "id": 726752273,
+        "name": "lmgatex-dsh-mattpocock-skills-0.18.0.tgz",
+        "size": 535109
+      },
+      {
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "id": 726752270,
+        "name": "lmgatex-dsh-mattpocock-skills-0.18.0.tgz.pnpm-version",
+        "size": 7
+      },
+      {
+        "digest": "sha256:ed14e3d0871e3f3faac8fa0c9aace2fde4b6efb0a636e0c5c5f2c660c113d7f1",
+        "id": 726752266,
+        "name": "lmgatex-dsh-mattpocock-skills-0.18.0.tgz.sha256",
+        "size": 107
+      },
+      {
+        "digest": "sha256:6741e1276a65fcf82ce8a6ad6f32fd557ae13b3c743876b372c47837c86ac71e",
+        "id": 726752269,
+        "name": "lmgatex-dsh-mattpocock-skills-0.18.0.tgz.size",
+        "size": 7
+      },
+      {
+        "digest": "sha256:eb42260a727e04d5f3dffc9015cea5f4154798120d138c8742fe9010fc7e8b6c",
+        "id": 726752268,
+        "name": "lmgatex-dsh-mattpocock-skills-0.18.0.tgz.source-commit",
+        "size": 41
+      }
+    ],
+    "draft": false,
+    "html_url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.18.0",
+    "id": 438883206,
+    "prerelease": false,
+    "published_at": "2026-11-09T08:28:46Z",
+    "tag_name": "v0.18.0"
+  },
+  "toolchain": {
+    "node": "v24.17.0",
+    "pnpm": "11.8.0"
+  },
+  "artifact": {
+    "name": "lmgatex-dsh-mattpocock-skills-0.18.0.tgz",
+    "bytes": 535109,
+    "sha256": "ba18dc4693a099211d6ed7d8dd8f8d1a760dce09390df9e1d706158d1611f53f",
+    "acceptedPacks": 1,
+    "regularFiles": 167,
+    "directories": 0,
+    "symlinks": 0,
+    "fixedFiles": 82,
+    "vendoredFiles": 85,
+    "generatedJsAndDeclarations": 62,
+    "clientBytes": 412877,
+    "clientSha256": "105ff8b98c5a9964956973fdb9c820c01f04c96fcbd483a8fc7997d6315d266b",
+    "sourceBoundStrictOriginal": true,
+    "sourceBoundStrictDownloaded": true,
+    "downloadedAssetsByteIdentical": 5
+  },
+  "verification": {
+    "sourceSuites": [
+      {
+        "dsh": "0.2.1-alpha.4",
+        "tests": 1084,
+        "pass": 1078,
+        "fail": 0,
+        "skip": 6
+      },
+      {
+        "dsh": "0.2.2-rc.1",
+        "tests": 1084,
+        "pass": 1078,
+        "fail": 0,
+        "skip": 6
+      }
+    ],
+    "explicitAcceptedArchiveSuites": [
+      {
+        "dsh": "0.2.1-alpha.4",
+        "tests": 1084,
+        "pass": 1078,
+        "fail": 0,
+        "skip": 6,
+        "sourceOnlySeamsStillUseSource": true
+      },
+      {
+        "dsh": "0.2.2-rc.1",
+        "tests": 1084,
+        "pass": 1078,
+        "fail": 0,
+        "skip": 6,
+        "sourceOnlySeamsStillUseSource": true
+      }
+    ],
+    "nativeSlotFixtures": [
+      {
+        "dsh": "0.2.1-alpha.4",
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "skip": 0
+      },
+      {
+        "dsh": "0.2.2-rc.1",
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "skip": 0
+      }
+    ],
+    "exactRootAndClientStrictChecks": 4,
+    "independentReviews": {
+      "standardsHard": 0,
+      "standardsActionableSuggestions": 0,
+      "specRemainingConfirmedViolations": 0,
+      "multilineMustFixClosed": true,
+      "finalStyleDeltaReviewed": true
+    },
+    "browser": {
+      "host": "0.2.2-rc.1",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "widths": [
+        1440,
+        390
+      ],
+      "cases": 4,
+      "checks": 136,
+      "pass": 136,
+      "errors": 0,
+      "realInputActionsIntegration": true,
+      "originalComposerDomMounted": false,
+      "nativeSidebarPaneLoaded": false,
+      "syntheticReadOnlyNavigationPorts": true
+    },
+    "headless": {
+      "hosts": [
+        "0.2.1-alpha.4",
+        "0.2.2-rc.1"
+      ],
+      "installationInputs": [
+        "source",
+        "same-accepted-archive"
+      ],
+      "channels": [
+        "stable",
+        "beta"
+      ],
+      "registeredPerChannel": 27,
+      "modelVisiblePerChannel": 27,
+      "normalizedSourceArchiveReportsByteIdentical": true,
+      "freshHomesRemoved": true,
+      "modelInvoked": false,
+      "webStarted": false
+    }
+  },
+  "preservation": {
+    "priorTagRefsUnchanged": 100,
+    "previousRelease": "v0.17.0",
+    "previousReleaseBodyAndMetadataUnchanged": true,
+    "previousAssetIdentitiesUnchanged": 5,
+    "measuredProtectedLocalFileHashesUnchanged": 5,
+    "originalDirtyCheckoutStatusUnchanged": true,
+    "currentGuiListenerFingerprintUnchanged": true
+  },
+  "boundaries": {
+    "existingLocalProfileInstalled": false,
+    "activated": false,
+    "sharedSdkChanged": false,
+    "npmPublished": false,
+    "serviceRestarted": false,
+    "currentGuiUpdated": false,
+    "productionMigrationPerformed": false,
+    "worktrees": "retained for reproducibility; not physically cleaned"
+  },
+  "limitations": [
+    "Six native-slot assembly skips in each plain-CLI complete suite are covered separately, not relabeled as single-run zero skips.",
+    "Not every test imports the accepted archive; PluginManager uses its verified private byte snapshot, source-only seams remain source tests.",
+    "Browser evidence uses an isolated graphical fixture and real public InputActions, not the current production GUI.",
+    "Original composer DOM nonempty selection and keyboard undo were not assembled; code/service unit coverage is not that browser proof.",
+    "Subagent title/tree/address ports are synthetic public host ports; actual sidebar pane loading is not proven.",
+    "No OS audible-delivery guarantee, live descendant roster completeness, model evaluation or confirmed universal flicker root cause.",
+    "Protected local fingerprints are bounded measurements, not a whole-filesystem no-change proof."
+  ]
+}

@@ -2,6 +2,21 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.18.0 已发布、下载回验；未安装本机（2026-11-09）
+
+本记录与[机器摘要](<../dist/verification-0.18.0.json>)为发布后的 main 纯文档追加，不移动 frozen tag、不重打包；精确制品复验应在隔离 checkout 检出 `v0.18.0`。下文 0.17.0 的历史安装不构成本版安装授权。
+
+- **完成范围：** [已认可协作 UI 契约](<COLLABORATION_UI_REFRESH.md>)的稳定中性信息壳、裁决→T→S 统一切换、二级记录核对、真实 T 标识、原生 S 标题/父树/折叠/侧栏地址、选项及安全两行回复模板、四种本地 CC0 铃声。只用现有原生标题 API，不要求派发时写标题、不扩领域 schema/工具/权限，不改上游 Skill 正文、channel/provider 语义。
+- **frozen source：** `54ac66fa9ff3a5bd14ea071d163e0045e70f120c`；annotated tag object `f2e974c8886f07de46cd130b2305d3d8dde6dd17`。非 force atomic main＋新 tag 已 push。[GitHub Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.18.0) id **438883206**，published_at **2026-11-09T08:28:46Z**，draft=false / prerelease=false，五资产齐备。
+- **同 SHA 双宿主完整门禁：** DSH **0.2.1-alpha.4 / 0.2.2-rc.1**，source 与显式同一 accepted archive 共四轮，各 **1084 tests / 1078 pass / 0 fail / 6 skip**。六项 plain CLI 缺 canonical native-slot 装配的 skip 在精确每宿主 native fixture 分别 **6/6、0 skip** 关闭，不伪装成单轮 0 skip；上游源码门禁已提供真实 pinned checkout。PluginManager 消费同包私有字节快照，source 专用 seams 仍测源码，不把所有测试说成直接导入归档。
+- **类型与双轴审查：** 精确 alpha.4 / rc.1 root＋Client 四项 strict 均零诊断；alpha.4 缺省 CLI 的 UI 声明通过独立下载同版本公开 slots/primitives、核对 sha512 后装配，非 alpha.3 回退，不修改 SDK。独立 Standards 与 Spec 初审及两次修复增量复核已闭环，当前无确定未修违规。多行动态问题/选项破坏两行模板的必改经过实际两 seat RED→GREEN：仅插入表示归一化分隔，不改阅读原文。
+- **图形浏览器：** 原生 React/primitives/theme 隔离 fixture，明暗×1440/390，**136/136**，无 page/console/external-network errors。插件真实点击接原始 rc.1 public InputActions/Lexical，覆盖两行模板、chip occurrenceId、draftRev CAS、真实 submitting 锁及不自动发送；S 真 parent 地址、idle 结构父、键盘折叠、透明主题控件和可见原生 focus 通过。主代理目检最终暗色窄屏标题 focus 截图，无默认白底或水平溢出。
+- **双宿主 source/同 archive × stable/beta headless：** 每 channel **27 definitions / 27 model-visible**。按既有受限规则归一化路径前言后 source/archive registry 报告逐字节相等；fresh test homes 已删除，modelInvoked=false / webStarted=false。
+- **accepted 仅 pack 一次：535109 B**；SHA-256 **ba18dc4693a099211d6ed7d8dd8f8d1a760dce09390df9e1d706158d1611f53f**；pnpm **11.8.0**。**167 regular / 0 directory / 0 symlink = 82 fixed＋85 vendor**，62 JS/DTS；闭包 client 412877 B、仅 React/primitives externals。原始与下载归档 source-bound strict 均通过；发布五项 **5/5 字节相等**，API size/digest 一致；归档与四 sidecars 保持只读。
+- **保留与失败边界：** 100 旧 tag refs、v0.17.0 正文/关键元数据与五资产 id/size/digest/timestamps 均未变。初次集成完整测试的错误宿主夹具装配与新增声音 status 的旧断言失败保留于私有证据，已按真实 full host 修正/补跑；不声称所有运行从未失败。草稿创建后的 CLI 查询 filter 引号错误只重读同一 draft id，未重建/重传资产。
+- **未安装/激活本机：** 现有 Profile manifest/lock/patch、现有安装包 manifest 与共享 SDK manifest 五项 hash、原 dirty checkout 状态、原 GUI listener 指纹均与开始一致。未改 Profile/SDK、未启管理、未生产迁移、未更新当前 GUI、未重启、未 npm publish；测试安装仅在已清理的隔离临时 homes。指纹覆盖不是全盘证明。隔离工树及私有原始证据刻意保留供复核，不宣称物理清理。
+- **不冒称：** 当前 3080 生产 GUI 已部署、完整原 composer DOM 非空选区/键盘 undo、真实 S pane 加载、OS 听见音频、完整实时名册、真实模型评估或普遍闪烁现场根因。S 导航测试的公开 host ports 使用合成数据；原生 InputActions 集成与这些限制分开报告。
+
 ## 0.17.0 已发布、下载回验并安装（2026-11-09；当前宿主待重载）
 
 本完成记录与[机器摘要](<../dist/verification-0.17.0.json>)为发布后main纯文档追加，不改变已冻结source／tag／归档。精确制品复验应检出source或tag，不在这些后续文档commit上冒充原制品源。
