@@ -12,6 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { NativeSubagentTree, createSubagentNavigation } from './client-subagents.js'
 import { BrowserNotificationPreferencesPanel, DecisionNotifications, notificationScope } from './client-notifications.js'
 import { parsePolicyIntent, parsePolicySnapshot, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js'
@@ -401,8 +402,9 @@ const panelStyle = { boxSizing: 'border-box' as const, padding: '16px', height: 
 function diagnostic(message: string): ReactElement { return h('p', { role: 'status' }, message) }
 function pretty(value: unknown): ReactElement { return h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(value, null, 2)) }
 
-interface SessionFace { readonly observer: SessionObservation; readonly openDetails: () => void }
-interface SummaryFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
+interface SubagentFace { readonly subagentNavigation?: { available(id: string, parent: string): boolean; open(id: string, parent: string, view: ClientSessionSnapshot): boolean } }
+interface SessionFace extends SubagentFace { readonly observer: SessionObservation; readonly openDetails: () => void }
+interface SummaryFace extends SubagentFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
 type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SummaryFace
 function useSummaryObservation(observer: SummaryObserver, active = true): Observation<SessionSummary> {
   useEffect(() => active ? observer.retain() : undefined, [observer, active])
@@ -834,7 +836,7 @@ export function DecisionNotificationReader(props: PropsRuntime<'conversation.inp
     h(Button, { type: 'button', onClick: () => store.select(null, null) }, '关闭通知阅读'), unknown || view === null ? diagnostic('裁决读取未知；暂停显示正文，待相同授权范围恢复后继续阅读。') : inputDecisionDetails(view, 'pending', [selection.key!]))
 }
 
-function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {
+function inputRunningDetails(view: ClientSessionSnapshot, props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement {
   const windows = inputWindows(view)
   const failure = inputReadFailure(view, 'native-executions')
   const assigned = inputRecords(view)?.scope?.kind === 'assigned' || windows?.scope?.kind === 'assigned' || view.caller.kind === 'agent'
@@ -846,7 +848,7 @@ function inputRunningDetails(view: ClientSessionSnapshot): ReactElement {
     diagnostic('本次可观测在跑明细：' + (rows === null ? '未知/受限' : rows.length + ' 条') + '；最近原生观测快照默认最多 64 行，明细可能不完整，即使条数相等也不代表完整在跑名册。租约仅作审计，不是实时名册。'),
     rows === null ? diagnostic('原生明细' + (failure ?? (assigned ? '受限：仅 owner 协调者可读取，不展示 sibling。' : '未知：未返回 nativeExecutions。')))
       : rows.length === 0 ? diagnostic('本次未返回 activity=running 的可观测记录，不代表没有在跑子代理。')
-      : rows.map(row => h('article', { key: row.sessionId }, h('p', null, nativeExecutionText(row)), h('p', null, '来源：native-observed · ' + row.observed), technicalDetails(row))),
+      : h(NativeSubagentTree, { ...props, view, rows, describeRow: nativeExecutionText }),
     windows?.S.depth == null ? diagnostic('深度结构未知/不可测量。') : h('div', null,
       diagnostic('深度结构：直接 ' + countText(windows.S.depth.direct) + ' · 更深 ' + countText(windows.S.depth.deeper) + ' · 深度未知 ' + countText(windows.S.depth.unknown)),
       Object.entries(windows.S.depth.levels).map(([level, count]) => h('p', { key: level }, '距离 ' + level + '：' + countText(count)))))
@@ -912,7 +914,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', borderBottom: decisionBorder, padding: '4px 0' } },
         h('h3', { style: { fontSize: '14px', margin: 0, fontWeight: 600 } }, INPUT_DISCLOSURES[selected].region),
         h(Button, { variant: 'ghost', 'aria-label': '关闭详情', onClick: close }, '关闭详情')),
-      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view) : inputDecisionDetails(view, selected, selection.decisionKeys))))
+      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, props) : inputDecisionDetails(view, selected, selection.decisionKeys))))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
@@ -2066,7 +2068,7 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
     const refreshAll = (): void => { void visibility.refresh(); summaries.refresh(); observers.refreshAll() }
     ctx.effect(() => () => { summaries.dispose(); observers.dispose() }, 'collaboration: observations')
-    const face = (sessionId: string): SummaryFace => ({ summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
+    const face = (sessionId: string): SummaryFace => ({ subagentNavigation: createSubagentNavigation(ctx, sessionId, () => observe(sessionId)), summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
       if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
       const snapshot = observeSummary(sessionId).getSnapshot()
       if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return
