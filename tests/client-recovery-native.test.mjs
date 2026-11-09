@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { test, after } from 'node:test'
-import { mount, React, window, settle, snapshot, ok, closeFixture } from './fixtures/client-recovery-native.mjs'
+const hostRoot = process.env.DSH_RECOVERY_HOST_ROOT ?? process.env.DSH_CONTROLS_HOST_ROOT
+if (!hostRoot && process.env.DSH_RECOVERY_NATIVE_REQUIRED === '1') throw new Error('Native recovery validation requires an explicit isolated DSH host')
+const native = { skip: !hostRoot ? 'Set DSH_RECOVERY_HOST_ROOT for actual native seeded SlotCore recovery validation; no substitute ran' : false }
+const { mount, React, window, settle, snapshot, ok, closeFixture } = hostRoot ? await import('./fixtures/client-recovery-native.mjs') : {}
+const nativeTest = (name, run) => test(name, native, run)
+if (closeFixture) after(closeFixture)
 
-after(closeFixture)
 const regionSelector = '[role="region"][aria-label="待你裁决详情"]'
 const entrySelector = '[aria-label="查看待你裁决事项"]'
 async function open(f) {
@@ -15,7 +19,7 @@ async function open(f) {
   return { region, focus }
 }
 for (const components of [[0], [0, 1, 2, 3]]) {
-  test('native same-session reinjection keeps mounted reading with ' + components.length + ' actual seats and a held full request', async t => {
+  nativeTest('native same-session reinjection keeps mounted reading with ' + components.length + ' actual seats and a held full request', async t => {
     const f = await mount(t, { components }); const { region, focus } = await open(f)
     const reads = f.initial.fullCalls.length
     assert.equal(reads, 1, 'actual seats share one full channel')
@@ -27,14 +31,14 @@ for (const components of [[0], [0, 1, 2, 3]]) {
     assert.doesNotMatch(f.container.textContent, /暂不可用|正在恢复|当前状态未知/)
   })
 }
-test('native stable-holder control does not hide reinjection regression', async t => {
+nativeTest('native stable-holder control does not hide reinjection regression', async t => {
   const f = await mount(t); const { region } = await open(f)
   const release = f.props()[1].observer.retain(); t.after(release)
   f.initial.mode = 'pending'; await f.render()
   assert.equal(f.initial.fullCalls.length, 1)
   assert.equal(f.props()[1].observer.getSnapshot().status, 'ready', 'stable external lease masks the full-channel release, not a valid continuity proof')
 })
-test('a genuinely different native registry with the same Session fences old reading and performs a fresh read', async t => {
+nativeTest('a genuinely different native registry with the same Session fences old reading and performs a fresh read', async t => {
   const f = await mount(t); const { region } = await open(f)
   const next = snapshot(); next.records.decisions[0].value.question = 'New registry decision'
   const registry = await f.switchRegistry(next)
@@ -43,7 +47,7 @@ test('a genuinely different native registry with the same Session fences old rea
   assert.doesNotMatch(f.container.textContent, /Native fixture decision/)
   await open(f); assert.match(f.container.textContent, /New registry decision/)
 })
-test('native full failure withdraws old content into neutral shell and cannot restore explicitly hidden display', async t => {
+nativeTest('native full failure withdraws old content into neutral shell and cannot restore explicitly hidden display', async t => {
   const f = await mount(t); await open(f)
   f.initial.mode = 'error'; await f.refresh()
   assert.equal(f.container.querySelector(regionSelector), null)
@@ -55,7 +59,7 @@ test('native full failure withdraws old content into neutral shell and cannot re
   f.initial.mode = 'error'; await f.refresh()
   assert.equal(f.container.querySelector(entrySelector), null, 'failure cannot regrant display')
 })
-test('native last unmount immediately aborts pending read and cold remount revalidates', async t => {
+nativeTest('native last unmount immediately aborts pending read and cold remount revalidates', async t => {
   const f = await mount(t); await open(f)
   f.initial.mode = 'pending'
   await React.act(async () => { void f.props()[1].observer.refresh(); await settle() })
