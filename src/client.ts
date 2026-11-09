@@ -137,7 +137,7 @@ export type SessionObservation = Pick<SessionObserver, 'sessionId' | 'getSnapsho
 const SESSION_UNKNOWN: Observation<ClientSessionSnapshot> = Object.freeze({ status: 'unknown', value: null, error: null })
 // Only registry-created lazy handles may share a lifetime. Weak keys neither retain
 // Sessions nor add a second handle cache; each handle still reacquires the live entry.
-const observationDomains = new WeakMap<SessionObservation, SessionObserverCache>()
+const observationDomains = new WeakMap<object, object>()
 interface FullCacheEntry { readonly observer: SessionObserver; active: number; idleSince: number }
 /** Faces carry lazy handles, never bare evictable observers. A render-to-effect gap and
  * even a previously evicted native face can reacquire the single current Session entry.
@@ -211,7 +211,7 @@ function boundedSummaryBytes(value: unknown): void {
 /** A lightweight handle, not a second per-Session timer. Old handles route back through the
  * shared registry after idle eviction, so a native injected face cannot retain a dead observer. */
 export class SummaryObserver {
-  constructor(readonly sessionId: string, private readonly scheduler: SummaryScheduler) {}
+  constructor(readonly sessionId: string, private readonly scheduler: SummaryScheduler) { observationDomains.set(this, scheduler) }
   getSnapshot = (): Observation<SessionSummary> => this.scheduler.snapshot(this.sessionId)
   getDisplay = (): EffectivePolicy['display'] | undefined => this.scheduler.display(this.sessionId)
   getConfigurationRevision = (): number | undefined => this.scheduler.configurationRevision(this.sessionId)
@@ -401,7 +401,7 @@ export function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIntent, wo
 function intentOf(snapshot: PolicySnapshot): PolicyIntent { return parsePolicyIntent({ extensionEnabled: snapshot.extensionEnabled, defaults: snapshot.defaults, workspaceOverrides: snapshot.workspaceOverrides }) }
 /** Preserve mounted lifetimes across injection closures, never across registries or Sessions.
  * The incoming port is evaluated every render, so a replacement callback is not frozen. */
-function useStableObservation(incoming: SessionObservation): { readonly observer: SessionObservation; readonly key: number } {
+function useStableObservation<T extends { readonly sessionId: string }>(incoming: T): { readonly observer: T; readonly key: number } {
   const domain = observationDomains.get(incoming) ?? incoming
   const [held, setHeld] = useState(() => ({ domain, observer: incoming, key: 0 }))
   if (held.domain !== domain || held.observer.sessionId !== incoming.sessionId) {
@@ -445,7 +445,8 @@ function decisionTemplateAccess(props: DecisionInputFace & { readonly sessionId:
 interface SessionFace extends DecisionInputFace, SubagentFace { readonly observer: SessionObservation; readonly openDetails: () => void }
 interface SummaryFace extends DecisionInputFace, SubagentFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
 type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SummaryFace
-function useSummaryObservation(observer: SummaryObserver, active = true): Observation<SessionSummary> {
+function useSummaryObservation(incoming: SummaryObserver, active = true): Observation<SessionSummary> {
+  const { observer } = useStableObservation(incoming)
   useEffect(() => active ? observer.retain() : undefined, [observer, active])
   return useSyncExternalStore(observer.subscribe, observer.getSnapshot, observer.getSnapshot)
 }
@@ -621,16 +622,17 @@ function workflowSummaryLine(workflowId: string, axis: InputSummaryAxis): ReactE
   return h('div', { key: workflowId + ':' + axis.axisKey }, workflowId + ' / ' + axis.label + '（' + (axis.counting === 'exclusive' ? '互斥统计' : '可重叠统计') + '） · ' + (statuses.length === 0 ? '当前无非零状态计数' : statuses.map(status => status.label + ' ' + countText(status.count)).join(' · ')))
 }
 export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & SummaryFace): ReactElement | null {
-  const observation = useSummaryObservation(props.summary)
-  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && props.summary.sessionId === props.sessionId ? observation.value : null
+  const { observer: summary, key } = useStableObservation(props.summary)
+  const observation = useSummaryObservation(summary)
+  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && summary.sessionId === props.sessionId ? observation.value : null
   // Keep only permission/identity metadata, never an old summary or its counts.
-  const [permit, setPermit] = useState<{ readonly sessionId: string; readonly summary: SummaryObserver; readonly identity: string | null }>(() => ({ sessionId: props.sessionId, summary: props.summary, identity: null }))
+  const [permit, setPermit] = useState<{ readonly sessionId: string; readonly summary: SummaryObserver; readonly identity: string | null }>(() => ({ sessionId: props.sessionId, summary, identity: null }))
   const identity = current?.policy.display.inputSummary ? summaryReadingIdentity(current) : null
-  const same = permit.sessionId === props.sessionId && permit.summary === props.summary
-  const allowed = current !== null ? identity : same && props.summary.getDisplay()?.inputSummary !== false ? permit.identity : null
-  if (!same || current !== null && permit.identity !== identity) setPermit({ sessionId: props.sessionId, summary: props.summary, identity })
+  const same = permit.sessionId === props.sessionId && permit.summary === summary
+  const allowed = current !== null ? identity : same && summary.getDisplay()?.inputSummary !== false ? permit.identity : null
+  if (!same || current !== null && permit.identity !== identity) setPermit({ sessionId: props.sessionId, summary, identity })
   if (allowed === null) return null
-  return h(InputSnapshot, { ...props, key: allowed, summaryAvailable: current !== null, summaryIdentity: allowed })
+  return h(InputSnapshot, { ...props, summary, key: key + ':' + allowed, summaryAvailable: current !== null, summaryIdentity: allowed })
 }
 function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryFace & { readonly summaryAvailable: boolean; readonly summaryIdentity: string }): ReactElement | null {
   const { observer, key } = useStableObservation(props.observe())

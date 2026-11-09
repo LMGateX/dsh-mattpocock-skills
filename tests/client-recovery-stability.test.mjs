@@ -48,7 +48,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value })
   let current = snapshot(), calls = 0, version = 0, pending = false
-  const requests = [], caches = [], readings = [], warmHolders = []
+  const requests = [], caches = [], readings = [], warmHolders = [], summaryRequests = []
   const makeCache = () => {
     const cache = new client.SessionObserverCache((sessionId, signal) => {
       calls++
@@ -58,14 +58,14 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
     caches.push(cache); return cache
   }
   let cache = makeCache()
-  const scheduler = new client.SummaryScheduler(async request => ({ ok: true, value: { rows: request.sessions.map(({sessionId}) => ({
+  const scheduler = new client.SummaryScheduler(async request => { summaryRequests.push(request); return ({ ok: true, value: { rows: request.sessions.map(({sessionId}) => ({
     sessionId, status: 'current', version: (++version).toString(16).padStart(64, '0'), summary: {
       sessionId, instance: current.instance, caller: current.caller,
       policy: { configurationRevision: version, controlWorkspaceId: current.instance.controlWorkspaceId, workspaceVerified: true,
         extensionEnabled: true, workspaceEnabled: true, display: current.policy.display },
       records: { businessRevision: 7, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 3 } }, health: [],
     }
-  })) } }), 600000)
+  })) } }) }, 600000)
   const summary = scheduler.observe(current.sessionId)
   const reading = { getSnapshot: () => reading.value, subscribe: listener => { readings.push(listener); return () => readings.splice(readings.indexOf(listener), 1) },
     select: () => {}, value: { sessionId: null, scope: null, key: null, identity: null } }
@@ -76,7 +76,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
   const render = async (mounted = true) => React.act(async () => {
     // A fresh real lazy handle and callback on every render, like native slot injection.
     root.render(mounted ? React.createElement(React.Fragment, null,
-      React.createElement(client.InputSummary, { sessionId: current.sessionId, summary, observe: () => cache.observe(current.sessionId), openDetails: () => assert.fail('no navigation') }),
+      React.createElement(client.InputSummary, { sessionId: current.sessionId, summary: scheduler.observe(current.sessionId), observe: () => cache.observe(current.sessionId), openDetails: () => assert.fail('no navigation') }),
       multipleSeats ? React.createElement(client.DecisionNotificationReader, { sessionId: current.sessionId, observer: cache.observe(current.sessionId), reading }) : null) : null)
   })
   const settle = () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
@@ -87,6 +87,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
   await render(); await settle()
   return { container, window, render, settle, requests,
     get calls() { return calls },
+    get summaryCalls() { return summaryRequests.length },
     setPending(value = true) { pending = value },
     async full(next = current) { current = next; await React.act(async () => cache.observe(current.sessionId).refresh()) },
     async beginFull() { await React.act(async () => { void cache.observe(current.sessionId).refresh() }) },
@@ -126,9 +127,10 @@ for (const multipleSeats of [false, true]) for (const stableHolder of [false, tr
   test('same cache reinjection keeps reading without extra RPC: ' + JSON.stringify({multipleSeats, stableHolder, pending}), async t => {
     const ui = await mount(t, {multipleSeats, stableHolder})
     await click(entry(ui.container, 'T'))
-    const button = entry(ui.container, 'T'), details = region(ui.container, 'T'), before = ui.calls
+    const button = entry(ui.container, 'T'), details = region(ui.container, 'T'), before = ui.calls, summariesBefore = ui.summaryCalls
     button.focus(); ui.setPending(pending)
-    await ui.render()
+    await ui.render(); await ui.settle()
+    assert.equal(ui.summaryCalls, summariesBefore, 'cold summary alias handoff must not restart the shared summary channel')
     assert.equal(ui.calls, before, 'callback/handle reinjection must not restart a healthy full read')
     assert.strictEqual(region(ui.container, 'T'), details)
     assert.strictEqual(ui.window.document.activeElement, button)
