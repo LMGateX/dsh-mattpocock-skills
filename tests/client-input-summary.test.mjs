@@ -322,7 +322,7 @@ test('only definite zero hides the pending entrance while unreadable ledgers and
   const f = await mount(t, view)
   assert.equal(f.container.querySelector('[aria-label="' + labels.pending + '"]') === null, true)
   assert.equal(f.container.querySelector('[aria-label="' + labels.awaiting + '"]'), null)
-  assert.equal(f.container.querySelectorAll('button').length, 2)
+  assert.equal(f.container.querySelectorAll('button').length, 3, 'T/S plus neutral policy configuration, not a zero pending reminder')
   const unreadable = structuredClone(view); unreadable.records = null; unreadable.health = [{ scope: 'records', status: 'unknown', reason: 'ledger-read-denied' }]
   await f.refresh(unreadable)
   assert.match(f.container.textContent, /裁决.*未知/)

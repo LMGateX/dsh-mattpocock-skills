@@ -15,7 +15,7 @@ export function snapshot() {
 export async function mount(t, options = {}) {
   const errors = [], originalError = console.error
   console.error = (...args) => { errors.push(args.map(String).join(' ')); originalError(...args) }
-  t.after(() => { console.error = originalError; assert.deepEqual(errors, [], 'native mounted validation has no React or controller errors') })
+  t.after(() => { console.error = originalError })
   const transport = new cordis.Context(), handlers = new Map()
   const untilAbort = signal => signal.aborted ? Promise.resolve() : new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))
   const remote = { $stream: options => { const abort = new AbortController(); return { signal: abort.signal, restart() {}, async dispose() { abort.abort() },
@@ -57,8 +57,10 @@ export async function mount(t, options = {}) {
     'conversation.session.header.utilities': { kind: 'list', scope: 'session' }, 'conversation.input.dock': { kind: 'list', scope: 'session' },
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' }, 'sidebar.session.row.leading': { kind: 'list', scope: 'root' }, 'tool.call.toolview': { kind: 'keyed', scope: 'session' }
   } }, props => React.createElement(props.SessionProvider, { session: { sessionId: 'owner' } }, props.renderSlot('conversation.input.dock', {})))
+  Object.assign(api, options.api)
+  if (options.installRemote) await options.installRemote(ctx, api)
   await ctx.plugin({ name: 'navigation-base-ports', apply(c) {
-    c.provide('remote', { $mount: async () => {}, mattpocockControls: api }); c.provide('remote.mattpocockControls', api)
+    if (!options.installRemote) { c.provide('remote', { $mount: async () => {}, mattpocockControls: api }); c.provide('remote.mattpocockControls', api) }
     c.provide('sidebarRight', { mounted: nativeSidebar.sidebar.mounted, openResource: (...args) => { opened.push(args); nativeSidebar.sidebar.openResource(...args) }, openTab: () => assert.fail('no main navigation') })
     c.provide('sidebarRightTabs', { register: definition => nativeSidebar.tabs.register(definition) })
   } })
@@ -70,8 +72,13 @@ export async function mount(t, options = {}) {
   const face = entry.inject('owner')
   const container = window.document.createElement('div'); window.document.body.append(container)
   const { createRoot } = await import('react-dom/client'); const root = createRoot(container)
-  t.after(async () => { await React.act(async () => root.unmount()); await ctx.fiber.dispose(); await nativeSidebar.dispose(); await transport.fiber.dispose(); container.remove() })
-  await React.act(async () => { root.render(slots.renderSlot('root', {})); await settle() }); await React.act(settle)
+  t.after(async () => {
+    try { await React.act(async () => root.unmount()); await ctx.fiber.dispose(); await nativeSidebar.dispose(); await transport.fiber.dispose(); container.remove() }
+    finally { console.error = originalError }
+    assert.deepEqual(errors, [], 'native mounted validation has no React or controller errors')
+  })
+  const settings = slots.entriesOfSlot('plugins.bundle.config').find(row => row.component === client.SettingsPage)
+  await React.act(async () => { root.render(options.settings ? React.createElement(settings.component, { ...settings.inject(), view: 'page' }) : slots.renderSlot('root', {})); await settle() }); await React.act(settle)
   return { ctx, container, face, sessions, nativeSidebar, opened, fullCalls, summaryCalls, added, get view() { return view }, set view(next) { view = next },
     button: title => [...container.querySelectorAll('button')].find(node => node.textContent === title),
     async provide(value) { await React.act(async () => provide(value)) },

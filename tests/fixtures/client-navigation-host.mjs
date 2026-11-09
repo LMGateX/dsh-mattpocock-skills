@@ -58,7 +58,7 @@ const built = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? { code: await readFile(pr
 export const clientHash = digest(built.code)
 let registration
 vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
-export const client = registration.factory(name => name === 'react' ? React : name === PRIMITIVES_ID ? clientPrimitives(React) : assert.fail('unexpected client dependency ' + name))
+export const client = registration.factory(name => name === 'react' ? React : name === PRIMITIVES_ID ? (process.env.DSH_CONTROLS_NATIVE_PRIMITIVES === '1' ? get(PRIMITIVES_ID) : clientPrimitives(React)) : assert.fail('unexpected client dependency ' + name))
 export { React }
 export const settle = () => new Promise(resolve => setTimeout(resolve, 15))
 export async function unchanged() {

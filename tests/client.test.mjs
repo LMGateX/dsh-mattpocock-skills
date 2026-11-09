@@ -53,7 +53,7 @@ function contextFixture() {
       readSummaries: async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'a'.repeat(64), summary: summarySnapshot(sessionId) })) }), applyInstrument: async () => ok({}),
       historyAction: async () => ok({}), worktreeAction: async () => ok({}) } }
   const ctx = { remote, inject: (dependencies, callback) => {
-    if (dependencies.length === 1 && dependencies[0] === 'sessions') return // this legacy read fixture has no optional navigation service
+    if (dependencies.length === 1 && ['sessions', 'remote.mattpocockRecommendationSupport'].includes(dependencies[0])) return // optional services are absent in this legacy read fixture
     assert.deepEqual(dependencies, ['remote.mattpocockControls']); return callback(ctx)
   },
     effect: callback => { const cleanup = callback(); effects.push(cleanup); return cleanup },
@@ -77,18 +77,17 @@ test('closed lazy client only requests implicit baseline and inlines private pur
   assert(BASELINE_EXTERNALS.includes('@deepseek-ai/dsh-client-ui-slots'))
 })
 
-test('native keyed/list contributions do not hijack single or composer chain seats', async () => {
+test('native keyed/list contributions do not hijack single or composer chain seats', async t => {
   const fixture = contextFixture()
+  t.after(() => { for (const effect of fixture.effects.reverse()) effect?.() })
   await client.apply(fixture.ctx)
-  assert.equal(fixture.mounts.length, 1)
-  assert.equal(fixture.mounts[0].package, client.PACKAGE_NAME)
+  assert.deepEqual(fixture.mounts.map(row => row.package), [client.PACKAGE_NAME, client.PACKAGE_NAME + '/recommendation-support'])
   assert.equal(fixture.opens.length, 0, 'activation never opens a tab')
   assert(fixture.entries.some(row => row.options?.name === 'plugins.bundle.config' && row.options.key === client.PACKAGE_NAME))
   assert(fixture.entries.some(row => row.options?.name === 'plugins.row.config' && row.options.key === client.ROW_KEY))
   assert(fixture.entries.some(row => row.options?.name === 'sidebar.right.pane.tab' && row.options.key === client.TAB_ID))
   assert.equal(fixture.entries.find(row => row.definition)?.definition.kind, client.TAB_KIND)
   assert(!fixture.entries.some(row => row.definition?.patterns || ['root', 'conversation.session.header', 'conversation.composer', 'conversation.session.header.corner'].includes(row.options?.name)))
-  for (const effect of fixture.effects.reverse()) effect?.()
 })
 
 test('sparse leaf off and restore inheritance preserve independent feature/display intent', () => {

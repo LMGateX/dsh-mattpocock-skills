@@ -13,6 +13,8 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { NativeSubagentTree, createSubagentNavigationSource } from './client-subagents.js'
+import { OwnerDecisionPolicyPanel, installRecommendationPolicy, DecisionRecommendationProvenance } from './client-recommendation-policy.js'
+import type { RecommendationRemote } from './controls/recommendation-contract.js'
 import { BrowserNotificationPreferencesPanel, DecisionNotifications, notificationScope } from './client-notifications.js'
 import { parsePolicyIntent, parsePolicySnapshot, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js'
@@ -429,6 +431,9 @@ export interface SubagentNavigationSource {
   getSnapshot(): SubagentNavigationPort | null
 }
 export interface SubagentFace { readonly subagentNavigation?: SubagentNavigationSource }
+export interface RecommendationPolicyPort extends RemoteProjection<RecommendationRemote> { isCurrent(): boolean }
+export interface RecommendationPolicySource { subscribe(listener: () => void): () => void; getSnapshot(): RecommendationPolicyPort | null }
+export interface RecommendationPolicyFace { readonly recommendationPolicy?: RecommendationPolicySource | undefined }
 interface DecisionInputFace { readonly inputActions?: unknown }
 interface InsertionSpan { readonly start: number; readonly end: number; readonly draftRev: number }
 interface DecisionInputActions { captureInsertion(): InsertionSpan; insertText(text: string, span: InsertionSpan): boolean }
@@ -450,8 +455,8 @@ function decisionTemplateAccess(props: DecisionInputFace & { readonly sessionId:
     return current !== undefined && current.revision === row.revision && isPendingUserDecision(current)
   } }
 }
-interface SessionFace extends DecisionInputFace, SubagentFace { readonly observer: SessionObservation; readonly openDetails: () => void }
-interface SummaryFace extends DecisionInputFace, SubagentFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
+interface SessionFace extends DecisionInputFace, SubagentFace, RecommendationPolicyFace { readonly observer: SessionObservation; readonly openDetails: () => void }
+interface SummaryFace extends DecisionInputFace, SubagentFace, RecommendationPolicyFace { readonly summary: SummaryObserver; readonly observe: () => SessionObservation; readonly openDetails: () => void }
 type HeaderProps = PropsRuntime<'conversation.session.header.utilities'> & SummaryFace
 function useSummaryObservation(incoming: SummaryObserver, active = true): Observation<SessionSummary> {
   const { observer } = useStableObservation(incoming)
@@ -836,6 +841,7 @@ function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; rea
       h('span', { style: { display: 'block', color: decisionSecondary, fontSize: '12px' } }, workflow + ' · ' + value.status + ' · ', decisionTime('首次登记', row.registration?.recordedAt, '创建时间未知'), ' · ', decisionTime('业务更新', row.updatedAt, '业务更新时间未知'), props.updated ? ' · 已更新 / 已解决：此事项已不在原分类' : null)),
     h('div', { style: { padding: '4px 0 0 12px', lineHeight: 1.65, minWidth: 0 } },
       h('p', { style: { ...decisionBodyStyle, fontWeight: 600 } }, value.question),
+      h(DecisionRecommendationProvenance, { row }),
       h(DecisionOptions, { key: row.revision, decision: row, access: props.template }),
       value.recommendation ? h('p', { style: decisionBodyStyle }, '建议：' + value.recommendation) : null,
       value.impact ? h('p', { style: decisionBodyStyle }, '影响：' + value.impact) : null,
@@ -1028,7 +1034,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
       inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新（非实时更新）。'),
       records === null ? diagnostic('任务引用与旧票报告未知') : h('span', null, '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + countText(records.summary.totalTickets) + '（业务报告） · ' + countingScopeText(records.summary.countingScope)),
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
-        pending === 0 ? null : entrance('pending', '待你裁决 ' + countText(pending)),
+        pending === 0 ? h('button', { type: 'button', 'aria-label': '裁决设置', 'aria-expanded': selected === 'pending', 'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: decisionSecondary }, onClick: () => selected === 'pending' ? close() : select('pending') }, '裁决设置') : entrance('pending', '待你裁决 ' + countText(pending)),
         windowEntrance('T'), windowEntrance('S'),
         pending === 0 && needsRecordCheck(records) ? entrance('awaiting', '记录核对', true) : null)),
     h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
@@ -1054,10 +1060,10 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
         (selected === 'pending' || selected === 'awaiting') && needsRecordCheck(records) ? entrance('awaiting', '记录核对') : null,
         h('span', { style: { flex: 1 } }),
         h(Button, { variant: 'ghost', 'aria-label': '关闭详情', onClick: close }, '关闭详情')),
-      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, { ...props, observer }) : inputDecisionDetails(view, selected, selection.decisionKeys, decisionTemplateAccess({ ...props, observer }, view, 'inputSummary', () => {
+      selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, { ...props, observer }) : h('div', null, h(OwnerDecisionPolicyPanel, { view, observer, source: props.recommendationPolicy, display: 'inputSummary' }), inputDecisionDetails(view, selected, selection.decisionKeys, decisionTemplateAccess({ ...props, observer }, view, 'inputSummary', () => {
         const summary = props.summary?.getSnapshot()
         return summary === undefined || summary.status === 'ready' && summary.value.policy.display.inputSummary && summaryReadingIdentity(summary.value) === summaryReadingIdentity(view)
-      })))))
+      }))))))
 }
 
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
@@ -1132,6 +1138,7 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
       h('option', { value: 'keep' }, '保持原值（本次不修改）'), h('option', { value: 'true' }, '明确设为 true'), h('option', { value: 'false' }, '明确设为 false')))
   return h('article', { style: { borderBottom: '1px solid currentColor', padding: '12px 0' } },
     h('h4', null, props.decision.value.question),
+    h(DecisionRecommendationProvenance, { row: props.decision }),
     h('p', null, props.decision.workflowId + ' · ' + props.decision.value.status + (props.decision.value.pending ? ' · 未解决' : '') + (props.decision.value.awaitingImplementation ? ' · 原待落实标记' : '')),
     decisionLongText('背景', props.decision.value.context),
     props.decision.value.recommendation ? h('p', null, '建议：' + props.decision.value.recommendation) : null,
@@ -1192,6 +1199,7 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
     h(DecisionEditor, { key: readIdentity + ':' + decisionRecordKey(selectedDecision), decision: selectedDecision, records, sessionId: props.sessionId, remote: props.remote, refresh: observer.refresh }))
   return h('section', { key: readIdentity, style: panelStyle, 'aria-label': '协作详情' },
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
+    h(OwnerDecisionPolicyPanel, { view, observer, source: props.recommendationPolicy, display: 'rightPanel' }),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Session ' + props.sessionId + (tab.tab.visible ? '' : ' · 非前台')),
     h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '刷新已提交投影'),
     h(TaskReferences, { key: readIdentity + ':references', view }),
@@ -1845,10 +1853,28 @@ export function SupervisionHistory(props: { readonly remote: ControlsRemote; rea
         h('div', null, '可能的问题：' + episode.possibleIssue)))),
     props.sessionId === null ? null : h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取监督记录'))
 }
-export function SettingsPage(props: PluginConfigViewProps & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObservation }): ReactElement {
+function RecommendationSettings(props: RecommendationPolicyFace & { readonly workspaces: readonly WorkspaceChoice[]; readonly unknown: boolean; readonly observe: (sessionId: string) => SessionObservation }): ReactElement {
+  const [target, setTarget] = useState<string | null>(null)
+  const choices = settingsSessionChoices(props.workspaces, null)
+  const selected = target !== null && choices.ids.includes(target) ? target : null
+  return h('section', { 'aria-label': '会话推荐支持预授权', style: settingsCard }, h('h3', null, '推荐支持预授权（实例范围，独立保存）'),
+    h('p', null, '请选择既有会话，由服务端核验其真实 owner-instance；不从当前侧栏、第一项或工作目录推断归属。'),
+    h('label', null, '目标会话 ', h('select', { 'aria-label': '选择预授权会话', value: selected ?? '', style: settingsSelect, onChange: (event: ChangeEvent<HTMLSelectElement>) => setTarget(event.target.value || null) },
+      h('option', { value: '' }, '请选择会话（默认无选择）'), ...choices.ids.map(id => h('option', { key: id, value: id }, id)))),
+    props.unknown || choices.unknown ? diagnostic('会话导航未知或不完整；不猜 owner，也不当作没有会话。') : null,
+    selected === null ? diagnostic('未选择会话，尚未读取或配置预授权。') : h(RecommendationSettingsTarget, { key: selected, sessionId: selected, observer: props.observe(selected), source: props.recommendationPolicy }))
+}
+function RecommendationSettingsTarget(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly source?: RecommendationPolicySource | undefined }): ReactElement {
+  const { observer, key } = useStableObservation(props.observer)
+  const observation = useObservation(observer)
+  if (observation.status !== 'ready' || props.sessionId !== observer.sessionId || observation.value.sessionId !== props.sessionId) return diagnostic('目标会话归属/授权状态未知，暂不可配置。')
+  return h(OwnerDecisionPolicyPanel, { key, view: observation.value, observer, source: props.source })
+}
+export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicyFace & { readonly remote: ControlsRemote; readonly refreshAll: () => void; readonly observe: (sessionId: string) => SessionObservation }): ReactElement {
   const [saved, setSaved] = useState<PolicySnapshot | null>(null)
   const [draft, setDraft] = useState<PolicyIntent | null>(null)
   const [workspaces, setWorkspaces] = useState<readonly WorkspaceChoice[]>([])
+  const [navigationUnknown, setNavigationUnknown] = useState(true)
   const [workspace, setWorkspace] = useState<string | null>(null)
   const [inspection, setInspection] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -1856,16 +1882,21 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
   const [reload, setReload] = useState(0)
   useEffect(() => {
     let active = true
-    void Promise.all([props.remote.readPolicy(), props.remote.listWorkspaces()]).then(([policy, list]) => {
-      const snapshot = parsePolicySnapshot(remoteValue(policy)); const rows = decodeWorkspaces(remoteValue(list))
-      if (!active) return
-      setSaved(snapshot); setDraft(intentOf(snapshot)); setWorkspaces(rows); setWorkspace(rows[0]?.workspaceId ?? null); setInspection(null); setMessage(null)
+    setNavigationUnknown(true)
+    void props.remote.listWorkspaces().then(list => {
+      const rows = decodeWorkspaces(remoteValue(list)); if (!active) return
+      setWorkspaces(rows); setWorkspace(rows[0]?.workspaceId ?? null); setInspection(null); setNavigationUnknown(false)
+    }).catch(() => { if (active) { setWorkspaces([]); setNavigationUnknown(true) } })
+    void props.remote.readPolicy().then(policy => {
+      const snapshot = parsePolicySnapshot(remoteValue(policy)); if (!active) return
+      setSaved(snapshot); setDraft(intentOf(snapshot)); setMessage(null)
     }).catch(error => { if (active) setMessage('协作配置不可用：' + errorText(error)) })
     return () => { active = false }
   }, [props.remote, reload])
   if (props.view === 'summary') return h('span', null, '协作管理、交付监督与会话仪器；配置分别保存。')
   const pageStyle = { display: 'grid', gap: '28px', minWidth: 0, width: '100%', maxWidth: '1040px', margin: '0 auto', color: 'var(--dsw-alias-label-primary, CanvasText)', fontSize: '14px', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
-  if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle },
+  const recommendationSettings = h(RecommendationSettings, { key: 'recommendation-settings', workspaces, unknown: navigationUnknown, observe: props.observe, recommendationPolicy: props.recommendationPolicy })
+  if (saved === null || draft === null) return h('section', { 'aria-label': '插件配置', style: pageStyle }, recommendationSettings,
     h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0, style: { cursor: 'pointer', fontSize: '16px', fontWeight: 600 } }, '进阶交付监督（独立保存）'),
       h(SupervisionSettingsPanel, { remote: props.remote, workspace: null })),
     h('section', { 'aria-label': '工作区协作管理', style: settingsCard }, h('h3', null, '协作管理'), diagnostic(message ?? '读取已保存的协作配置…'), h(Button, { type: 'button', onClick: () => setReload(value => value + 1) }, '重新读取协作配置')))
@@ -1969,6 +2000,7 @@ export function SettingsPage(props: PluginConfigViewProps & { readonly remote: C
         message === null ? null : diagnostic(message)),
       h('details', { style: { marginTop: '16px' } }, h('summary', null, '技术详情（原始有效策略与变更）'), pretty(preview), pretty(impact)),
       unsupportedSeatsDetails()),
+    recommendationSettings,
     h(BrowserNotificationPreferencesPanel),
     h('details', { key: 'supervision-settings', 'aria-label': '进阶交付监督', style: settingsCard }, h('summary', { tabIndex: 0, style: { cursor: 'pointer', fontSize: '16px', fontWeight: 600 } }, '进阶交付监督（独立保存）'),
       h(SupervisionSettingsPanel, { remote: props.remote, workspace })),
@@ -2208,6 +2240,7 @@ export async function apply(ctx: Context): Promise<void> {
     const notificationReading = createNotificationReading()
     const observe = (sessionId: string): SessionObservation => observers.observe(sessionId)
     const navigation = createSubagentNavigationSource(observe)
+    const recommendationPolicy = installRecommendationPolicy(ctx)
     // Optional capability scope: missing/revoked sessions must never disable base reading.
     void ctx.inject(['sessions'], scoped => {
       scoped.effect(() => navigation.publish(scoped), 'collaboration: native subagent navigation')
@@ -2218,7 +2251,7 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
     const refreshAll = (): void => { void visibility.refresh(); summaries.refresh(); observers.refreshAll() }
     ctx.effect(() => () => { summaries.dispose(); observers.dispose() }, 'collaboration: observations')
-    const face = (sessionId: string): SummaryFace => ({ subagentNavigation: navigation.source, summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
+    const face = (sessionId: string): SummaryFace => ({ recommendationPolicy, subagentNavigation: navigation.source, summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
       if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
       const snapshot = observeSummary(sessionId).getSnapshot()
       if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return
@@ -2227,9 +2260,9 @@ export async function apply(ctx: Context): Promise<void> {
     const definition: SidebarRightTabDefinition = { id: TAB_ID, kind: TAB_KIND, title: () => '协作', keepMounted: false }
     ctx.effect(() => ctx.sidebarRightTabs.register(definition), 'collaboration: tab type')
     ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config', key: PACKAGE_NAME,
-      inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
+      inject: () => ({ remote, refreshAll, observe, recommendationPolicy }) }, SettingsPage))
     ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: ROW_KEY,
-      inject: () => ({ remote, refreshAll, observe }) }, SettingsPage))
+      inject: () => ({ remote, refreshAll, observe, recommendationPolicy }) }, SettingsPage))
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
       id: TAB_ID + ':header', order: 100, inject: face }, HeaderEntry))
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
@@ -2239,7 +2272,7 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
       id: TAB_ID + ':input', order: 100, inject: face }, InputSummary))
     ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID,
-      inject: (sessionId) => ({ observer: observe(sessionId), openDetails: face(sessionId).openDetails, remote }) }, Details))
+      inject: (sessionId) => ({ observer: observe(sessionId), openDetails: face(sessionId).openDetails, remote, recommendationPolicy }) }, Details))
     ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({ name: 'sidebar.session.row.leading',
       id: TAB_ID + ':row', order: 100, inject: () => ({ observeSummary, visibility }) }, WorkspaceBadge))
     ctx.slots.inject('tool.call.toolview', () => OWN_TOOL_NAMES.map(key => ctx.slots.register({ name: 'tool.call.toolview', key, inject: face }, SourceCard)))
