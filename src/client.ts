@@ -1,4 +1,4 @@
-import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { createElement as h, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactElement, ChangeEvent, SyntheticEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { NativeSubagentTree, createSubagentNavigation } from './client-subagents.js'
+import { NativeSubagentTree, createSubagentNavigationSource } from './client-subagents.js'
 import { BrowserNotificationPreferencesPanel, DecisionNotifications, notificationScope } from './client-notifications.js'
 import { parsePolicyIntent, parsePolicySnapshot, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js'
@@ -420,7 +420,15 @@ const panelStyle = { boxSizing: 'border-box' as const, padding: '16px', height: 
 function diagnostic(message: string): ReactElement { return h('p', { role: 'status' }, message) }
 function pretty(value: unknown): ReactElement { return h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(value, null, 2)) }
 
-interface SubagentFace { readonly subagentNavigation?: { available(id: string, parent: string): boolean; open(id: string, parent: string, view: ClientSessionSnapshot): boolean } }
+export interface SubagentNavigationPort {
+  available(id: string, parent: string): boolean
+  open(id: string, parent: string, expected: ClientSessionSnapshot): boolean
+}
+export interface SubagentNavigationSource {
+  subscribe(listener: () => void): () => void
+  getSnapshot(): SubagentNavigationPort | null
+}
+export interface SubagentFace { readonly subagentNavigation?: SubagentNavigationSource }
 interface DecisionInputFace { readonly inputActions?: unknown }
 interface InsertionSpan { readonly start: number; readonly end: number; readonly draftRev: number }
 interface DecisionInputActions { captureInsertion(): InsertionSpan; insertText(text: string, span: InsertionSpan): boolean }
@@ -663,6 +671,7 @@ function needsRecordCheck(records: InstrumentSnapshot | null): boolean {
   if (records === null || !Array.isArray(records.decisions)) return true
   const s = records.summary
   return s.awaitingImplementationCount !== 0 || records.decisions.some(row => isAwaitingImplementation(row) || isNonUserPending(row))
+    || s.pendingUserDecisionCount !== uniqueDecisionRecords(records.decisions).filter(isPendingUserDecision).length
     || typeof s.pendingDecisionCount !== 'number' || typeof s.pendingUserDecisionCount !== 'number' || s.pendingDecisionCount !== s.pendingUserDecisionCount
 }
 function decisionRecordKey(row: DecisionRecord): string { return row.workflowId + '\u0000' + row.decisionId }
@@ -864,7 +873,9 @@ function recordCheckFacts(records: InstrumentSnapshot): ReactElement {
   return h('div', { style: { fontSize: '12px', color: decisionSecondary, lineHeight: 1.6 } },
     h('p', { style: { margin: '6px 0' } }, '原待落实标记 ' + countText(records.summary.awaitingImplementationCount) + '，不等于未完成任务；保留原始兼容标记，需按任务依据核对。'),
     h('p', { style: { margin: '6px 0' } }, '非用户 pending 记录：' + (rows === null ? '未知' : rows.filter(isNonUserPending).length) + '（当前授权列表）；与原待落实标记可重叠，不能相加。'),
-    rows === null ? diagnostic('核对清单未知：未返回授权事项列表，不作空清单或 0。') : decisionSummaryMismatch('原待落实标记', records.summary.awaitingImplementationCount, rows.filter(isAwaitingImplementation).length))
+    rows === null ? diagnostic('核对清单未知：未返回授权事项列表，不作空清单或 0。') : h('div', null,
+      decisionSummaryMismatch('原待落实标记', records.summary.awaitingImplementationCount, rows.filter(isAwaitingImplementation).length),
+      decisionSummaryMismatch('待你裁决', records.summary.pendingUserDecisionCount, rows.filter(isPendingUserDecision).length)))
 }
 function inputDecisionDetails(view: ClientSessionSnapshot, category: 'pending' | 'awaiting', openedKeys: readonly string[], template?: DecisionTemplateAccess): ReactElement {
   const records = inputRecords(view)
@@ -954,7 +965,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const allowed = view !== null ? shown : same && permit.allowed && observer.getDisplay()?.inputSummary !== false
   if (!same || view !== null && permit.allowed !== shown) setPermit({ observer, sessionId: props.sessionId, allowed: shown })
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
-  // No effect focuses anything, and the same identity keeps both the button DOM and the user's selection on refresh.
+  // Healthy refresh keeps selection/DOM. Only removal of a focused trigger or explicit close repairs focus.
   const identity = JSON.stringify([key, props.sessionId, observer.sessionId, shown, view === null ? null : summaryReadingIdentity(view), view?.policyGrants.revision, view?.records?.scope, view?.policy.extensionEnabled, view?.policy.workspaceEnabled,
     view !== null && inputRecords(view) !== null, view !== null && inputWindows(view) !== null, view === null ? null : inputReadFailure(view, 'native-executions')])
   const [selection, setSelection] = useState<{ readonly identity: string; readonly category: InputDisclosure | null; readonly decisionKeys: readonly string[] }>(() => ({ identity, category: null, decisionKeys: [] }))
@@ -963,7 +974,30 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const pending = records?.summary.pendingUserDecisionCount
   const selected = selection.identity === identity && shown ? selection.category : null
   if (selection.identity !== identity) setSelection({ identity, category: null, decisionKeys: [] })
-  const close = (): void => setSelection({ identity, category: null, decisionKeys: [] })
+  const root = useRef<HTMLElement | null>(null)
+  const pendingTrigger = useRef<HTMLButtonElement | null>(null)
+  const removedFocus = useRef<string | null>(null)
+  const closeFocus = useRef<{ identity: string; category: InputDisclosure } | null>(null)
+  const pendingRef = useCallback((node: HTMLButtonElement | null): void => {
+    const previous = pendingTrigger.current
+    if (node === null && previous !== null && previous.ownerDocument.activeElement === previous) removedFocus.current = identity
+    pendingTrigger.current = node
+  }, [identity])
+  useLayoutEffect(() => {
+    const removed = removedFocus.current, closing = closeFocus.current
+    removedFocus.current = null; closeFocus.current = null
+    if (!shown || view === null || props.summaryAvailable === false) return
+    const category = closing?.identity === identity ? closing.category : null
+    const target = category === null
+      ? removed === identity && pending === 0 ? selected === 'pending' || selected === 'awaiting' ? '[aria-label="切换到裁决"]' : '[data-input-entrance="T"]' : null
+      : '[data-input-entrance="' + (category === 'pending' && pending === 0 || category === 'awaiting' ? 'T' : category) + '"]'
+    if (target !== null) root.current?.querySelector<HTMLElement>(target)?.focus({ preventScroll: true })
+  })
+  const close = (): void => {
+    const region = root.current?.querySelector('[role="region"]')
+    if (selected !== null && region?.contains(root.current?.ownerDocument.activeElement ?? null)) closeFocus.current = { identity, category: selected }
+    setSelection({ identity, category: null, decisionKeys: [] })
+  }
   if (!allowed) return null
   if (view === null || props.summaryAvailable === false) return h('section', { 'aria-label': '协作进度摘要', style: inputSummaryStyle }, diagnostic('协作状态暂不可用，正在恢复；不显示旧正文或计数。'))
   const inactive = view.policy.extensionEnabled === false ? '全局总闸已关闭' : view.policy.workspaceEnabled === false ? '本工作区总闸已关闭' : null
@@ -972,8 +1006,8 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const visible = view.policy.display.rightPanel ? workflows.slice(0, INPUT_SUMMARY_WORKFLOW_LIMIT) : workflows
   const hidden = view.policy.display.rightPanel ? workflows.slice(INPUT_SUMMARY_WORKFLOW_LIMIT) : []
   const select = (category: InputDisclosure): void => setSelection({ identity, category, decisionKeys: uniqueDecisionRecords(records?.decisions ?? []).filter(row => category === 'pending' ? isPendingUserDecision(row) : category === 'awaiting' && (isAwaitingImplementation(row) || isNonUserPending(row))).map(decisionRecordKey) })
-  const entrance = (category: InputDisclosure, text: string): ReactElement => h('button', {
-    key: category, type: 'button', 'aria-label': INPUT_DISCLOSURES[category].entrance, 'aria-expanded': selected === category,
+  const entrance = (category: InputDisclosure, text: string, direct = false): ReactElement => h('button', {
+    key: category, type: 'button', ref: category === 'pending' ? pendingRef : undefined, 'data-input-entrance': category, 'aria-label': direct ? '直接查看记录核对' : INPUT_DISCLOSURES[category].entrance, 'aria-expanded': selected === category,
     'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: INPUT_DISCLOSURES[category].color },
     onClick: () => selected === category ? close() : select(category),
   }, text)
@@ -989,13 +1023,14 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
         usage.overage === 0 ? null : h('span', { style: { color: 'var(--dsw-alias-state-warn-label, #b7791f)' } }, ' · 超出 ' + countText(usage.overage)),
         h('span', { style: { color: 'inherit', fontWeight: 'normal' } }, ' · 差额 ' + signedCountText(usage.gap))))
   }
-  return h('section', { 'aria-label': '协作进度摘要', style: inputSummaryStyle },
+  return h('section', { ref: root, 'aria-label': '协作进度摘要', style: inputSummaryStyle },
     h('div', { 'aria-label': '常驻协作提醒', style: { flexShrink: 0, width: '100%' } },
       inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新（非实时更新）。'),
       records === null ? diagnostic('任务引用与旧票报告未知') : h('span', null, '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + countText(records.summary.totalTickets) + '（业务报告） · ' + countingScopeText(records.summary.countingScope)),
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
-        entrance('pending', '裁决 · 待你裁决 ' + countText(pending)),
-        windowEntrance('T'), windowEntrance('S'))),
+        pending === 0 ? null : entrance('pending', '待你裁决 ' + countText(pending)),
+        windowEntrance('T'), windowEntrance('S'),
+        pending === 0 && needsRecordCheck(records) ? entrance('awaiting', '记录核对', true) : null)),
     h('div', { 'aria-label': '工作流进度', style: { maxHeight: '96px', overflowY: 'auto', width: '100%', minHeight: 0 } },
       ...visible.flatMap(workflow => workflow.referenceCount !== null && workflow.referenceCount > 0
         ? [h('div', { key: workflow.workflowId + ':references' }, workflow.workflowId + ' · 任务引用 ' + workflow.referenceCount + ' · 旧票 ' + countText(workflow.ticketCount) + '（业务报告）'), ...workflow.axes.map(axis => workflowSummaryLine(workflow.workflowId, axis))]
@@ -2172,13 +2207,18 @@ export async function apply(ctx: Context): Promise<void> {
     const observers = new SessionObserverCache((id, signal) => remote.readSession(id, signal))
     const notificationReading = createNotificationReading()
     const observe = (sessionId: string): SessionObservation => observers.observe(sessionId)
+    const navigation = createSubagentNavigationSource(observe)
+    // Optional capability scope: missing/revoked sessions must never disable base reading.
+    void ctx.inject(['sessions'], scoped => {
+      scoped.effect(() => navigation.publish(scoped), 'collaboration: native subagent navigation')
+    })
     const summaries = new SummaryScheduler((request, signal) => remote.readSummaries(request, signal))
     const observeSummary = (sessionId: string): SummaryObserver => summaries.observe(sessionId)
     const visibility = new PolicyObserver(() => remote.readPolicy())
     ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
     const refreshAll = (): void => { void visibility.refresh(); summaries.refresh(); observers.refreshAll() }
     ctx.effect(() => () => { summaries.dispose(); observers.dispose() }, 'collaboration: observations')
-    const face = (sessionId: string): SummaryFace => ({ subagentNavigation: createSubagentNavigation(ctx, sessionId, () => observe(sessionId)), summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
+    const face = (sessionId: string): SummaryFace => ({ subagentNavigation: navigation.source, summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
       if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
       const snapshot = observeSummary(sessionId).getSnapshot()
       if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return

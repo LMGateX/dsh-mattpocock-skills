@@ -8,7 +8,7 @@ import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mj
 
 // Agreed seam: public built ObservedInputSummary + SessionObserver, real React/Happy DOM.
 // No formatter-only proof, private state probes, live Profile or graphical-browser claims.
-const built = await buildClient()
+const built = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? { code: await (await import('node:fs/promises')).readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') } : await buildClient()
 let registration
 vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
 const primitives = clientPrimitives(React)
@@ -102,6 +102,7 @@ test('record check is secondary and keeps raw markers with a unique non-user pen
   view.records.decisions.push(structuredClone(view.records.decisions[0]))
   const f = await mount(t, view), main = named(f.container, '常驻协作提醒')
   assert.match(main.textContent, /待你裁决\s*3/)
+  assert.doesNotMatch(main.textContent, /裁决 ·/)
   assert.doesNotMatch(main.textContent, /待落实|记录核对\s*\d/)
   await click(entry(f.container, 'pending'))
   const check = named(f.container, '查看记录核对')
@@ -316,12 +317,12 @@ test('ticketless and all-zero-with-tickets workflows have honest readable empty 
   assert.match(named(f.container, '工作流进度').textContent, /暂无票/)
 })
 
-test('three main entries remain at known zero while unreadable ledgers and malformed counts remain explicitly unknown', async t => {
+test('only definite zero hides the pending entrance while unreadable ledgers and malformed counts remain explicitly unknown', async t => {
   const view = snapshot(); view.records.summary.pendingDecisionCount = 0; view.records.summary.pendingUserDecisionCount = 0; view.records.summary.awaitingImplementationCount = 0
   const f = await mount(t, view)
-  assert.match(entry(f.container, 'pending').textContent, /裁决.*0/)
+  assert.equal(f.container.querySelector('[aria-label="' + labels.pending + '"]') === null, true)
   assert.equal(f.container.querySelector('[aria-label="' + labels.awaiting + '"]'), null)
-  assert.equal(f.container.querySelectorAll('button').length, 3)
+  assert.equal(f.container.querySelectorAll('button').length, 2)
   const unreadable = structuredClone(view); unreadable.records = null; unreadable.health = [{ scope: 'records', status: 'unknown', reason: 'ledger-read-denied' }]
   await f.refresh(unreadable)
   assert.match(f.container.textContent, /裁决.*未知/)
@@ -334,6 +335,63 @@ test('three main entries remain at known zero while unreadable ledgers and malfo
   await click(entry(f.container, 'pending'))
   await click(entry(f.container, 'awaiting')); assert.match(region(f.container, 'awaiting').textContent, /原待落实标记 未知/)
   assert.doesNotMatch(entry(f.container, 'pending').textContent, /裁决\s*0/)
+})
+
+test('zero pending keeps a grey direct record-check entrance and the existing three detail tabs', async t => {
+  const view = snapshot(); view.records.summary.pendingUserDecisionCount = 0
+  view.records.decisions = [decision('legacy', { awaitingImplementation: true }), decision('agent', { pending: true, addressee: { kind: 'agent' } })]
+  const f = await mount(t, view), main = named(f.container, '常驻协作提醒')
+  assert.equal(main.querySelector('[aria-label="' + labels.pending + '"]') === null, true)
+  const direct = named(main, '直接查看记录核对')
+  assert.equal(direct.textContent, '记录核对')
+  assert.match(direct.style.color, /label-secondary/)
+  await click(direct)
+  assert.equal(region(f.container, 'awaiting').querySelectorAll('[data-decision-item]').length, 2)
+  assert.deepEqual([...named(f.container, '协作详情导航').querySelectorAll('button')].map(node => node.getAttribute('aria-label')), ['切换到裁决', '切换到T', '切换到S'])
+  assert.equal(new Set([...f.container.querySelectorAll('[id]')].map(node => node.id)).size, f.container.querySelectorAll('[id]').length)
+})
+
+test('zero summary with contradictory authorized pending rows remains reachable for record checking without recomputing the reminder', async t => {
+  const view = snapshot(); view.records.summary.pendingUserDecisionCount = 0; view.records.summary.pendingDecisionCount = 0; view.records.summary.awaitingImplementationCount = 0
+  view.records.decisions = [decision('mismatch', { pending: true, addressee: { kind: 'user' } })]
+  const f = await mount(t, view)
+  assert.equal(f.container.querySelector('[aria-label="' + labels.pending + '"]') === null, true)
+  await click(named(f.container, '直接查看记录核对'))
+  assert.match(region(f.container, 'awaiting').textContent, /待你裁决.*摘要计数 0.*列表 1.*不一致/)
+})
+
+for (const opened of [false, true]) test('1 to 0 repairs only the removed focused pending trigger with reading ' + opened, async t => {
+  const view = snapshot(); view.records.summary.pendingUserDecisionCount = 1
+  view.records.decisions = [decision('kept', { pending: true, addressee: { kind: 'user' } })]
+  const f = await mount(t, view), trigger = entry(f.container, 'pending')
+  if (opened) await click(trigger)
+  const reader = opened ? region(f.container, 'pending') : null
+  trigger.focus()
+  const next = structuredClone(view); next.records.summary.pendingUserDecisionCount = 0; next.records.decisions[0].value.pending = false
+  await f.refresh(next)
+  assert.equal(trigger.isConnected, false)
+  const target = named(f.container, opened ? '切换到裁决' : labels.T)
+  assert.equal(f.window.document.activeElement === target, true, 'focus moves to the closest surviving control only')
+  if (opened) {
+    assert.equal(region(f.container, 'pending') === reader, true)
+    assert.match(reader.textContent, /事项-kept.*已更新/)
+    const close = named(f.container, '关闭详情'); close.focus(); await click(close)
+    assert.equal(f.window.document.activeElement === entry(f.container, 'T'), true, 'closing does not focus detached old trigger')
+  }
+})
+
+for (const focus of ['composer', 'reader']) test('1 to 0 preserves existing ' + focus + ' focus and current authorized reading', async t => {
+  const view = snapshot(); view.records.summary.pendingUserDecisionCount = 1
+  view.records.decisions = [decision('kept', { pending: true, addressee: { kind: 'user' } })]
+  const f = await mount(t, view); await click(entry(f.container, 'pending'))
+  const reader = region(f.container, 'pending'), composer = f.window.document.createElement('textarea'); f.window.document.body.append(composer)
+  const focused = focus === 'composer' ? composer : named(f.container, '切换到裁决'); focused.focus()
+  const next = structuredClone(view); next.records.summary.pendingUserDecisionCount = 0; next.records.decisions[0].value.pending = false
+  await f.refresh(next)
+  assert.equal(f.window.document.activeElement === focused, true)
+  assert.equal(region(f.container, 'pending') === reader, true)
+  assert.match(reader.textContent, /事项-kept.*已更新/)
+  composer.remove()
 })
 
 test('pending is strictly user-addressed, awaiting independent, and inline decision facts are readable and write-free', async t => {
