@@ -1130,15 +1130,16 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
 }
 
 export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & { readonly remote: ControlsRemote }): ReactElement {
-  const observation = useObservation(props.observer)
+  const { observer, key } = useStableObservation(props.observer)
+  const observation = useObservation(observer)
   const tab = props.useTabInfo()
-  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && props.observer.sessionId === props.sessionId ? observation.value : null
-  const readIdentity = JSON.stringify([props.sessionId, props.observer.sessionId, current === null ? null : summaryReadingIdentity(current), current?.policyGrants.revision, current?.records?.scope,
+  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && observer.sessionId === props.sessionId ? observation.value : null
+  const readIdentity = JSON.stringify([key, props.sessionId, observer.sessionId, current === null ? null : summaryReadingIdentity(current), current?.policyGrants.revision, current?.records?.scope,
     current?.policy.display.rightPanel, current !== null && inputRecords(current) !== null])
   const [reading, setReading] = useState<{ readonly identity: string; readonly key: string | null }>({ identity: readIdentity, key: null })
   if (reading.identity !== readIdentity) setReading({ identity: readIdentity, key: null })
-  if (props.observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
-  if (observation.status === 'unknown') return h('section', { style: panelStyle }, diagnostic('当前状态未知：' + (observation.error ?? '读取中')), h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取'))
+  if (observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
+  if (observation.status === 'unknown') return h('section', { style: panelStyle }, diagnostic('当前状态未知：' + (observation.error ?? '读取中')), h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '重新读取'))
   const view = observation.value
   if (!view.policy.display.rightPanel) return h('section', { style: panelStyle }, diagnostic('右侧显示已关闭；账本和模型消费不受影响。'))
   const records = inputRecords(view)
@@ -1153,11 +1154,11 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
     h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' } }, h('h4', { style: { fontSize: '14px', margin: 0 } }, '裁决阅读与编辑'),
       h(Button, { variant: 'ghost', size: 'sm', onClick: () => setReading({ identity: readIdentity, key: null }) }, '关闭阅读')),
     diagnostic('当前分类：' + (isPendingUserDecision(selectedDecision) ? '待你裁决' : isAwaitingImplementation(selectedDecision) || isNonUserPending(selectedDecision) ? '记录核对（已更新）' : '其他 / 已解决（已更新）') + '；分类变化不关闭阅读。'),
-    h(DecisionEditor, { key: readIdentity + ':' + decisionRecordKey(selectedDecision), decision: selectedDecision, records, sessionId: props.sessionId, remote: props.remote, refresh: props.observer.refresh }))
-  return h('section', { style: panelStyle, 'aria-label': '协作详情' },
+    h(DecisionEditor, { key: readIdentity + ':' + decisionRecordKey(selectedDecision), decision: selectedDecision, records, sessionId: props.sessionId, remote: props.remote, refresh: observer.refresh }))
+  return h('section', { key, style: panelStyle, 'aria-label': '协作详情' },
     h('h3', null, '协作 · ' + view.instance.ownerSessionId),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · Session ' + props.sessionId + (tab.tab.visible ? '' : ' · 非前台')),
-    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新已提交投影'),
+    h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '刷新已提交投影'),
     h(TaskReferences, { key: readIdentity + ':references', view }),
     h('h4', null, '旧票业务报告'),
     records === null ? diagnostic('票/事项账本未知或不可用') : h('div', null,
@@ -1165,16 +1166,16 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
       records.workflows.map(workflow => h('section', { key: workflow.workflowId }, h('h4', null, workflow.value.title),
         workflow.value.axes.map(axis => h('div', { key: axis.axisKey }, h('p', null, axis.label + ' · ' + axis.counting), axis.statuses.map(status => h('span', { key: status.statusKey, title: status.meaning ?? undefined }, status.label + ' ')))),
         records.tickets.filter(ticket => ticket.workflowId === workflow.workflowId).map(ticket => h('article', { key: ticket.localTicketId }, h('strong', null, ticket.value.title), pretty(ticket.value))))),
-      h(DecisionQueues, { key: readIdentity, view, template: decisionTemplateAccess(props, view, 'rightPanel'), edit: (decision: DecisionRecord) => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) })),
+      h(DecisionQueues, { key: readIdentity, view, template: decisionTemplateAccess({ ...props, observer }, view, 'rightPanel'), edit: (decision: DecisionRecord) => setReading({ identity: readIdentity, key: decisionRecordKey(decision) }) })),
     reader,
     h('h4', null, '双窗口（实例范围，观测）'), h(WindowProjection, { view }),
-    h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }),
-    h(WorktreeObservationsPanel, { key: props.sessionId + ':observations', view, remote: props.remote, refresh: props.observer.refresh }),
+    h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: observer.refresh }),
+    h(WorktreeObservationsPanel, { key: props.sessionId + ':observations', view, remote: props.remote, refresh: observer.refresh }),
     h('details', null, h('summary', null, '旧资源记录（仅只读，不提供创建/实际退役入口）'), ResourceProjection({ view })),
     h('h4', null, '能力与健康（观测标签）'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health }),
-    h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }),
+    h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: observer.refresh }),
     h(SupervisionHistory, { remote: props.remote, sessionId: props.sessionId }),
-    h(PolicyDelegation, { key: props.sessionId + ':policy-grants', view, remote: props.remote, refresh: props.observer.refresh }),
+    h(PolicyDelegation, { key: props.sessionId + ':policy-grants', view, remote: props.remote, refresh: observer.refresh }),
     h('details', null, h('summary', null, '有效策略及来源'), pretty(view.policy)))
 }
 
@@ -1554,23 +1555,24 @@ export function SettingsInspection(props: { readonly sessionId: string; readonly
   return h(ObservedSettingsInspection, props)
 }
 export function ObservedSettingsInspection(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly remote?: ControlsRemote }): ReactElement {
-  const observation = useObservation(props.observer)
-  if (props.observer.sessionId !== props.sessionId || (observation.status === 'ready' && observation.value.sessionId !== props.sessionId)) return diagnostic('会话选择与观察归属不一致；状态未知。')
-  if (observation.status !== 'ready') return h('section', { 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
-    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '重新读取所选会话'))
+  const { observer, key } = useStableObservation(props.observer)
+  const observation = useObservation(observer)
+  if (observer.sessionId !== props.sessionId || (observation.status === 'ready' && observation.value.sessionId !== props.sessionId)) return diagnostic('会话选择与观察归属不一致；状态未知。')
+  if (observation.status !== 'ready') return h('section', { key, 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } }, diagnostic(props.sessionId + ' · 仪器状态未知：' + (observation.error ?? '读取中')),
+    h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '重新读取所选会话'))
   const view = observation.value
-  return h('section', { 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } },
+  return h('section', { key, 'aria-label': '设置页会话仪器', style: { maxHeight: '50vh', overflow: 'auto' } },
     h('h4', null, '所选会话 ' + props.sessionId + ' · 当前投影与显式登记'),
     diagnostic('实例 ' + view.instance.instrumentInstanceId + ' · 主会话 ' + view.instance.ownerSessionId + ' · 真实调用者 ' + view.caller.kind + ':' + view.caller.principalId),
-    h('button', { type: 'button', onClick: () => { void props.observer.refresh() } }, '刷新所选会话'),
+    h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '刷新所选会话'),
     h('h4', null, '任务引用、旧票报告与裁决记录'),
     h(TaskReferences, { key: decisionReadingIdentity(view) + ':references', view }),
     h('section', { 'aria-label': '设置页裁决记录' }, h(DecisionQueues, { key: decisionReadingIdentity(view), view })),
     h(DecisionTechnicalDetails, { key: decisionReadingIdentity(view) + ':raw', label: '票与事项账本技术数据', value: inputRecords(view) }),
     h('h4', null, '独立 T/S（观测）'), h(WindowProjection, { view }),
-    props.remote ? h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: props.observer.refresh }) : null,
+    props.remote ? h(WorktreeBindingsPanel, { key: props.sessionId + ':bindings', view, remote: props.remote, refresh: observer.refresh }) : null,
     h('details', null, h('summary', null, '旧资源记录（仅只读）'), ResourceProjection({ view })),
-    props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: props.observer.refresh }) : null,
+    props.remote ? h(HistoryPanel, { key: props.sessionId + ':history', sessionId: props.sessionId, instance: view.instance, remote: props.remote, refresh: observer.refresh }) : null,
     h('h4', null, '能力、健康观测与有效策略'), diagnostic('能力与健康标签是宿主观测，不是操作许可或业务裁决。'), pretty({ capabilities: view.capabilities, health: view.health, policy: view.policy }))
 }
 // Settings-only composition: public primitives keep their native control/focus styling.

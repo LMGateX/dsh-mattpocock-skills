@@ -174,3 +174,115 @@ test('a prewarmed replacement registry cannot inherit an open reading', async t 
   assert.equal(ui.calls, before + 1, 'new registry has independently read its current value')
   assert.equal(entry(ui.container, 'T').getAttribute('aria-expanded'), 'false', 'equal ready identity is not equal observer authority')
 })
+
+// Public warm-registry seam: both domains are independently ready before handing
+// the SAME mounted component to B. Controlled RPCs never persist business records.
+async function mountWarmInspection(t, component = 'Details', sharedRemote = false) {
+  const window = new Window({url: 'http://localhost/'})
+  const globals = {window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement,
+    HTMLInputElement: window.HTMLInputElement, Node: window.Node, Event: window.Event, MouseEvent: window.MouseEvent, IS_REACT_ACT_ENVIRONMENT: true}
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, {configurable: true, writable: true, value})
+  const calls = [], historyPending = [], registries = []
+  function registry(question, option) {
+    const view = snapshot()
+    view.records.decisions = [{workflowId: 'work', decisionId: 'decision', revision: 7, history: [],
+      value: {question, status: 'open', pending: true, addressee: {kind: 'user'}, options: [{key: 'choice', label: option}]}}]
+    const row = {view, reads: 0}
+    row.remote = {readSupervision: async () => ({ok: true, value: null}),
+      applyInstrument: async (sessionId, command) => { calls.push({question, sessionId, command: structuredClone(command)}); return {ok: true, value: {}} },
+      historyAction: (sessionId, request, signal) => new Promise(resolve => historyPending.push({sessionId, request, signal, resolve}))}
+    row.cache = new client.SessionObserverCache(async () => {row.reads++; return {ok: true, value: structuredClone(row.view)}}, 0)
+    row.release = row.cache.observe(view.sessionId).retain()
+    registries.push(row); return row
+  }
+  const A = registry('OLD QUESTION', 'OLD DRAFT'), B = registry('NEW QUESTION', 'NEW ANSWER')
+  if (sharedRemote) B.remote = A.remote
+  let active = A
+  const {createRoot} = await import('react-dom/client')
+  const container = window.document.createElement('div'); window.document.body.append(container)
+  const root = createRoot(container)
+  const render = async () => React.act(async () => root.render(React.createElement(client[component], {
+    sessionId: active.view.sessionId, observer: active.cache.observe(active.view.sessionId), remote: active.remote,
+    useTabInfo: () => ({tab: {visible: true}}), openDetails: () => assert.fail('no navigation')})))
+  t.after(async () => {
+    try { await React.act(async () => root.unmount()); for (const row of registries) {row.release(); row.cache.dispose()} await window.happyDOM.close() }
+    finally {for (const [key, descriptor] of previous) {if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]}}
+  })
+  await React.act(async () => {await Promise.resolve()}); await render()
+  return {container, window, calls, historyPending, A, B, render,
+    async switchRegistry() {active = B; await render()},
+    async refresh() {await React.act(async () => active.cache.observe(active.view.sessionId).refresh())}}
+}
+function textButton(container, text) {
+  const node = [...container.querySelectorAll('button')].find(node => node.textContent === text)
+  assert(node, 'missing button: ' + text); return node
+}
+async function openEditor(ui) {
+  const edit = [...ui.container.querySelectorAll('button')].find(node => node.textContent.startsWith('阅读 / 编辑：'))
+  assert(edit, 'missing public decision editor entry')
+  const disclosure = edit.closest('details')
+  if (disclosure && !disclosure.open) await click(disclosure.querySelector('summary'))
+  await click(edit)
+  return named(ui.container, '裁决阅读与编辑')
+}
+
+test('Details warm registry handoff discards old reader and cannot submit A draft through B', async t => {
+  const ui = await mountWarmInspection(t)
+  const oldReader = await openEditor(ui)
+  await click(textButton(oldReader, 'OLD DRAFT'))
+  assert.equal(named(oldReader, '用户答复').value, 'OLD DRAFT')
+  await ui.switchRegistry()
+  assert.equal(ui.container.querySelector('[aria-label="裁决阅读与编辑"]') === null, true, 'different authority must close even an equal-wire-identity ready reader')
+  const newReader = await openEditor(ui)
+  assert.notStrictEqual(newReader, oldReader)
+  assert.match(newReader.textContent, /NEW QUESTION/)
+  assert.doesNotMatch(newReader.textContent, /OLD QUESTION/)
+  assert.equal(named(newReader, '用户答复').value, '', 'new authority starts with an empty draft')
+  await click(textButton(newReader, 'NEW ANSWER'))
+  await click(textButton(newReader, '按明确选择记录裁决'))
+  assert.equal(ui.calls.length, 1)
+  assert.equal(ui.calls[0].question, 'NEW QUESTION', 'only the controlled B port is called')
+  assert.equal(ui.calls[0].command.value.question, 'NEW QUESTION')
+  assert.equal(ui.calls[0].command.value.result, 'NEW ANSWER')
+})
+
+test('Details same-domain lazy handles and successful refresh preserve reader draft and opening CAS', async t => {
+  const ui = await mountWarmInspection(t)
+  const reader = await openEditor(ui)
+  await click(textButton(reader, 'OLD DRAFT'))
+  const textarea = named(reader, '用户答复'); textarea.focus()
+  const reads = ui.A.reads
+  await ui.render()
+  assert.equal(ui.A.reads, reads, 'same-domain reinjection does not read again')
+  ui.A.view.records.businessRevision = 8
+  ui.A.view.records.decisions[0].revision = 8
+  await ui.refresh()
+  assert.strictEqual(named(ui.container, '裁决阅读与编辑'), reader)
+  assert.strictEqual(named(reader, '用户答复'), textarea)
+  assert.equal(textarea.value, 'OLD DRAFT')
+  assert.strictEqual(ui.window.document.activeElement, textarea)
+  await click(textButton(reader, '按明确选择记录裁决'))
+  assert.equal(ui.calls.length, 1)
+  assert.equal(ui.calls[0].question, 'OLD QUESTION')
+  assert.equal(ui.calls[0].command.expectedRevision, 7, 'background refresh never silently upgrades the draft CAS')
+  assert.equal(ui.calls[0].command.value.result, 'OLD DRAFT')
+})
+
+for (const component of ['Details', 'SettingsInspection']) test(component + ' fences pending history by registry domain even when the Remote object is reused', async t => {
+  const ui = await mountWarmInspection(t, component, true)
+  await click(textButton(ui.container, '查询历史'))
+  assert.equal(ui.historyPending.length, 1, 'history reads are explicit')
+  const request = ui.historyPending[0]
+  assert.equal(request.signal.aborted, false)
+  await ui.render(); await ui.refresh()
+  assert.equal(request.signal.aborted, false, 'same-domain handles and current refresh preserve the actual pending inspection')
+  assert.equal(ui.historyPending.length, 1)
+  await ui.switchRegistry()
+  assert.equal(request.signal.aborted, true, 'different authority cancels the old history lifetime synchronously')
+  assert.equal(ui.historyPending.length, 1, 'changing domain does not automatically query history')
+  await React.act(async () => request.resolve({ok: true, value: {instance: ui.A.view.instance, revision: 7, notRecorded: false,
+    rows: [{historyId: 'old-history', kind: 'decision', recordId: 'decision', sequence: 1, purged: false, summary: 'OLD HISTORY'}],
+    total: 1, cut: 1, nextCursor: null, coverage: {purged: false, notRecorded: false, sources: []}}}))
+  assert.doesNotMatch(ui.container.textContent, /OLD HISTORY|old-history/)
+})
