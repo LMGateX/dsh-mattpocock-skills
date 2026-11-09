@@ -1,6 +1,6 @@
 # 裁决摘要、推荐支持预授权与原生子代理导航
 
-> 2026-11-09 所有者已认可三项研究与推荐 B，要求先固定文档，隔离工作树/subagents 完成开发测试，push、发版并为本机安装。本文与 [DESIGN](<DESIGN.md>) 是本批实施契约；[研究](<COLLABORATION_FOLLOWUP_RESEARCH.md>)保留发现和方案比较，不再决定当前授权。当前为 D 阶段：产品语义已接受，技术表征/API 附录需冻结提交后才可实施。
+> 2026-11-09 所有者已认可三项研究与推荐 B，要求先固定文档，隔离工作树/subagents 完成开发测试，push、发版并为本机安装。本文与 [DESIGN](<DESIGN.md>) 是本批实施契约；[研究](<COLLABORATION_FOLLOWUP_RESEARCH.md>)保留发现和方案比较，不再决定当前授权。产品语义已接受；技术附录按第 5 节分片冻结，只有已明确冻结提交的单元才可实施。
 
 ## 1. 已认可范围与非目标
 
@@ -50,7 +50,23 @@
 
 ## 5. 技术表示/API 冻结附录
 
-此附录尚待独立后端/客户端设计核对后填写并提交；未冻结前不实施。本附录必须确定受认证 owner 策略 Remote、策略/epoch/候选/采用持久位置与版本、模型严格请求与小回执、公开投影/消费、并发顺序及旧端兼容。
+### 5.1 U1 摘要与导航（已冻结，可独立实施）
+
+U1 不依赖新增后端 wire：按照第 1、3 节在呈现层仅过滤明确 0，灰色核对直达；维持阅读选择、原计数来源和受权围栏。只在被移除的触发按钮真正持焦点时，将焦点无滚动地移至现有裁决切换（阅读仍开）或邻近 T；关闭详情不 focus 已脱离 DOM 的旧触发器。
+
+导航 source 为本 activation 内私有、可订阅的 SubagentNavigationSource：subscribe(listener) 返回 unsubscribe；getSnapshot() 返回稳定的 SubagentNavigationPort 或 null。Port 保持 available(id,parent): boolean 与 open(id,parent,expectedSnapshot): boolean。每次 sessions 增强 scope publication 发布新 port/token，方法首先核验 token 仍当前；teardown 撤销并通知 UI，重新提供服务也不能使旧 port/旧 click 借新授权成功。React 用公开 useSyncExternalStore，getSnapshot 在没有实际 publication 变化时保持同对象；不创建无界 session map 或永久 retain。
+
+基础 apply 仍只依赖原来的服务，独立 ctx.inject(['sessions']) 增强分支持有服务许可，提供/撤回窄 port；不在 outer/整块 inner 加 required sessions，不用 ctx.get/reflect 绕过生命周期。open 从当前视图/session 定位同 activation observer，重验 mounted/session/ready/authority/display/父链与真实 subagentAddress；普通 session read/标题订阅不派发/retain/发送。暂不可用文案中性，不再无证归因“宿主缺少 API”。标题只用宿主标准 useSessions/catalog，优先持久 title，再 displayTitle/label/id；技术详情可核对回退来源。
+
+U1 测试先锁明确 0/unknown/1→0 阅读/焦点与次级核对；使用真实 Cordis/plugin/inject、原始 session controller/原生 SlotCore 标准 hook、sidebarRight 导出的 apply/controller-store/resource/codec 装配，验证迟到/撤回/重加服务、旧点击、标题初次/rename、真 direct-parent 地址和 retain/release。无能力旧宿主必须基础激活，不把普通对象 ctx 的 GREEN 当依赖已覆盖。完整读取与当前 GUI 的证明边界仍依第 4 节。
+
+### 5.2 B 与 U2 策略/采用 wire（待冻结，不实施）
+
+待后端/客户端精确接口核对后提交：受认证 owner 策略 Remote、策略/epoch/候选/采用持久位置与版本、模型严格请求与小回执、公开投影/消费、并发顺序及旧端兼容。独立设置页本批只用明确会话 selector，默认无选择；不扩 uiSession/current-selection bridge，不从 mounted/目录首项/cwd 猜 owner。新增预授权 Remote 应为独立可选 contribution/namespace，缺能力只使新控制降级，不破坏原有基础 mount/read。
+
+### 5.3 R/I 安装激活边界（已冻结）
+
+正式 CLI 同包升级可能仅改 dependency 文件，manifest 的 bundle 列表未变时不会自动重组正在运行的 Host/Client 图；不据磁盘版本承诺热激活。先隔离验证官方 PluginManager 同一 tgz 的安装/回滚和受支持 HMR。实际已认证公开管理动作可安全触发正式重组时才另验激活；无安全入口则明确报告已安装待重载，不 touch patch 造热重载、不私接 RPC、不擅自重启。新格式写入前后的 rollback/旧 reader fail-closed 边界必须明示，不恢复旧业务备份覆盖并发新写。
 
 ## 6. 发布与本机安装
 
