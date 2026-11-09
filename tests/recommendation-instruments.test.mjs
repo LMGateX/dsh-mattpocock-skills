@@ -182,6 +182,13 @@ test('historical creation replay cannot return stale authority after the optiona
  f.revoked.delete('A')
  assert.equal((await f.instruments.read('A','A')).revision,2)
 })
+test('adoption never grants a user agent authorship or an assigned child access to another creator ticketless matter',async()=>{
+ const f=await setup();await f.apply('put-decision',{decisionId:'D',value:question});const command=await adoption(f)
+ await assert.rejects(f.instruments.apply('user','A',{...command,operationId:'operator-adopt'}),e=>e.code==='access-denied')
+ await assert.rejects(f.instruments.apply('child','child',{...command,operationId:'other-creator-adopt'}),e=>e.code==='access-denied')
+ f.revoked.add('A');await assert.rejects(f.instruments.apply('A','A',command),/permission denied/);f.revoked.delete('A')
+ assert.equal((await f.instruments.read('A','A')).decisions[0].value.pending,true)
+})
 test('new pending exact-key agent question binds in its creation CAS and returns a candidate, not adoption',async()=>{
  const f=await setup()
  const result=await f.apply('put-decision',{decisionId:'D',value:question,references:['source:task']})
