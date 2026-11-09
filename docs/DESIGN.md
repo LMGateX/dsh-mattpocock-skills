@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 本批兼容范围更正（2026-11-10，所有者明确要求）
+
+本批仅在 **DSH v0.2.2-rc.1** 运行兼容验收，不再沿用 alpha.4 或双宿主发布门禁。插件安装兼容声明改为 `engines.dsh: >=0.2.2-rc.1`，Node 前提跟随该宿主的 `>=24.9.0`；用当前 rc.1 的真实兼容判定函数验证低版本号拒绝与最低版本／更高版本号接受，不为负例启动旧 SDK。安装声明覆盖的版本范围不是实测范围：只实测 rc.1，不承诺未来版本都已验证；DSH 内部组件自身的 peer 版本号不等同宿主版本。旧批次的双宿主结果仅作历史，不能继续决定本批成本或兼容范围。保留同版本缺能力／旧服务安全降级、旧数据与权限回归，不据版本下限移除这些围栏。
+
+先提交本更正，再更新元数据／断言并冻结新源码与唯一制品。此前带低版本声明的未发布候选不发布／安装，原始证据保留但不充当最终制品验收；同一 rc.1 上重新核对源码、精确归档、类型／原生／浏览器／正式 headless、独立双轴和官方安装 seam。若宿主允许不兼容包仅落盘而阻止启用，必须如实说明，不能夸大成插件代码可禁止所有外部文件复制；不为此加 lifecycle scripts、改共享 SDK 或绕官方安装管理。
+
 ## 裁决摘要、推荐支持预授权与原生子代理导航（2026-11-09，已认可；先文档、隔离实施／测试、发布并安装本机）
 
 所有者认可 [三项研究及推荐方案 B](<COLLABORATION_FOLLOWUP_RESEARCH.md>)，要求先固定文档，在隔离工作树/subagents 中完成开发测试，再 **push、发版、为本机安装**。本节是最新授权，取代下方旧批次的仅本地/不安装限制；承接已验收的恢复稳定性修复，不覆盖旧版本/tag/资产。细化契约为 [本批实施契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>)。先冻结表示/权限/兼容与真实测试 seam，再改代码；最终通过源、唯一精确制品、宿主兼容与独立 Standards/Spec 复核后，非 force 发布并将同一回验制品安装到 Web Profile。

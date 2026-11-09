@@ -2,6 +2,8 @@
 
 > 2026-11-09 所有者已认可三项研究与推荐 B，要求先固定文档，隔离工作树/subagents 完成开发测试，push、发版并为本机安装。本文与 [DESIGN](<DESIGN.md>) 是本批实施契约；[研究](<COLLABORATION_FOLLOWUP_RESEARCH.md>)保留发现和方案比较，不再决定当前授权。产品语义已接受；技术附录按第 5 节分片冻结，只有已明确冻结提交的单元才可实施。
 
+> **2026-11-10 兼容范围更正（覆盖原双宿主门禁）：** 仅 DSH v0.2.2-rc.1 实测；安装兼容下限 `>=0.2.2-rc.1`，Node `>=24.9.0`。低版本号负例由当前 rc.1 的真实兼容函数判定，不启动 alpha.4；更高版本号允许不等于已实测。旧低下限未发布候选必须更正并新冻结，旧日志仅留证。不改变存储兼容、权限、缺能力安全降级或不擅重启边界。
+
 ## 1. 已认可范围与非目标
 
 - 删摘要“裁决 · ”冗余前缀，仅明确受权计数 0 时隐藏待你裁决主提醒；未知不当 0，不删除裁决详情 tab，不清记录。
@@ -44,7 +46,7 @@
 | 导出 React 真实挂载 + native SlotCore/标准 session props | 零/unknown/阅读/焦点、0 可达设置、真实 hook 标题/rename、异步 switch 保护 | 实际用户已看到或模型已消费 |
 | 真实 Cordis + 原始宿主 session controller/sidebarRight/resource/codec | 无注入 RED、增强依赖 GREEN、缺服务基础激活、真实 child/direct parent、retain/release 与卸载旧点击 | 合成数据是生产事实 |
 | 隔离浏览器明暗/窄宽 + unchanged bundle | 可点击/可读/不抢焦点/无异常网络与错误 | 当前 GUI 自动更新 |
-| source + 同一精确归档 + 双宿主类型/完整回归 + 官方安装 seam | 交付字节、兼容、source-bound 和安装流程 | 服务已重启/页面已刷新/策略已启用 |
+| 仅 rc.1：source + 同一精确归档 + 类型/完整回归 + 官方安装 seam | 交付字节、兼容、source-bound 和安装流程 | 服务已重启/页面已刷新/策略已启用 |
 
 每竖切先在真实调用 seam 看见 RED，再最小 GREEN；不改编译字符串、不测私有 cache、不以普通对象 ctx 代替真实 Cordis 生命周期。缺失真实宿主 fixture 的旧 skips 需额外精确 fixture 验证；新关键测试不得 silently skip。完整回归保留上一轮恢复稳定性防线。
 
@@ -243,4 +245,4 @@ B1 独占 recommendation-contract types/parsers/contribution、owner-decision-po
 
 按 [实施计划](<IMPLEMENTATION_PLAN.md>)的 D→B/U→V→R→I 依赖推进；每位 implementer 独立 branch/worktree，交付前同步 integration，串行 merger 合入，独立 Standards/Spec 必改关闭。
 
-最终只分配新版本；冻结 clean-source 和唯一 tgz，严格 source-bound/闭合图/双宿主/精确包验证，非 force push、新 annotated tag、五资产 Release 和下载逐字节回验。通过后将同一制品经官方 PluginManager 安装到本机 Web Profile，保留备份/回滚和版本/字节核验。安装不自动启用管理或推荐支持，不迁移旧记录，不改共享 SDK，不 npm publish、不覆盖旧 tag/资产、不擅重启当前服务；安装、HMR 激活、页面刷新和现场可用分层报告。
+最终只分配新版本；冻结 clean-source 和唯一 tgz，严格 source-bound/闭合图/仅 DSH 0.2.2-rc.1 源与精确包验证，非 force push、新 annotated tag、五资产 Release 和下载逐字节回验。通过后将同一制品经官方 PluginManager 安装到本机 Web Profile，保留备份/回滚和版本/字节核验。安装不自动启用管理或推荐支持，不迁移旧记录，不改共享 SDK，不 npm publish、不覆盖旧 tag/资产、不擅重启当前服务；安装、HMR 激活、页面刷新和现场可用分层报告。

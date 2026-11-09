@@ -10,6 +10,8 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 最新范围以 [DESIGN](<DESIGN.md>) 与 [本批契约](<COLLABORATION_RECOMMENDATION_SUPPORT.md>) 为准：先文档，隔离 subagents 单 writer，主代理串行集成，真实公开 seam RED→GREEN，独立双轴复核，源/精确包及兼容门禁后非 force push、新版本 Release、下载回验并安装同一制品到本机。无人值守默认关闭，不迁移业务，不擅重启。采用当前本地恢复修复基线，保护旧 dirty 检出/共享依赖。
 
+2026-11-10 所有者再次明确：本批只验 DSH 0.2.2-rc.1，停止 alpha.4／双宿主门禁，安装兼容下限为 >=0.2.2-rc.1。历史多版本记录保留，但不再启动旧 SDK 或为本批排双版本验证；当前 rc.1 上的旧版本号拒绝断言不算运行旧宿主。旧低版本声明候选不发布，元数据更正后只验新源码及其精确包。
+
 本批以本契约与下表为本地任务权威，不为了管理功能 OFF 制造仪器 task references/decisions，也不另开外部重复票。下列标签仅用于实施依赖，不表示 T 占位或原生运行状态：
 
 | 工作单元 | 依赖 | 交付与关闭依据 |
@@ -17,7 +19,7 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 | D 文档/隔离 | 无 | 接收用户认可，冻结术语/表示/API/兼容/seams，文档先提交 |
 | B 后端预授权/采用 | D | 真实 operator owner-scope policy、仅新项支持、显式采用/CAS/来源、typed 输出/消费与恢复 |
 | U 摘要/开关/导航 | D；开关最终接 B | 零隐藏/阅读/设置、sessions 可撤销增强、宿主标题/地址真实 seams |
-| V 集成/验证 | B、U | 独立真宿主/挂载/浏览器、源与同一归档双宿主完整测试/严格类型、必改复核关闭 |
+| V 集成/验证 | B、U；2026-11-10 兼容更正 | 仅 DSH 0.2.2-rc.1：源与同一归档完整测试／严格类型／原生挂载／浏览器／正式 headless；安装声明 >=0.2.2-rc.1 的真实版本号正负例，必改复核关闭 |
 | R 发布 | V | clean-source 唯一版本/制品冻结、非 force refs 推进、五资产 Release 下载逐字节回验 |
 | I 本机安装 | R | 官方 PluginManager 同一 tgz 安装、快照/回滚保护、版本/字节/激活边界核验，不自动改业务策略 |
 
