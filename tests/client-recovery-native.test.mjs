@@ -18,13 +18,13 @@ async function open(f) {
   const focus = region.querySelector('button'); focus.focus()
   return { region, focus }
 }
-for (const components of [[0], [0, 1, 2, 3]]) {
-  nativeTest('native same-session reinjection keeps mounted reading with ' + components.length + ' actual seats and a held full request', async t => {
+for (const components of [[0], [0, 1, 2, 3]]) for (const outcome of ['pending', 'success']) {
+  nativeTest('native same-session reinjection keeps mounted reading with ' + components.length + ' actual seats and controlled ' + outcome + ' transport', async t => {
     const f = await mount(t, { components }); const { region, focus } = await open(f)
     const reads = f.initial.fullCalls.length, summaryReads = f.initial.summaryCalls.length
     assert.equal(summaryReads, 1, 'actual seats share one batched summary channel')
     assert.equal(reads, 1, 'actual seats share one full channel')
-    f.initial.mode = 'pending'; f.initial.summaryMode = 'pending'
+    f.initial.mode = outcome; f.initial.summaryMode = outcome
     await f.render()
     assert.equal(f.initial.fullCalls.length, reads, 'callback/lazy handle reinjection must not cause an extra full RPC')
     assert.equal(f.initial.summaryCalls.length, summaryReads, 'cold summary handle handoff must not cause an extra summary RPC')
