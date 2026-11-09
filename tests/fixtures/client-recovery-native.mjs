@@ -82,8 +82,8 @@ export async function activation(initial = snapshot()) {
     'conversation.session.header.utilities': { kind: 'list', scope: 'session' }, 'conversation.input.dock': { kind: 'list', scope: 'session' },
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' }, 'sidebar.session.row.leading': { kind: 'list', scope: 'root' }, 'tool.call.toolview': { kind: 'keyed', scope: 'session' }
   } }, () => null)
-  const fullCalls = [], summaryCalls = [], pending = [], cleanups = []
-  let view = initial, mode = 'success', summaryFailure = false
+  const fullCalls = [], summaryCalls = [], pending = [], pendingSummaries = [], cleanups = []
+  let view = initial, mode = 'success', summaryMode = 'success', summaryFailure = false
   const remote = {
     readPolicy: async () => ok({ revision: 1, extensionEnabled: false, defaults: {}, workspaceOverrides: {} }),
     readSession: (id, signal) => {
@@ -95,6 +95,7 @@ export async function activation(initial = snapshot()) {
     readSummaries: async (request, signal) => {
       summaryCalls.push({ request, signal })
       if (summaryFailure) throw new Error('controlled native summary failure')
+      if (summaryMode === 'pending') return new Promise(resolve => pendingSummaries.push({ request, signal, resolve }))
       return ok({ rows: request.sessions.map(row => ({ sessionId: row.sessionId, status: 'current', version: 'b'.repeat(64), summary: summary(view) })) })
     }
   }
@@ -110,7 +111,7 @@ export async function activation(initial = snapshot()) {
   const entries = [...nativeContext.slots.entriesOfSlot('conversation.input.dock'), ...nativeContext.slots.entriesOfSlot('conversation.session.header.utilities')]
   const components = [client.InputSummary, client.DecisionNotificationReader, client.DecisionNotificationSeat, client.HeaderEntry]
   const seats = components.map(component => { const entry = entries.find(row => row.component === component); assert.ok(entry, 'actual apply registered ' + component.name); return entry })
-  return { seats, fullCalls, summaryCalls, pending, get view() { return view }, set view(value) { view = value }, set mode(value) { mode = value }, set summaryFailure(value) { summaryFailure = value },
+  return { seats, fullCalls, summaryCalls, pending, pendingSummaries, set summaryMode(value) { summaryMode = value }, get view() { return view }, set view(value) { view = value }, set mode(value) { mode = value }, set summaryFailure(value) { summaryFailure = value },
     async dispose() { for (const cleanup of cleanups.reverse()) if (typeof cleanup === 'function') cleanup(); await nativeContext.fiber.dispose() } }
 }
 export async function mount(t, options = {}) {
