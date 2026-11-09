@@ -124,6 +124,7 @@ export async function mount(t, options = {}) {
     active = next; sessionId = id
     latestProps = active.seats.map(entry => ({ sessionId, ...entry.inject(sessionId) }))
     await React.act(async () => { root.render(React.createElement(React.Fragment, null, ...selected.map(index => React.createElement(active.seats[index].component, { ...latestProps[index], key: index })), React.createElement('textarea', { 'aria-label': 'composer fixture' }))); await settle() })
+    await React.act(settle) // Effects commit at the end of the first act; flush the real batch timer too.
   }
   t.after(async () => { if (mounted) await React.act(async () => root.unmount()); for (const item of activationList) await item.dispose(); container.remove() })
   await render()
