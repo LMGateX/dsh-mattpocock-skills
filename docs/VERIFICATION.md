@@ -2,6 +2,23 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.21.1 已发布、下载回验并安装本机磁盘（2026-11-13，UTC+08:00；激活未核）
+
+本记录与[机器摘要](<../dist/verification-0.21.1.json>)为发版后 main 的纯文档追加，不移动 tag、不重打包。精确制品复验须使用 `v0.21.1`／冻结 source，不能把后续文档 HEAD 充当归档源。
+
+- **授权与范围：** [恢复契约](<RECOMMENDATION_ADOPTION_RECOVERY.md>)先于实现固定，C/G/N 在独立单writer工树及subagents完成真实RED→GREEN，串行合入。C修补pending-user候选优先、1850 UTF-16预算内精确支持或当前合法locator、全量signature和可读短正文；G明确同一事项显式adopt，不把路径选择混成后续权限／外部输入／完成证明；所有者另明确选择纳入N：S主名称读取原生subagent label，缺失回退短ID，会话title仅供技术详情核对，不新增Root标题字段或填报要求。
+- **冻结与发布：** source **0cc34713a2f08be5782a5504904f20f12ef19c7c**，tree **750c85d6383f4705b1c4da8d79939e4b42b0bf3b**；annotated tag object **63603f1b997e1987ab8962a4836cdf37294dd920**，peeled为同source。非force atomic main＋新tag已push；[0.21.1 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.21.1)于 **2026-11-13T03:13:13Z** published，非draft／prerelease。**67旧tag／108旧tag refs**均保持。
+- **唯一归档：** **571243 B**，SHA256 **2629aadb9500c49dcb85690fcb02515fca11a22ce87a5a8c83ba25c966ff702b**，pnpm **11.8.0**，仅pack一次；**171 regular =86 fixed＋85 vendor，0 symlink，66 JS/DTS**。封闭Client **467116 B／13本地模块**，仅React／原生primitives externals，SHA256 **1749c9b001e4b2d9ba288b902c393d6df440da194b446a09e24cf279a78426a6**；声明 **17435 B／437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf**。canonical生成树、原归档及下载归档的source-bound strict均通过。
+- **仅RC1类型与完整回归：** 实测 **DSH0.2.2-rc.1／Node24.17.0**，声明最低仍DSH>=0.2.2-rc.1／Node>=24.9.0，不测试旧Host或冒称未来版本实测。实际RC1 Host／Client strict/noEmit各0 diagnostics，保留skipLibCheck=true、无旧SDK声明回退；同包公开Host／Client严格consumer也各0 diagnostics。完整源码与显式同一归档各 **1313/1313 pass，0 fail／skip／cancel**；两轮明确装配独立核过出处／完整性的**同版public-slots补包**，不表示当前安装SDK本来含standalone slots。归档模块和Client显式取自同包；源码专用文本／编译seams仍测源码，不把全部用例说成直接从tgz执行。
+- **原生与默认前提分层：** source／同包actual native shell各 **56/56，0 skip**；显式同版slots activation／dispose／remount／Loader补验各 **6/6，0 skip**。实际默认SDK缺standalone slots的前提检查单列 **6 total／0 pass／6 skip**，不回填成pass。N通过真实Controller／SlotCore挂载，S按钮直接与原生tab.title对照；保留部分投影更新语义、label清除／恢复、真父链／撤权／stale click和零新增follow／retain。原生离线受控transport与Happy DOM不是Chromium或当前生产GUI验收。
+- **独立双轴：** 最终Standards与Spec未闭合必改均0，N增量与完整diff均补审。Standards仅留1条可选P3：决定行representation-fit回退形状可能重复，延期维护、不扩大本批重构；Spec无可选项。两轴各独立重跑N的36/36，另有72/72及40/40围栏回归；转义／Unicode身份public probe64场景、128次source/generated读取一致，最大最终类别1847 UTF-16<=1850，32次诚实省略。作者审查结论不冒充程序执行回执或模型服从证明。
+- **官方headless与vendor：** 发布前accepted、发布后下载归档分别在新隔离环境完成实际RC1 source／tarball × stable／beta，规范化registry报告逐字节一致，各27 Skills，modelInvoked=false／webStarted=false／customClient=false。锁定来源／Git modes验证12/12；真实上游release标签和非bare锁定checkout作为明确输入，不更改锁或vendor。85 vendor／296048 B及root **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**保持。
+- **下载与包级往返：** 发布五资产 **5/5与accepted逐字节相等**，API size／SHA256 digest均匹配，原四sidecars再strict绑定；五文件只读。下载包在全新私有Profile由官方RC1 CLI依次 **0.21.1→0.21.0→0.21.1**，三步exit0、每步 **171/171 literal equality、0 manifest LF exception**，元数据返回首个new状态；真实Profile保持旧状态直至正式安装。只证明包级往返，不是生产业务数据降版许可／保证。
+- **本机官方安装：** 已持久私密备份实际旧171文件／modes、Profile配置／manifest／lock、旧新可信归档及身份记录。仅同一Release下载包经官方CLI完成Web Profile磁盘 **0.21.0→0.21.1**；一-shot围栏及安装后核验exit0，**171/171与归档逐字节相等、0 manifest LF exception**。171个正常rw mode差异明确保留为允许差异，同时拒绝特殊位／exec扩张；不伪称mode也相同。仅目标dependency／lock节点语义变化，其他manifest／完整非目标lock图、bundle选择、patch／其他配置bytes和modes保持。
+- **保护、warnings与开发失败：** 安装前后原dirty检出HEAD／status／tracked及nonignored bytes/modes、选定SDK入口／manifest指纹、原监听PID／starttime／fd／socket均保持，不声称覆盖ignored、全SDK或全机。请求ignore-scripts／strict peers，官方CLI仍出现peer WARN后成功，不声称warning-free。初轮全量发现短正文丢失与旧排序期待，前者保留原意义断言修正，后者按已认可pending优先更新；上游输入／slots装配／headless证据必须在source外等准备失败均调查后显式更正。N的partial-update与owner baseline假设纠正保留初败日志，没有改SDK或删权限／生命周期断言。所有失败／成功原始日志私下保留；accepted归档未重pack或替换。
+- **运行态边界：** 磁盘包版本及Client hash已复核为0.21.1发布字节；**当前执行Host版本与认证浏览器加载仍not-checked**。当前GUI未认证HTTP探测为401；原监听器保持不等于新版模块激活，页面刷新也不等于Host重载证明。未调用active installBundle／disable-enable、未改选择／touch patch／强制HMR、未重启或启动替代服务。正常重载后应另核当前Host／页面，不把本次磁盘完成误写成当前GUI已修复。
+- **边界与保留：** 未执行生产裁决自动采用／清理，未启用管理／策略、未迁移业务、未新增模型试验／生产Session探针，未改共享SDK／vendor正文或npm publish；未宣称模型一定服从或生产CPU改善。5个本批新增source／C／G／N／verification工树及审计refs刻意保留，未物理清理，也不据await原始计数推断业务完成。此前历史验证数字及失败保持。
+
 ## 0.21.0 已发布、下载回验并安装本机（2026-11-10，UTC+08:00；激活另核）
 
 本记录与[机器摘要](<../dist/verification-0.21.0.json>)为发版后 main 的纯文档追加，不移动 tag、不重打包。精确制品复验须检出 `v0.21.0`／冻结 source，不能把后续文档 HEAD 作为该制品源。

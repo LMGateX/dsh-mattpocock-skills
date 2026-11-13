@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.21.1 交付记录（2026-11-13，源码／Release／本机磁盘完成；激活未核）
+
+[0.21.1 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.21.1)及[验证摘要](<VERIFICATION.md>)记录已完成C/G/N隔离实现、真实RED→GREEN、最终独立双轴、仅RC1源码／同一归档各1313/1313、原生／严格类型／官方headless与5资产下载回验，并用同一下载包经官方CLI完成本机Web Profile磁盘0.21.0→0.21.1、171/171逐字节相等。冻结source为0cc34713a2f08be5782a5504904f20f12ef19c7c，新annotated tag不移动、制品不重pack；本段是后续纯文档追加，不冒充归档source。
+
+当前Host／认证浏览器加载尚未证实，未强制激活或重启；非目标配置／bundle选择、原dirty检出、选定SDK及原监听器保护通过，业务裁决未自动采用／清理。完整套件明确使用同版public-slots补包，默认SDK缺standalone前提的6skip仍单列；不冒称生产GUI或模型服从验收。5个本批新工树保留审计。下面授权／先文档记录作为历史不抹除。
+
 ## 0.21.1 追加：S名称与原生子代理tab一致（2026-11-13，所有者明确选择纳入）
 
 所有者补充标题差异问题，核对后经原生提问选择“纳入0.21.1”。[修复契约N节](<RECOMMENDATION_ADOPTION_RECOVERY.md#n原生子代理显示名更正2026-11-13追加明确认可>)覆盖旧“持久会话title优先”：S主名称只读原生catalog的projectionValues.subagent.label，缺失回退短ID；会话title/displayTitle仅在技术详情核对，不用prompt摘要顶替原生名。原生description→label机制已存在，不新增Root填报/工具字段/生成器/账本/SDK补丁。先文档，再隔离子代理以真实Controller/SlotCore和原生tab标题对照RED→GREEN，统一双轴、源码/同包/原生门禁后随本补丁发布安装；原权限/订阅/父链/零额外retain、当前服务和业务数据保持。

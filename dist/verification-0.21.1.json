@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "package": "@lmgatex/dsh-mattpocock-skills",
+  "version": "0.21.1",
+  "sourceCommit": "0cc34713a2f08be5782a5504904f20f12ef19c7c",
+  "sourceTree": "750c85d6383f4705b1c4da8d79939e4b42b0bf3b",
+  "tag": "v0.21.1",
+  "annotatedTagObject": "63603f1b997e1987ab8962a4836cdf37294dd920",
+  "releaseUrl": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.21.1",
+  "releasePublishedAt": "2026-11-13T03:13:13Z",
+  "deliveryComplete": true,
+  "deliveryScope": "Reviewed source, exact archive, five-asset release/download and official local disk installation. Executing Host version and authenticated browser loading are not established.",
+  "declaredMinimum": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "testedDshVersion": "0.2.2-rc.1",
+  "testedNodeVersion": "24.17.0",
+  "onlyCurrentDshSdkTested": true,
+  "higherVersionsDeclaredNotClaimedTested": true,
+  "scope": [
+    "pending-user candidate priority and bounded exact support/current recovery locators",
+    "explicit same-decision adoption guidance; path selection distinct from action permissions, external inputs and completion",
+    "native S-tree subagent label rather than durable first-prompt session title; no additional Root input"
+  ],
+  "archive": {
+    "sha256": "2629aadb9500c49dcb85690fcb02515fca11a22ce87a5a8c83ba25c966ff702b",
+    "bytes": 571243,
+    "pnpm": "11.8.0",
+    "regularFiles": 171,
+    "fixedFiles": 86,
+    "vendorFiles": 85,
+    "symlinks": 0,
+    "buildOutputs": 66,
+    "packedManifestPrivate": true,
+    "clientBytes": 467116,
+    "clientSHA256": "1749c9b001e4b2d9ba288b902c393d6df440da194b446a09e24cf279a78426a6",
+    "clientDeclarationBytes": 17435,
+    "clientDeclarationSHA256": "437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf",
+    "closedLocalClientModules": 13,
+    "clientExternals": [
+      "react",
+      "@deepseek-ai/dsh-client-ui-primitives"
+    ],
+    "canonicalSourceAndArchiveBuildComparisonPassed": true
+  },
+  "tests": {
+    "source": {
+      "total": 1313,
+      "pass": 1313,
+      "fail": 0,
+      "skip": 0,
+      "cancelled": 0
+    },
+    "sameArchive": {
+      "total": 1313,
+      "pass": 1313,
+      "fail": 0,
+      "skip": 0,
+      "cancelled": 0
+    },
+    "completeSuitesUseExplicitPublicRc1SlotsSupplement": true,
+    "installedStandaloneSlotsCapabilityClaimed": false,
+    "nativeActualShell": {
+      "source": {
+        "total": 56,
+        "pass": 56,
+        "fail": 0,
+        "skip": 0
+      },
+      "sameArchive": {
+        "total": 56,
+        "pass": 56,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    "nativeExplicitPublicSlotsAssembly": {
+      "source": {
+        "total": 6,
+        "pass": 6,
+        "fail": 0,
+        "skip": 0
+      },
+      "sameArchive": {
+        "total": 6,
+        "pass": 6,
+        "fail": 0,
+        "skip": 0
+      },
+      "actualDisposeAndRemountVerified": true,
+      "supplementalRC1FixtureNotInstalledHostCapability": true
+    },
+    "defaultInstalledStandaloneSlotsPrecondition": {
+      "total": 6,
+      "pass": 0,
+      "fail": 0,
+      "skip": 6,
+      "interpretedAsPass": false
+    },
+    "strictActualRc1SourceTypes": {
+      "hostDiagnostics": 0,
+      "clientDiagnostics": 0,
+      "strict": true,
+      "noEmit": true,
+      "skipLibCheck": true,
+      "nonTargetSDKDeclarationFallback": false
+    },
+    "sameArchivePublicStrictConsumers": {
+      "hostDiagnostics": 0,
+      "clientDiagnostics": 0,
+      "rootHostControlsDeclarationFiles": 30,
+      "clientDeclarationFiles": 25,
+      "manifestExportsDerived": true,
+      "nodeModulesModified": false
+    },
+    "canonicalEmissionUsesPinnedDevelopmentDeclarationsNotAnOldHostRuntimeGate": true,
+    "separateChromiumRun": false,
+    "escapedIdsIndependentPublicProbe": {
+      "cases": 64,
+      "sourceGeneratedReadPairs": 64,
+      "identicalReads": 128,
+      "maxFinalEnvelopeUTF16": 1847,
+      "budgetUTF16": 1850,
+      "honestOmittedReads": 32
+    },
+    "headless": {
+      "sourceCommit": "0cc34713a2f08be5782a5504904f20f12ef19c7c",
+      "sdkVersion": "0.2.2-rc.1",
+      "beforePublicationAndAfterDownload": true,
+      "channels": [
+        "stable",
+        "beta"
+      ],
+      "skillsPerChannel": 27,
+      "checkoutTarballReportsByteIdentical": true,
+      "modelInvoked": false,
+      "webStarted": false,
+      "customClient": false
+    }
+  },
+  "review": {
+    "standardsOpenMustFix": 0,
+    "specOpenMustFix": 0,
+    "standardsDeferredOptionalP3": [
+      "possible duplicated decision representation-fit fallback shape"
+    ],
+    "specOptional": 0,
+    "nativeLabelFinalSupplementClosed": true,
+    "reviewReportsAreAuthoredNotExecutionReceipts": true
+  },
+  "publication": {
+    "nonForceAtomicPush": true,
+    "fiveAssets": [
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.21.1.tgz",
+        "bytes": 571243,
+        "sha256": "2629aadb9500c49dcb85690fcb02515fca11a22ce87a5a8c83ba25c966ff702b",
+        "githubDigest": "sha256:2629aadb9500c49dcb85690fcb02515fca11a22ce87a5a8c83ba25c966ff702b",
+        "downloadByteEqualToAccepted": true,
+        "githubDigestVerified": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.21.1.tgz.pnpm-version",
+        "bytes": 7,
+        "sha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "githubDigest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "downloadByteEqualToAccepted": true,
+        "githubDigestVerified": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.21.1.tgz.sha256",
+        "bytes": 107,
+        "sha256": "c3583af0587fca1f82616494d5d3c0073f7e647d818e3e35a1c6f52c521fb66d",
+        "githubDigest": "sha256:c3583af0587fca1f82616494d5d3c0073f7e647d818e3e35a1c6f52c521fb66d",
+        "downloadByteEqualToAccepted": true,
+        "githubDigestVerified": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.21.1.tgz.size",
+        "bytes": 7,
+        "sha256": "10cceb2969cca6394adcadcf92998be69840f4f90f40f6acd75e7367f0455a9d",
+        "githubDigest": "sha256:10cceb2969cca6394adcadcf92998be69840f4f90f40f6acd75e7367f0455a9d",
+        "downloadByteEqualToAccepted": true,
+        "githubDigestVerified": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.21.1.tgz.source-commit",
+        "bytes": 41,
+        "sha256": "b943f3e6882fd1ec1fb038ee1a42853c4709dc1b006b1f74a55e210a27ee32e7",
+        "githubDigest": "sha256:b943f3e6882fd1ec1fb038ee1a42853c4709dc1b006b1f74a55e210a27ee32e7",
+        "downloadByteEqualToAccepted": true,
+        "githubDigestVerified": true
+      }
+    ],
+    "oldTagsPreserved": 67,
+    "oldTagRefsPreserved": 108,
+    "downloadStrictRegularFiles": 171,
+    "tagMovedAfterFreeze": false,
+    "repackedAfterAcceptance": false
+  },
+  "isolatedOfficialCli": {
+    "sdkVersion": "0.2.2-rc.1",
+    "sequence": [
+      "0.21.1",
+      "0.21.0",
+      "0.21.1"
+    ],
+    "eachStepRegularFiles": 171,
+    "eachStepLiteralByteEqualFiles": 171,
+    "manifestSingleFinalLFFiles": 0,
+    "realProfileUntouched": true,
+    "businessRuntimeStarted": false,
+    "businessDowngradeGuarantee": false
+  },
+  "localInstallation": {
+    "scope": "disk-only",
+    "from": "0.21.0",
+    "to": "0.21.1",
+    "officialCLI": true,
+    "usedReleaseDownloadedArchive": true,
+    "regularFiles": 171,
+    "literalByteEqualFiles": 171,
+    "manifestSingleFinalLFFiles": 0,
+    "safeModeDifferences": 171,
+    "allPayloadsLiteralExceptExplicitManifestLF": true,
+    "modePolicy": "ordinary rw modes may differ; no special bits or executable expansion; actual old modes retained in private backup",
+    "durablePrivateBackup": true,
+    "onlyTargetManifestDependencyAndLockNodesChanged": true,
+    "selectedBundlesUnchanged": true,
+    "nonTargetProfileConfigurationUnchanged": true,
+    "protectedDirtyCheckoutHeadStatusTrackedAndNonignoredBytesPreserved": true,
+    "selectedSDKFilesFingerprintUnchanged": true,
+    "fullSDKOrWholeMachineFingerprintClaimed": false,
+    "originalListenerPidStarttimeSocketPreserved": true,
+    "requestedIgnoreScriptsAndStrictPeers": true,
+    "peerWarningObserved": true,
+    "warningFreeClaimed": false,
+    "automaticRestart": false,
+    "liveHostActivation": "not-checked",
+    "browserLoad": "not-checked",
+    "unauthenticatedGuiProbeStatus": 401
+  },
+  "failureAndSetupHistory": {
+    "initialCompleteSuiteDetectedTwoConsumptionRegressions": true,
+    "readableQuestionRegressionFixedWithoutWeakeningOriginalAssertion": true,
+    "legacyOrderingAssertionUpdatedToApprovedPendingPriority": true,
+    "originalUpstreamReleaseTagAndNonbareCheckoutProvidedForSourceGate": true,
+    "explicitSameVersionPublicSlotsNeededForCompleteRc1Assembly": true,
+    "headlessRejectedInsideSourceEvidenceBeforeExecution": true,
+    "finalHeadlessUsedNewOutsideSourceEvidence": true,
+    "rawDevelopmentFailuresRetainedPrivately": true,
+    "acceptedArchiveRejectedOrRepacked": false
+  },
+  "limitations": {
+    "modelComplianceProven": false,
+    "productionCpuReductionMeasured": false,
+    "newProductionSessionProbe": false,
+    "productionDecisionAdoptionOrCleanup": false,
+    "businessDataMigration": false,
+    "managementEnabled": false,
+    "sharedSDKPatched": false,
+    "vendorBodiesChanged": false,
+    "npmPublished": false,
+    "liveHostAndBrowserActivationEstablished": false,
+    "worktrees": "five new source/implementation/verification worktrees intentionally retained for audit; no physical cleanup claimed",
+    "rawLocalEvidencePublished": false
+  },
+  "documentationFollowupOnly": true,
+  "exactArtifactVerificationRequiresFrozenTagOrSource": true
+}

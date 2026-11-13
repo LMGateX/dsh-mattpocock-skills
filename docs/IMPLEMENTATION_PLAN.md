@@ -6,6 +6,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.21.1 交付收口（2026-11-13；磁盘完成，运行态另核）
+
+D→C/G/N真实RED→GREEN→独立Standards/Spec必改关闭→仅RC1源码／同包各1313/1313、strict／native／headless／生成物／vendor→非force atomic push／新tag及五资产Release／下载strict→备份／官方CLI隔离往返及同包本机磁盘安装均已完成。[验证摘要](<VERIFICATION.md>)与[机器记录](<../dist/verification-0.21.1.json>)保留精确scope／SHA及例外。source冻结0cc34713a2f08be5782a5504904f20f12ef19c7c，当前追加仅docs，不移动tag或重打包；1条Standards P3维护建议非阻塞延期。
+
+本机171/171 payload相等且保护项保持，但Host／认证浏览器装载新版not-checked（未认证GUI探测401），不以监听器或落盘版本代替激活。未强制重载／重启、未生产裁决采用或清理；5工树刻意保留。原先“仅固定契约”的段落是当时阶段，不覆盖此最新交付范围，也不据此补造业务完成记录。
+
 ## 0.21.1 追加N：原生子代理显示名（2026-11-13，已明确纳入）
 
 先提交[契约N节](<RECOMMENDATION_ADOPTION_RECOVERY.md#n原生子代理显示名更正2026-11-13追加明确认可>)和旧标题规则更正，再独立单writer工树/subagent按真实Controller/SlotCore/native tab对照RED→GREEN，label与会话title不同的反例必须出现。主代理串行合入C/G后统一重建、双轴复审、仅RC1源码/唯一同包/原生与浏览器门禁，然后才执行原R/I。N仅呈现来源，不新增Root派发字段/日志读取/retain/SDK更改；此前C/G或旧client基线结果不冒充N后的最终验收。
