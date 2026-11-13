@@ -26,7 +26,10 @@ function snapshot() {
 function row(sessionId, parentSessionId, activity = 'running') {
   return { sessionId, executionId: sessionId, parentSessionId, activity, state: 'running', observed: 'subagent/start', lane: null, headerCwd: null }
 }
-async function mount(t, initial = snapshot(), catalog = { child: { title: 'Native readable title', parentId: 'owner' } }, options = {}) {
+function catalogRow(label, parentId = 'owner') {
+  return { title: 'Prompt prefix for ' + label, displayTitle: 'Session display title for ' + label, parentId, projectionValues: { subagent: { label } } }
+}
+async function mount(t, initial = snapshot(), catalog = { child: catalogRow('Native readable title') }, options = {}) {
   const window = new Window()
   const globals = { window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node, IS_REACT_ACT_ENVIRONMENT: true }
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
@@ -77,7 +80,7 @@ const click = async node => { assert(node, 'expected actionable title'); await R
 
 test('native title and fold controls inherit theme typography without default white button surfaces', async t => {
   const view = snapshot(); view.nativeExecutions = [row('child', 'parent')]
-  const f = await mount(t, view, {parent: {title: 'Native parent', parentId: 'owner'}, child: {title: 'Native child', parentId: 'parent'}})
+  const f = await mount(t, view, {parent: catalogRow('Native parent', 'owner'), child: catalogRow('Native child', 'parent')})
   const controls = [...f.container.querySelectorAll('article button')]
   assert.equal(controls.length, 3)
   for (const control of controls) {
@@ -92,11 +95,11 @@ test('native title and fold controls inherit theme typography without default wh
   assert.equal(button(f, 'Native child').style.fontWeight, '600')
 })
 
-test('actual input seat reads changing native titles and opens native direct-parent chat without RPC dispatch', async t => {
+test('actual input seat reads changing native labels and opens native direct-parent chat without RPC dispatch', async t => {
   const f = await mount(t)
-  assert(button(f, 'Native readable title'), 'S uses the host title rather than an execution id')
+  assert(button(f, 'Native readable title'), 'S uses the native label rather than the prompt-prefix session title')
   const baseline = [...f.calls]
-  await f.catalog({ child: { title: 'Renamed by host', parentId: 'owner' } })
+  await f.catalog({ child: catalogRow('Renamed by host', 'owner') })
   await click(button(f, 'Renamed by host'))
   assert.deepEqual(f.opened, [['dsh-resource://subagentchat/session/child?parent=owner&mode=continuable', { preferNewPane: true }]])
   assert.deepEqual(f.calls, baseline)
@@ -104,31 +107,40 @@ test('actual input seat reads changing native titles and opens native direct-par
   assert.match(f.container.textContent, /64 行/)
 })
 
-test('null native descriptors keep title, display title and ID fallbacks without losing counts or navigation', async t => {
+test('missing, null and blank native labels use short ID, never session title or displayTitle', async t => {
   const id = 'child-12345678901234567890', view = snapshot()
   view.nativeExecutions = [row(id, 'owner')]
-  const f = await mount(t, view, { [id]: { title: 'Native title with null descriptor', parentId: 'owner', projectionValues: { subagent: null } } })
+  const f = await mount(t, view, {})
   const baseline = [...f.calls]
-  for (const [catalog, label] of [
-    [{ title: 'Native title with null descriptor' }, 'Native title with null descriptor'],
-    [{ displayTitle: 'Native display title with null descriptor' }, 'Native display title with null descriptor'],
-    [{}, 'child-123456…'],
-  ]) {
-    await f.catalog({ [id]: { ...catalog, parentId: 'owner', projectionValues: { subagent: null } } })
-    assert.equal(button(f, label).disabled, false, 'a missing descriptor is not loss of navigation authority')
-    assert.match(f.container.textContent, /宿主在跑数：70/, 'a missing descriptor must not erase program running counts')
-    assert.match(f.container.textContent, /child-12345678901234567890/, 'technical identity remains inspectable')
-    await click(button(f, label))
+  const cases = [
+    {}, { projectionValues: {} }, { projectionValues: { subagent: null } },
+    { projectionValues: { subagent: {} } }, { projectionValues: { subagent: { label: null } } },
+    { projectionValues: { subagent: { label: '' } } }, { projectionValues: { subagent: { label: '  \n\t' } } },
+  ]
+  for (const catalog of cases) {
+    await f.catalog({ [id]: { ...catalog, title: 'Prompt prefix must not be primary', displayTitle: 'Display title must not be primary', parentId: 'owner' } })
+    const action = button(f, 'child-123456…')
+    assert.equal(action.disabled, false, 'a missing label is not loss of navigation authority')
+    assert.equal(button(f, 'Prompt prefix must not be primary'), undefined)
+    assert.equal(button(f, 'Display title must not be primary'), undefined)
+    const details = action.closest('article').querySelector('details')
+    assert.match(details.textContent, /名称来源：short-id/)
+    const technical = JSON.parse(details.querySelector('pre').textContent)
+    assert.equal(technical.sessionId, id)
+    assert.equal(technical.sessionTitle, 'Prompt prefix must not be primary')
+    assert.equal(technical.sessionDisplayTitle, 'Display title must not be primary')
+    assert.match(f.container.textContent, /宿主在跑数：70/)
+    await click(action)
   }
-  assert.deepEqual(f.opened, Array.from({ length: 3 }, () => [
+  assert.deepEqual(f.opened, Array.from({ length: cases.length }, () => [
     'dsh-resource://subagentchat/session/' + id + '?parent=owner&mode=continuable', { preferNewPane: true },
   ]))
-  assert.deepEqual(f.calls, baseline, 'null descriptor title updates and clicks add no RPC, dispatch or writes')
+  assert.deepEqual(f.calls, baseline, 'catalog updates and clicks add no RPC, dispatch or writes')
 })
 
 test('grandchildren retain non-running catalog ancestors, fold by real parent and navigate to that parent', async t => {
   const view = snapshot(); view.nativeExecutions = [row('grandchild', 'parent')]
-  const f = await mount(t, view, { parent: { displayTitle: 'Idle parent', parentId: 'owner' }, grandchild: { projectionValues: { subagent: { label: 'Grandchild label' } }, parentId: 'parent' } })
+  const f = await mount(t, view, { parent: catalogRow('Idle parent', 'owner'), grandchild: { projectionValues: { subagent: { label: 'Grandchild label' } }, parentId: 'parent' } })
   const fold = f.container.querySelector('[aria-label="折叠 Idle parent 的子代理"]')
   assert(fold, 'catalog-only non-running parent remains a structural node')
   assert.equal(button(f, 'Grandchild label').closest('article').parentElement.closest('article').querySelector('button').textContent, 'Idle parent')
@@ -136,7 +148,7 @@ test('grandchildren retain non-running catalog ancestors, fold by real parent an
   assert.equal(f.opened[0][0], 'dsh-resource://subagentchat/session/grandchild?parent=parent&mode=continuable')
   await click(fold)
   assert.equal(button(f, 'Grandchild label'), undefined, 'fold actually removes descendant actions')
-  await f.catalog({ parent: { displayTitle: 'Idle parent renamed', parentId: 'owner' }, grandchild: { title: 'Updated grandchild', parentId: 'parent' } })
+  await f.catalog({ parent: catalogRow('Idle parent renamed', 'owner'), grandchild: catalogRow('Updated grandchild', 'parent') })
   assert.equal(button(f, 'Updated grandchild'), undefined, 'host title refresh does not reset fold')
   await click(f.container.querySelector('[aria-label="展开 Idle parent renamed 的子代理"]'))
   assert(button(f, 'Updated grandchild'))
@@ -155,7 +167,7 @@ test('an old rendered action cannot open an observation removed before React com
 test('unknown, missing, conflicting and cyclic parent chains preserve running rows without inventing owner links', async t => {
   const view = snapshot()
   view.nativeExecutions = [row('orphan', 'missing'), row('cycle-a', 'cycle-b'), row('cycle-b', 'cycle-a'), row('conflict', 'owner'), row('valid', 'owner')]
-  const f = await mount(t, view, { conflict: { title: 'Conflicting child', parentId: 'different' }, valid: { title: 'Valid child', parentId: 'owner' } })
+  const f = await mount(t, view, { conflict: catalogRow('Conflicting child', 'different'), valid: catalogRow('Valid child', 'owner') })
   const unknown = f.container.querySelector('[aria-label="父链未知的子代理"]')
   assert(unknown)
   assert.equal(unknown.querySelectorAll('article').length, 4)
@@ -211,8 +223,10 @@ test('assigned and agent callers never consume catalog sibling titles', async t 
 
 test('legacy hosts keep shortened ID, full technical identity and capability explanation', async t => {
   const view = snapshot(); view.nativeExecutions = [row('child-12345678901234567890', 'owner')]
-  const f = await mount(t, view, {}, { legacy: true })
+  const f = await mount(t, view, { 'child-12345678901234567890': catalogRow('Unavailable native label') }, { legacy: true })
   assert.equal(button(f, 'child-123456…').disabled, true)
+  assert.equal(button(f, 'Unavailable native label'), undefined, 'no hook means no catalog name access')
+  assert.match(f.container.querySelector('article details').textContent, /名称来源：short-id/)
   assert.match(f.container.textContent, /child-12345678901234567890/)
   assert.match(f.container.textContent, /原生子代理导航暂不可用，或真实地址尚未确认/)
   assert.deepEqual(f.opened, [])
@@ -227,8 +241,8 @@ test('a real unreadable snapshot removes native titles and cancels stale click a
 
 test('real ancestors can span multiple idle catalog generations without borrowing unrelated catalog rows', async t => {
   const view = snapshot(); view.nativeExecutions = [row('leaf', 'middle')]
-  const f = await mount(t, view, { top: { title: 'Top parent', parentId: 'owner' }, middle: { title: 'Middle parent', parentId: 'top' },
-    leaf: { title: 'Leaf', parentId: 'middle' }, unrelated: { title: 'Must not appear', parentId: 'owner', running: true } })
+  const f = await mount(t, view, { top: catalogRow('Top parent', 'owner'), middle: catalogRow('Middle parent', 'top'),
+    leaf: catalogRow('Leaf', 'middle'), unrelated: { ...catalogRow('Must not appear'), running: true } })
   assert(button(f, 'Top parent').closest('article').contains(button(f, 'Middle parent')))
   assert(button(f, 'Middle parent').closest('article').contains(button(f, 'Leaf')))
   assert.equal(button(f, 'Must not appear'), undefined)
@@ -238,7 +252,7 @@ test('real ancestors can span multiple idle catalog generations without borrowin
 
 test('folds remain local and reset across instance/authorization changes', async t => {
   const view = snapshot(); view.nativeExecutions = [row('grandchild', 'parent'), row('parent', 'owner', 'idle')]
-  const f = await mount(t, view, { parent: { title: 'Parent', parentId: 'owner' }, grandchild: { title: 'Grandchild', parentId: 'parent' } })
+  const f = await mount(t, view, { parent: catalogRow('Parent', 'owner'), grandchild: catalogRow('Grandchild', 'parent') })
   await click(f.container.querySelector('[aria-label="折叠 Parent 的子代理"]'))
   assert.equal(button(f, 'Grandchild'), undefined)
   const next = structuredClone(view); next.policyGrants.revision++

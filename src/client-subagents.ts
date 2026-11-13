@@ -7,7 +7,7 @@ interface CatalogRow {
   readonly title?: string
   readonly displayTitle?: string
   readonly parentId?: string
-  readonly projectionValues?: { readonly subagent?: { readonly label?: string } | null }
+  readonly projectionValues?: { readonly subagent?: { readonly label?: string | null } | null }
 }
 interface Catalog { readonly byId: Readonly<Record<string, CatalogRow>> }
 export interface SubagentHost {
@@ -74,9 +74,10 @@ function createSubagentNavigation(host: SubagentHost, observe: (sessionId: strin
     },
   }
 }
-function title(id: string, row: CatalogRow | undefined): string {
-  for (const value of [row?.title, row?.displayTitle, row?.projectionValues?.subagent?.label]) if (value?.trim() && value !== id) return value
-  return id.length > 16 ? id.slice(0, 12) + '…' : id
+function title(id: string, row: CatalogRow | undefined): { text: string; source: string } {
+  const label = row?.projectionValues?.subagent?.label
+  if (label?.trim()) return { text: label, source: 'catalog.projectionValues.subagent.label' }
+  return { text: id.length > 16 ? id.slice(0, 12) + '…' : id, source: 'short-id（原生 label 缺失或空白）' }
 }
 /** Read-only bounded observation. Host catalog subscriptions do not retain sessions or dispatch work. */
 export function NativeSubagentTree(props: SubagentProps): ReactElement {
@@ -126,7 +127,7 @@ function SubagentRows(props: SubagentProps & { readonly catalog: Catalog | undef
     siblings.push(node); childrenByParent.set(node.parent, siblings)
   }
   const render = (node: SubagentNode, unknown = false): ReactElement => {
-    const label = title(node.id, props.catalog?.byId[node.id])
+    const catalogRow = props.catalog?.byId[node.id], name = title(node.id, catalogRow), label = name.text
     const enabled = !unknown && navigation?.available(node.id, node.parent) === true
     const children = childrenByParent.get(node.id) ?? []
     const folded = collapsed.has(node.id)
@@ -137,7 +138,11 @@ function SubagentRows(props: SubagentProps & { readonly catalog: Catalog | undef
         onClick: () => { const ids = new Set(collapsed); if (folded) ids.delete(node.id); else ids.add(node.id); setFolds({ scope, ids }) } }, folded ? '展开子代理' : '折叠子代理'),
       h('p', null, node.row?.activity === 'running' ? '在跑 · 来源：native-observed · ' + node.row.observed : '结构节点（不计入在跑）'),
       !enabled ? h('p', { role: 'status' }, unknown ? '父链未知、冲突或循环；不猜测归属，不打开错误会话。' : '原生子代理导航暂不可用，或真实地址尚未确认；保留 ID 供核对。') : null,
-      h('details', null, h('summary', null, '技术详情'), node.row === undefined ? null : h('p', null, props.describeRow(node.row)), h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify(node.row ?? { sessionId: node.id, parentSessionId: node.parent, source: 'host-catalog' }, null, 2))),
+      h('details', null, h('summary', null, '技术详情'), h('p', null, '名称来源：' + name.source), node.row === undefined ? null : h('p', null, props.describeRow(node.row)),
+        h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, JSON.stringify({
+          ...(node.row ?? { sessionId: node.id, parentSessionId: node.parent, source: 'host-catalog' }),
+          nativeLabel: catalogRow?.projectionValues?.subagent?.label ?? null, sessionTitle: catalogRow?.title ?? null, sessionDisplayTitle: catalogRow?.displayTitle ?? null,
+        }, null, 2))),
       folded || children.length === 0 ? null : h('div', { style: { marginInlineStart: '12px', borderInlineStart: '1px solid var(--dsw-alias-border-default, currentColor)', paddingInlineStart: '8px' } }, children.map(child => render(child))))
   }
   return h('div', null,

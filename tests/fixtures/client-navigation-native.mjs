@@ -16,11 +16,12 @@ export async function mount(t, options = {}) {
   const errors = [], originalError = console.error
   console.error = (...args) => { errors.push(args.map(String).join(' ')); originalError(...args) }
   t.after(() => { console.error = originalError })
-  const transport = new cordis.Context(), handlers = new Map()
+  const transport = new cordis.Context(), handlers = new Map(), followCalls = []
   const untilAbort = signal => signal.aborted ? Promise.resolve() : new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))
   const remote = { $stream: options => { const abort = new AbortController(); return { signal: abort.signal, restart() {}, async dispose() { abort.abort() },
     async *[Symbol.asyncIterator]() { for await (const value of options.open(abort.signal)) yield { value, generation: 1, signal: abort.signal, accept() {} } } } }, $on(name, callback) { handlers.set(name, callback); return () => handlers.delete(name) },
     session: { async *follow(request, signal) {
+      followCalls.push(request)
       const address = request.address, id = address.kind === 'session' ? address.sessionId : address.childSessionId
       yield { type: 'snapshot', header: { version: 1, id, createdAt: 1, isSeeded: false, ...(address.kind === 'subagent' ? { parentSession: address.parentSessionId, origin: 'subagent' } : {}) }, cursor: -1, records: [], hasMore: false, projections: { asOfSeq: -1, values: {} }, assistantStream: { revision: 0 } }
       await untilAbort(signal)
@@ -33,11 +34,11 @@ export async function mount(t, options = {}) {
   await transport.plugin(controller)
   const sessions = transport.get('sessions')
   let sequence = 0
-  function added(id, parent, title, catalog) {
+  function added(id, parent, title, catalog, subagent) {
     handlers.get('api-session/added')({ sessionId: id, parentSessionId: parent, origin: parent ? 'subagent' : undefined, cwd: '/fixture', updatedAt: ++sequence, running: Boolean(parent), blank: false, formatStatus: 'current',
-      projections: { kind: 'sequenced', asOfSeq: sequence, values: { title, ...(catalog ? { subagentCatalog: catalog } : {}) } } })
+      projections: { kind: 'sequenced', asOfSeq: sequence, values: { title, ...(catalog ? { subagentCatalog: catalog } : {}), ...(subagent !== undefined ? { subagent } : {}) } } })
   }
-  added('owner', undefined, 'Owner', [{ id: 'child', mode: 'continuable', label: 'Dispatch label', activity: 'running' }]); added('child', 'owner', 'Actual projected title')
+  added('owner', undefined, 'Owner', [{ id: 'child', mode: 'continuable', label: 'Dispatch label', activity: 'running' }]); added('child', 'owner', 'Prompt prefix: implement the delegated task', undefined, { mode: 'continuable', label: 'Dispatch label' })
   await settle()
   const nativeSidebar = await installSidebar(transport)
   const ctx = new cordis.Context(), opened = [], fullCalls = [], summaryCalls = []
@@ -79,7 +80,7 @@ export async function mount(t, options = {}) {
   })
   const settings = slots.entriesOfSlot('plugins.bundle.config').find(row => row.component === client.SettingsPage)
   await React.act(async () => { root.render(options.settings ? React.createElement(settings.component, { ...settings.inject(), view: 'page' }) : slots.renderSlot('root', {})); await settle() }); await React.act(settle)
-  return { ctx, container, face, sessions, nativeSidebar, opened, fullCalls, summaryCalls, added, get view() { return view }, set view(next) { view = next },
+  return { ctx, container, face, sessions, nativeSidebar, opened, fullCalls, summaryCalls, followCalls, added, get view() { return view }, set view(next) { view = next },
     button: title => [...container.querySelectorAll('button')].find(node => node.textContent === title),
     async provide(value) { await React.act(async () => provide(value)) },
     async revoke() { await React.act(async () => { await provider.dispose(); await settle() }) },
