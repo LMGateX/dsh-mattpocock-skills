@@ -6,6 +6,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.21.1 推荐采纳与待决恢复（2026-11-13，已认可，先文档）
+
+以[本批契约](<RECOMMENDATION_ADOPTION_RECOVERY.md>)为权威：D文档先提交；C消费优先级/紧凑恢复/协议与G固定工具指导/mounted回归由独立worktree子代理单writer实施，保留真实RED→GREEN；主代理串行集成、独立Standards/Spec必改关闭、仅RC1源码/类型/原生/浏览器/生成物与唯一精确归档门禁后，非force push、新0.21.1 tag/五资产Release及下载strict回验，再官方同包本机安装。
+
+不自动采用或清理生产裁决，不以await数代表待用户数，不扩大执行权限/启用策略，不改共享SDK/vendor，不重启当前服务。原dirty树保护、存量数据和业务承诺保留，磁盘/Host/浏览器加载分别记录；本段目前仅固定契约，不冒称实施或验收完成。
+
 ## 0.21.0 运行中读取性能（2026-11-10，已认可，先文档）
 
 以 [本批契约](<PERFORMANCE_ACTIVE_READS.md>) 为实施与验收权威。D 文档先提交；F owner相关freshness、I live descriptor事实寿命、C 协作取消分别在独立worktree／subagent单writer实施并保留真实RED→GREEN。主代理串行合入，冲突解决后重测；仅RC1的源码完整回归、严格类型、生成物／公开exports／wire／vendor与独立Standards／Spec门禁后，冻结0.21.0与唯一精确制品，完成同包验收、非force push／新Release／下载回验／官方本机安装。管理OFF不造仪器业务票，直接以本契约切片标识推进。

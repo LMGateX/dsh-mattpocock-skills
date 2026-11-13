@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 推荐采纳与待决上下文恢复（2026-11-13，已认可；隔离实施／测试、发布并安装本机）
+
+所有者认可只读检查后的三项建议，并明确要求先固定文档，在隔离环境/subagents完成开发测试，随后push、发版并为本机DSH安装。目标补丁版0.21.1；唯一细化契约为[推荐采纳与恢复](<RECOMMENDATION_ADOPTION_RECOVERY.md>)。先文档提交，再沿现有公开消费/Runtime/mounted工具seams做RED→GREEN和独立双轴复核，通过仅RC1源码/唯一精确制品门禁后非force发布与同包官方安装。保护原dirty检出。
+
+合法候选应显式采用而非重复等待同一选择的人工确认；路径选择与后续操作权限/外部输入分开，candidate不等于adopted。消费在既有预算内优先pending-user/当前候选，保留紧凑精确支持与当前受权读取入口，不让旧awaiting记录挤掉新待决。后端资格/当前授权/CAS/期限/真实来源、旧义务与历史保持；不自动采纳/清账，不改共享SDK/vendor/channel/provider precedence，不启用管理/预授权或迁移数据，不npm publish/覆盖旧tag资产，不自动重启或替换当前GUI。磁盘安装与Host/浏览器激活分开核验。
+
 ## 运行中读取性能三项优化（2026-11-10，已认可；先文档、隔离实施／测试、发布并安装本机）
 
 所有者认可性能审计推荐的第一批三项，并明确授权先固定文档，再在 subagents／独立工作树完成开发测试，push、新 Release 与同一回验制品本机安装。最新细化契约为 [运行中读取性能](<PERFORMANCE_ACTIVE_READS.md>)：目标 0.21.0，只实施 owner 相关投影 freshness、真实 live Session 首个 owned descriptor 的紧凑事实复用、读取协作取消贯通；不包含后续 full/summary 合并、cold 缓存扩容或跨 item 授权复用。

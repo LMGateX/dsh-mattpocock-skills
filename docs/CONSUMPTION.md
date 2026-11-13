@@ -1,5 +1,7 @@
 # Parent 实际消费：InstrumentConsumption
 
+> **2026-11-13 accepted follow-up（0.21.1）：** [推荐采纳与待决恢复](<RECOMMENDATION_ADOPTION_RECOVERY.md>)固定现有预算内pending-user/候选优先、精确支持与当前读取定位，以及路径选择与后续操作权限分离；不改变durability frontier/授权/baseline/历史。当前为实施前契约。
+
 > **2026-11-04，设计固定、待实施：** [插件模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 只投影模型工具的 typed result，不以 UI summary 替代本模块，不削弱 preStep/postExecute durable frontier 或通知/历史捕获。新的 record detail resolver 自身只读，不把取片段当消费提交；现有 hook 仍独立运行。
 
 ## 范围与状态
