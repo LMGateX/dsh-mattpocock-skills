@@ -12,6 +12,10 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.21.1 追加：S名称与原生子代理tab一致（2026-11-13，所有者明确选择纳入）
+
+所有者补充标题差异问题，核对后经原生提问选择“纳入0.21.1”。[修复契约N节](<RECOMMENDATION_ADOPTION_RECOVERY.md#n原生子代理显示名更正2026-11-13追加明确认可>)覆盖旧“持久会话title优先”：S主名称只读原生catalog的projectionValues.subagent.label，缺失回退短ID；会话title/displayTitle仅在技术详情核对，不用prompt摘要顶替原生名。原生description→label机制已存在，不新增Root填报/工具字段/生成器/账本/SDK补丁。先文档，再隔离子代理以真实Controller/SlotCore和原生tab标题对照RED→GREEN，统一双轴、源码/同包/原生门禁后随本补丁发布安装；原权限/订阅/父链/零额外retain、当前服务和业务数据保持。
+
 ## 推荐采纳与待决上下文恢复（2026-11-13，已认可；隔离实施／测试、发布并安装本机）
 
 所有者认可只读检查后的三项建议，并明确要求先固定文档，在隔离环境/subagents完成开发测试，随后push、发版并为本机DSH安装。目标补丁版0.21.1；唯一细化契约为[推荐采纳与恢复](<RECOMMENDATION_ADOPTION_RECOVERY.md>)。先文档提交，再沿现有公开消费/Runtime/mounted工具seams做RED→GREEN和独立双轴复核，通过仅RC1源码/唯一精确制品门禁后非force发布与同包官方安装。保护原dirty检出。

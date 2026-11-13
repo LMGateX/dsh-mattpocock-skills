@@ -10,6 +10,8 @@
 
 保持仅新项资格、后端重验与真实agent来源、原答复/await/任务约束、OFF/未知/历史围栏，不新增开关、自动采用器或业务迁移。发布、安装、Host与浏览器实际加载状态见[验证摘要](<docs/VERIFICATION.md>)，不以版本号代替证明。完整修复契约见[推荐采纳与恢复](<docs/RECOMMENDATION_ADOPTION_RECOVERY.md>)。
 
+S列表名称同时更正为与DSH原生子代理tab相同的 `projectionValues.subagent.label`，缺失时显示短ID。会话title/displayTitle可能来自首条prompt摘要，不再用它们顶替原生子代理名；技术详情保留来源核对。本插件不要求Root额外填写标题，原生subagent.description本来就会生成显示label，不改该工具契约。
+
 ## 0.21.0：活跃读取性能
 
 仅优化插件只读路径：完整投影按可证明的 owner 相关 live 事实失效；同一可信 RC1 Session 首个已验证 descriptor 正事实跨普通追加复用；取消沿已开始的读取链传递，不再启动后续源工作。缺少依据仍保守回退；权限、未知状态、FIFO、物理观察与已接受写入的持久化义务不放宽。

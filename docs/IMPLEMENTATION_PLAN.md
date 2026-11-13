@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.21.1 追加N：原生子代理显示名（2026-11-13，已明确纳入）
+
+先提交[契约N节](<RECOMMENDATION_ADOPTION_RECOVERY.md#n原生子代理显示名更正2026-11-13追加明确认可>)和旧标题规则更正，再独立单writer工树/subagent按真实Controller/SlotCore/native tab对照RED→GREEN，label与会话title不同的反例必须出现。主代理串行合入C/G后统一重建、双轴复审、仅RC1源码/唯一同包/原生与浏览器门禁，然后才执行原R/I。N仅呈现来源，不新增Root派发字段/日志读取/retain/SDK更改；此前C/G或旧client基线结果不冒充N后的最终验收。
+
 ## 0.21.1 推荐采纳与待决恢复（2026-11-13，已认可，先文档）
 
 以[本批契约](<RECOMMENDATION_ADOPTION_RECOVERY.md>)为权威：D文档先提交；C消费优先级/紧凑恢复/协议与G固定工具指导/mounted回归由独立worktree子代理单writer实施，保留真实RED→GREEN；主代理串行集成、独立Standards/Spec必改关闭、仅RC1源码/类型/原生/浏览器/生成物与唯一精确归档门禁后，非force push、新0.21.1 tag/五资产Release及下载strict回验，再官方同包本机安装。

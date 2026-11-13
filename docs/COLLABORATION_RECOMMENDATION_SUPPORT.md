@@ -40,7 +40,7 @@
 - 切换 session/真实实例、caller/grant/scope 变化清理旧草稿/在途结果，保存不跨会话；健康刷新保留合法阅读和 CAS 草稿。
 - sessions 增强注入负责有界导航 port 的安装、撤销及重渲染；无 service/method 基础注册继续，旧点击立即失效，不捕获永远 null 的闭包，不靠 ctx.get 绕服务生命周期。
 - 点击仍检查 mounted session、当前合法快照/显示、真父链和当前可解析 subagentAddress。区分依赖/调用错误与能力真的不存在，不把所有错误归咎宿主。
-- 标题优先宿主持久 title，未取得时可用宿主 displayTitle/label/短 id；技术详情可核对来源，不另持久化副本。初始/改名/回退都需验收。
+- **2026-11-13明确更正：** S主名称使用原生子代理tab相同的catalog.projectionValues.subagent.label；缺失/null/空白回退短id，不再优先会话title/displayTitle。技术详情核对名称来源与已有会话标题，不另持久化副本、不新增Root填报；两种字段互异/更新/缺失均需验收。见[0.21.1追加N](<RECOMMENDATION_ADOPTION_RECOVERY.md>)。
 - 可导航子代理标题使用与 S 相同的 `--dsw-alias-state-done-primary` 强调色并保留粗体/下划线/focus；父链未知或不可导航标题保持次级灰色，折叠控件不抢标题强调。颜色只表达“真实可导航的 S 子代理”，不改变权限、地址或计数。
 
 ## 4. 预先确认测试 seams 与证明边界
@@ -66,7 +66,7 @@ U1 不依赖新增后端 wire：按照第 1、3 节在呈现层仅过滤明确 0
 
 导航 source 为本 activation 内私有、可订阅的 SubagentNavigationSource：subscribe(listener) 返回 unsubscribe；getSnapshot() 返回稳定的 SubagentNavigationPort 或 null。Port 保持 available(id,parent): boolean 与 open(id,parent,expectedSnapshot): boolean。每次 sessions 增强 scope publication 发布新 port/token，方法首先核验 token 仍当前；teardown 撤销并通知 UI，重新提供服务也不能使旧 port/旧 click 借新授权成功。React 用公开 useSyncExternalStore，getSnapshot 在没有实际 publication 变化时保持同对象；不创建无界 session map 或永久 retain。
 
-基础 apply 仍只依赖原来的服务，独立 ctx.inject(['sessions']) 增强分支持有服务许可，提供/撤回窄 port；不在 outer/整块 inner 加 required sessions，不用 ctx.get/reflect 绕过生命周期。open 从当前视图/session 定位同 activation observer，重验 mounted/session/ready/authority/display/父链与真实 subagentAddress；普通 session read/标题订阅不派发/retain/发送。暂不可用文案中性，不再无证归因“宿主缺少 API”。标题只用宿主标准 useSessions/catalog，优先持久 title，再 displayTitle/label/id；技术详情可核对回退来源。
+基础 apply 仍只依赖原来的服务，独立 ctx.inject(['sessions']) 增强分支持有服务许可，提供/撤回窄 port；不在 outer/整块 inner 加 required sessions，不用 ctx.get/reflect 绕过生命周期。open 从当前视图/session 定位同 activation observer，重验 mounted/session/ready/authority/display/父链与真实 subagentAddress；普通 session read/标题订阅不派发/retain/发送。暂不可用文案中性，不再无证归因“宿主缺少 API”。标题只用宿主标准useSessions/catalog；2026-11-13明确更正为原生subagent.label，否则短id，会话title/displayTitle只作技术详情来源核对，不增加Root字段或额外retain。
 
 U1 测试先锁明确 0/unknown/1→0 阅读/焦点与次级核对；使用真实 Cordis/plugin/inject、原始 session controller/原生 SlotCore 标准 hook、sidebarRight 导出的 apply/controller-store/resource/codec 装配，验证迟到/撤回/重加服务、旧点击、标题初次/rename、真 direct-parent 地址和 retain/release。无能力旧宿主必须基础激活，不把普通对象 ctx 的 GREEN 当依赖已覆盖。完整读取与当前 GUI 的证明边界仍依第 4 节。
 

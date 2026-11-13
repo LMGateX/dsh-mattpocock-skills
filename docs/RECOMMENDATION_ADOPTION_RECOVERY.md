@@ -44,6 +44,17 @@
 
 每个实现竖切先运行能命中特定问题的 RED，再最小 GREEN；不改编译产物字符串制造假RED，不以私有函数/Map测试代替真实调用者。关键新测试不得 silently skip；旧环境skip须说明并以现有精确RC1fixture补验。无新增真实付费模型试验。
 
+## N：原生子代理显示名更正（2026-11-13，追加明确认可）
+
+所有者补充截图说明S列表像提示词前缀而非原生子代理tab名称；只读核对发现两类字段不同，并经原生提问明确选择“纳入0.21.1”。本条追加到本补丁，在实现前冻结；覆盖此前标题优先持久title的具体规则，不扩大派发/SDK/生产修改权限。
+
+- DSH的SessionSummary.title是log-backed会话标题，宿主可由子会话首条prompt生成fallback；原生subagentchat tab直接取catalog.byId[id].projectionValues.subagent.label。插件自身没有另截prompt，但title→displayTitle→label顺序会选择另一个合法名称，因此两处可不一致。此机制解释截图，不冒称已读取截图对应生产session并证实其title事件来源。
+- S树主名称只读同一原生subagent.label；缺失/null/空白时显示既有短ID，不以title/displayTitle或prompt前缀顶替。正常有效label按原生文本展示，不重新生成/截断/持久化。技术详情明确名称来源，已有catalog会话title/displayTitle只作来源核对，不混成原生label；真实完整sessionId仍可核对。
+- DSH原生subagent.description本来就是必填简短显示描述，并传给startActivation.label；prompt是另一个参数。本插件不新增title/label字段、Root填报要求、动态工具schema、指引或第二账本；不让模型重命名来修复呈现。
+- 仍用现有useSessions/catalog订阅、sessions可撤销增强和真实subagentAddress；名称不影响S/父链/权限/retains/派发/资源。禁止为显示名称读取全聊天日志、冷会话激活/retain或新增后台抓取。保留当前颜色/点击重验/缺能力中性回退。
+- 最小公开seam RED→GREEN：真实RC1 Controller+SlotCore fixture同时投影互不相同的title=提示词前缀、subagent.label=原生简短显示名，实际挂载S按钮与真实native sidebarRightTabs subagentchat.title(address)比较；补title变化不能盖过label、label变化/缺失/null/空白、无hook短ID、嵌套真parent/零额外retain。不只断言人工fixture文本、不测私有title函数、不以编译产物改字假RED。
+- 单writer隔离子代理拥有client-subagents与其UI/native fixture测试，先同步C/G集成再交付；主代理统一重建Client闭合包/声明，独立双轴及source/唯一同包/native/浏览器门禁统一重跑。追加N后此前仅C/G通过不算完整0.21.1验收；发布/官方同包安装与磁盘/Host/浏览器分层边界不变。
+
 ## 切片与交付门禁
 
 1. D：主代理先提交 DESIGN/PLAN/本契约与相关入口，保护原dirty checkout。
