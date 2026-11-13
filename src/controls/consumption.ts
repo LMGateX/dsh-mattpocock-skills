@@ -184,19 +184,21 @@ function selectionReference(selection: DecisionPolicySelection | undefined): unk
     policy: { epochId: selection.policy.epochId, policyRevision: selection.policy.policyRevision } }
 }
 /** Decision recovery never abbreviates opaque identifiers or adoptable option/epoch keys. */
-function decisionRow(raw: Record<string, unknown>, query: QueryLocator | undefined, compact = false, supportStatusOnly = false): unknown {
+function decisionRow(raw: Record<string, unknown>, query: QueryLocator | undefined, compact: false | 'body' | 'minimal' = false, supportStatusOnly = false): unknown {
   const value = raw.value as Record<string, unknown> | undefined
   const support = raw.recommendationSupport as RecommendationOutcome | undefined
   const { options, recommendation, addressee, ...body } = value ?? {}
   return { workflowId: raw.workflowId, decisionId: raw.decisionId, sourceRevision: raw.sourceRevision,
     ...(value === undefined ? {} : { value: compact ? {
       pending: value.pending, addressee, awaitingImplementation: value.awaitingImplementation,
+      ...(compact === 'body' ? { question: brief(value.question, query, 0, 96),
+        status: brief(value.status, query, 0, 96), result: brief(value.result, query, 0, 96) } : {}),
     } : { ...brief(body, query) as object, addressee, recommendation,
       ...(Array.isArray(options) ? { options: options.map(option => ({ key: option.key, label: brief(option.label, query) })) } : {}) } }),
     recommendationSupport: supportStatusOnly && support !== undefined ? { status: support.status }
       : support?.status === 'adopted' ? { status: support.status, selection: selectionReference(support.selection) } : support,
     ...(supportStatusOnly ? {} : { policySelection: selectionReference(raw.policySelection as DecisionPolicySelection | undefined) }),
-    ...(compact ? { truncated: true } : { source: brief(raw.source, query),
+    ...(compact ? { truncated: true, ...(compact === 'body' && raw.result !== undefined ? { result: brief(raw.result, query, 0, 96) } : {}) } : { source: brief(raw.source, query),
       ...(raw.references === undefined ? {} : { references: brief(raw.references, query) }),
       ...(raw.result === undefined ? {} : { result: brief(raw.result, query) }) }),
     ...(query === undefined ? {} : { query }) }
@@ -219,10 +221,14 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
       shown.push(decisionRow(raw, locator))
       if (canonical(envelope()).length <= textBudget) continue
       shown.pop()
-      shown.push(decisionRow(raw, locator, true))
+      shown.push(decisionRow(raw, locator, 'body'))
       if (canonical(envelope()).length <= textBudget) continue
       shown.pop()
-      shown.push(decisionRow(raw, locator, true, true))
+      // Prefer readable short business text, but never let it displace exact support.
+      shown.push(decisionRow(raw, locator, 'minimal'))
+      if (canonical(envelope()).length <= textBudget) continue
+      shown.pop()
+      shown.push(decisionRow(raw, locator, 'minimal', true))
       if (canonical(envelope()).length > textBudget) shown.pop()
       // An oversized opaque identity cannot be shortened into a different actionable ID.
       // Keep honest total/more and try subsequent rows rather than starving the category.

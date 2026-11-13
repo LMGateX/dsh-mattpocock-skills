@@ -90,7 +90,8 @@ test('legacy marker review remains in real OFF consumption without becoming an u
   assert.equal(facts.records.summary.pendingDecisionCount, 2)
   assert.equal(facts.records.summary.pendingUserDecisionCount, 0)
   assert.equal(facts.records.summary.awaitingImplementationCount, 2)
-  assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['agent', 'omitted', 'unspecified'])
+  // Pending legacy questions precede await-only compatibility markers, even while OFF; no flags or obligations are cleared.
+  assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['agent', 'unspecified', 'omitted'])
   for (const row of rows) {
     await f.apply('put-decision', { decisionId: row.decisionId, value: { question: row.value.question, status: 'explicitly reviewed' } })
   }
