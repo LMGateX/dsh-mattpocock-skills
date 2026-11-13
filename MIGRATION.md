@@ -1,5 +1,12 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.21.1 recommendation adoption recovery
+
+- Same DSH >=0.2.2-rc.1 / Node >=24.9.0 prerequisites; only RC1 is tested. No tool request, Remote, storage version, policy default, vendor or channel migration. Existing persistent-policy/old-reader rollback limits below still apply.
+- Only bounded decision consumption and fixed agent guidance change: pending-user candidates first, current authorized recovery locators, precise support or explicit budget omission. Legacy awaiting records, results and constraints remain available; installation never adopts or clears existing decisions.
+- Valid recommendation adoption records a path selection, not additional filesystem/SDK/network/publication authority or proof of external inputs/completion. On conflict/expiry/revocation, read the current decision and business CAS rather than guessing from its source revision.
+- Install the same verified downloaded archive through the official Profile CLI after all gates. Back up the current dependency/lock and package bytes; preserve unrelated settings and live business data. A dependency-only CLI update can remain disk-only when bundle selection is unchanged; do not disable/re-enable, touch unrelated patches or restart the active service to force activation. Report disk, running Host and browser separately. See the [repair contract](<docs/RECOMMENDATION_ADOPTION_RECOVERY.md>) and [verification](<docs/VERIFICATION.md>).
+
 ## Plugin 0.21.0 active-read performance
 
 - Keeps DSH >=0.2.2-rc.1 and Node >=24.9.0; tests only DSH 0.2.2-rc.1.
