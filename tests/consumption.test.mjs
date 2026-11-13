@@ -104,12 +104,202 @@ test('active owner recommendation authorization instructs exact-key creation the
   assert.match(result.text, /SAME decisionId/)
   assert.match(result.text, /candidate is not adoption/)
   assert.match(result.text, /not a fresh human reply or additional operation permission/)
+  assert.match(result.text, /Do not request repeated human confirmation for the same preauthorized path choice/)
+  assert.match(result.text, /Path selection does not supply missing external input, expand execution permissions or prove task completion/)
+  assert.match(result.text, /Higher-priority or task requirements for personal item-by-item confirmation still prevail/)
+  assert.match(result.text, /read the current decision via mattpocock_record read before adoption to obtain current support and businessRevision CAS/)
+  assert.match(result.text, /sourceRevision is not business CAS/)
+  assert.match(result.text, /Conflict, expiry, revocation or a prior human reply: reread current state; no retry loop or stale authorization replay/)
   const facts = JSON.parse(result.text.split('Current runtime facts (null means unavailable/unknown, not zero):\n')[1])
   assert.equal(facts.ownerDecisionPolicy.epochId, 'epoch-2')
   f.current = { ...f.current, ownerDecisionPolicy: { ...f.current.ownerDecisionPolicy, status: 'expired' } }
   ;({ result } = await consume(f.feed, []))
   assert.match(result.text, /Recommendation support: expired/)
   assert.doesNotMatch(result.text, /Recommendation support: active/)
+})
+
+function consumptionFacts(result) {
+  assert.equal(result.freshness, 'current')
+  return JSON.parse(result.text.split('Current runtime facts (null means unavailable/unknown, not zero):\n')[1])
+}
+function currentDecision(decisionId, value = {}, recommendationSupport) {
+  return { workflowId: 'flow', decisionId, revision: 7,
+    value: { question: 'Choose a path', status: 'task-defined', pending: true, addressee: { kind: 'user' }, ...value },
+    provenance: { author: { kind: 'agent', principalId: 'parent-agent', sessionId: 'parent' }, references: ['task-source'], recordedAt: 10 },
+    view: { read: true, hidden: true }, ...(recommendationSupport === undefined ? {} : { recommendationSupport }) }
+}
+const candidateSupport = () => ({ status: 'candidate', candidate: { optionKey: 'read-only', decisionRevision: 7,
+  policyEpochId: 'epoch-current', policyRevision: 2, expiresAt: null } })
+
+test('pending-user candidate survives four older awaiting obligations within the existing decision budget', async () => {
+  const f = fixture()
+  const old = Array.from({ length: 4 }, (_, i) => currentDecision('a-old-' + i, { pending: false, awaitingImplementation: true,
+    result: 'Old commitment and constraints '.repeat(30) }))
+  const candidate = currentDecision('z-new-question', { options: [{ key: 'read-only', label: 'Wait for a read-only runtime' }],
+    recommendation: 'read-only' }, candidateSupport())
+  f.current.records.decisions = [...old, candidate]
+  Object.assign(f.current.records.summary, { pendingDecisionCount: 1, pendingUserDecisionCount: 1, awaitingImplementationCount: 4 })
+  const before = structuredClone(f.current)
+  const facts = consumptionFacts(await f.feed.readForConsumption(identity))
+  const category = facts.records.decisions
+  assert.equal(category.rows[0].decisionId, 'z-new-question')
+  assert.deepEqual(category.rows[0].recommendationSupport, candidateSupport())
+  assert.deepEqual(category.rows[0].query, { tool: 'mattpocock_record', action: 'read', query: { kind: 'decision', recordId: '["flow","z-new-question"]', limit: 20 } })
+  assert.equal(category.query.tool, 'mattpocock_record')
+  assert.equal(category.total, 5)
+  assert.equal(category.shown, category.rows.length)
+  assert.equal(category.more, category.shown < 5)
+  assert.ok(JSON.stringify(category).length <= 1850)
+  assert.equal(facts.records.summary.awaitingImplementationCount, 4)
+  assert.deepEqual(f.current, before)
+})
+
+test('long decision bodies retain exact candidate and pending addressee with current read recovery', async () => {
+  const f = fixture()
+  f.current.records.scope = { kind: 'assigned', workflowId: 'flow', ticketIds: [] }
+  const support = candidateSupport()
+  support.candidate.optionKey = 'opaque-option-'.repeat(35)
+  support.candidate.policyEpochId = 'opaque-epoch-'.repeat(35)
+  f.current.records.decisions = [currentDecision('long-body', { question: 'Question '.repeat(1000), context: 'Background '.repeat(1000),
+    result: 'Existing constraints '.repeat(1000), options: [{ key: support.candidate.optionKey, label: 'Label '.repeat(1000) }],
+    recommendation: support.candidate.optionKey }, support)]
+  const category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.equal(category.shown, 1)
+  const row = category.rows[0]
+  assert.equal(row.value.pending, true)
+  assert.deepEqual(row.value.addressee, { kind: 'user' })
+  assert.deepEqual(row.recommendationSupport, support)
+  assert.equal(row.sourceRevision, 7)
+  assert.equal(row.query.tool, 'mattpocock_record')
+  assert.equal(row.query.query.recordId, '["flow","long-body"]')
+  assert.ok(JSON.stringify(category).length <= 1850)
+})
+
+test('oversized candidate tokens use status plus current locator without starving later short pending rows', async () => {
+  const f = fixture()
+  const support = candidateSupport()
+  support.candidate.optionKey = 'opaque-key-'.repeat(300)
+  support.candidate.policyEpochId = 'opaque-epoch-'.repeat(300)
+  const impossible = currentDecision('a-'.repeat(2000), {}, candidateSupport())
+  const oversized = currentDecision('b-large-token', { recommendation: support.candidate.optionKey,
+    options: [{ key: support.candidate.optionKey, label: 'Read only' }] }, support)
+  f.current.records.decisions = [impossible, oversized, currentDecision('c-short', {}, candidateSupport())]
+  const category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.equal(category.total, 3)
+  assert.equal(category.more, true)
+  assert.equal(category.shown, 2)
+  assert.deepEqual(category.rows.map(row => row.decisionId), ['b-large-token', 'c-short'])
+  const row = category.rows[0]
+  assert.deepEqual(row.recommendationSupport, { status: 'candidate' })
+  assert.equal(row.query.query.recordId, '["flow","b-large-token"]')
+  assert.equal(row.value.recommendation, undefined)
+  assert.equal(row.value.options, undefined)
+  assert.ok(!JSON.stringify(category).includes('opaque-key-'))
+  assert.ok(!JSON.stringify(category).includes('opaque-epoch-'))
+  assert.ok(JSON.stringify(category).length <= 1850)
+})
+
+test('adopted selection without result survives compact recovery and OFF without replaying full policy', async () => {
+  const f = fixture()
+  const selection = { kind: 'owner-policy', selectedOptionKey: 'read-only', decisionSourceRevision: 7, authorizedAt: 20,
+    policy: { epochId: 'epoch-current', policyRevision: 2, scope: 'new-decisions', enabledAt: 10, expiresAt: null,
+      authorizedBy: { kind: 'user', principalId: 'operator-'.repeat(300), sessionId: null } } }
+  const row = currentDecision('adopted-no-result', { pending: false, awaitingImplementation: true, question: 'Context '.repeat(1000) },
+    { status: 'adopted', selection })
+  row.policySelection = selection
+  f.current.records.decisions = [row]
+  f.current.contextConclusions = [{ workflowId: 'flow', decisionId: 'retained-adoption', sourceRevision: 8,
+    result: null, policySelection: selection, source: row.provenance }]
+  f.current.policy.extensionEnabled = false
+  const result = await f.feed.readForConsumption(identity)
+  const facts = consumptionFacts(result)
+  const projected = facts.records.decisions.rows[0]
+  assert.ok(projected, 'large historical policy must not erase an adopted source')
+  assert.equal(projected.recommendationSupport.status, 'adopted')
+  for (const compact of [projected.recommendationSupport.selection, projected.policySelection, facts.contextConclusions.rows[0].policySelection]) {
+    assert.equal(compact.kind, 'owner-policy')
+    assert.equal(compact.selectedOptionKey, 'read-only')
+    assert.equal(compact.decisionSourceRevision, 7)
+    assert.deepEqual(compact.policy, { epochId: 'epoch-current', policyRevision: 2 })
+  }
+  assert.equal(projected.value.awaitingImplementation, true)
+  assert.ok(!JSON.stringify(facts.records.decisions).includes('operator-'))
+  assert.ok(JSON.stringify(facts.records.decisions).length <= 1850)
+  assert.match(result.text, /Management feature is OFF/)
+  assert.doesNotMatch(result.text, /Recommendation support: active/)
+})
+
+test('decision priority uses current row support then pending addressee and stable composite identity, never labels', async () => {
+  const f = fixture()
+  const rows = [
+    currentDecision('a-await', { pending: false, awaitingImplementation: true, status: 'urgent candidate' }),
+    currentDecision('b-agent', { addressee: { kind: 'agent' } }),
+    currentDecision('c-user', { status: 'closed', recommendationSupport: candidateSupport() }, { status: 'unknown', reason: 'policy-unavailable' }),
+    currentDecision('z-candidate', {}, candidateSupport()),
+  ]
+  f.current.records.decisions = rows
+  const first = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.deepEqual(first.rows.slice(0, 3).map(row => row.decisionId), ['z-candidate', 'c-user', 'b-agent'])
+  assert.equal(first.total, 4)
+  assert.equal(first.more, first.shown < 4)
+  f.current.records.decisions = rows.toReversed()
+  assert.equal((await f.feed.readForConsumption(identity)).text, null, 'input order must not change the canonical projection')
+  f.current.records.decisions = [rows[0], rows[1]]
+  assert.deepEqual(consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions.rows.map(row => row.decisionId), ['b-agent', 'a-await'])
+  // Within a priority class, use workflow plus decision ID, not insertion or free status.
+  f.current.records.decisions = [currentDecision('B'), { ...currentDecision('Z'), workflowId: 'a-flow' }, currentDecision('A')]
+  const tied = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.deepEqual(tied.rows.map(row => [row.workflowId, row.decisionId]), [['a-flow', 'Z'], ['flow', 'A'], ['flow', 'B']])
+})
+
+test('complete decision signature sees omitted bodies and support changes and retains honest zero removal', async () => {
+  const f = fixture()
+  const first = currentDecision('first', { context: 'Background '.repeat(1000) }, candidateSupport())
+  const hidden = currentDecision('z-hidden', { pending: false, awaitingImplementation: true, result: 'Constraint '.repeat(1000) })
+  const oversized = currentDecision('a-'.repeat(2000), {}, candidateSupport())
+  f.current.records.decisions = [oversized, first, hidden]
+  let category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  const signature = category.currentFactsSignature
+  assert.equal(category.total, 3)
+  assert.equal(category.more, true)
+  oversized.value.context = 'Changed entirely outside the shown rows'
+  category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.notEqual(category.currentFactsSignature, signature)
+  const tailSignature = category.currentFactsSignature
+  first.value.context += 'Changed tail'
+  category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.notEqual(category.currentFactsSignature, tailSignature)
+  for (const support of [{ status: 'not-eligible', reason: 'feature-disabled' }, { status: 'unknown', reason: 'policy-unavailable' }, candidateSupport()]) {
+    first.recommendationSupport = support
+    category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+    assert.deepEqual(category.rows.find(row => row.decisionId === 'first').recommendationSupport, support)
+  }
+  f.current.records.decisions = []
+  Object.assign(f.current.records.summary, { pendingDecisionCount: 0, pendingUserDecisionCount: 0, awaitingImplementationCount: 0 })
+  const facts = consumptionFacts(await f.feed.readForConsumption(identity))
+  assert.deepEqual(facts.records.decisions.rows, [])
+  assert.equal(facts.records.decisions.total, 0)
+  assert.equal(facts.records.decisions.more, false)
+  assert.equal(facts.records.summary.pendingUserDecisionCount, 0)
+})
+
+test('opaque decision identity and option keys stay exact beyond the normal text briefing limit', async () => {
+  const f = fixture()
+  const id = 'decision-'.repeat(50)
+  const support = candidateSupport()
+  const row = currentDecision(id, { options: [{ key: support.candidate.optionKey, label: 'read only' }], recommendation: support.candidate.optionKey }, support)
+  f.current.records.decisions = [row]
+  const category = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions
+  assert.equal(category.rows[0].decisionId, id)
+  assert.equal(category.rows[0].query.query.recordId, JSON.stringify(['flow', id]))
+  assert.equal(category.rows[0].recommendationSupport.candidate.optionKey, support.candidate.optionKey)
+  assert.ok(JSON.stringify(category).length <= 1850)
+  support.candidate.optionKey = 'option-'.repeat(60)
+  f.current.records.decisions = [currentDecision('short-id', { options: [{ key: support.candidate.optionKey, label: 'read only' }], recommendation: support.candidate.optionKey }, { status: 'not-eligible', reason: 'no-creation-binding' })]
+  const keyed = consumptionFacts(await f.feed.readForConsumption(identity)).records.decisions.rows[0]
+  assert.equal(keyed.value.options[0].key, support.candidate.optionKey)
+  assert.equal(keyed.value.recommendation, support.candidate.optionKey)
+  assert.equal(keyed.recommendationSupport.status, 'not-eligible')
 })
 
 test('a held window slot whose ticket sits in a terminal status is reported for authored release', async () => {
@@ -247,7 +437,7 @@ test('decision usage guidance preserves raw flags, hidden obligations and retain
   const facts = JSON.parse(result.text.split('Current runtime facts (null means unavailable/unknown, not zero):')[1])
   assert.match(result.text, /awaitingImplementationCount: raw compatibility markers, not unfinished tasks/)
   assert.match(result.text, /Handoff is not completion/)
-  assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['agent-pending', 'await-only', 'both'])
+  assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['both', 'agent-pending', 'await-only'])
   assert.equal(facts.records.summary.pendingUserDecisionCount, 1)
   assert.equal(facts.records.summary.pendingDecisionCount, 2)
   assert.equal(facts.records.summary.awaitingImplementationCount, 2)

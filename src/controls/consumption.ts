@@ -1,5 +1,5 @@
 import type { InstrumentInstance } from './state.js'
-import type { OwnerDecisionPolicyPublic } from './recommendation-contract.js'
+import type { OwnerDecisionPolicyPublic, DecisionPolicySelection, RecommendationOutcome } from './recommendation-contract.js'
 import type { EffectivePolicy } from './policy.js'
 import type { InstrumentSnapshot, InstrumentCurrentSnapshot, InstrumentCurrentProvenance } from './instruments.js'
 import type { WindowSnapshot } from './windows.js'
@@ -132,8 +132,8 @@ const RECORDED_HISTORY_KINDS: Readonly<Record<string, string>> = { workflows: 'w
   nativeExecutions: 'native-execution' }
 function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocator | undefined {
   // Current reference lookup is available to assigned readers too; history is coordinator-only.
-  if (kind === 'taskReferences') return { tool: 'mattpocock_record', action: 'read', query: { kind: 'task-reference',
-    ...(row === undefined ? {} : { recordId: JSON.stringify([row.workflowId, row.localTicketId]) }), limit: 20 } }
+  if (kind === 'taskReferences' || kind === 'decisions') return { tool: 'mattpocock_record', action: 'read', query: { kind: kind === 'decisions' ? 'decision' : 'task-reference',
+    ...(row === undefined ? {} : { recordId: JSON.stringify([row.workflowId, kind === 'decisions' ? row.decisionId : row.localTicketId]) }), limit: 20 } }
   const name = RECORDED_HISTORY_KINDS[kind]
   if (name === undefined) return undefined
   let recordId: string | undefined
@@ -177,6 +177,30 @@ function currentSignature(rows: readonly unknown[]): string {
   }
   return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0')
 }
+/** Historical source references, not the complete authorization epoch or a new permission. */
+function selectionReference(selection: DecisionPolicySelection | undefined): unknown {
+  return selection === undefined ? undefined : { kind: selection.kind, selectedOptionKey: selection.selectedOptionKey,
+    decisionSourceRevision: selection.decisionSourceRevision, authorizedAt: selection.authorizedAt,
+    policy: { epochId: selection.policy.epochId, policyRevision: selection.policy.policyRevision } }
+}
+/** Decision recovery never abbreviates opaque identifiers or adoptable option/epoch keys. */
+function decisionRow(raw: Record<string, unknown>, query: QueryLocator | undefined, compact = false, supportStatusOnly = false): unknown {
+  const value = raw.value as Record<string, unknown> | undefined
+  const support = raw.recommendationSupport as RecommendationOutcome | undefined
+  const { options, recommendation, addressee, ...body } = value ?? {}
+  return { workflowId: raw.workflowId, decisionId: raw.decisionId, sourceRevision: raw.sourceRevision,
+    ...(value === undefined ? {} : { value: compact ? {
+      pending: value.pending, addressee, awaitingImplementation: value.awaitingImplementation,
+    } : { ...brief(body, query) as object, addressee, recommendation,
+      ...(Array.isArray(options) ? { options: options.map(option => ({ key: option.key, label: brief(option.label, query) })) } : {}) } }),
+    recommendationSupport: supportStatusOnly && support !== undefined ? { status: support.status }
+      : support?.status === 'adopted' ? { status: support.status, selection: selectionReference(support.selection) } : support,
+    ...(supportStatusOnly ? {} : { policySelection: selectionReference(raw.policySelection as DecisionPolicySelection | undefined) }),
+    ...(compact ? { truncated: true } : { source: brief(raw.source, query),
+      ...(raw.references === undefined ? {} : { references: brief(raw.references, query) }),
+      ...(raw.result === undefined ? {} : { result: brief(raw.result, query) }) }),
+    ...(query === undefined ? {} : { query }) }
+}
 function category(rows: readonly unknown[], location: QueryLocator, counts: unknown = undefined): unknown {
   const kind = String(location.kind)
   // Keep the prior review allowance: shrinking it can hide a third short legacy
@@ -191,6 +215,19 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
   for (let index = 0; index < rows.length; index++) {
     const raw = rows[index] as Record<string, unknown>
     const locator = historyLocator(kind, raw)
+    if (kind === 'decisions') {
+      shown.push(decisionRow(raw, locator))
+      if (canonical(envelope()).length <= textBudget) continue
+      shown.pop()
+      shown.push(decisionRow(raw, locator, true))
+      if (canonical(envelope()).length <= textBudget) continue
+      shown.pop()
+      shown.push(decisionRow(raw, locator, true, true))
+      if (canonical(envelope()).length > textBudget) shown.pop()
+      // An oversized opaque identity cannot be shortened into a different actionable ID.
+      // Keep honest total/more and try subsequent rows rather than starving the category.
+      continue
+    }
     let row = brief(locator === undefined ? raw : { ...raw, query: locator }, locator)
     if (canonical(row).length > 1000) {
       // Keep a readable identifier/state while referring to the full authored payload.
@@ -229,7 +266,10 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
       taskReferences: taskReferencesAvailable ? category(sorted<InstrumentSnapshot['taskReferences'][number] | InstrumentCurrentSnapshot['taskReferences'][number]>(records.taskReferences, row => canonical([row.workflowId, row.localTicketId]))
         .map(row => ({ workflowId: row.workflowId, localTicketId: row.localTicketId, sourceRevision: row.revision, value: row.value,
           source: provenance(row), sourceEvidence: 'authored', sourceState: 'unknown' })), { kind: 'taskReferences' }) : null,
-      decisions: category(sorted(records.decisions.filter(row => row.value.pending === true || row.value.awaitingImplementation === true), row => canonical([row.workflowId, row.decisionId])).map(row => ({ workflowId: row.workflowId, decisionId: row.decisionId, sourceRevision: row.revision, value: row.value, source: provenance(row) })), { kind: 'decisions' }) },
+      decisions: category(sorted(records.decisions.filter(row => row.value.pending === true || row.value.awaitingImplementation === true), row => canonical([
+        row.value.pending === true ? row.value.addressee?.kind === 'user' ? row.recommendationSupport?.status === 'candidate' ? 0 : 1 : 2 : 3,
+        row.workflowId, row.decisionId])).map(row => ({ workflowId: row.workflowId, decisionId: row.decisionId, sourceRevision: row.revision, value: row.value,
+          recommendationSupport: row.recommendationSupport, policySelection: row.policySelection, source: provenance(row) })), { kind: 'decisions' }) },
     windows: windows === null ? null : { configRevision: windows.configurationRevision,
       status: windows.status, reason: brief(windows.reason, { kind: 'windows' }), scope: brief(windows.scope, { kind: 'windows' }),
       runtimeKnowledge: brief(windows.runtimeKnowledge, { kind: 'windows' }), T: windows.T,
@@ -318,7 +358,7 @@ function protocol(snapshot: ConsumptionSnapshot): string {
   const ownerPolicy = snapshot.ownerDecisionPolicy
   if (ownerPolicy === undefined) lines.push('Recommendation support: unsupported. Missing owner policy capability is not active authorization; continue the ordinary user-question flow.')
   else if (ownerPolicy.status !== 'active' || !p.extensionEnabled || p.workspaceEnabled === false || p.features.pendingDecisions.status !== 'configured') lines.push('Recommendation support: ' + (ownerPolicy.status === 'active' ? 'feature-disabled' : ownerPolicy.status) + '. No new adoption authorization; continue the ordinary user-question flow. Historical adoption remains an agent-authored source, not a new permission.')
-  else lines.push('Recommendation support: active for this owner instance and currently authorized descendants, new decisions only. First put-decision must state a genuine pending user question with recommendation exactly equal to one unique options key. A candidate is not adoption: use mattpocock_record apply action=adopt-decision-recommendation on the SAME decisionId with the returned exact optionKey/decisionRevision/policyEpochId/policyRevision and current business CAS. Only an adopted receipt records selection; preserve result, references, awaitingImplementation and task constraints. It is prior operator authorization, not a fresh human reply or additional operation permission; do not self-enable, extend or replay it as new authorization.')
+  else lines.push('Recommendation support: active for this owner instance and currently authorized descendants, new decisions only. First put-decision must state a genuine pending user question with recommendation exactly equal to one unique options key. A candidate is not adoption: use mattpocock_record apply action=adopt-decision-recommendation on the SAME decisionId with the returned exact optionKey/decisionRevision/policyEpochId/policyRevision and current business CAS. Only an adopted receipt records selection; preserve result, references, awaitingImplementation and task constraints. Do not request repeated human confirmation for the same preauthorized path choice: explicitly adopt a valid candidate. Path selection does not supply missing external input, expand execution permissions or prove task completion; wait for required input without asking for the same choice again. Higher-priority or task requirements for personal item-by-item confirmation still prevail. On recovery, read the current decision via mattpocock_record read before adoption to obtain current support and businessRevision CAS; sourceRevision is not business CAS. Conflict, expiry, revocation or a prior human reply: reread current state; no retry loop or stale authorization replay. It is prior operator authorization, not a fresh human reply or additional operation permission; do not self-enable, extend or replay it as new authorization.')
   lines.push(referenceGuidance(snapshot))
   lines.push('Replies: SAME decisionId + source; agent author stays agent. pending=false only for explicit resolution; partial replies stay pending; refusal/withdrawal is not approval. Answers preserve awaitingImplementation=true; no default new await. awaitingImplementationCount: raw compatibility markers, not unfinished tasks; review task evidence. Handoff is not completion. Clear explicitly only with commitments/constraints/source pointers carried by effective task/document context. Preserve result/included/excluded/contextConclusions; review in context. Old agent/unspecified/no-addressee updates legal; OFF no new records. Never infer clearance from status/count/hidden/links.')
   const managementOn = p.extensionEnabled && p.workspaceEnabled !== false
