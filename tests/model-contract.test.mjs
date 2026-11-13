@@ -80,6 +80,28 @@ test('the runtime snapshot reports trusted delegate registration instead of infe
     'the cwd capability remains a separate report, never the source of the delegate flag')
 })
 
+test('recommendation guidance and schema stay fixed across active and withdrawn owner policy', async t => {
+  const f = await mountedFixture(t)
+  const surface = () => f.ctx.tools.schemas(f.root).find(row => row.name === 'mattpocock_record')
+  const before = JSON.stringify(surface())
+  const description = f.ctx.tools.get('mattpocock_record').description
+  assert.match(description, /capabilities.decisionRecommendationAdoption=true and current active owner authorization/)
+  assert.match(description, /recommendation exactly equal to a unique options.key/)
+  assert.match(description, /If support is missing, unknown or not eligible, use the ordinary user-question flow/)
+  assert.match(description, /On conflict, expiry, withdrawal or an earlier human answer, reread current state/)
+  assert.match(description, /Never self-enable or renew the owner policy/)
+  assert.match(description, /preserve result, references, await flags and task constraints/)
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
+  const enabled = await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'enable', expectedRevision: 0, expectedScope: initial.instance, action: 'enable', durationMs: null }, signal())
+  assert.equal(enabled.snapshot.effective.status, 'active')
+  assert.equal(JSON.stringify(surface()), before, 'authorization affects outcomes, never tool schema or fixed guidance')
+  const disabled = await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'disable', expectedRevision: 1, expectedScope: initial.instance, action: 'disable' }, signal())
+  assert.equal(disabled.snapshot.effective.status, 'disabled')
+  assert.equal(JSON.stringify(surface()), before)
+  assert.equal(f.ctx.tools.get('mattpocock_record').description, description)
+})
+
 test('an assignment grant accepts an omitted workflowId and omitted ticketIds', async t => {
   const f = await readyMounted(t)
   // The rejection is the real session check, never the ticket parser: the omitted fields parsed.

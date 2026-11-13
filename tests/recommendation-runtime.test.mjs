@@ -212,6 +212,29 @@ async function candidateQuestion(f, decisionId = 'D', value = question, expected
   return { operationId: 'adopt-' + decisionId, expectedRevision: put.snapshot.businessRevision, workflowId: 'flow', decisionId, action: 'adopt-decision-recommendation', value: { optionKey: c.optionKey, decisionRevision: c.decisionRevision, policyEpochId: c.policyEpochId, policyRevision: c.policyRevision } }
 }
 
+test('a human answer committed before explicit adoption wins under both business CAS and source revision fences', async t => {
+  const f = await enabledRuntime(t), command = await candidateQuestion(f)
+  const candidate = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  assert.equal(candidate.collections.decision.rows[0].preview.recommendationSupport.status, 'candidate')
+  const answered = await f.runtime.applyInstrument(operator, 'root', {
+    operationId: 'human-answer', expectedRevision: command.expectedRevision, workflowId: 'flow', decisionId: 'D', action: 'put-decision',
+    references: ['human:answer-source'], value: { ...question, pending: false, result: 'Choose A; wait for maintainer input, do not install or modify the SDK.' },
+  }, signal())
+  await assert.rejects(f.runtime.applyInstrument(caller('root'), 'root', command, signal()), e => e.code === 'revision-conflict')
+  const current = await f.runtime.readModelCurrent(caller('root'), 'root', signal())
+  assert.equal(current.collections.decision.rows[0].preview.recommendationSupport.status, 'not-eligible')
+  // Refreshing the global CAS is not permission to overwrite a changed source decision.
+  await assert.rejects(f.runtime.applyInstrument(caller('root'), 'root', { ...command, operationId: 'fresh-cas-old-candidate', expectedRevision: current.revisions.business }, signal()), e => e.code === 'revision-conflict')
+  const after = await f.read(), row = after.records.decisions[0]
+  assert.equal(after.records.businessRevision, answered.snapshot.businessRevision)
+  assert.equal(row.value.result, 'Choose A; wait for maintainer input, do not install or modify the SDK.')
+  assert.equal(row.value.pending, false)
+  assert.equal(row.value.awaitingImplementation, true)
+  assert.equal(row.policySelection, undefined)
+  assert.equal(row.history.at(-1).author.kind, 'user')
+  assert.deepEqual(row.history.at(-1).references, ['human:answer-source'])
+})
+
 test('policy read failure preserves ordinary question writes but never lends cached active authorization or permits adoption', async t => {
   const f = await enabledRuntime(t), command = await candidateQuestion(f)
   const first = await f.runtime.preStep(caller('root'), signal(), [], '1:1')
