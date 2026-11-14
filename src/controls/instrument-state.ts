@@ -1,4 +1,6 @@
 import type { InstrumentInstance } from './state.js'
+import type { DecisionResultValue } from './decision-result.js'
+import { parseDecisionResult } from './decision-result.js'
 import type { DecisionPolicyBinding, DecisionPolicySelection, DecisionPolicyEventEffect } from './recommendation-contract.js'
 import { parseDecisionPolicyBinding, parseDecisionPolicySelection, parseDecisionPolicyEventEffect } from './recommendation-contract.js'
 import { array, boolean, boundedArray, ControlsError, freeze, id, invalid, record, revision } from './validation.js'
@@ -32,7 +34,7 @@ export interface DecisionValue {
   readonly recommendation?: string | null
   readonly impact?: string | null
   readonly addressee?: { readonly kind: 'user' | 'agent' | 'unspecified'; readonly principalId?: string | null; readonly label?: string | null }
-  readonly result?: string | null
+  readonly result?: DecisionResultValue
 }
 export interface DecisionViewValue { readonly read: boolean; readonly hidden: boolean }
 interface CommandBase { readonly operationId: string; readonly expectedRevision: number; readonly workflowId: string; readonly references?: readonly string[] }
@@ -180,7 +182,8 @@ function decisionValue(value: unknown): DecisionValue {
   const raw = record(value, 'decision', ['question', 'status', 'pending', 'awaitingImplementation', 'ticketIds', 'context', 'options', 'recommendation', 'impact', 'addressee', 'result'])
   const optional: Record<string, unknown> = {}
   for (const key of ['pending', 'awaitingImplementation']) if (Object.hasOwn(raw, key)) optional[key] = boolean(raw[key], key)
-  for (const key of ['context', 'recommendation', 'impact', 'result']) if (Object.hasOwn(raw, key)) optional[key] = nullableText(raw[key], key)
+  for (const key of ['context', 'recommendation', 'impact']) if (Object.hasOwn(raw, key)) optional[key] = nullableText(raw[key], key)
+  if (Object.hasOwn(raw, 'result')) optional.result = raw.result !== null && typeof raw.result === 'object' ? parseDecisionResult(raw.result) : nullableText(raw.result, 'result')
   if (Object.hasOwn(raw, 'ticketIds')) optional.ticketIds = ids(raw.ticketIds, 'decision ticketIds')
   if (Object.hasOwn(raw, 'options')) {
     const options = boundedArray(raw.options, 'decision options', 64).map(value => {
