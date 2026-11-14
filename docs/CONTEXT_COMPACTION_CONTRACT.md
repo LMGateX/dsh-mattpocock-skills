@@ -23,6 +23,7 @@
 - notices 只表达需要处置的变化／动作，不再次逐行转述 facts。普通正常结束 native execution 默认只给数量与受权读取入口；live、异常、nativeStops、未知结局、关联未结义务仍突出。仅是模型投影，不删除／更写任何执行或业务源。ended/completed 不是业务完成或资源释放证明。
 - 已知空类别可统一紧凑表示，并明确其含义；不得与缺能力、restricted、unknown、not-recorded 或 null 合并。集合计数与覆盖语义保持诚实；查询模板可集中一次，但每个非空／省略明细必须能通过当前真实权限下的精确请求恢复。不得将 assigned child 引导到 coordinator-only history。
 - 默认下沉配置继承／display 来源、冗长 Git 核对材料和普通执行诊断到现有受权工具读取；保留有效开关及其实际 unavailable／unsupported 原因、配置修订、身份／scope、T/S 的 capacity／used／下界与 depth、能力／健康、待决／awaiting／结果条件／pending-release／待处置树的计数与关键行。大字段和长身份不得伪装成完整值或换成另一可执行 ID。
+- 下沉仅针对现有权限下确有恢复路径的材料：effective policy 经 record read 概览／policy.detail，worktree-observation Git check 经当前 query／返回 detail。native-execution 当前来源为 live-current-only、并非 durable detail；普通短行可由当前 query 恢复，长诊断若仅有协调者历史覆盖，不向 assigned 宣称可取。resource 物理文件列表在现有模型工具也仅计数，故保留原有有界物理 facts 投影，不把它删去后伪称有完整恢复。本批不新增恢复 action 或扩大权限。
 - 所有被省略尾部、普通结束记录、细节下沉及实际物理事实的变化仍须进入去重／当前事实指纹；不能只比较可见前缀／数量。不为缩字删除真实 provenance 或 unknown 标记。只对已知空且无行动意义的重复元数据精简；内部完整检测不能依赖精简正文丢失的字段。
 - 消费本体仍保持 preStep／postExecute 的固定 durability frontier、每次当前权限与来源新鲜度、取消、同 admitted step 至多一份、实际可见 baseline 判断、compaction／冷恢复重装、stale／timeout 明确覆盖。**不做 delta-only、不永久仅注入一次、不自造历史消息替换／删除器，不以缓存命中当送达。**
 
