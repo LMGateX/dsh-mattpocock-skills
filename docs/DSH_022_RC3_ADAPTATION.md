@@ -14,6 +14,8 @@
 
 合法 continuable／external direct-child catalog 行允许 RC3 可选 `name`；验证已知字段类型，不把合法新字段转成 invalid diagnostic，也不放弃畸形／未知 mode／来源失败的诚实覆盖提示。保留历史无 name 行、one-shot/external 处理、直接目录每节点一次的预算与合并，不改走每次读取整树枚举。UI 主名称仍取 `projectionValues.subagent.label`，不迁成 parent catalog.name。
 
+真实RC3 SDK核对补充：stock服务无公开`listChildren`方法，内部同名函数也未从包根导出，不得deep-import。服务自身提供direct方法时沿该能力；对具备本批rootOf能力的真实RC3，以公开`sessionQuery.observeSession(parent,{signal})`读取`projections.values.subagentCatalog`，在既有后台membership节点/singleflight/预算内完成，成功、缺投影、异常、取消和卸载均释放observation lease。此Adapter不把来源读取移到普通count/freshness调用，不新增版本分支；旧服务的既有listDescendants fallback单列为降级能力，不冒称stock RC3有direct方法。来源与首次探针限度的更正见[兼容核对](<DSH_022_RC3_COMPATIBILITY.md#1-direct-catalog-接缝遇到新目录字段会退化>)。
+
 ### C2 冷祖先与实时运行归属
 
 S 必须覆盖 owner 子树里所有真正在跑的本地子代理，不能因创建祖先 cold／退出而漏计后仍报 known。实时执行仍仅取 exact live Agent.status；idle resident、external、其他 owner、普通 Session fork 不计入。root owner 的可信 runtime-tree 成员事实与 durable creator 父链分别解释，不能把同树的 sibling 自动算作某个中间 owner 的后代。

@@ -18,9 +18,11 @@
 
 ## 已确认：不能直接宣称完整兼容
 
-### 1. 默认 S 计数遇到新目录字段会退化
+### 1. direct-catalog 接缝遇到新目录字段会退化
 
-插件 [nativeDirectRows](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/0cc34713a2f08be5782a5504904f20f12ef19c7c/src/host.ts#L123-L141>) 对直接子代理目录行只接受 `id/createdAt/mode/label`。当前 counter 优先调用 `listChildren`，不是仅在罕见 fallback 使用该解析器；RC3 新增的 `name` 字段会触发未知键拒绝，变成 `diagnostic: invalid`，继而令 `S.countKnown=false`，reason 为 `native-subagent-diagnostic-invalid`。仍可保留 live Agent 发现的运行数量下界，不能描述成所有子代理计数归零或原生派发被阻断。[读取路径与覆盖标记](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/0cc34713a2f08be5782a5504904f20f12ef19c7c/src/host.ts#L393-L447>)
+> **后续真实SDK核对更正（2026-11-14）：** RC3原生`SubagentRuntime`实例没有`listChildren`方法；同名函数存在于内部实现但不从包根公开导出。下段“优先调用”描述插件的能力分支，不是stock RC3默认服务实际经过的路径。首次name探针只证明该direct-shaped分支及严格行解析的风险，不能据此声称未适配stock RC3默认已因name降级；它原会fallback到公开`listDescendants`。本批direct发现改从已公开的`sessionQuery.observeSession(parent).projections.values.subagentCatalog`取得同一目录，保持每membership节点后台一次/singleflight预算，并释放observation lease；不导入私有helper，不把整树fallback移到普通读。来源：[根导出](<https://github.com/deepseek-ai/deepseek-harness/blob/38a6a5c965aa99ab525161efb7cc5cf1fe62fced/packages/subagent/subagent/src/index.ts#L71-L110>)、[公开查询的上游调用及using释放](<https://github.com/deepseek-ai/deepseek-harness/blob/38a6a5c965aa99ab525161efb7cc5cf1fe62fced/packages/subagent/subagent/src/list-children.ts#L26-L56>)。
+
+插件 [nativeDirectRows](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/0cc34713a2f08be5782a5504904f20f12ef19c7c/src/host.ts#L123-L141>) 对直接子代理目录行只接受 `id/createdAt/mode/label`。当服务提供 `listChildren` 时，counter 优先选择这一能力分支并使用该解析器；RC3 新增的 `name` 字段会在此分支触发未知键拒绝，变成 `diagnostic: invalid`，继而令 `S.countKnown=false`，reason 为 `native-subagent-diagnostic-invalid`。仍可保留 live Agent 发现的运行数量下界，不能描述成所有子代理计数归零或原生派发被阻断。[读取路径与覆盖标记](<https://github.com/LMGateX/dsh-mattpocock-skills/blob/0cc34713a2f08be5782a5504904f20f12ef19c7c/src/host.ts#L393-L447>)
 
 上游 [目录行类型](<https://github.com/deepseek-ai/deepseek-harness/blob/38a6a5c965aa99ab525161efb7cc5cf1fe62fced/packages/subagent/subagent/src/projection-types.ts#L9-L43>) 明确给 continuable/external 行增加可选 `name`。局部内存探针使用插件原 counter/validation 代码：无 `name` 对照为 `known=true/running=1`；带 `name: agent-1` 的合成 RC3 行变为 `known=false/running=1`，reason 与上述一致。该探针没有启动完整 RC3 SDK。
 
@@ -58,5 +60,5 @@ RC3 原生子代理 tab 仍从 `projectionValues.subagent.label` 取标题，不
 
 - 本轮仅检查与局部探针，不改产品代码、不更新开发依赖/lock，不打新发布包。
 - 没有安装 RC3 npm 依赖闭包、没有执行完整 RC3 SDK 的 Host/Client 严格类型、原生装配、完整回归、精确归档与 GUI 验收；不能挪用历史 1313/1313 作为 RC3 结果。
-- 适配后应先补默认 `listChildren` 新字段、冷祖先链计数与 delegate 旧/新参数的真实 RED→GREEN，再做目标宿主类型/生命周期/权限、客户端原生插槽、source/lib 与精确包门禁；现有 RC1 固定的测试装配/版本断言不能原封不动用作 RC3 验收。发布、安装、当前 GUI 激活另行授权和核验。
+- 适配后应先补 direct 目录新字段（stock RC3 从公开 SessionQuery 投影读取）、冷祖先链计数与 delegate 旧/新参数的真实 RED→GREEN，再做目标宿主类型/生命周期/权限、客户端原生插槽、source/lib 与精确包门禁；现有 RC1 固定的测试装配/版本断言不能原封不动用作 RC3 验收。发布、安装、当前 GUI 激活另行授权和核验。
 - 本次不以旧研究文档中的发布/安装许可扩大当前用户的“检查适配”请求，不改写既有 dirty 文档或迁移业务记录。
