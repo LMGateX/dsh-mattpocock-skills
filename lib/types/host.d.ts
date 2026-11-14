@@ -267,6 +267,7 @@ export interface HostPorts {
         readonly reason: string | null;
         readonly available: boolean;
         readonly memberSessionIds?: readonly string[];
+        readonly liveMembershipToken?: string;
     };
     openRuntimeStorage<T extends {
         readonly revision: number;
