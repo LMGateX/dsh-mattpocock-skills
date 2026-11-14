@@ -125,27 +125,27 @@ function provenance(row: { readonly provenance: InstrumentCurrentProvenance } | 
 const CATEGORY_TEXT_BUDGET = 1600
 const FIELD_TEXT_BUDGET = 384
 interface QueryLocator { readonly [key: string]: unknown }
-// Only these categories are actually captured as history rows; other briefed fields must not
-// advertise a query that would return an empty notRecorded page.
-const RECORDED_HISTORY_KINDS: Readonly<Record<string, string>> = { workflows: 'workflow', tickets: 'ticket', decisions: 'decision',
-  'status-summary': 'workflow', 'ticket-window': 'ticket-window', executions: 'execution', resources: 'resource', worktree: 'worktree',
+// Continuations recover the current authorized representation, never coordinator-only history.
+const CURRENT_KINDS: Readonly<Record<string, string>> = { workflows: 'workflow', tickets: 'ticket', decisions: 'decision',
+  taskReferences: 'task-reference', 'status-summary': 'status-count', 'ticket-window': 'window-ticket', executions: 'window-execution',
+  resources: 'resource', worktree: 'worktree-binding', 'worktree-observations': 'worktree-observation', 'native-stops': 'native-stop',
   nativeExecutions: 'native-execution' }
-function historyLocator(kind: string, row?: Record<string, unknown>): QueryLocator | undefined {
-  // Current reference lookup is available to assigned readers too; history is coordinator-only.
-  if (kind === 'taskReferences' || kind === 'decisions') return { tool: 'mattpocock_record', action: 'read', query: { kind: kind === 'decisions' ? 'decision' : 'task-reference',
-    ...(row === undefined ? {} : { recordId: JSON.stringify([row.workflowId, kind === 'decisions' ? row.decisionId : row.localTicketId]) }), limit: 20 } }
-  const name = RECORDED_HISTORY_KINDS[kind]
+function currentLocator(kind: string, row?: Record<string, unknown>): QueryLocator | undefined {
+  const name = CURRENT_KINDS[kind]
   if (name === undefined) return undefined
   let recordId: string | undefined
   if (row) {
     if (typeof row.bindingId === 'string') recordId = row.bindingId
+    else if (typeof row.observationId === 'string') recordId = row.observationId
     else if (typeof row.resourceId === 'string') recordId = row.resourceId
-    else if (typeof row.executionId === 'string') recordId = typeof row.generation === 'number' ? JSON.stringify([row.executionId, row.generation]) : row.executionId
+    else if (typeof row.executionId === 'string') recordId = row.executionId
+    else if (typeof row.sessionId === 'string') recordId = row.sessionId
     else if (typeof row.localTicketId === 'string') recordId = JSON.stringify([row.workflowId, row.localTicketId])
     else if (typeof row.decisionId === 'string') recordId = JSON.stringify([row.workflowId, row.decisionId])
+    else if (typeof row.axisKey === 'string') recordId = JSON.stringify([row.workflowId, row.axisKey])
     else if (typeof row.workflowId === 'string') recordId = row.workflowId
   }
-  return { tool: 'mattpocock_history', action: 'query', query: { kind: name, ...(recordId === undefined ? {} : { recordId }), limit: 20 } }
+  return { tool: 'mattpocock_record', action: 'read', query: { kind: name, ...(recordId === undefined ? {} : { recordId }), limit: 20 } }
 }
 function brief(value: unknown, query: QueryLocator | undefined, depth = 0, textBudget = FIELD_TEXT_BUDGET): unknown {
   const located = query === undefined ? {} : { query }
@@ -209,14 +209,14 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
   // obligation even though its compatibility count is still shown. Other categories
   // retain the smaller allocation that reserves space for task references.
   const textBudget = kind === 'decisions' ? 1850 : CATEGORY_TEXT_BUDGET
-  const query = historyLocator(kind)
+  const query = currentLocator(kind)
   const shown: unknown[] = []
   const currentFactsSignature = currentSignature(rows)
   const envelope = (): unknown => ({ rows: shown, shown: shown.length, total: rows.length, more: shown.length < rows.length,
     ...(query === undefined ? {} : { query }), currentFactsSignature, ...(counts === undefined ? {} : { counts }) })
   for (let index = 0; index < rows.length; index++) {
     const raw = rows[index] as Record<string, unknown>
-    const locator = historyLocator(kind, raw)
+    const locator = currentLocator(kind, raw)
     if (kind === 'decisions') {
       shown.push(decisionRow(raw, locator))
       if (canonical(envelope()).length <= textBudget) continue
