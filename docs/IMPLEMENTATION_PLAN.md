@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.23.0 上下文精简（2026-11-14，先文档）
+
+[本批契约](<CONTEXT_COMPACTION_CONTRACT.md>)固定 D→G/C/V→串行集成→独立Standards/Spec→源码/唯一包门禁→push/Release/下载回验。公开8ff0d7e为基线，新隔离integration保护原dirty树和既有审计工树；D单独提交后，G工具描述/host purpose与C消费投影/协议各自独立单writer工树/subagent，V准备精确RC3与保护快照。每lane以现有公开seams竖切RED→GREEN；共享测试迁移串行协调。主代理负责0.23.0版本、生成物、完整source和同一accepted包、公开types/原生/headless及计量闭合。保留字段/权限/义务/完整变化检测与baseline；工具envelope及旧cursor字段不变。本机安装/激活、Profile/共享SDK/服务改动、生产迁移/清理、npm publish明确排除。当前只是固定授权与契约，不预记完成。
+
 ## 0.22.0 模型工具 Interface（2026-11-14，先文档）
 
 [本批契约](<MODEL_INTERFACE_CONTRACT.md>)固定D→R/C/O/G→V→P→Release；本机安装排除。基线c4b64e4，新隔离integration保护原dirty树；D单独提交后，R结果V5、C消费／Client、O输出／target／next／audit、G工具说明独立单writer/subagent并行，C集成依赖R。按公开解析／真实工具／存储重开／消费／React与RC3 seams保留RED→GREEN，串行集成和独立Standards／Spec必改关闭。V执行完整source／Host／Client strict／原生／headless和生成物；P冻结clean source、唯一0.22.0 accepted包与四sidecars，同包完整门禁后非force push／新annotated tag／五资产Release及下载逐字节strict回验。不安装本机／改Profile／重启／改SDK／vendor／生产数据；状态按实际结果记录，不复用旧1348计数。

@@ -12,6 +12,10 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.23.0 模型上下文精简（2026-11-14，已认可；文档先行、隔离开发／测试、push／Release，不安装本机）
+
+所有者认可精简检查的第一、第二批；唯一细化契约为 [CONTEXT_COMPACTION_CONTRACT](<CONTEXT_COMPACTION_CONTRACT.md>)。固定“工具调用契约／当前行动摘要／显式受权审计”分层，按能力裁剪重复说明、公共command单次定义、OFF短协议、notices不重复facts、已知空紧凑表示和非行动明细下沉；保留类型、关键义务与精确受权恢复，完整尾部变化仍参与检测。不改工具envelope v2、业务存储／V5、权限／CAS／generation／幂等／durability frontier、baseline／stale恢复，不delta-only或永久只注入一次。先文档，再新隔离工树/subagents竖切RED→GREEN、串行集成与独立双轴，完整source／唯一包／RC3 strict及原生headless后非force push、新tag和五资产Release／下载回验。**暂不为本机DSH安装或激活，不改现有Profile／共享SDK／vendor／channel/provider precedence，不重启当前服务，不启用管理或迁移清理生产数据，不npm publish或覆盖旧资产。**
+
 ## 0.22.0 模型工具 Interface（2026-11-14，已认可；文档先行、隔离开发／测试、push／Release，不安装本机）
 
 所有者认可全工具问题与设计合理性审查；唯一细化契约为 [MODEL_INTERFACE_CONTRACT](<MODEL_INTERFACE_CONTRACT.md>)。先固定R结构化决策结果／按需V5兼容、O精确小结构／独立previews／target与next／audit诚实覆盖、G准确工具契约及合法当前续读，再在独立工树/subagents沿公开seams竖切RED→GREEN、串行集成与独立双轴复核。保持旧文本、原身份／权限／CAS／幂等／generation／当前消费前沿，不全面对象化或放宽校验；写V5后旧版回滚需兼容数据。源码／唯一精确包／RC3 strict与完整门禁通过后非force push、新0.22.0 tag与五资产Release及下载回验。**不为本机DSH／Profile安装或激活，不改共享SDK／vendor／channel/provider precedence，不重启当前服务、不启用管理或迁移／清理生产数据，不npm publish或覆盖旧资产。**当前仅固定授权与契约，不冒称完成。
