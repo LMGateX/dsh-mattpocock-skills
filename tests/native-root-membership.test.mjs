@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mountedFixture, caller, signal, actualAgent, deferred } from './fixtures/runtime-host.mjs'
+import { mountedFixture, caller, signal, actualAgent, deferred, core } from './fixtures/runtime-host.mjs'
 
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)) }
 const runner = (id, parent) => Object.assign(actualAgent(id, { parent, managed: true }), { status: 'running' })
@@ -23,6 +23,7 @@ test('root owner counts a runner below two cold creators on its first mounted re
   assert.equal(first.windows.S.used, 1)
   assert.equal(first.windows.S.countKnown, true)
   assert.deepEqual(first.windows.S.depth, { direct: 0, deeper: 0, unknown: 1, levels: {} })
+  await assert.rejects(f.runtime.readSession(caller('leaf'), 'leaf', signal()), /No cold session log/, 'runtime-root count facts cannot substitute for current business lineage authorization')
   await settle(); await read()
   const baseline = calls
   for (let i = 0; i < 4; i++) assert.equal((await read()).windows.S.used, 1)
@@ -245,4 +246,36 @@ test('the A to B live cut rebuilds when runtime ownership changes after the coun
   const snapshot = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snapshot.windows.S.used, 0, 'the old body cannot be stamped with a new ownership token')
   assert.equal(snapshot.windows.S.countKnown, true)
+})
+
+test('runtime-root event attribution does not rebuild the live index for every status edge', async t => {
+  let lists = 0
+  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root }) {
+    ctx.set('agents', { get: id => agents.get(id), list() { lists++; return [...agents.values()] } })
+    ctx.provide('subagents', { rootOf() { return root }, async listChildren() { return [direct('child')] } })
+  } })
+  await f.mounted.ports.nativeSubagentActivity('root'); await settle()
+  const baseline = lists
+  for (let i = 0; i < 100; i++) f.ctx.emit('agent/status', { agent: f.child, status: 'running' })
+  assert.equal(lists, baseline, 'root routing must use exact registry get, leaving reconciliation coalesced')
+})
+
+test('verified other-root runtime members do not rebuild an owner full projection', async t => {
+  const ownership = new Map()
+  const f = await mountedFixture(t, { configureBeforeMount({ ctx, root, child }) {
+    ownership.set(child, root)
+    ctx.provide('subagents', { rootOf(agent) { return ownership.get(agent) ?? agent }, async listChildren() { return [direct('child')] } })
+  } })
+  const read = () => f.runtime.readSession(caller('root'), 'root', signal())
+  await read(); await settle(); await read()
+  let reads = 0
+  const fullRead = core.SessionInstruments.prototype.read
+  core.SessionInstruments.prototype.read = async function(...args) { reads++; return fullRead.apply(this, args) }
+  t.after(() => { core.SessionInstruments.prototype.read = fullRead })
+  const other = actualAgent('other'), outside = runner('other-child', 'other')
+  f.agents.set('other', other); f.agents.set(outside.id, outside); ownership.set(outside, other)
+  await read()
+  assert.equal(reads, 0, 'exact other-root proof is not a dependency of this owner body')
+  f.agents.delete(outside.id); await read()
+  assert.equal(reads, 0)
 })

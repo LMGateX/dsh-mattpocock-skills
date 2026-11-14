@@ -12,7 +12,7 @@ const waitFor = async predicate => {
 }
 const direct = (id, mode = 'continuable') => ({ id, createdAt: 0, mode, ...(mode === 'continuable' ? { label: id } : {}) })
 const running = (id, parent = 'root') => { const agent = actualAgent(id, { parent, managed: true }); agent.status = 'running'; return agent }
-// SubagentRuntime.listChildren returns public SubagentCatalogEntry rows, without kind/activity.
+// Public SubagentCatalogEntry rows (RC3 SessionQuery projection or legacy direct service) have no kind/activity.
 test('mounted readSession accepts ordinary direct-child catalog rows without a kind discriminator', async t => {
   let walks = 0
   const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {

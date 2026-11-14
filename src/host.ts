@@ -337,6 +337,7 @@ export function observeNativeTurn(events: readonly SessionEvent[]): NativeTurnOb
  */
 class NativeRunningCounter {
   readonly #liveAgents: () => readonly Agent[]
+  readonly #liveAgent: (sessionId: string) => Agent | undefined
   readonly #lister: () => NativeSubagentLister | undefined
   readonly #directChildren: ((owner: SessionId, signal?: AbortSignal) => Promise<unknown>) | undefined
   readonly #signal: AbortSignal | undefined
@@ -363,8 +364,8 @@ class NativeRunningCounter {
     return token
   }
   #settles = 0
-  constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly lister: () => NativeSubagentLister | undefined; readonly directChildren?: (owner: SessionId, signal?: AbortSignal) => Promise<unknown>; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
-    this.#liveAgents = options.liveAgents; this.#lister = options.lister; this.#directChildren = options.directChildren; this.#signal = options.signal; this.#onStop = options.onStop
+  constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly liveAgent: (sessionId: string) => Agent | undefined; readonly lister: () => NativeSubagentLister | undefined; readonly directChildren?: (owner: SessionId, signal?: AbortSignal) => Promise<unknown>; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
+    this.#liveAgents = options.liveAgents; this.#liveAgent = options.liveAgent; this.#lister = options.lister; this.#directChildren = options.directChildren; this.#signal = options.signal; this.#onStop = options.onStop
     this.#turnReader = options.turnReader ?? (async () => { throw new ControlsError('feature-disabled', 'child session log observation is unavailable') })
   }
   /** Serialize per-owner refreshes so a read after a node awaits that node's walk, never a second one. */
@@ -593,18 +594,27 @@ class NativeRunningCounter {
         || String(found.session.header.id) !== String(found.id) || service!.rootOf!(found) !== found) {
         throw new Error('native runtime root is not the exact registry root')
       }
-      facts.push([String(agent.id), this.#identity(agent), String(found.id), this.#identity(found)])
       return found
     }
     if (service?.rootOf !== undefined) {
-      try { if (ownerAgent === undefined) throw new Error('owner is not live'); root = rootOf(ownerAgent) }
+      try {
+        if (ownerAgent === undefined) throw new Error('owner is not live')
+        root = rootOf(ownerAgent)
+        facts.push([owner, this.#identity(ownerAgent), String(root.id), this.#identity(root)])
+      }
       catch { reason = 'native-subagent-runtime-root-unavailable' }
     }
     for (const agent of live.values()) {
       if (String(agent.id) === owner || agent.session.header.origin !== 'subagent') continue
       let sameTree: boolean | undefined
       if (service?.rootOf !== undefined) {
-        try { const candidateRoot = rootOf(agent); if (root !== undefined) sameTree = candidateRoot === root }
+        try {
+          const candidateRoot = rootOf(agent)
+          if (root !== undefined) sameTree = candidateRoot === root
+          // A verified different tree is not an owner dependency. Its later entry into this
+          // tree still changes the next token; rejected/unclosed evidence remains unknown.
+          if (sameTree !== false) facts.push([String(agent.id), this.#identity(agent), String(candidateRoot.id), this.#identity(candidateRoot)])
+        }
         catch { reason = 'native-subagent-runtime-root-unavailable' }
       }
       if (sameTree === false) continue
@@ -660,11 +670,11 @@ class NativeRunningCounter {
     }
     direct(sessionId)
     if (agent !== undefined) {
-      const service = this.#lister(), live = this.#liveIndex()
-      if (service?.rootOf !== undefined && live.get(sessionId) === agent) {
+      const service = this.#lister()
+      if (service?.rootOf !== undefined && this.#liveAgent(sessionId) === agent) {
         try {
           const root = service.rootOf(agent)
-          if (live.get(String(root.id)) === root && service.rootOf(root) === root) direct(String(root.id))
+          if (this.#liveAgent(String(root.id)) === root && service.rootOf(root) === root) direct(String(root.id))
         } catch { /* Refused runtime facts cannot manufacture owner attribution. */ }
       }
     }
@@ -1692,7 +1702,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         return observation.projections?.values.subagentCatalog
       } finally { observation[Symbol.dispose]() }
     }
-    const nativeCounter = new NativeRunningCounter({ liveAgents: () => ctx.agents.list(), lister: () => nativeSubagentLister(ctx), directChildren, signal: lifetime.signal, onStop: event => forwardNativeStop(event), turnReader: readNativeTurn })
+    const nativeCounter = new NativeRunningCounter({ liveAgents: () => ctx.agents.list(), liveAgent: sessionId => ctx.agents.get(SessionId(sessionId)), lister: () => nativeSubagentLister(ctx), directChildren, signal: lifetime.signal, onStop: event => forwardNativeStop(event), turnReader: readNativeTurn })
     const readNativeActivity = async (sessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> => {
       const ownerSessionId = id(sessionId, 'sessionId')
       const control = signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal])
