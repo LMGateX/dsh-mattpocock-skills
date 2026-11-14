@@ -53,19 +53,20 @@ test('large history pages advance from the emitted row; detail distinguishes mis
       question: 'Question-' + index + ' ' + '\n'.repeat(9000), status: 'pending', pending: true,
       result: 'Canonical body ' + index + ' 漢😀\\"' } }, signal())
   const ids = [], sequences = []
-  let cursor, pages = 0
+  let next = { tool: 'mattpocock_history', request: { action: 'query', query: { kind: 'decision', limit: 100 } } }, pages = 0
   do {
-    const page = await read(f, 'mattpocock_history', { action: 'query', query: {
-      kind: 'decision', limit: 100, ...(cursor === undefined ? {} : { cursor }) } })
+    const page = await read(f, next.tool, next.request)
     if (pages === 0) t.diagnostic(JSON.stringify({ firstPageRows: page.rows.length, firstPageBytes: bytes(page), firstPageHasLocator: Boolean(page.rows[0]?.detail?.locator) }))
     assert.ok(page.rows.length > 0, 'nonempty retained query makes progress')
     for (const row of page.rows) { ids.push(row.historyId); sequences.push(row.sequence) }
     if (page.nextCursor !== null) assert.equal(page.nextCursor.after, page.rows.at(-1).sequence)
     assert.equal(page.more, page.nextCursor !== null)
-    cursor = page.nextCursor
+    assert.equal(page.next === null, !page.more)
+    if (page.next !== null) assert.deepEqual(page.next, { tool: 'mattpocock_history', request: { action: 'query', query: { kind: 'decision', limit: 100, cursor: page.nextCursor } } })
+    next = page.next
     pages++
     assert.ok(pages < 20)
-  } while (cursor !== null)
+  } while (next !== null)
   assert.ok(pages >= 2, 'large metadata hits the final JSON byte budget')
   assert.equal(ids.length, count)
   assert.equal(new Set(ids).size, count, 'byte packing never drops or duplicates a retained row')
@@ -74,6 +75,17 @@ test('large history pages advance from the emitted row; detail distinguishes mis
   const batch = await read(f, 'mattpocock_history', { action: 'detail', historyIds: allTwenty })
   assert.deepEqual(new Set([...batch.rows.map(row => row.historyId), ...batch.remainingHistoryIds]), new Set(allTwenty))
   assert.deepEqual(batch.missingHistoryIds, [])
+  const deliveredDetails = batch.rows.map(row => row.historyId)
+  let detailPage = batch, detailPages = 1
+  while (detailPage.next !== null) {
+    assert.deepEqual(detailPage.next, { tool: 'mattpocock_history', request: { action: 'detail', historyIds: detailPage.remainingHistoryIds } })
+    detailPage = await read(f, detailPage.next.tool, detailPage.next.request)
+    deliveredDetails.push(...detailPage.rows.map(row => row.historyId))
+    assert.ok(++detailPages <= 20)
+  }
+  assert.deepEqual(detailPage.remainingHistoryIds, [])
+  assert.deepEqual(new Set(deliveredDetails), new Set(allTwenty))
+  assert.equal(deliveredDetails.length, allTwenty.length, 'unmodified detail next requests never duplicate or omit deferred rows')
   t.diagnostic(JSON.stringify({ requestedLargeDetails: 20, deliveredRows: batch.rows.length, deferredRows: batch.remainingHistoryIds.length, resultBytes: bytes(batch) }))
   const selected = ids.slice(0, 19), absent = 'history-id-that-was-never-recorded'
   const detail = await read(f, 'mattpocock_history', { action: 'detail', historyIds: [...selected, absent] })

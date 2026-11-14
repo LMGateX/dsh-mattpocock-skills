@@ -178,6 +178,11 @@ test('resource reasons and receipt diagnostics retain exact small structures wit
   // Public adapter projection seam supplements (not replaces) the mounted tests above.
   const resource = await adapter.project('mattpocock_resource', who, { action: 'read' }, { resourceId: 'R', status: 'retained', actualCanRetire: { allowed: false, reasons: ['identity-unknown'], facts: null, ledgerRevision: 1, checkedAt: 2 } }, signal())
   assert.deepEqual(resource.actualCanRetire.reasons, ['identity-unknown'])
+  const largeReasons = Array.from({ length: 100 }, (_, index) => 'live-observation-reason-' + index)
+  const largeResource = await adapter.project('mattpocock_resource', who, { action: 'read' }, { resourceId: 'R', status: 'retained', actualCanRetire: { allowed: false, reasons: largeReasons, facts: null, ledgerRevision: 1, checkedAt: 2 } }, signal())
+  assert.equal(Object.hasOwn(largeResource.actualCanRetire, 'reasons'), false)
+  assert.equal(largeResource.actualCanRetire.previews.reasons.truncated, true)
+  assert.deepEqual(largeResource.actualCanRetire.observation, { coverage: 'live-current-only', read: { tool: 'mattpocock_resource', request: { action: 'read', resourceId: 'R' } } })
   const coverage = { records: 'unknown', reason: 'storage-unavailable' }
   const short = await adapter.project('mattpocock_window', who, { action: 'reserve' }, { appliedRevision: 2, generation: 1, ignored: false, coverage }, signal())
   assert.deepEqual(short.coverage, coverage)
@@ -249,4 +254,44 @@ test('adapter keeps critical row coverage exact while long explanatory reasons a
   const current = await adapter.current(caller('root'), undefined, signal())
   assert.equal(Object.hasOwn(current.collections.health, 'reason'), false)
   assert.equal(current.collections.health.previews.reason.totalBytes, Buffer.byteLength(reason))
+})
+
+test('mounted byte-deferred history detail next consumes exact remaining IDs from a legal retained fixture', async t => {
+  const f = await setup(t)
+  const history = await import('../src/controls/history.ts')
+  const who = await f.runtime.readModelIdentity(caller('root'), 'root', signal())
+  const suffix = 'history_' + createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0, 56)
+  const store = await f.mounted.ports.openUnitStorage(suffix, history.parseHistoryDocument)
+  const initial = await store.read() ?? history.initialHistoryDocument(who.instance)
+  const kind = '種'.repeat(256), sourceDomain = '源'.repeat(256), now = Date.now()
+  const rows = Array.from({ length: 20 }, (_, index) => ({
+    historyId: 'h:' + (initial.rows.length + index + 1), sequence: initial.rows.length + index + 1, capturedAt: now,
+    kind, recordId: '件'.repeat(250) + index, recordKey: '件'.repeat(250) + index, version: 1,
+    snapshot: { answer: 'retained fixture ' + index }, source: { kind: 'snapshot', domain: sourceDomain, author: null, recordedAt: null, coverage: 'snapshot-only' },
+    summary: index === 0 ? 'Exact short summary' : '\u0001'.repeat(1000), sourceDomain, purged: false,
+  }))
+  await store.compareAndSwap(initial.revision, history.parseHistoryDocument({ ...initial, revision: initial.revision + 1, rows: [...initial.rows, ...rows] }))
+  const ids = rows.map(row => row.historyId), delivered = []
+  let next = { tool: 'mattpocock_history', request: { action: 'detail', historyIds: ids } }, count = 0
+  while (next !== null) {
+    const page = await execute(f, next.tool, next.request)
+    assert.ok(page.rows.length > 0)
+    assert.deepEqual(page.missingHistoryIds, [])
+    if (count === 0) {
+      assert.ok(page.rows.length < 20, 'final JSON budget defers legal large metadata, not missing rows')
+      assert.ok(page.remainingHistoryIds.length > 0)
+      assert.notEqual(page.next, null)
+      t.diagnostic(JSON.stringify({ firstDetailRows: page.rows.length, deferred: page.remainingHistoryIds.length, bytes: Buffer.byteLength(JSON.stringify(page)) }))
+    }
+    for (const row of page.rows) {
+      if (row.historyId === ids[0]) assert.equal(row.summary, 'Exact short summary')
+      else { assert.equal(Object.hasOwn(row, 'summary'), false); assert.equal(row.previews.summary.totalBytes, 1000) }
+      delivered.push(row.historyId)
+    }
+    if (page.next !== null) assert.deepEqual(page.next, { tool: 'mattpocock_history', request: { action: 'detail', historyIds: page.remainingHistoryIds } })
+    next = page.next
+    assert.ok(++count <= 20)
+  }
+  assert.deepEqual(new Set(delivered), new Set(ids))
+  assert.equal(delivered.length, ids.length)
 })

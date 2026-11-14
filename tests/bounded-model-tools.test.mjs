@@ -349,10 +349,16 @@ test('all seven tools plus optional delegate and standalone audit bound direct a
   const direct=new Map()
   for(const [name,request] of requests)direct.set(name,value(await f.execute(name,{request})))
   assert.equal(direct.get('mattpocock_resource').actualCanRetire.allowed,false)
+  assert.ok(Array.isArray(direct.get('mattpocock_resource').actualCanRetire.reasons))
+  const liveObservation=direct.get('mattpocock_resource').actualCanRetire.observation
+  assert.deepEqual(liveObservation,{coverage:'live-current-only',read:{tool:'mattpocock_resource',request:{action:'read',resourceId:'R'}}})
+  assert.equal(value(await f.execute(liveObservation.read.tool,{request:liveObservation.read.request})).actualCanRetire.allowed,false)
   assert.equal(direct.get('mattpocock_resource').actualCanRetire.facts,null)
   assert.ok(Number.isFinite(direct.get('mattpocock_resource').checkedAt))
   assert.deepEqual(await content(f,direct.get('mattpocock_resource').detail.locator),resource)
-  assert.equal(direct.get('mattpocock_audit').coverage.persistence,'memory-only')
+  assert.equal(direct.get('mattpocock_audit').coverage.persistence,'mixed')
+  assert.deepEqual(direct.get('mattpocock_audit').coverage.summary,{persistence:'memory-only',status:'current'})
+  assert.deepEqual(direct.get('mattpocock_audit').coverage.episodes,{persistence:'durable',status:'not-recorded',retained:null})
   const observed=new Map()
   let outerToken,rootCall
   f.ctx.on('tools/post-execute',async(exec,result,next)=>{if(requests.some(([name])=>name===exec.name)&&exec.parent!==undefined)observed.set(exec.name,{parent:exec.parent,rootCallId:exec.rootCallId});return next()})
@@ -466,7 +472,9 @@ test('standalone audit pages every retained episode and never resurrects an evic
   const f=await mountedFixture(t,{seedUnits:new Map([['mattpocock_supervision_config',new Map([['state',config]])],['mattpocock_'+suffix,new Map([['state',state]])]])})
   await f.runtime.savePolicy(operator,policy(),0,signal())
   const current=value(await f.execute('mattpocock_audit',{request:{action:'read'}}))
-  assert.equal(current.coverage.persistence,'memory-only')
+  assert.equal(current.coverage.persistence,'mixed')
+  assert.deepEqual(current.coverage.summary,{persistence:'memory-only',status:'current'})
+  assert.deepEqual(current.coverage.episodes,{persistence:'durable',status:'current',retained:27})
   assert.equal(current.collections.episode.total,27,'the legacy latest-20 display cap is not a retained episode query limit')
   const seen=new Set()
   let cursor,chosen
