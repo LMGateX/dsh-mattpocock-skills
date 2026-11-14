@@ -1,5 +1,9 @@
 # DSH 宿主版本兼容性核对
 
+## 0.21.2 当前边界：DSH RC3适配
+
+最新范围固定在[RC3适配契约](<DSH_022_RC3_ADAPTATION.md>)：保留`engines.dsh >=0.2.2-rc.1`与Node `>=24.9.0`，本批精确运行目标仅`0.2.2-rc.3`。legacy格式fixture不是实际RC1 SDK验收，metadata范围接受高版本字符串也不证明其运行兼容。三项已确认差异、公开seam与隔离验证方法见[RC3核对](<DSH_022_RC3_COMPATIBILITY.md>)；实际完成门禁见[VERIFICATION](<VERIFICATION.md>)。本批不安装既有本机DSH/Profile，不改shared SDK、不重启GUI。以下各旧版本段落保留为历史，不覆盖最新范围。
+
 > **0.13.0 当前边界：** 最低宿主为 `~0.2.1-alpha.2`；`0.2.1-alpha.1` 兼容桥、旧 SDK 补丁与启动设置已删除。下文按版本保留的历史核对仍可阅读，但不能作为当前支持范围或安装许可。
 
 ## 0.2.2-rc.1 当前核对（插件 0.16.1）
