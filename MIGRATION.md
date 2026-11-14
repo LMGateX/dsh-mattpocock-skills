@@ -1,5 +1,12 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.21.2 DSH RC3 adaptation (no existing local installation)
+
+- Keeps DSH >=0.2.2-rc.1 and Node >=24.9.0; this batch targets the exact DSH 0.2.2-rc.3 SDK/runtime. Legacy request-shape fixtures are not an actual RC1 acceptance run, and admitted version strings are not measured future-host compatibility.
+- Only native catalog validation, the single-call continuable activation carrier and live running-count membership/freshness adapt. Native tab titles still use the existing subagent label. No business/storage/wire migration, policy enablement, vendor/channel change or shared SDK patch is included.
+- Exact runtime root membership is a count fact, not an authorization, task assignment or worktree binding. Incomplete creator depth can remain unknown independently of a proven total; a non-root owner cannot count same-tree siblings.
+- This batch authorizes isolated development, push and a new release only. **Do not install into the existing local DSH/Profile, force activation or restart the current GUI.** Historical install instructions below do not grant permission for this batch. Existing persistent-policy/old-reader rollback limits remain. See the [adaptation contract](<docs/DSH_022_RC3_ADAPTATION.md>) and [measured gates](<docs/VERIFICATION.md>).
+
 ## Plugin 0.21.1 recommendation adoption recovery
 
 - Same DSH >=0.2.2-rc.1 / Node >=24.9.0 prerequisites; only RC1 is tested. No tool request, Remote, storage version, policy default, vendor or channel migration. Existing persistent-policy/old-reader rollback limits below still apply.
