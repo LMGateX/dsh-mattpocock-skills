@@ -800,9 +800,8 @@ class NativeRunningCounter {
    * Reconciliation path: classify one suspect child from its own log tail. `observation === null`
    * means the log could not be read; both that and a missing `turn/end` are unobservable.
    */
-  async #classifySuspect(owner: string, run: NativeRunState, token: number, sessionId: string, runIdFact: string | null, generation: number): Promise<void> {
-    let observation: NativeTurnObservation | null = null
-    try { observation = await this.#turnReader(sessionId, this.#signal) } catch { observation = null }
+  async #classifySuspect(owner: string, run: NativeRunState, token: number, sessionId: string, runIdFact: string | null, generation: number, currentSource: () => boolean): Promise<void> {
+    const observation = await this.#observeRunTurn(sessionId, currentSource)
     const ledger = this.#ledgers.get(owner)
     if (ledger === undefined || this.#signal?.aborted === true) return
     // A newer activation, a late end or an already-settled check owns the child now: drop this result.
@@ -903,7 +902,8 @@ class NativeRunningCounter {
       if (ledger.drifts.length > 64) ledger.drifts.splice(0, ledger.drifts.length - 64)
       run.settle = ++this.#settles
       const token = run.settle, runIdFact = run.runId, generation = this.#generation(ledger, runId)
-      void this.#serial(owner, () => this.#classifySuspect(owner, run, token, runId, runIdFact, generation)).catch(() => undefined)
+      const currentSource = this.#turnSource(owner, runId, run)
+      void this.#serial(owner, () => this.#classifySuspect(owner, run, token, runId, runIdFact, generation, currentSource)).catch(() => undefined)
     }
   }
   async read(ownerSessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> {

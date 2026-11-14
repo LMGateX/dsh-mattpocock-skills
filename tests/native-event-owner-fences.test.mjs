@@ -236,3 +236,61 @@ test('a cold turn observation rechecks incarnation before opening its deferred e
   const stop = f.mounted.ports.nativeSubagentStops('root').find(row => row.itemId.includes('old-inflight-tail'))
   assert.equal(stop?.turn, null); assert.equal(stop?.outcome, 'refusal')
 })
+
+test('an observed lost root-only run cannot classify a replacement suffix through suspect reconciliation', { timeout: 5000 }, async t => {
+  const roots = new Map(), entered = Promise.withResolvers(), reply = Promise.withResolvers()
+  let eventReads = 0, disposals = 0
+  const observation = { inheritedEventCount: 0, get events() { eventReads++; return [{ type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'replacement only' } } } }] }, [Symbol.dispose]() { disposals++ } }
+  t.after(() => reply.resolve(observation))
+  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+    agents.delete('child'); agents.set('other', actualAgent('other'))
+    ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
+    ctx.set('sessionQuery', { async observeSession(id, options) {
+      if (String(id) === 'leaf' && options?.projectionMode === 'none') { entered.resolve(); return reply.promise }
+      throw new Error('unregistered ACL cold query')
+    } })
+  } })
+  // This locks the mounted counter seam, not independent Runtime ACL/history reads.
+  f.runtime.observe = async () => {}
+  const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
+  assert.equal((await f.mounted.ports.nativeSubagentActivity('root')).running, 1)
+  start(f, 'lost-root-only-old'); await settle()
+  f.agents.delete('leaf'); f.ctx.emit('agent/disposed', { agent: old })
+  await entered.promise
+  const replacement = running('leaf', 'other'); roots.set(replacement, f.agents.get('other')); f.agents.set(replacement.id, replacement)
+  reply.resolve(observation); await settle()
+  const stops = f.mounted.ports.nativeSubagentStops('root')
+  console.log('root-only suspect diagnostic', JSON.stringify({ stops, eventReads, disposals }))
+  assert.equal(disposals, 1)
+  assert.equal(stops.some(row => row.turn === 42 || row.diagnostic?.includes('NEW')), false, 'no replacement turn or diagnostic becomes evidence for the old root-only run')
+  assert.equal(eventReads, 0, 'counter does not open a suffix after its incarnation proof changed')
+  const oldStop = stops.find(row => row.itemId.includes('lost-root-only-old'))
+  assert(oldStop, 'the measured old lost run remains explicitly unobservable, not silently erased')
+  assert.equal(oldStop.itemId, 'leaf:lost-root-only-old:unknown')
+  assert.equal(oldStop.outcome, 'unobservable'); assert.equal(oldStop.turn, null); assert.equal(oldStop.diagnostic, null)
+  assert.equal(f.mounted.ports.nativeSubagentStops('other').some(row => row.itemId.includes('lost-root-only-old')), false)
+})
+
+test('a stable observed root-only lost run still classifies its own cold suffix', { timeout: 5000 }, async t => {
+  const roots = new Map(), entered = Promise.withResolvers(), reply = Promise.withResolvers()
+  let eventReads = 0, disposals = 0
+  const observation = { inheritedEventCount: 0, get events() { eventReads++; return [{ type: 'turn/end', seq: 7, data: { turn: 7, reason: { kind: 'error', error: { code: 'OLD', message: 'same old source' } } } }] }, [Symbol.dispose]() { disposals++ } }
+  t.after(() => reply.resolve(observation))
+  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+    agents.delete('child')
+    ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
+    ctx.set('sessionQuery', { async observeSession(id, options) {
+      if (String(id) === 'leaf' && options?.projectionMode === 'none') { entered.resolve(); return reply.promise }
+      throw new Error('unregistered ACL cold query')
+    } })
+  } })
+  f.runtime.observe = async () => {}
+  const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
+  assert.equal((await f.mounted.ports.nativeSubagentActivity('root')).running, 1)
+  start(f, 'stable-root-only-old'); await settle()
+  f.agents.delete('leaf'); f.ctx.emit('agent/disposed', { agent: old })
+  await entered.promise; reply.resolve(observation); await settle()
+  const stop = f.mounted.ports.nativeSubagentStops('root').find(row => row.itemId.includes('stable-root-only-old'))
+  assert(stop); assert.equal(stop.turn, 7); assert.equal(stop.outcome, 'error'); assert.equal(stop.diagnostic, 'OLD: same old source')
+  assert.equal(eventReads, 1); assert.equal(disposals, 1)
+})
