@@ -89,7 +89,7 @@ export interface NativeTurnObservation {
     readonly lastSeq: number | null;
 }
 /** Reads ONLY one child's own log. A rejected read is unobservable, never a guessed outcome. */
-export type NativeTurnReader = (sessionId: string, signal?: AbortSignal) => Promise<NativeTurnObservation>;
+export type NativeTurnReader = (sessionId: string, signal?: AbortSignal, currentSource?: () => boolean) => Promise<NativeTurnObservation>;
 /** One open terminal-outcome item the main agent is expected to handle. */
 export interface NativeSubagentStop {
     /** Durable dedup key: child session id + turn, plus the host runId when the host supplied one. */
