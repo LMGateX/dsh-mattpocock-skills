@@ -203,6 +203,8 @@ test('a queued old end preserves its published outcome without borrowing the rep
   const document = await f.runtimeStorage.read()
   assert(document.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('old-deferred-tail')))
   assert.equal(document.notifications.some(row => row.ownerSessionId === 'other' && row.notificationId.includes('old-deferred-tail')), false)
+  assert.equal(f.mounted.ports.nativeSubagentStops('other').some(row => row.itemId.includes('old-deferred-tail')), false)
+  assert.equal(document.nativeExecutions.some(row => row.runId === 'old-deferred-tail' && row.parentSessionId === 'other'), false)
   // Independently reviewed: a separate current ACL/identity read may inspect ownEvents.
   // Its global count is diagnostic, not authority to borrow that turn for this old outcome.
   console.log('deferred read diagnostics', JSON.stringify({ newReads, stop, nativeExecutions: document.nativeExecutions }))
