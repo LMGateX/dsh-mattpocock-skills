@@ -199,7 +199,9 @@ test('already-filtered binding rows project actual relations and latest provenan
   assert.match(result.text, /Still awaiting cleanup|cleanup-author|requestedCwd|actualCwd/)
   assert.match(result.text, /"sourceRevision":3/)
   assert.doesNotMatch(result.text, /obsolete-private-history-detail|"history":/)
-  assert.equal(view.worktreeRelations.rows[0].query.query.kind, 'worktree')
+  assert.equal(view.worktreeRelations.rows[0].query.tool, 'mattpocock_record')
+  assert.equal(view.worktreeRelations.rows[0].query.action, 'read')
+  assert.equal(view.worktreeRelations.rows[0].query.query.kind, 'worktree-binding')
   assert.equal(view.worktreeRelations.rows[0].query.query.recordId, 'one')
   f.current.worktreeBindings = [] // runtime filters only after an explicit cleanup report
   const clean = await f.feed.readForConsumption(identity)
