@@ -5,10 +5,10 @@ import type { WorkspaceControls, SessionControlsView } from './index.js'
 import type { InstrumentInstance } from './state.js'
 import type { InstrumentStorage } from './instrument-storage.js'
 import { initialInstrumentDocument, parseAuthor, parseInstrumentCommand, parseInstrumentDocument, projectInstrumentDocument, upgradeInstrumentDocument, parseInstrumentHistoryTarget, instrumentCommandMetadata } from './instrument-state.js'
-import type { InstrumentAuthor, InstrumentCommand, InstrumentDocument, InstrumentEvent, InstrumentState, WorkflowRecord, TicketRecord, TicketValue, TaskReferenceRecord, DecisionRecord, DecisionViewValue, DecisionValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, InstrumentDocumentV2, InstrumentDocumentV3, InstrumentDocumentV4, InstrumentDedup, InstrumentHistoryTarget, Change } from './instrument-state.js'
+import type { InstrumentAuthor, InstrumentCommand, InstrumentDocument, InstrumentEvent, InstrumentState, WorkflowRecord, TicketRecord, TicketValue, TaskReferenceRecord, DecisionRecord, DecisionViewValue, DecisionValue, InstrumentCompactInput, InstrumentPurgeHistoryInput, InstrumentCleanupCoverage, InstrumentDocumentV2, InstrumentDocumentV3, InstrumentDocumentV4, InstrumentDocumentV5, InstrumentDedup, InstrumentHistoryTarget, Change } from './instrument-state.js'
 import { array, ControlsError, freeze, id, increment, invalid, record, revision } from './validation.js'
 
-const RECORD_CAPABILITIES = freeze({ taskReferences: true as const, storageVersions: [1, 2, 3, 4] as const, decisionRecommendationAdoption: true as const })
+const RECORD_CAPABILITIES = freeze({ taskReferences: true as const, storageVersions: [1, 2, 3, 4, 5] as const, structuredDecisionResults: true as const, decisionRecommendationAdoption: true as const })
 
 export type InstrumentScope = { readonly kind: 'coordinator' }
   | { readonly kind: 'assigned'; readonly workflowId: string | null; readonly ticketIds: readonly string[] }
@@ -36,7 +36,7 @@ export interface InstrumentSnapshot {
   readonly workflows: readonly WorkflowRecord[]
   readonly tickets: readonly TicketRecord[]
   readonly taskReferences: readonly TaskReferenceRecord[]
-  readonly capabilities: { readonly taskReferences: true; readonly storageVersions: readonly [1, 2, 3, 4]; readonly decisionRecommendationAdoption: boolean }
+  readonly capabilities: { readonly taskReferences: true; readonly storageVersions: readonly [1, 2, 3, 4, 5]; readonly structuredDecisionResults: true; readonly decisionRecommendationAdoption: boolean }
   /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */
   readonly decisions: readonly (DecisionRecord & InstrumentDecisionTime & { readonly view: DecisionViewValue })[]
   readonly changes: readonly InstrumentEvent[]
@@ -100,7 +100,7 @@ function purgeInput(value:unknown):InstrumentPurgeHistoryInput {
   if(targets.length===0 || targets.length>100 || new Set(targets.map(t=>JSON.stringify(t))).size!==targets.length) invalid('source purge requires 1..100 unique explicit targets')
   return freeze({operationId:id(p.operationId,'operationId'),expectedRevision:revision(p.expectedRevision,'expected document revision'),throughRevision:revision(p.throughRevision,'throughRevision'),targets})
 }
-function checkpointPayload(document:InstrumentDocumentV2|InstrumentDocumentV3|InstrumentDocumentV4,state:InstrumentState):InstrumentState|Omit<InstrumentState,'taskReferences'> {
+function checkpointPayload(document:InstrumentDocumentV2|InstrumentDocumentV3|InstrumentDocumentV4|InstrumentDocumentV5,state:InstrumentState):InstrumentState|Omit<InstrumentState,'taskReferences'> {
   const {taskReferences:_references,...legacy}=state
   return document.schemaVersion>=3 ? state : legacy
 }
@@ -262,7 +262,7 @@ function currentIndex(document: InstrumentDocument): InstrumentCurrentIndex {
     workflowId: row.workflowId, revision: row.revision, value: row.value, provenance: provenance(row.history.at(-1)!) })
   for (const row of base?.tickets ?? []) tickets.set(key(row.workflowId, row.localTicketId), {
     workflowId: row.workflowId, localTicketId: row.localTicketId, revision: row.revision, value: row.value, provenance: provenance(row.history.at(-1)!) })
-  for (const row of document.schemaVersion === 3 || document.schemaVersion === 4 ? document.checkpoint.state.taskReferences : []) taskReferences.set(key(row.workflowId, row.localTicketId), {
+  for (const row of document.schemaVersion === 3 || document.schemaVersion === 4 || document.schemaVersion === 5 ? document.checkpoint.state.taskReferences : []) taskReferences.set(key(row.workflowId, row.localTicketId), {
     workflowId: row.workflowId, localTicketId: row.localTicketId, revision: row.revision, value: row.value, provenance: provenance(row.history.at(-1)!) })
   for (const row of base?.decisions ?? []) decisions.set(key(row.workflowId, row.decisionId), {
     workflowId: row.workflowId, decisionId: row.decisionId, revision: row.revision, value: row.value,
@@ -430,7 +430,7 @@ export class SessionInstruments {
         && typeof command.value.recommendation==='string' && command.value.options?.filter(o=>o.key===command.value.recommendation).length===1) {
         decisionPolicy={kind:'bound',binding:{createdRevision:increment(current.revision),optionKey:command.value.recommendation,policy:policy.epoch}}
       }
-      const candidate: InstrumentDocument = { ...upgradeInstrumentDocument(current, command.action === 'put-task-reference',decisionPolicy!==undefined), revision: increment(current.revision),
+      const candidate: InstrumentDocument = { ...upgradeInstrumentDocument(current, command.action === 'put-task-reference',decisionPolicy!==undefined,command.action==='put-decision' && command.value.result!==null && typeof command.value.result==='object'), revision: increment(current.revision),
         events: [...current.events, { revision: increment(current.revision), recordedAt:finalTime, author: context.access.author, command,...(decisionPolicy?{decisionPolicy}:{}) }] }
       projectInstrumentDocument(candidate) // malformed references are input errors, not business rulings
       let next = parseInstrumentDocument(candidate)
@@ -443,7 +443,7 @@ export class SessionInstruments {
           if(decisionPolicy.kind==='adopted') throw new ControlsError('feature-disabled','recommendation authorization expired before CAS')
           // Losing optional eligibility must not discard a legitimate ordinary question.
           decisionPolicy=undefined
-          next={...upgradeInstrumentDocument(current,command.action==='put-task-reference'),revision:increment(current.revision),events:[...current.events,{revision:increment(current.revision),recordedAt:authorizedAt,author:context.access.author,command}]}
+          next={...upgradeInstrumentDocument(current,command.action==='put-task-reference',false,command.action==='put-decision' && command.value.result!==null && typeof command.value.result==='object'),revision:increment(current.revision),events:[...current.events,{revision:increment(current.revision),recordedAt:authorizedAt,author:context.access.author,command}]}
         }else {
           if(decisionPolicy.kind==='adopted') decisionPolicy={kind:'adopted',selection:{...decisionPolicy.selection,authorizedAt}}
           const last=next.events.at(-1)!
@@ -481,7 +481,7 @@ export class SessionInstruments {
       const receipt:InstrumentDedup={operationId:command.operationId,author:context.access.author,digest:hash,kind:'compact',appliedRevision}
       const coverage:InstrumentCleanupCoverage={operationId:command.operationId,action:'compact',appliedRevision,author:context.access.author,recordedAt,throughRevision:current.revision,targets:[],removedVersions:0,removedRevisions:[]}
       const dedup=[...current.dedup,...current.events.map((event):InstrumentDedup=>({operationId:event.command.operationId,author:event.author,digest:digest(event.command,event.author),kind:'command',appliedRevision:event.revision,command:instrumentCommandMetadata(event)})),receipt]
-      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointPayload(current,checkpointState)},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2 | InstrumentDocumentV3
+      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointPayload(current,checkpointState)},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4 | InstrumentDocumentV5
       signal?.throwIfAborted()
       // CAS has begun: cancellation cannot turn a durable acknowledgement into rollback.
       const committed=await this.storage.compareAndSwap(current.instrumentInstanceId,current.revision,next)
@@ -526,7 +526,7 @@ export class SessionInstruments {
       const appliedRevision=increment(current.revision),receipt:InstrumentDedup={operationId:command.operationId,author:context.access.author,digest:hash,kind:'purge-history',appliedRevision}
       const coverage:InstrumentCleanupCoverage={operationId:command.operationId,action:'purge-history',appliedRevision,author:context.access.author,recordedAt,throughRevision:command.throughRevision,targets:command.targets,removedVersions,removedRevisions:removedRevisions.sort((a,b)=>a-b)}
       const dedup=[...current.dedup,...current.events.map((event):InstrumentDedup=>({operationId:event.command.operationId,author:event.author,digest:digest(event.command,event.author),kind:'command',appliedRevision:event.revision,command:instrumentCommandMetadata(event)})),receipt]
-      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointPayload(current,checkpointState)},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2 | InstrumentDocumentV3
+      const next=parseInstrumentDocument({...current,revision:appliedRevision,checkpoint:{throughRevision:appliedRevision,state:checkpointPayload(current,checkpointState)},events:[],dedup,coverage:[...current.coverage,coverage]}) as InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4 | InstrumentDocumentV5
       signal?.throwIfAborted()
       // CAS has begun: cancellation cannot turn a durable acknowledgement into rollback.
       const committed=await this.storage.compareAndSwap(current.instrumentInstanceId,current.revision,next)
@@ -538,7 +538,7 @@ export class SessionInstruments {
   private cleanupAccess(context:{controls:SessionControlsView;access:InstrumentAccess},sessionId:string):void {
     if(context.access.scope.kind!=='coordinator' || sessionId!==context.controls.instance.ownerSessionId) throw new ControlsError('access-denied','source cleanup requires authenticated owner coordinator context')
   }
-  private cleanupResult(document:InstrumentDocumentV2|InstrumentDocumentV3|InstrumentDocumentV4,access:InstrumentAccess,appliedRevision:number,replayed:boolean,removedVersions:number):InstrumentCleanupResult {
+  private cleanupResult(document:InstrumentDocumentV2|InstrumentDocumentV3|InstrumentDocumentV4|InstrumentDocumentV5,access:InstrumentAccess,appliedRevision:number,replayed:boolean,removedVersions:number):InstrumentCleanupResult {
     return freeze({appliedRevision,replayed,removedVersions,checkpointRevision:document.checkpoint.throughRevision,coverage:document.coverage,snapshot:this.snapshot(document,access,{})})
   }
   private async context(principal: string, sessionId: string, mode: 'read' | 'write', signal?:AbortSignal): Promise<{ controls: SessionControlsView; access: InstrumentAccess }> {
