@@ -211,7 +211,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
     }
     const countRevision=ports.nativeSubagentCountRevision?.(owner)??0
-    const countToken=countState===undefined?null:[countState.revision,countState.known,countState.reason,countState.available,members]
+    const countToken=countState===undefined?null:[countState.revision,countState.known,countState.reason,countState.available,members,countState.liveMembershipToken??null]
     const capabilities=Object.entries(ports.capabilities).map(([key,value])=>[key,value])
     const token=(dependencies:readonly string[]):string=>sourceVersion([countRevision,countToken,capabilities,
       [...new Set([...related,...dependencies,...(reusable?[]:rows.keys())])].sort().map(sid=>[sid,rows.get(sid)?.token??null])])

@@ -33,6 +33,21 @@ test('mounted readSession accepts ordinary direct-child catalog rows without a k
   assert.equal(walks, 0)
 })
 
+test('mounted named continuable and external catalog rows retain complete coverage', async t => {
+  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+    child.status = 'running'
+    ctx.provide('subagents', { async listChildren() { return [
+      { id: 'child', createdAt: 0, mode: 'continuable', label: 'native-label', name: 'worker' },
+      { id: 'remote', createdAt: 1, mode: 'external', name: 'remote-worker' },
+    ] } })
+  } })
+  await f.runtime.readSession(caller('root'), 'root', signal()); await settle()
+  const snapshot = await f.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(snapshot.windows.S.used, 1)
+  assert.equal(snapshot.windows.S.countKnown, true)
+  assert.equal(snapshot.windows.S.countReason, null)
+})
+
 test('an unknown direct-child mode states an unsupported lower bound beside readable running children', async t => {
   const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
@@ -58,6 +73,8 @@ test('malformed direct rows and recursive-shaped rows never certify a known dire
     { id: 'bad', mode: 'one-shot' },
     { id: 'bad', createdAt: NaN, mode: 'one-shot' },
     { id: 'bad', createdAt: 0, mode: 'external', label: 3 },
+    { id: 'bad', createdAt: 0, mode: 'external', name: 3 },
+    { id: 'bad', createdAt: 0, mode: 'continuable', label: 'ok', name: null },
     { kind: 'diagnostic', id: 'bad', reason: 'corrupt' },
     { kind: 'child', id: 'bad', createdAt: 0, mode: 'one-shot', activity: 'running', hasChildren: false },
   ]
