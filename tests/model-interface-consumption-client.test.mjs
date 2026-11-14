@@ -5,6 +5,7 @@ import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
+import { mountedFixture, caller, operator, policy, signal, core } from './fixtures/runtime-host.mjs'
 
 // Agreed seam: closed client bundle, Remote decode and actual React reading; no live Profile.
 // No formatter-only proof, private state probes, live Profile or graphical-browser claims.
@@ -93,17 +94,29 @@ function answered(result) {
   return view
 }
 test('structured results survive Remote decode and render answer, source and scope in real React without writes', async t => {
-  const initial = answered(structured)
+  const host = await mountedFixture(t, { futureNativeActivityKnown: true })
+  await host.runtime.savePolicy(operator, policy(undefined, { display: { inputSummary: true } }), 0, signal())
+  await host.runtime.applyInstrument(caller('root'), 'root', { operationId: 'flow', expectedRevision: 0, workflowId: 'flow',
+    action: 'put-workflow', value: { title: 'Scoped runtime', axes: [] } }, signal())
+  const written = await host.execute('mattpocock_record', { request: { action: 'apply', command: {
+    operationId: 'structured-answer', expectedRevision: 1, workflowId: 'flow', decisionId: 'D', action: 'put-decision',
+    references: ['native:message-42'], value: { question: 'Choose runtime input', status: 'partial reply', pending: true,
+      awaitingImplementation: true, addressee: { kind: 'user' }, result: structured } } } })
+  assert.notEqual(written.isError, true, written.error?.message)
+  const endpoint = core.REMOTE_CONTRIBUTION.descriptors.find(row => row.method === 'readSession')
+  const initial = endpoint.result.create().parse(await host.runtime.readSession(operator, 'root', signal()))
+  assert.deepEqual(initial.records.decisions[0].value.result, structured, 'object comes from mounted persisted write, not UI fixture injection')
   assert.deepEqual(client.decodeSession(initial, initial.sessionId).records.decisions[0].value.result, structured)
   const f = await mount(t, initial)
   const button = f.container.querySelector('[aria-label="查看待你裁决事项"]')
-  assert(button)
+  assert(button, JSON.stringify({ text: f.container.textContent, display: initial.policy.display, summary: initial.records.summary }))
   await React.act(async () => button.click())
   const text = f.container.textContent
   for (const literal of ['Wait for maintainer-provided runtime', 'message-42', 'Owner confirmed waiting', 'paragraph 2',
     'Isolated fixture work', 'Read-only input', 'Install SDK', 'Restart production']) assert.ok(text.includes(literal), 'missing result field: ' + literal)
   assert.doesNotMatch(text, /\[object Object\]/)
-  const legacy = answered('Old direct user text')
+  const legacy = structuredClone(initial)
+  legacy.records.decisions[0].value.result = 'Old direct user text'
   await f.refresh(legacy)
   assert.ok(f.container.textContent.includes('Old direct user text'))
   assert.equal(client.decisionAnswerCommand(legacy.records, legacy.records.decisions[0], 'New direct user text', 'answered', false, true).value.result, 'New direct user text')
