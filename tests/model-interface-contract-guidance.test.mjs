@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
+import ts from 'typescript'
 import { mountedFixture, operator, policy, signal } from './fixtures/runtime-host.mjs'
 
 test('record publishes typed action values and result replacement semantics without changing authority', async t => {
@@ -18,7 +19,8 @@ test('record publishes typed action values and result replacement semantics with
   assert.ok(description.includes('terminal?: boolean'))
   assert.match(description, /source is an authored report, not an authenticated user event/u)
   assert.match(description, /selectedOptionKey does not adopt a recommendation/u)
-  assert.match(description, /references are this operation's declarations, not an automatic union/u)
+  assert.match(description, /Ordinary put-\* updates use references as this operation's declarations, not an automatic union/u)
+  assert.match(description, /adopt-decision-recommendation retains the original references and adds the supplied declarations/u)
   assert.match(description, /included and excluded belong inside result/u)
 })
 
@@ -104,4 +106,52 @@ test('audit retains durable episode provenance and reports unreadable storage as
     assert.deepEqual(result.value.coverage.episodes, expected)
     assert.deepEqual(result.value.coverage.summary, { persistence: 'memory-only', status: 'current' })
   }
+})
+
+function firstActionShape(description) {
+  const start = description.indexOf('Action contract: ') + 'Action contract: '.length
+  assert.equal(description[start], '{')
+  let depth = 0, quoted = false
+  for (let index = start; index < description.length; index += 1) {
+    const char = description[index]
+    if (char === '"') quoted = !quoted
+    if (quoted) continue
+    if (char === '{') depth += 1
+    if (char === '}' && --depth === 0) return description.slice(start, index + 1)
+  }
+  assert.fail('published action shape is not balanced')
+}
+
+test('controls worktree and standalone audit publish parseable read types with limit prose outside the shape', async t => {
+  const f = await mountedFixture(t, { seedUnits: new Map([
+    ['mattpocock_supervision_config', new Map([['state', supervisionConfig]])],
+  ]) })
+  for (const name of ['mattpocock_controls', 'mattpocock_worktree', 'mattpocock_audit']) {
+    const description = f.ctx.tools.get(name).description
+    const shape = firstActionShape(description)
+    const parsed = ts.transpileModule('type Request = ' + shape, {
+      reportDiagnostics: true, compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    })
+    assert.deepEqual(parsed.diagnostics.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')), [], name)
+    assert.doesNotMatch(shape, /limit is/u)
+    assert.match(description.slice(description.indexOf(shape) + shape.length), /limit is 1\.\.100 \(default 20\)/u)
+  }
+})
+
+test('one action contract owns request mechanics while legacy authority and recovery guidance remain', async t => {
+  const f = await mountedFixture(t, { delegate: true, seedUnits: new Map([
+    ['mattpocock_supervision_config', new Map([['state', supervisionConfig]])],
+  ]) })
+  for (const suffix of ['controls', 'record', 'window', 'history', 'worktree', 'resource', 'assign', 'delegate', 'audit']) {
+    const description = f.ctx.tools.get('mattpocock_' + suffix).description
+    const purpose = description.slice(0, description.indexOf('Action contract:'))
+    assert.doesNotMatch(purpose, /Requests are|Request: \{|Request keys:|Value shapes:|Each sparse PolicyPatch accepts|The request is one of these shapes/u, suffix)
+  }
+  const record = f.ctx.tools.get('mattpocock_record').description
+  for (const safety of ['source is immutable', 'No statuses/summary/disposition/claim/body/author/time', 'no caller, author or time claims', 'Never self-enable or renew the owner policy', 'preserve result, references, await flags and task constraints']) {
+    assert.ok(record.includes(safety), safety)
+  }
+  assert.match(f.ctx.tools.get('mattpocock_controls').description, /explicitly delegated policy change/u)
+  assert.match(f.ctx.tools.get('mattpocock_history').description, /source cleanup preserving current state/u)
+  assert.match(f.ctx.tools.get('mattpocock_worktree').description, /never a strong binding/u)
 })

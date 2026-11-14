@@ -13,13 +13,14 @@ interface ToolContract {
   readonly rules?: readonly string[]
 }
 
-const query = 'query?: {kind?: string, recordId?: string, limit?: number, cursor?: string}; limit is 1..100 (default 20)'
+const query = 'query?: {kind?: string, recordId?: string, limit?: number, cursor?: string}'
+const queryLimit = 'limit is 1..100 (default 20).'
 const command = 'operationId: string, expectedRevision: number, workflowId: string, references?: string[]'
 const result = 'DecisionResult = {answer: string, selectedOptionKey?: string, source?: {kind: string, sessionId?: string, messageId?: string, text?: string, position?: string}, included?: string | string[], excluded?: string | string[]}'
 const contracts: Readonly<Record<string, ToolContract>> = {
   mattpocock_controls: {
     actions: [
-      { shape: '{action:"read", ' + query + '}', rules: 'query.kind is defaults or workspace; workspace recordId is a workspace ID.', example: { action: 'read' } },
+      { shape: '{action:"read", ' + query + '}', rules: queryLimit + ' query.kind is defaults or workspace; workspace recordId is a workspace ID.', example: { action: 'read' } },
       { shape: '{action:"save", expectedRevision: number, intent: {extensionEnabled: boolean, defaults: PolicyPatch, workspaceOverrides: {[workspaceId: string]: PolicyPatch}}}',
         rules: 'Save is complete sparse intent replacement, not a patch. Always include all three intent keys. A read marked completeIntent:false cannot be saved directly: read all defaults/workspace pages and exact bodies at the same policy revision, restarting on a change, before constructing the full intent.' },
     ],
@@ -46,7 +47,7 @@ const contracts: Readonly<Record<string, ToolContract>> = {
       { shape: '{action:"apply", command: {' + command + ', action:"adopt-decision-recommendation", decisionId: string, value:{optionKey: string, decisionRevision: number, policyEpochId: string, policyRevision: number}}}', rules: 'Use exact returned candidate fields and current businessRevision as expectedRevision; never send caller/author/time or policySelection.' },
     ],
     rules: [
-      'All record commands require operationId: string, expectedRevision: number, workflowId: string; references: string[] is optional (default []). Declared references are this operation\'s declarations, not an automatic union with older references; supply all intended current declarations while retained historical sources remain unchanged.',
+      'All record commands require operationId: string, expectedRevision: number, workflowId: string; references: string[] is optional (default []). Ordinary put-* updates use references as this operation\'s declarations, not an automatic union with older references; supply all intended current declarations while retained historical sources remain unchanged. In contrast, adopt-decision-recommendation retains the original references and adds the supplied declarations.',
       'For decision updates, omitting result preserves the existing result; a supplied result replaces it as a whole; null clears it. Other optional decision fields preserve their existing value when omitted; supplied arrays replace, [] clears an optional array. included and excluded belong inside result, not at decision top level. Preserve prior answer, source pointers and applicable/excluded conditions when composing a replacement.',
       'Result source is an authored report, not an authenticated user event or operation permission; selectedOptionKey does not adopt a recommendation or change pending/awaitingImplementation. policySelection is host-authenticated adoption metadata, never a field to author. An example resolved result is legitimate only for a real explicit resolution; it does not manufacture approval.',
     ],
@@ -80,7 +81,7 @@ const contracts: Readonly<Record<string, ToolContract>> = {
   },
   mattpocock_worktree: {
     actions: [
-      { shape: '{action:"read", ' + query + '}', rules: 'query.kind is binding or observation; cleaned rows remain readable.', example: { action: 'read' } },
+      { shape: '{action:"read", ' + query + '}', rules: queryLimit + ' query.kind is binding or observation; cleaned rows remain readable.', example: { action: 'read' } },
       { shape: '{action:"update", command:{operationId: string, bindingId: string, expectedRevision: number, state:"active"|"discarded"|"cleaned", notes?: string}}', rules: 'Binding notes: string, at most 65536 UTF-16 characters, no NUL.' },
       { shape: '{action:"update-observation", command:{operationId: string, observationId: string, expectedRevision: number, state:"open"|"cleaned", notes?: string}}', rules: 'Observation notes: string, at most 4096 UTF-16 characters, no NUL.' },
       { shape: '{action:"reconcile", operationId: string}', rules: 'operationId identifies an existing delegation intent, not a fresh business update or observed create_worktree call.', example: { action: 'reconcile', operationId: 'existing-delegation-operation-id' } },
@@ -94,7 +95,7 @@ const contracts: Readonly<Record<string, ToolContract>> = {
     rules: ['This tool is opt-in binding-first creation, never required for ordinary native dispatch. Native acceptance, binding verification and assignment are independent outcomes; accepted/unknown creation reuses that same child and never creates another on retry.'],
   },
   mattpocock_audit: {
-    actions: [{ shape: '{action:"read", ' + query + '}', rules: 'query.kind is session or episode; read only the current authenticated owner. Unknown/not-recorded sources cannot promise an exhaustive continuation.', example: { action: 'read' } }],
+    actions: [{ shape: '{action:"read", ' + query + '}', rules: queryLimit + ' query.kind is session or episode; read only the current authenticated owner. Unknown/not-recorded sources cannot promise an exhaustive continuation.', example: { action: 'read' } }],
     rules: ['Summary/event observations are memory-only for this host process; retained episodes come from a separate durable source. unknown and not-recorded are not current or known-empty; total:null means unknown, never zero.'],
   },
 }
