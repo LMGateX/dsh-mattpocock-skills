@@ -192,7 +192,7 @@ export interface NativeTurnObservation {
   readonly lastSeq: number | null
 }
 /** Reads ONLY one child's own log. A rejected read is unobservable, never a guessed outcome. */
-export type NativeTurnReader = (sessionId: string, signal?: AbortSignal) => Promise<NativeTurnObservation>
+export type NativeTurnReader = (sessionId: string, signal?: AbortSignal, currentSource?: () => boolean) => Promise<NativeTurnObservation>
 /** One open terminal-outcome item the main agent is expected to handle. */
 export interface NativeSubagentStop {
   /** Durable dedup key: child session id + turn, plus the host runId when the host supplied one. */
@@ -251,6 +251,8 @@ interface NativeRunState {
   /** Weak incarnation proof for a counted/started run, never a retained Agent graph. */
   agent: WeakRef<Agent> | null
   displaced: boolean
+  /** The exact recorded incarnation emitted agent/disposed after registry removal. */
+  disposed: boolean
   /** Only unchanged legacy catalog provenance may bridge an unclosed legacy event chain. */
   legacySource: number | null
   /** In-flight classification token; null when none is pending. */
@@ -262,6 +264,8 @@ interface NativeRunningLedger {
   readonly drifts: NativeCountDrift[]
   /** Open outcome items keyed by the durable dedup itemId; one open item per failed turn. */
   readonly stops: Map<string, NativeSubagentStop>
+  /** Weak run provenance retained only while its terminal item remains open. */
+  readonly terminalRuns: Map<string, NativeRunState>
   /** Live subagent ids a walk already failed to list, so a read never repeats that walk for them. */
   readonly unresolved: Set<string>
   /** Per-child activation generation: a stale classification never opens an item after a new run. */
@@ -371,6 +375,41 @@ class NativeRunningCounter {
   #legacySource(): number | null {
     const service = this.#lister()
     return service === undefined || service.rootOf !== undefined ? null : this.#identity(service)
+  }
+  readonly #startEpochs = new Map<string, number>()
+  #turnSource(owner: string, sessionId: string, source: NativeRunState, permitted = true): () => boolean {
+    if (!permitted) return () => false
+    const ownerAgent = this.#liveAgent(owner), ownerRef = ownerAgent === undefined ? null : new WeakRef(ownerAgent)
+    const service = this.#lister(), provider = service === undefined ? null : this.#identity(service)
+    const method = service?.rootOf === undefined ? null : this.#identity(service.rootOf)
+    const epoch = this.#startEpochs.get(sessionId) ?? 0
+    let rootRef: WeakRef<Agent> | null = null
+    try {
+      const current = this.#liveAgent(sessionId) ?? ownerAgent
+      if (current !== undefined && service?.rootOf !== undefined) rootRef = new WeakRef(service.rootOf(current))
+    } catch { return () => false }
+    return () => {
+      const expected = source.agent?.deref(), expectedOwner = ownerRef?.deref(), current = this.#liveAgent(sessionId)
+      if (source.displaced || expected === undefined || expectedOwner === undefined || this.#liveAgent(owner) !== expectedOwner
+        || (this.#startEpochs.get(sessionId) ?? 0) !== epoch || (current === undefined ? !source.disposed : current !== expected)) return false
+      const now = this.#lister()
+      if ((now === undefined ? null : this.#identity(now)) !== provider
+        || (now?.rootOf === undefined ? null : this.#identity(now.rootOf)) !== method) return false
+      try {
+        if (now?.rootOf !== undefined) {
+          const root = rootRef?.deref()
+          if (root === undefined || this.#liveAgent(String(root.id)) !== root || now.rootOf(root) !== root
+            || now.rootOf(current ?? expectedOwner) !== root) return false
+        }
+        return current === undefined || this.#ownersFor(sessionId, current).has(owner)
+      } catch { return false }
+    }
+  }
+  async #observeRunTurn(sessionId: string, currentSource: () => boolean): Promise<NativeTurnObservation | null> {
+    if (!currentSource()) return null
+    let observation: NativeTurnObservation | null = null
+    try { observation = await this.#turnReader(sessionId, this.#signal, currentSource) } catch { observation = null }
+    return currentSource() ? observation : null
   }
   #settles = 0
   constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly liveAgent: (sessionId: string) => Agent | undefined; readonly lister: () => NativeSubagentLister | undefined; readonly directChildren?: (owner: SessionId, signal?: AbortSignal) => Promise<unknown>; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
@@ -736,9 +775,10 @@ class NativeRunningCounter {
     return sessionId + ':' + (runId === null ? '' : runId + ':') + (turn === null ? 'unknown' : String(turn))
   }
   /** Open exactly one durable dedup item and queue exactly one wake for it. */
-  #openStop(owner: string, ledger: NativeRunningLedger, item: NativeSubagentStop): void {
+  #openStop(owner: string, ledger: NativeRunningLedger, item: NativeSubagentStop, source?: NativeRunState): void {
     if (ledger.stops.has(item.itemId)) return
     ledger.stops.set(item.itemId, item)
+    if (source !== undefined) ledger.terminalRuns.set(item.sessionId, source)
     this.#bump(owner)
     const queued: NativeSubagentStopEvent = { ownerSessionId: owner, ...item }
     this.#opened.push(queued)
@@ -747,6 +787,7 @@ class NativeRunningCounter {
   /** An item clears when the child runs again, its start edge arrives, or a late end arrives. */
   #closeSessionStops(owner: string, ledger: NativeRunningLedger, sessionId: string): void {
     let closed = false
+    ledger.terminalRuns.delete(sessionId)
     for (const [itemId, item] of ledger.stops) if (item.sessionId === sessionId) { ledger.stops.delete(itemId); closed = true }
     if (closed) this.#bump(owner)
   }
@@ -770,7 +811,7 @@ class NativeRunningCounter {
     // The run is terminal once classified; retire it so a later node never repeats this log read.
     ledger.runs.delete(sessionId)
     const item = observation === null ? this.#unobservable(sessionId, runIdFact, null, null, 'child log could not be read') : this.#itemFromTurn(sessionId, runIdFact, observation)
-    if (item !== null) this.#openStop(owner, ledger, item)
+    if (item !== null) this.#openStop(owner, ledger, item, run)
   }
   /** Classify one child's own log tail; null means a normal return that opens no item. */
   #itemFromTurn(sessionId: string, runIdFact: string | null, observation: NativeTurnObservation): NativeSubagentStop | null {
@@ -794,9 +835,8 @@ class NativeRunningCounter {
    * Primary path: the host's `subagent/end` edge publishes the terminal reason. The child's own log
    * is consulted only for the turn number, the aborted cancel cause and any LlmFailure facts.
    */
-  async #classifyEnd(owner: string, sessionId: string, runIdFact: string | null, stopReason: string, generation: number, observeTurn = true): Promise<void> {
-    let observation: NativeTurnObservation | null = null
-    if (observeTurn) try { observation = await this.#turnReader(sessionId, this.#signal) } catch { observation = null }
+  async #classifyEnd(owner: string, sessionId: string, runIdFact: string | null, stopReason: string, generation: number, currentSource: () => boolean, source: NativeRunState): Promise<void> {
+    const observation = await this.#observeRunTurn(sessionId, currentSource)
     const ledger = this.#ledgers.get(owner)
     if (ledger === undefined || this.#signal?.aborted === true || this.#generation(ledger, sessionId) !== generation) return
     const end = observation?.end ?? null
@@ -808,24 +848,24 @@ class NativeRunningCounter {
       const cause = end?.kind === 'aborted' ? end.cause : null
       const item: NativeSubagentStop = freeze({ itemId, sessionId, turn, outcome: 'aborted', cancelCause: cause, diagnostic: null, evidence: null,
         observed: cause === null ? 'subagent/end: aborted; cancel cause not observable' : 'subagent/end: aborted by ' + cause })
-      this.#openStop(owner, ledger, item)
+      this.#openStop(owner, ledger, item, source)
       return
     }
     if (stopReason === 'error') {
       const diagnostic = end?.kind === 'error' ? end.diagnostic : null
       const item: NativeSubagentStop = freeze({ itemId, sessionId, turn, outcome: 'error', cancelCause: null, diagnostic, evidence: null,
         observed: 'subagent/end: error' + (diagnostic === null ? '' : ' (' + diagnostic + ')') })
-      this.#openStop(owner, ledger, item)
+      this.#openStop(owner, ledger, item, source)
       return
     }
     if (stopReason === 'max-tokens' || stopReason === 'refusal') {
       const item: NativeSubagentStop = freeze({ itemId, sessionId, turn, outcome: stopReason, cancelCause: null, diagnostic: null, evidence: null, observed: 'subagent/end: ' + stopReason })
-      this.#openStop(owner, ledger, item)
+      this.#openStop(owner, ledger, item, source)
       return
     }
     if (stopReason === 'completed') return
     // A merge-extended reason this build cannot classify: keep the host fact, claim no cause.
-    this.#openStop(owner, ledger, this.#unobservable(sessionId, runIdFact, turn, end?.seq ?? observation?.lastSeq ?? null, 'subagent/end: ' + stopReason + ' (unrecognized reason)'))
+    this.#openStop(owner, ledger, this.#unobservable(sessionId, runIdFact, turn, end?.seq ?? observation?.lastSeq ?? null, 'subagent/end: ' + stopReason + ' (unrecognized reason)'), source)
   }
   /**
    * Attribute each expected-delta mismatch by construction; only a counted run with no end and no
@@ -900,12 +940,12 @@ class NativeRunningCounter {
     }
     let ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
-      ledger = { runs: new Map(), drifts: [], stops: new Map(), unresolved: new Set(), generations: new Map() }
+      ledger = { runs: new Map(), drifts: [], stops: new Map(), terminalRuns: new Map(), unresolved: new Set(), generations: new Map() }
       this.#ledgers.set(owner, ledger)
     }
     for (const sessionId of this.#running(owner, live, membership)) {
       if (!ledger.runs.has(sessionId)) ledger.runs.set(sessionId, { counted: true, sawIdle: false, runId: null,
-        agent: new WeakRef(live.get(sessionId)!), displaced: false, legacySource: this.#legacySource(), settle: null })
+        agent: new WeakRef(live.get(sessionId)!), displaced: false, disposed: false, legacySource: this.#legacySource(), settle: null })
     }
     for (const [sessionId, current] of live) {
       const run = ledger.runs.get(sessionId)
@@ -979,6 +1019,10 @@ class NativeRunningCounter {
   disposed(agent: Agent): void {
     if (agent.session.header.origin !== 'subagent') return
     const sessionId = String(agent.id), owners = this.#ownersFor(sessionId, agent)
+    for (const owner of this.#idOwners.get(sessionId) ?? []) {
+      const ledger = this.#ledgers.get(owner), run = ledger?.runs.get(sessionId) ?? ledger?.terminalRuns.get(sessionId)
+      if (run?.agent?.deref() === agent && this.#liveAgent(sessionId) === undefined) run.disposed = true
+    }
     // Disposal IDs may request discovery after registry removal, never authorize new run
     // edges. Reconciliation rechecks catalog coverage and the recorded incarnation itself.
     for (const owner of this.#idOwners.get(sessionId) ?? []) owners.add(owner)
@@ -991,15 +1035,26 @@ class NativeRunningCounter {
     // Agent to supply the parent chain, and routing must not depend on the Agent still existing.
   }
   start(sessionId: string, local: boolean, agent?: Agent, runId?: string): void {
+    if (local && this.#idOwners.has(sessionId)) this.#startEpochs.set(sessionId, (this.#startEpochs.get(sessionId) ?? 0) + 1)
+    const owners = local && agent === undefined ? new Set<string>() : this.#ownersFor(sessionId, agent)
+    // Even a rejected/Agent-absent start is a synchronous boundary: it cannot associate
+    // a new runId with an older count-only baseline, before any deferred reconciliation.
+    if (local) for (const owner of this.#idOwners.get(sessionId) ?? []) {
+      const ledger = this.#ledgers.get(owner)
+      for (const run of [ledger?.runs.get(sessionId), ledger?.terminalRuns.get(sessionId)]) {
+        if (run !== undefined && (!owners.has(owner) || run.agent?.deref() !== agent)) run.displaced = true
+      }
+    }
     if (local && (agent === undefined || this.#liveAgent(sessionId) !== agent)) return
-    for (const owner of this.#ownersFor(sessionId, agent)) {
+    for (const owner of owners) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
       if (local) {
-        const run = ledger.runs.get(sessionId) ?? { counted: false, sawIdle: false, runId: null, agent: null, displaced: false, legacySource: null, settle: null }
+        const run = ledger.runs.get(sessionId) ?? { counted: false, sawIdle: false, runId: null, agent: null, displaced: false, disposed: false, legacySource: null, settle: null }
         run.sawIdle = false
         run.agent = agent === undefined ? null : new WeakRef(agent)
         run.displaced = false
+        run.disposed = false
         run.legacySource = this.#legacySource()
         run.settle = null
         if (runId !== undefined) run.runId = runId
@@ -1023,13 +1078,16 @@ class NativeRunningCounter {
     // A terminal edge can arrive after the registry already holds another incarnation.
     // Only an observed matching start runId, not a reverse session ID, restores that old route.
     if (runId !== undefined) for (const owner of this.#idOwners.get(sessionId) ?? []) {
-      if (this.#ledgers.get(owner)?.runs.get(sessionId)?.runId === runId) owners.add(owner)
+      const ledger = this.#ledgers.get(owner)
+      if ((ledger?.runs.get(sessionId) ?? ledger?.terminalRuns.get(sessionId))?.runId === runId) owners.add(owner)
     }
     for (const owner of owners) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
-      const run = ledger.runs.get(sessionId)
-      if (runId !== undefined && run === undefined) {
+      const activeRun = ledger.runs.get(sessionId), run = activeRun ?? ledger.terminalRuns.get(sessionId)
+      if (agent === undefined && !(runId !== undefined && run?.runId === runId)
+        && (run?.disposed !== true || run.displaced)) continue
+      if (runId !== undefined && activeRun === undefined) {
         const stops = [...ledger.stops.values()].filter(item => item.sessionId === sessionId)
         if (stops.some(item => item.itemId !== this.#itemId(sessionId, null, item.turn)
           && item.itemId !== this.#itemId(sessionId, runId, item.turn))) continue
@@ -1039,6 +1097,9 @@ class NativeRunningCounter {
       // An old end never retires, clears or classifies a different observed activation.
       if (runId !== undefined && run?.runId !== undefined && run.runId !== null && run.runId !== runId) continue
       const hostRunId = runId ?? run?.runId ?? null
+      const source = run ?? { counted: false, sawIdle: false, runId: hostRunId, agent: agent === undefined ? null : new WeakRef(agent),
+        displaced: false, disposed: false, legacySource: this.#legacySource(), settle: null }
+      source.runId = hostRunId
       // A matching historical run keeps its published outcome, never a replacement's turn tail.
       const observeTurn = currentOwners.has(owner) && run?.displaced !== true
         && (agent === undefined || run === undefined || run.agent?.deref() === agent)
@@ -1048,7 +1109,8 @@ class NativeRunningCounter {
       else this.#afterWalk(owner, () => this.#reconcile(owner))
       if (!local || stopReason === undefined || stopReason === 'completed') continue
       const generation = this.#generation(ledger, sessionId)
-      void this.#serial(owner, () => this.#classifyEnd(owner, sessionId, hostRunId, stopReason, generation, observeTurn)).catch(() => undefined)
+      const currentSource = this.#turnSource(owner, sessionId, source, observeTurn)
+      void this.#serial(owner, () => this.#classifyEnd(owner, sessionId, hostRunId, stopReason, generation, currentSource, source)).catch(() => undefined)
     }
   }
   catalog(sessionId: string, childId: string | undefined): void {
@@ -1759,15 +1821,19 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     // The reconciliation path reads ONLY the suspect child's own log. A live child's owned events
     // are already in memory; a cold child is observed through the public session query, never
     // resumed, and is never walked as a tree.
-    const readNativeTurn: NativeTurnReader = async (rawSessionId, signal) => {
+    const readNativeTurn: NativeTurnReader = async (rawSessionId, signal, currentSource) => {
       const sessionId = SessionId(id(rawSessionId, 'sessionId'))
       const live = ctx.agents.get(sessionId)
+      if (currentSource?.() === false) throw new ControlsError('association-conflict', 'native turn source changed before read')
       if (live !== undefined && live.session.header.origin === 'subagent') return observeNativeTurn(live.session.ownEvents())
       interface NativeTurnQuery { observeSession(id: SessionId, options?: { readonly projectionMode?: 'none'; readonly signal?: AbortSignal }): Promise<{ readonly inheritedEventCount: number; readonly events: readonly SessionEvent[] } & Disposable> }
       const query = ctx.get('sessionQuery') as NativeTurnQuery | undefined
       if (query === undefined || typeof query.observeSession !== 'function') throw new ControlsError('feature-disabled', 'child session log observation is unavailable')
       const observation = await query.observeSession(sessionId, { projectionMode: 'none', ...(signal === undefined ? {} : { signal }) })
-      try { return observeNativeTurn(observation.events.slice(observation.inheritedEventCount)) } finally { observation[Symbol.dispose]() }
+      try {
+        if (currentSource?.() === false) throw new ControlsError('association-conflict', 'native turn source changed during observation')
+        return observeNativeTurn(observation.events.slice(observation.inheritedEventCount))
+      } finally { observation[Symbol.dispose]() }
     }
     // RC3 exposes rootOf on the runtime but direct catalogs through public SessionQuery
     // projection values, not a runtime.listChildren method or a package-root helper export.
