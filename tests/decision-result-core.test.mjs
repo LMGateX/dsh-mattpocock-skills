@@ -180,4 +180,3 @@ test('competing structured updates still require one business CAS and identical 
   assert.equal((await f.read()).decisions[0].history.length, 2)
 })
 
-

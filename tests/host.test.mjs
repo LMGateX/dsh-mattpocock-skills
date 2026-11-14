@@ -165,7 +165,7 @@ test('mounted record description narrows new questions without rejecting legacy 
   assert.match(description, /raw compatibility markers needing task-evidence review, not unfinished-task totals/)
   assert.match(description, /task handoff is not completion/)
   assert.match(description, /Legacy agent[/]unspecified[/]missing-addressee updates remain legal; OFF permits old-record closeout but no new records/)
-  assert.ok(description.includes('put-decision {question, status, pending?, awaitingImplementation?'))
+  assert.ok(description.includes('action:"put-decision", decisionId: string, value:{question: string, status: string, pending?: boolean, awaitingImplementation?: boolean'))
   assert.match(description, /Model output schemaVersion 2/)
 })
 

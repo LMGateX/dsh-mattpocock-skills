@@ -405,9 +405,10 @@ test('deprecated resource tool and old UI service are read-only before reaching 
   assert.match(borrow.content[0].text, /only reads recorded resources; pass \{action:"read", resourceId\}/)
   await assert.rejects(f.invoke('resourceAction', { sessionId: 'owner', request: { action: 'retain', resourceId: 'R' } }), { code: 'feature-disabled' })
   assert.equal(requests.length, 1)
-  // Model-visible text states what to do; it does not narrate our deprecation or switch state.
+  // Model text states the actual read capability, not deprecation or a switch state.
   assert.match(f.ctx.tools.get('mattpocock_resource').description, /create_worktree/)
-  assert.doesNotMatch(f.ctx.tools.get('mattpocock_resource').description, /deprecated|disabled|read.only/i)
+  assert.doesNotMatch(f.ctx.tools.get('mattpocock_resource').description, /deprecated|disabled/i)
+  assert.match(f.ctx.tools.get('mattpocock_resource').description, /Single-target read only; no collection query, create, borrow or retire action/)
 })
 
 test('delegate tool preserves native permission pipeline and accepts only safe creation fields', options, async t => {

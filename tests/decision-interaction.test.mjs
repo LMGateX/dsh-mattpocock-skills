@@ -253,7 +253,7 @@ test('owned child receives the shared template without being directed to a forbi
 test('actual model tool description, controls save and bounded current DTO expose the mode and source', async t => {
   const f = await mountedFixture(t)
   const description = f.ctx.tools.get('mattpocock_controls').description
-  assert.ok(description.includes('{pendingDecisions?} as {enabled?, interactionMode?: "native-question"|"async-decision"}'))
+  assert.ok(description.includes('pendingDecisions {enabled?: boolean, interactionMode?: "native-question" | "async-decision"}'))
   const decode = result => {
     assert.notEqual(result.isError, true, result.error?.message)
     const parsed = JSON.parse(result.content.find(row => row.type === 'text').text)
