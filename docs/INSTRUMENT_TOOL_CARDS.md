@@ -4,6 +4,10 @@
 
 > **后续独立工作（2026-11-04，设计固定、待实施）：** [模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 会在本插件 execute 返回前改变模型 DTO；本页“不改变 Host 输出”的条款限定于原 UI 卡片工作，不阻止该已固定的独立设计。历史卡片继续读取原公开字段/旧 JSON；本页的原发布及测试记录不作新方案验收。
 
+## 0.23.0 上下文精简范围
+
+[精简契约](<CONTEXT_COMPACTION_CONTRACT.md>)仅优化固定工具说明和owned自动注入投影，不改变模型工具envelope／typed值／render JSON、工具卡公开字段／折叠／旧记录兼容，也不以UI截短代替实际模型减负。原生Client／Remote与同包门禁继续覆盖；本批不安装或激活当前GUI。
+
 ## 0.22.0 模型接口兼容补充
 
 [本批契约](<MODEL_INTERFACE_CONTRACT.md>)让工具模型值保留小对象／独立previews、next请求和结构化decision result；旧工具卡仍须阅读旧snapshot／schema2 JSON，不以模型表示版本拒绝历史卡片。结构结果在裁决详情用可读answer／来源／适用和排除条件展示，不能出现[object Object]；核账操作省略result以保留原对象，显式新result（包括现有纯文本用户答复）仍按整体替换语义，不把旧来源自动认证为新答复来源。工具卡折叠／原生组件／只读来源／点击权限和Remote兼容不变；本轮不重设计工具卡，也不意味着当前GUI已加载新版。

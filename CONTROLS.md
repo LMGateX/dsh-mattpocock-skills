@@ -2,6 +2,10 @@
 
 > **模型工具输出（0.10.0 起）：** [插件模型工具输出减负](<docs/BOUNDED_TOOL_OUTPUTS.md>) 已实施：默认 schema-2 有界当前视图/小回执、按授权版本分段取正文，覆盖插件各工具的同类大返回。它不要求 DSH 补丁、改宿主配置或清理旧 spill；历史 snapshot 返回不作为当前调用格式。
 
+## 0.23.0：工具调用契约与当前行动摘要分层
+
+[精简契约](<docs/CONTEXT_COMPACTION_CONTRACT.md>)固定第一、第二批：工具说明按能力保留必要字段／效果，自动注入压缩重复叙述、已知空类别与普通结束明细，诊断材料经现有受权读取恢复。保留旧义务、结果适用／排除条件、T/S真实覆盖、unknown与当前事实完整变化检测；OFF不命令新增管理操作，也不清旧账。工具envelope仍schemaVersion2／representationVersion2，next／cursor／locator、64KiB读／8KiB回执错误与V5回滚边界不变。不delta-only、不永久一次注入，compaction／撤权／stale恢复与durability frontier保持。**本批不为现有本机DSH安装或激活、不改Profile或重启服务**；交付实测另见[验证摘要](<docs/VERIFICATION.md>)。
+
 ## 0.22.0：结构化结果、准确契约与可执行续读
 
 完整类型和验收依据见[本批模型接口契约](<docs/MODEL_INTERFACE_CONTRACT.md>)。旧文本答复保持；能力`structuredDecisionResults:true`才可写`result:{answer,selectedOptionKey?,source?,included?,excluded?}`。source是作者引用而非真人认证，适用／排除条件保存在result内部；不新增顶层included/excluded，也不凭选项key自动采用／清await。首次结构结果原子升级V5，写后旧版回退需兼容数据，详见[迁移边界](<MIGRATION.md>)。
