@@ -38,13 +38,13 @@ test('mounted guidance adopts the same path explicitly without re-confirmation o
   // This is the G regression: the mounted model-facing instruction must positively direct
   // adoption, rather than let missing follow-through inputs imply another human choice.
   const description = f.ctx.tools.get('mattpocock_record').description
-  assert.match(description, /Do not ask the user to reconfirm the same path choice covered by current authorization/)
+  assert.match(description, /do not reconfirm the same authorized path/)
   assert.match(description, /SAME decisionId/)
-  assert.match(description, /current businessRevision as expectedRevision, not decisionRevision/)
-  assert.match(description, /Only a successful adopted receipt records the selection/)
-  assert.match(description, /Path selection is separate from subsequent operation permissions and external inputs/)
-  assert.match(description, /still wait for qualified input; do not install, download or modify the SDK/)
-  assert.match(description, /Higher-priority instructions or task requirements for personal confirmation still take precedence/)
+  assert.match(description, /current businessRevision \(not decisionRevision\) as expectedRevision/)
+  assert.match(description, /Only successful adopted receipt records selection/)
+  assert.match(description, /Path selection grants no operation permissions or external inputs/)
+  assert.match(description, /still requires qualified input, not installation\/download\/SDK changes/)
+  assert.match(description, /Higher-priority personal-confirmation requirements prevail/)
 
   // A native permission boundary, not a plugin business-risk classifier. The simulator's
   // bodies would only count dispatches; they never install, download or change any files.

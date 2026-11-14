@@ -155,18 +155,18 @@ test('host mount derives the same operator principal from the alpha.3+ browserPe
 test('mounted record description narrows new questions without rejecting legacy closeout', options, async t => {
   const f = await assembly(t)
   const description = f.ctx.tools.get('mattpocock_record').description
-  assert.match(description, /New decisions are only for genuine unresolved user questions: set pending=true and addressee.kind=user/)
-  assert.match(description, /ordinary implementation choices, research and completion reports use existing spec, ADR and task records/)
+  assert.match(description, /New decisions: genuine unresolved user questions only, pending=true and addressee.kind=user/)
+  assert.match(description, /implementation[/]research[/]completion belong in existing spec[/]ADR[/]task records/)
   assert.match(description, /same decisionId/)
-  assert.match(description, /actual authenticated author stays agent when an agent records the reply/)
-  assert.match(description, /Partial, skipped, cancelled or silent replies are not approval/)
-  assert.match(description, /pending=false requires an explicit real resolution/)
-  assert.match(description, /preserve existing awaitingImplementation=true/)
-  assert.match(description, /raw compatibility markers needing task-evidence review, not unfinished-task totals/)
-  assert.match(description, /task handoff is not completion/)
-  assert.match(description, /Legacy agent[/]unspecified[/]missing-addressee updates remain legal; OFF permits old-record closeout but no new records/)
+  assert.match(description, /authenticated author stays agent/)
+  assert.match(description, /Partial[/]skipped[/]cancelled[/]silent replies are not approval/)
+  assert.match(description, /pending=false requires explicit real resolution/)
+  assert.match(description, /Preserve existing awaitingImplementation=true/)
+  assert.match(description, /raw compatibility markers, not unfinished-task totals: review task evidence/)
+  assert.match(description, /handoff is not completion/)
+  assert.match(description, /Legacy agent[/]unspecified[/]missing-addressee updates remain legal; OFF allows old-record closeout, no new records/)
   assert.ok(description.includes('action:"put-decision", decisionId: string, value:{question: string, status: string, pending?: boolean, awaitingImplementation?: boolean'))
-  assert.match(description, /Model output schemaVersion 2/)
+  assert.match(description, /Output schemaVersion:2/)
 })
 
 test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects forged operator/unknown fields', options, async t => {

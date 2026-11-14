@@ -7,7 +7,7 @@ import { mountedFixture, operator, policy, signal } from './fixtures/runtime-hos
 test('record publishes typed action values and result replacement semantics without changing authority', async t => {
   const f = await mountedFixture(t)
   const description = f.ctx.tools.get('mattpocock_record').description
-  assert.ok(description.includes('references: string[]'))
+  assert.ok(description.includes('references?: string[]'))
   assert.ok(description.includes('result: string | DecisionResult | null'))
   assert.match(description, /structuredDecisionResults=true/u)
   assert.match(description, /answer: string/u)
@@ -30,8 +30,14 @@ test('all mounted tools expose only their own action contract and share truthful
   for (const name of ['controls', 'record', 'window', 'resource', 'assign', 'history', 'worktree', 'delegate']) {
     const text = description('mattpocock_' + name)
     assert.match(text, /representationVersion:2/u)
-    assert.match(text, /next.*tool.*request/u)
-    assert.match(text, /canonical JSON.*UTF-8/u)
+    if (['window', 'assign', 'delegate'].includes(name)) {
+      assert.match(text, /bounded receipt/u)
+      assert.doesNotMatch(text, /canonical JSON/u)
+    } else {
+      assert.match(text, /next.*tool.*request/u)
+      assert.match(text, /mattpocock_record.*detail/u)
+    }
+    if (name === 'record') assert.match(text, /canonical JSON.*UTF-8/u)
     assert.doesNotMatch(text, /Read queries use query=/u)
     assert.match(text, /Action contract:/u)
   }
@@ -78,7 +84,7 @@ test('standalone audit shares output guidance and distinguishes current memory s
     ['mattpocock_supervision_config', new Map([['state', supervisionConfig]])],
   ]) })
   const description = f.ctx.tools.get('mattpocock_audit').description
-  for (const expected of ['representationVersion:2', 'next:{tool,request}', 'canonical JSON', 'durable source', 'unknown and not-recorded']) {
+  for (const expected of ['representationVersion:2', 'next:{tool,request}', 'mattpocock_record {action:"detail"', 'durable source', 'unknown and not-recorded']) {
     assert.ok(description.includes(expected), expected)
   }
   await f.runtime.savePolicy(operator, policy(), 0, signal())
@@ -148,7 +154,7 @@ test('one action contract owns request mechanics while legacy authority and reco
     assert.doesNotMatch(purpose, /Requests are|Request: \{|Request keys:|Value shapes:|Each sparse PolicyPatch accepts|The request is one of these shapes/u, suffix)
   }
   const record = f.ctx.tools.get('mattpocock_record').description
-  for (const safety of ['source is immutable', 'No statuses/summary/disposition/claim/body/author/time', 'no caller, author or time claims', 'Never self-enable or renew the owner policy', 'preserve result, references, await flags and task constraints']) {
+  for (const safety of ['Source identity is immutable', 'No statuses/summary/disposition/claim/body/author/time', 'never send caller/author/time or policySelection', 'Never self-enable or renew the owner policy', 'preserve result, references, await flags and task constraints']) {
     assert.ok(record.includes(safety), safety)
   }
   assert.match(f.ctx.tools.get('mattpocock_controls').description, /explicitly delegated policy change/u)

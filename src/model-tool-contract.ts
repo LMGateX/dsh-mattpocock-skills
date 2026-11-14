@@ -9,6 +9,7 @@ interface ActionContract {
   readonly example?: Readonly<Record<string, unknown>>
 }
 interface ToolContract {
+  readonly shared?: string
   readonly actions: readonly ActionContract[]
   readonly rules?: readonly string[]
 }
@@ -30,24 +31,25 @@ const contracts: Readonly<Record<string, ToolContract>> = {
     ],
   },
   mattpocock_record: {
+    shared: 'CommandFields = {' + command + '}. Apply<A> = {action:"apply", command: CommandFields & A}; each Apply below supplies only action-specific fields.',
     actions: [
       { shape: '{action:"read", query?: {kind: string, workflowId?: string, recordId?: string, target?: {workflowId: string, localTicketId?: string, decisionId?: string, axisKey?: string}, limit?: number, cursor?: string}}',
         rules: 'Use the returned current-query entry for available kinds. target selects workflow by workflowId; ticket/task-reference/window-ticket/pending-release add localTicketId; decision adds decisionId; status-count adds axisKey. Do not combine target with legacy workflowId/recordId selectors. Legacy composite recordId remains accepted. Current cursors are opaque strings; pass them unchanged with the same filters.', example: { action: 'read' } },
       { shape: '{action:"detail", locator: string, offset?: number}', rules: 'Use only the returned authorized locator; offset defaults to 0. It is not an arbitrary file/key/JSONPath selector.' },
-      { shape: '{action:"apply", command: {' + command + ', action:"put-workflow", value:{title: string, axes: {axisKey: string, label: string, counting:"exclusive"|"overlapping", statuses: {statusKey: string, label: string, meaning?: string|null, summaryPriority?: number, terminal?: boolean}[]}[]}}}',
+      { shape: 'Apply<{action:"put-workflow", value:{title: string, axes: {axisKey: string, label: string, counting:"exclusive"|"overlapping", statuses: {statusKey: string, label: string, meaning?: string|null, summaryPriority?: number, terminal?: boolean}[]}[]}}>',
         rules: 'terminal is a boolean, not a status name or completion receipt. A workflow value replaces its title and axes; [] is allowed for a workflow used only as a reference group.' },
-      { shape: '{action:"apply", command: {' + command + ', action:"put-task-reference", localTicketId: string, value:{source: object, locator: string, label?: string}}}',
-        rules: 'source is exactly {kind:"external",instance:string,project:string,taskId:string}, {kind:"repository",repositoryAnchor:string,relativePath:string,anchor?:string}, or {kind:"unverified"}. Source identity is immutable; locator and label are nonempty navigation/report text, not authority. No business statuses/summary/body/disposition are accepted.' },
-      { shape: '{action:"apply", command: {' + command + ', action:"put-ticket", localTicketId: string, value:{title: string, statuses:{[axisKey:string]:string[]}, externalRef?:string|null, summary?:string|null, disposition?:string|null, suspicionMode?:"auto"|"off"}}}',
+      { shape: 'Apply<{action:"put-task-reference", localTicketId: string, value:{source: object, locator: string, label?: string}}>',
+        rules: 'source is exactly {kind:"external",instance:string,project:string,taskId:string}, {kind:"repository",repositoryAnchor:string,relativePath:string,anchor?:string}, or {kind:"unverified"}. Source identity is immutable; locator and label are nonempty navigation/report text, not authority. No statuses/summary/disposition/claim/body/author/time are accepted.' },
+      { shape: 'Apply<{action:"put-ticket", localTicketId: string, value:{title: string, statuses:{[axisKey:string]:string[]}, externalRef?:string|null, summary?:string|null, disposition?:string|null, suspicionMode?:"auto"|"off"}}>',
         rules: 'Legacy ticket title/statuses are required, optional fields preserve existing values when omitted; nullable text clears with null. Do not create a duplicate business ticket to work around missing task-reference capability.' },
-      { shape: '{action:"apply", command: {' + command + ', action:"put-decision", decisionId: string, value:{question: string, status: string, pending?: boolean, awaitingImplementation?: boolean, ticketIds?: string[], context?: string|null, options?: {key:string,label:string}[], recommendation?: string|null, impact?: string|null, addressee?:{kind:"user"|"agent"|"unspecified",principalId?:string|null,label?:string|null}, result?: string|DecisionResult|null}}}',
+      { shape: 'Apply<{action:"put-decision", decisionId: string, value:{question: string, status: string, pending?: boolean, awaitingImplementation?: boolean, ticketIds?: string[], context?: string|null, options?: {key:string,label:string}[], recommendation?: string|null, impact?: string|null, addressee?:{kind:"user"|"agent"|"unspecified",principalId?:string|null,label?:string|null}, result?: string|DecisionResult|null}}>',
         rules: 'put-decision value.result: string | DecisionResult | null. Check capabilities.structuredDecisionResults=true before sending an object; absent or unknown capability means use supported nonempty string text, not arbitrary JSON. ' + result + '. Text is nonempty and NUL-free, arrays have at most 64 entries, the whole JSON result at most 65536 UTF-16 characters (including JSON escapes); unknown keys are rejected. Optional result/source members, when supplied, cannot be null. selectedOptionKey and source sessionId/messageId use opaque IDs (1..256 characters, no leading/trailing whitespace or control characters); source.kind is nonempty free text, not an enum.',
         example: { action: 'apply', command: { operationId: 'record-real-reply', expectedRevision: 3, workflowId: 'flow', action: 'put-decision', decisionId: 'question-1', references: ['user-message:reply-1'], value: { question: 'Which path?', status: 'resolved', pending: false, result: { answer: 'Use read-only input', source: { kind: 'user-message', messageId: 'reply-1' }, included: ['read-only runtime'], excluded: ['installation'] } } } } },
-      { shape: '{action:"apply", command: {' + command + ', action:"set-decision-view", decisionId: string, value:{read: boolean, hidden: boolean}}}', rules: 'Both booleans are required. This changes only the authenticated principal view; it does not resolve a question or clear obligations.' },
-      { shape: '{action:"apply", command: {' + command + ', action:"adopt-decision-recommendation", decisionId: string, value:{optionKey: string, decisionRevision: number, policyEpochId: string, policyRevision: number}}}', rules: 'Use exact returned candidate fields and current businessRevision as expectedRevision; never send caller/author/time or policySelection.' },
+      { shape: 'Apply<{action:"set-decision-view", decisionId: string, value:{read: boolean, hidden: boolean}}>', rules: 'Both booleans are required. This changes only the authenticated principal view; it does not resolve a question or clear obligations.' },
+      { shape: 'Apply<{action:"adopt-decision-recommendation", decisionId: string, value:{optionKey: string, decisionRevision: number, policyEpochId: string, policyRevision: number}}>', rules: 'Use exact returned candidate fields and current businessRevision as expectedRevision; never send caller/author/time or policySelection.' },
     ],
     rules: [
-      'All record commands require operationId: string, expectedRevision: number, workflowId: string; references: string[] is optional (default []). Ordinary put-* updates use references as this operation\'s declarations, not an automatic union with older references; supply all intended current declarations while retained historical sources remain unchanged. In contrast, adopt-decision-recommendation retains the original references and adds the supplied declarations.',
+      'CommandFields are required except references (default []). Ordinary put-* updates use references as this operation\'s declarations, not an automatic union with older references; supply all intended current declarations while retained historical sources remain unchanged. In contrast, adopt-decision-recommendation retains the original references and adds the supplied declarations.',
       'For decision updates, omitting result preserves the existing result; a supplied result replaces it as a whole; null clears it. Other optional decision fields preserve their existing value when omitted; supplied arrays replace, [] clears an optional array. included and excluded belong inside result, not at decision top level. Preserve prior answer, source pointers and applicable/excluded conditions when composing a replacement.',
       'Result source is an authored report, not an authenticated user event or operation permission; selectedOptionKey does not adopt a recommendation or change pending/awaitingImplementation. policySelection is host-authenticated adoption metadata, never a field to author. An example resolved result is legitimate only for a real explicit resolution; it does not manufacture approval.',
     ],
@@ -100,16 +102,21 @@ const contracts: Readonly<Record<string, ToolContract>> = {
   },
 }
 
-const outputGuidance = [
-  'Model output schemaVersion 2, representationVersion:2: bounded current/page/detail/content or receipt, never result.snapshot. Read results have a 64KiB UTF-8 JSON budget; receipts/errors 8KiB.',
-  'Use receipt appliedRevision/businessRevision/viewerRevision for their respective domains; appliedRevision is the original operation watermark, not current CAS. Exact small structures remain objects/arrays; omitted large fields have separate previews, never use previews as complete edit values.',
-  'Follow next:{tool,request} exactly when present; null is not a guarantee that unknown coverage is complete. Queries and cursor types are action-specific, not supported by every tool.',
-  'Long bodies use mattpocock_record {action:"detail",locator,offset?}. Body content is canonical JSON in UTF-8 string chunks (contentType/encoding identify it): preserve exact order, use nextOffset/next, and parse only after done and complete reassembly. Reopen after source/scope changes; do not stitch different versions or bypass authorization.',
-].join(' ')
+function outputGuidance(name: string): string {
+  const receiptOnly = ['mattpocock_window', 'mattpocock_assign', 'mattpocock_delegate'].includes(name)
+  const readOnly = ['mattpocock_resource', 'mattpocock_audit'].includes(name)
+  return [
+    'Output schemaVersion:2, representationVersion:2; never result.snapshot. Errors/receipts <=8KiB UTF-8 JSON.',
+    !readOnly && 'Use receipt appliedRevision/businessRevision/viewerRevision for their respective domains; appliedRevision is the original watermark, not current CAS.',
+    receiptOnly ? 'Returns a bounded receipt.' : 'Reads <=64KiB. Exact small objects/arrays stay structured; separate previews are not complete edit values. Follow next:{tool,request} exactly; null does not prove unknown coverage complete.',
+    !receiptOnly && 'Body locator is not an authorization credential; use mattpocock_record {action:"detail",locator,offset?}.',
+    name === 'mattpocock_record' && 'Detail data is canonical JSON in UTF-8 string chunks (contentType/encoding identify it). sourceVersion/contentHash identify content, not business CAS. Preserve order; offsets/nextOffset are UTF-8 byte positions at code-point boundaries. Follow next unchanged; after done and complete reassembly verify totalBytes/contentHash before parsing. Reopen after source/scope changes; never stitch versions or bypass authorization.',
+  ].filter(Boolean).join(' ')
+}
 
 export function modelToolDescription(name: string, purpose: string): string {
   const contract = contracts[name]
   if (!contract) throw new Error('Unknown model tool contract: ' + name)
   const actions = contract.actions.map(action => [action.shape, action.rules, action.example === undefined ? undefined : 'Example request: ' + JSON.stringify(action.example)].filter(Boolean).join(' '))
-  return [purpose, 'Action contract:', ...actions, ...contract.rules ?? [], outputGuidance].join(' ')
+  return [purpose, 'request:json; action types guide the strict parser, not nested schema. Unknown keys rejected.', 'Action contract:', contract.shared, ...actions, ...contract.rules ?? [], outputGuidance(name)].filter(Boolean).join(' ')
 }
