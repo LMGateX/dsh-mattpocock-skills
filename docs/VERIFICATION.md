@@ -2,6 +2,23 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.23.0 已发布并完成下载回验；未安装本机（2026-11-14，UTC+08:00）
+
+本节与[机器摘要](<../dist/verification-0.23.0.json>)是发版后 main 的纯审计追加；复验须检出 frozen tag／source，不把后续文档 HEAD 当作包源，不移动 tag 或重打包。
+
+- **范围与先后：** [精简契约](<CONTEXT_COMPACTION_CONTRACT.md>)先固定两批边界、公开 seams 与计量口径，再由隔离工树／subagents 完成工具说明及 owned consumption；串行集成、生成物重建和 Standards／Spec 独立复核后才发版。两轴各原2项 finding 均 closed、无新增／未关闭项；重叠问题和测试不累加。
+- **第一批：** 能力相关的调用指导、record 共用字段去重、完整 detail 恢复只在其工具承载。默认七工具完整 mounted 描述 **26556→20939 UTF-8 B（−21.15%）／26548→20939 UTF-16 chars**；条件 audit／opt-in delegate 不扩围。
+- **第二批：** OFF 短协议、已知空类别紧凑表示、正常结束普通执行归总、notices 不复述事实；配置来源和 observation Git 核对经现有受权读恢复。[消费指南](<CONSUMPTION.md>)明确 live-only native 当前行无 durable detail、resource physical facts 不假称完整可恢复。live／异常／未知、旧义务、结果适用／排除、T待释放及未处置树仍优先；records/windows 不可读时派生空必须保留 unknown／restricted／missing 覆盖，尾部和下沉字段仍参与变化检测。
+- **相同合法 fixture：** 比较基线 **8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9**；公开 parser 校验代表业务 values，长 ID 为250字符。完整 owned 正文 bytes：OFF空 **8869→5149**、OFF旧义务 **9993→7654**、ON满负载 **14100→12430**、8正常结束 **11623→5945**、live/异常 **12278→9390**、长ID/正文 **12480→9987**、assigned child **11162→9040**。分段 bytes/chars 见机器摘要；普通测试不依赖历史 Git 对象，独立动态旧实现测量与 literals 逐项相等，无历史对象环境实跑6/6。
+- **补读成本不隐去：** 合成 Runtime 快照的 outcome/header cwd 检查，基线正文 **13473 B／0补读**；候选 **10365+1167=11532 B／额外1次 current read**。不是全部详情恢复证明，也不保证所有任务净降；不把 byte/char 下降换称 provider tokens、缓存、费用或延迟收益。
+- **冻结与发布：** source **2c2882eb34868ee6654a62b863843860354df114**，tree **73d2c7d28d63a3d21e148373bfdb3d89fe9dac43**；annotated tag object **133f9b29d22bd74f661d876acc432a08836c6620**，peeled 为同 source。非force atomic main＋新tag已push；[0.23.0 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.23.0) id **445323268**，**2026-11-14T13:42:15Z** published，非draft/prerelease。**114旧tag refs**保持，0.22.0正文／关键元数据与资产 id/size/digest/timestamps保持，排除动态download counts。
+- **唯一 accepted 制品：** 同一 frozen source 以 pnpm11.8.0既有非obfuscating命令生成的新候选通过验收；**588276 B**，SHA256 **b4560ea8206b18780c53804d0632ffc0d75231f2f0b7e85442c1581569239cf7**。归档及4个portable sidecars均只读，dev/ino/mode/size/mtimeNs/ctimeNs/hash保持；**175 regular=90 fixed+85 vendor，0 symlink，70 canonical JS/DTS**。vendor85／296048B／root **70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8**，Skill正文／双channel／provider precedence不变。
+- **源码与真实归档回归：** 精确RC3／Node24.17.0／TypeScript5.9.3，最终源码 **1393/1393，0 fail/skip/cancel**。归档参与矩阵也是1393/1393，但源码专用 probes 仍测源码；另把公开 fixture 与其直接 parser/class 导入统一到真实归档，窄测 **38/38**、完整矩阵 **1393/1393**，均零skip。路由审计实际覆盖 **34归档JS模块／8670条映射记录**，包含Host/Runtime/tools/contract/consumption，619条SDK映射在私有RC3内、0异常；不把记录范围冒称所有源探针或全SDK证明。重复矩阵不相加。
+- **strict／原生／官方headless：** source Host/Client严格Programs 460/764 files，0 diagnostics；同包和下载包的root/controls/host/client四types exports分别Host376/375d.ts/31归档声明、Client736/735/26，均0 diagnostics/noEmit、无旧SDK fallback。skipLibCheck=true与公开声明补充闭包不证明上游lock-patched runtime等价。source／archive原生Client子集各 **53/53，0 skip**；受控transport/Happy DOM不是当前GUI/Chromium证明。accepted与下载包各由官方CLI在fresh DSH_HOME完成checkout/archive×stable/beta，各27 Skills，registry一致，homes后删、未调用模型。
+- **下载收口：** 新Release五资产 **5/5 Buffer.equals** accepted原件，API size/SHA256 digest一致；同下载件 canonical source-bound／公开strict消费者／官方双渠道headless再验通过，下载后未再重复完整suite。
+- **反例不改写成成功：** 首个默认pnpm pack移除packageManager，两个严格门禁正确拒绝；失败五原件只读封存、未发布，未修包或放宽验证器。补充回放初版混用源码与归档parser/class身份，1393中1384pass/9fail；统一私有测试导入后38/38及全量通过，没有改产品、归档、断言。旧空结论断言迁移为紧凑空表示，nullable/result/source/provenance/hash/purge约束未删。私有准备中的命令／转义错误不算验收pass。
+- **部署与保护：** 未向现有本机DSH/Profile安装、激活、reload、配置save或重启；未改共享SDK、启用管理/采纳策略、迁移或清理生产数据、npm publish。原dirty检出418 tracked＋nonignored文件、HEAD/状态保持；12选定路径指纹及GUI listener/PID/fd/starttime保持。这不是全机／ignored／全SDK不变证明。前次0.22.0配置17871→17715B漂移仍未归因，未覆盖恢复，不用新基线抹平。隔离工树及私有证据保留，未物理清理；当前GUI/provider效果未验。
+
 ## 0.22.0 已发布并完成下载回验；未安装本机（2026-11-14，UTC+08:00）
 
 本节与[机器摘要](<../dist/verification-0.22.0.json>)为发版后 main 的纯审计追加；不移动 frozen tag、不重打包。精确复验须检出 `v0.22.0`／下列冻结 source，而不是后续文档 HEAD。历史安装记录不构成本版的本机安装或激活授权。

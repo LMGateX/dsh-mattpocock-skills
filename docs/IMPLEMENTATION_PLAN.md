@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.23.0 交付收口（2026-11-14，已发布；本机安装排除）
+
+第一、第二批按下述先行契约完成，独立双轴原finding均关闭；冻结source `2c2882eb34868ee6654a62b863843860354df114`，源码与真实归档模块矩阵各1393/1393、原生各53/53、strict/canonical/官方双渠道headless通过。非force atomic push、新annotated tag、五资产[Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.23.0)及下载逐字节/strict/headless回验完成，失败候选和私有回放反例保留、不放宽验包器。计量、补读成本、精确身份、旧配置漂移与部署限制见[验证摘要](<VERIFICATION.md>)及[机器记录](<../dist/verification-0.23.0.json>)。当前追加仅审计文档，不移动tag或重打包；未为现有本机安装/激活，不改Profile/共享SDK/服务。
+
 ## 0.23.0 上下文精简（2026-11-14，先文档）
 
 [本批契约](<CONTEXT_COMPACTION_CONTRACT.md>)固定 D→G/C/V→串行集成→独立Standards/Spec→源码/唯一包门禁→push/Release/下载回验。公开8ff0d7e为基线，新隔离integration保护原dirty树和既有审计工树；D单独提交后，G工具描述/host purpose与C消费投影/协议各自独立单writer工树/subagent，V准备精确RC3与保护快照。每lane以现有公开seams竖切RED→GREEN；共享测试迁移串行协调。主代理负责0.23.0版本、生成物、完整source和同一accepted包、公开types/原生/headless及计量闭合。保留字段/权限/义务/完整变化检测与baseline；工具envelope及旧cursor字段不变。本机安装/激活、Profile/共享SDK/服务改动、生产迁移/清理、npm publish明确排除。当前只是固定授权与契约，不预记完成。

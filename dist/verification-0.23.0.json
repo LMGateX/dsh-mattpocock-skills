@@ -1,0 +1,516 @@
+{
+  "schemaVersion": 1,
+  "status": "published-and-download-verified; installation-into-existing-local-dsh-not-performed",
+  "version": "0.23.0",
+  "source": {
+    "commit": "2c2882eb34868ee6654a62b863843860354df114",
+    "baseline": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+    "tree": "73d2c7d28d63a3d21e148373bfdb3d89fe9dac43",
+    "annotatedTagObject": "133f9b29d22bd74f661d876acc432a08836c6620"
+  },
+  "artifact": {
+    "sha256": "b4560ea8206b18780c53804d0632ffc0d75231f2f0b7e85442c1581569239cf7",
+    "bytes": 588276,
+    "members": 175,
+    "fixedMembers": 90,
+    "vendorMembers": 85,
+    "jsAndDts": 70,
+    "assetCount": 5,
+    "packer": "pnpm 11.8.0 pack --skip-manifest-obfuscation",
+    "canonical": true
+  },
+  "environment": {
+    "node": "24.17.0",
+    "pnpm": "11.8.0",
+    "typescript": "5.9.3",
+    "dsh": "0.2.2-rc.3",
+    "gnuTar": "1.35",
+    "isolated": true,
+    "skipLibCheck": true,
+    "publicDeclarationSupplements": true,
+    "notAllDependencyRegistryAudit": true
+  },
+  "gates": {
+    "source": {
+      "tests": 1393,
+      "pass": 1393,
+      "fail": 0,
+      "skip": 0
+    },
+    "sourceStrict": {
+      "hostDiagnostics": 0,
+      "clientDiagnostics": 0
+    },
+    "archiveMatrixOriginalRouting": {
+      "tests": 1393,
+      "pass": 1393,
+      "fail": 0,
+      "skip": 0,
+      "sourceOnlyProbesRemainSourceOnly": true
+    },
+    "archivePublicTypes": {
+      "hostDiagnostics": 0,
+      "clientDiagnostics": 0,
+      "noEmit": true,
+      "oldSdkFallback": false
+    },
+    "nativeClientSource": {
+      "tests": 53,
+      "pass": 53,
+      "skip": 0
+    },
+    "nativeClientArchive": {
+      "tests": 53,
+      "pass": 53,
+      "skip": 0
+    },
+    "officialHeadless": {
+      "stable": 27,
+      "beta": 27,
+      "checkoutAndArchiveRegistryEqual": true,
+      "freshDshHomes": true,
+      "homesRemoved": true,
+      "modelRun": false
+    },
+    "archiveUnifiedRuntime": {
+      "tests": 1393,
+      "pass": 1393,
+      "fail": 0,
+      "skip": 0,
+      "cancel": 0,
+      "narrowPass": 38,
+      "actualArchiveJsModules": 34,
+      "mappedResolutionRecords": 8670,
+      "mappedSdkResolutions": 619,
+      "unexpectedMappedResolutions": 0,
+      "sourceTextAndDataUnitProbesRemainSource": true
+    },
+    "publicDownload": {
+      "assets": 5,
+      "exactByteEqual": 5,
+      "apiSizeAndSha256Match": true,
+      "canonical": true,
+      "publicTypes": true,
+      "officialHeadless": true,
+      "fullSuiteRepeatedAfterDownload": false
+    }
+  },
+  "reviews": {
+    "standards": {
+      "closed": 2,
+      "new": 0,
+      "open": 0
+    },
+    "spec": {
+      "closed": 2,
+      "new": 0,
+      "open": 0
+    },
+    "overlappingFindingsAndTestsNotSummed": true
+  },
+  "measurements": {
+    "kind": "synthetic same fixtures; UTF-8 bytes and UTF-16 characters; not provider tokens/cache/cost/latency",
+    "mountedDefaultSeven": {
+      "baseline": {
+        "bytes": 26556,
+        "chars": 26548
+      },
+      "candidate": {
+        "bytes": 20939,
+        "chars": 20939
+      }
+    },
+    "injection": [
+      {
+        "fixture": "OFF-empty",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 8869,
+            "chars": 8865
+          },
+          "protocol": {
+            "bytes": 4215,
+            "chars": 4211
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 4590,
+            "chars": 4590
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 5149,
+            "chars": 5149
+          },
+          "protocol": {
+            "bytes": 2460,
+            "chars": 2460
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 2625,
+            "chars": 2625
+          }
+        }
+      },
+      {
+        "fixture": "OFF-old-obligations",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 9993,
+            "chars": 9983
+          },
+          "protocol": {
+            "bytes": 4215,
+            "chars": 4211
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 5714,
+            "chars": 5708
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 7654,
+            "chars": 7648
+          },
+          "protocol": {
+            "bytes": 3575,
+            "chars": 3575
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 4015,
+            "chars": 4009
+          }
+        }
+      },
+      {
+        "fixture": "ON-full",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 14100,
+            "chars": 14086
+          },
+          "protocol": {
+            "bytes": 6242,
+            "chars": 6238
+          },
+          "notices": {
+            "bytes": 927,
+            "chars": 923
+          },
+          "facts": {
+            "bytes": 6931,
+            "chars": 6925
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 12430,
+            "chars": 12424
+          },
+          "protocol": {
+            "bytes": 5538,
+            "chars": 5538
+          },
+          "notices": {
+            "bytes": 368,
+            "chars": 368
+          },
+          "facts": {
+            "bytes": 6524,
+            "chars": 6518
+          }
+        }
+      },
+      {
+        "fixture": "eight-normal-ended",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 11623,
+            "chars": 11619
+          },
+          "protocol": {
+            "bytes": 4215,
+            "chars": 4211
+          },
+          "notices": {
+            "bytes": 1497,
+            "chars": 1497
+          },
+          "facts": {
+            "bytes": 5911,
+            "chars": 5911
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 5945,
+            "chars": 5945
+          },
+          "protocol": {
+            "bytes": 2877,
+            "chars": 2877
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 3004,
+            "chars": 3004
+          }
+        }
+      },
+      {
+        "fixture": "live-abnormal",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 12278,
+            "chars": 12274
+          },
+          "protocol": {
+            "bytes": 6242,
+            "chars": 6238
+          },
+          "notices": {
+            "bytes": 662,
+            "chars": 662
+          },
+          "facts": {
+            "bytes": 5374,
+            "chars": 5374
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 9390,
+            "chars": 9390
+          },
+          "protocol": {
+            "bytes": 5538,
+            "chars": 5538
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 3788,
+            "chars": 3788
+          }
+        }
+      },
+      {
+        "fixture": "long-ID-body",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 12480,
+            "chars": 12278
+          },
+          "protocol": {
+            "bytes": 6242,
+            "chars": 6238
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 6174,
+            "chars": 5976
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 9987,
+            "chars": 9789
+          },
+          "protocol": {
+            "bytes": 5538,
+            "chars": 5538
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 4385,
+            "chars": 4187
+          }
+        }
+      },
+      {
+        "fixture": "assigned-child",
+        "baselineCommit": "8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9",
+        "baseline": {
+          "total": {
+            "bytes": 11162,
+            "chars": 11158
+          },
+          "protocol": {
+            "bytes": 6357,
+            "chars": 6353
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 4741,
+            "chars": 4741
+          }
+        },
+        "candidate": {
+          "total": {
+            "bytes": 9040,
+            "chars": 9040
+          },
+          "protocol": {
+            "bytes": 5653,
+            "chars": 5653
+          },
+          "notices": {
+            "bytes": 64,
+            "chars": 64
+          },
+          "facts": {
+            "bytes": 3323,
+            "chars": 3323
+          }
+        }
+      }
+    ],
+    "recoveryTask": {
+      "baseline": {
+        "summaryBytes": 13473,
+        "extraReads": 0,
+        "totalBytes": 13473
+      },
+      "candidate": {
+        "summaryBytes": 10365,
+        "extraReads": 1,
+        "readBytes": 1167,
+        "totalBytes": 11532
+      },
+      "fields": [
+        "outcome",
+        "headerCwd"
+      ],
+      "allDetailRecoveryProven": false
+    }
+  },
+  "failedAttempts": {
+    "rejectedArchive": {
+      "sha256": "12f9d73c205f3e015a11c2ab4ee543d50884fcd73f6bb03ecdc30d9cbcaac2d6",
+      "bytes": 588266,
+      "reason": "default pnpm manifest obfuscation removes packageManager",
+      "published": false,
+      "preservedReadOnly": true,
+      "verifierRelaxed": false
+    },
+    "mixedFixtureReplay": {
+      "tests": 1393,
+      "pass": 1384,
+      "fail": 9,
+      "skip": 0,
+      "reason": "incomplete private replay mapping mixed source/archive parser and ControlsError identities",
+      "sourceOrAssertionsChanged": false,
+      "rerunPending": false,
+      "closedBy": "Uniform exact-archive module identities; 38/38 narrow and 1393/1393 complete replay; no source/archive/assertion changes"
+    }
+  },
+  "deployment": {
+    "existingLocalDshInstalled": false,
+    "existingProfileActivated": false,
+    "sharedSdkModified": false,
+    "serviceRestarted": false,
+    "guiEffectVerified": false,
+    "providerEffectsVerified": false,
+    "historicalProfileDriftAttribution": "unresolved; earlier 0.22.0 exception is not erased by this batch baseline"
+  },
+  "release": {
+    "id": 445323268,
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.23.0",
+    "tag": "v0.23.0",
+    "publishedAt": "2026-11-14T13:42:15Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.23.0.tgz",
+        "id": 747614504,
+        "bytes": 588276,
+        "sha256": "b4560ea8206b18780c53804d0632ffc0d75231f2f0b7e85442c1581569239cf7",
+        "apiDigest": "sha256:b4560ea8206b18780c53804d0632ffc0d75231f2f0b7e85442c1581569239cf7",
+        "byteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.23.0.tgz.pnpm-version",
+        "id": 747614914,
+        "bytes": 7,
+        "sha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "apiDigest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "byteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.23.0.tgz.sha256",
+        "id": 747614923,
+        "bytes": 107,
+        "sha256": "64e5c1815af3dcb6d9bc7d4217b4d6e9c92dc9c117e32145a06eecb4ac493f57",
+        "apiDigest": "sha256:64e5c1815af3dcb6d9bc7d4217b4d6e9c92dc9c117e32145a06eecb4ac493f57",
+        "byteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.23.0.tgz.size",
+        "id": 747614920,
+        "bytes": 7,
+        "sha256": "6157fc423f78fd2d4bca9d2ff485ffca6644ba10ebb29924cc563ca4b5593f00",
+        "apiDigest": "sha256:6157fc423f78fd2d4bca9d2ff485ffca6644ba10ebb29924cc563ca4b5593f00",
+        "byteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.23.0.tgz.source-commit",
+        "id": 747614913,
+        "bytes": 41,
+        "sha256": "536f1c023ef55177a68090620fb2e3a621ee184feff1d04a352d7719c1636567",
+        "apiDigest": "sha256:536f1c023ef55177a68090620fb2e3a621ee184feff1d04a352d7719c1636567",
+        "byteEqual": true
+      }
+    ],
+    "oldTagRefsUnchanged": 114,
+    "oldReleaseKeyFieldsAndAssetsUnchanged": true,
+    "dynamicDownloadCountsExcluded": true
+  },
+  "protection": {
+    "originalTrackedAndNonignoredFiles": 418,
+    "selectedPaths": 12,
+    "originalHeadStatusFilesAndSelectedFingerprintsUnchanged": true,
+    "listenerPidFdAndStarttimeUnchanged": true,
+    "acceptedFiveAssetDeviceInodeModeSizeMtimeNsCtimeNsAndHashesUnchanged": true,
+    "wholeFilesystemClaim": false,
+    "isolatedWorktreesAndPrivateEvidenceRetained": true,
+    "historical022ProfileDriftRemainsUnattributed": true
+  }
+}
