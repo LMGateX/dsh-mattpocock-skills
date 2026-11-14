@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 1,
+  "version": "0.22.0",
+  "auditRecord": {
+    "postReleaseMainOnly": true,
+    "notIncludedInFrozenTag": true
+  },
+  "source": {
+    "commit": "288ad5e6cc3b72e2e71b460eebe524fd05f88783",
+    "tree": "e20cb622fb5fb19df7d2ff6ace154dc05e4f5071",
+    "base": "c4b64e450f8b0ec6cf6bd2be1c67f06e0032cd7e",
+    "tag": "v0.22.0",
+    "annotatedTagObject": "db4e416934870a0cc54b7759ff21792a985b104f"
+  },
+  "release": {
+    "id": 445237454,
+    "url": "https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.22.0",
+    "publishedAt": "2026-11-14T11:17:02Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.22.0.tgz",
+        "id": 747242969,
+        "size": 587633,
+        "digest": "sha256:cdd497de872baed58ba64b861b0f13761d334c7140bd55e883642704ea957442",
+        "acceptedSha256": "cdd497de872baed58ba64b861b0f13761d334c7140bd55e883642704ea957442",
+        "downloadByteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.22.0.tgz.sha256",
+        "id": 747242987,
+        "size": 107,
+        "digest": "sha256:44860c9ee832c02a7595e724597942ad197069d09dbdaedf19c73fc3858d3e3e",
+        "acceptedSha256": "44860c9ee832c02a7595e724597942ad197069d09dbdaedf19c73fc3858d3e3e",
+        "downloadByteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.22.0.tgz.size",
+        "id": 747242982,
+        "size": 7,
+        "digest": "sha256:6488820254715b36706f9ce8c68204bb58741f1b8c85513e204405b07d9919db",
+        "acceptedSha256": "6488820254715b36706f9ce8c68204bb58741f1b8c85513e204405b07d9919db",
+        "downloadByteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.22.0.tgz.source-commit",
+        "id": 747242983,
+        "size": 41,
+        "digest": "sha256:113326c340d9798e0b50b56297086f85e8aefa75c8ee4938d525d3d466b5087c",
+        "acceptedSha256": "113326c340d9798e0b50b56297086f85e8aefa75c8ee4938d525d3d466b5087c",
+        "downloadByteEqual": true
+      },
+      {
+        "name": "lmgatex-dsh-mattpocock-skills-0.22.0.tgz.pnpm-version",
+        "id": 747242981,
+        "size": 7,
+        "digest": "sha256:b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "acceptedSha256": "b396e3e19de55c61b6773383a0a92ee45dd6cddcbec8a09d731a6f2caefa2c5b",
+        "downloadByteEqual": true
+      }
+    ]
+  },
+  "artifact": {
+    "acceptedPackCount": 1,
+    "bytes": 587633,
+    "sha256": "cdd497de872baed58ba64b861b0f13761d334c7140bd55e883642704ea957442",
+    "pnpm": "11.8.0",
+    "readonlyFiles": 5,
+    "portableChecksum": true,
+    "regularFiles": 175,
+    "fixedFiles": 90,
+    "vendorFiles": 85,
+    "symlinks": 0,
+    "canonicalJsDts": 70,
+    "sourceBlobBinding": true,
+    "manifestNormalization": "only documented trailing-LF allowance",
+    "assetsReplacedOrReuploaded": false
+  },
+  "environment": {
+    "runtime": "DSH 0.2.2-rc.3",
+    "node": "24.17.0",
+    "typescript": "5.9.3",
+    "declaredFloors": {
+      "dsh": ">=0.2.2-rc.1",
+      "node": ">=24.9.0"
+    },
+    "publicUiSupplements": true,
+    "stockCliStandaloneUiProved": false
+  },
+  "tests": {
+    "source": {
+      "tests": 1381,
+      "pass": 1381,
+      "fail": 0,
+      "skip": 0,
+      "cancel": 0
+    },
+    "acceptedArchive": {
+      "tests": 1381,
+      "pass": 1381,
+      "fail": 0,
+      "skip": 0,
+      "cancel": 0
+    },
+    "sourceAndArchiveNativeEach": {
+      "tests": 47,
+      "pass": 47,
+      "skip": 0
+    },
+    "sourceAndArchiveActivationEach": {
+      "tests": 6,
+      "pass": 6,
+      "skip": 0
+    },
+    "subsetCountsAreNotAdditive": true,
+    "sourceOnlyTextAndCompilerSeamsRemainSource": true,
+    "archiveModulesClosedClientAndPluginManagerUseSameAcceptedArtifact": true,
+    "downloadFullSuiteRerun": false,
+    "downloadIdentityBasis": "5/5 Buffer equality plus fresh canonical/public-consumer/headless checks"
+  },
+  "strict": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "sourcePrograms": [
+      460,
+      764
+    ],
+    "sourceDiagnostics": 0,
+    "missingSdkImports": 0,
+    "devOrOldSdkFallback": false,
+    "publicTypeExports": [
+      ".",
+      "./controls",
+      "./host",
+      "./client"
+    ],
+    "acceptedAndDownloadedConsumersEach": [
+      {
+        "kind": "host",
+        "exports": [
+          ".",
+          "./controls",
+          "./host"
+        ],
+        "diagnostics": 0,
+        "errors": 0,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "emitted": false,
+        "sourceFiles": 376,
+        "declarations": 375,
+        "archiveDeclarations": 31
+      },
+      {
+        "kind": "client",
+        "exports": [
+          "./client"
+        ],
+        "diagnostics": 0,
+        "errors": 0,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "emitted": false,
+        "sourceFiles": 736,
+        "declarations": 735,
+        "archiveDeclarations": 26
+      }
+    ],
+    "typedUnresolvedNonBuiltin": 0,
+    "thirdPartyDeclarationInternalsExhaustivelyChecked": false
+  },
+  "client": {
+    "bytes": 472326,
+    "sha256": "8b64d768a7db99ae45e534a94834209ba2f83a13095c3aceb05a464b5a1ab24b",
+    "localModules": 14,
+    "externals": [
+      "react",
+      "@deepseek-ai/dsh-client-ui-primitives"
+    ],
+    "declarationBytes": 17435,
+    "declarationSha256": "437d7e94cbb4454bf0473405bca5fe6c0f25de2359630b28aa28ecb140a6decf"
+  },
+  "vendor": {
+    "files": 85,
+    "bytes": 296048,
+    "rootSha256": "70a9375e80b05d578f0329ff30d97ab7d08fef9c5a6a78a0df5dbfe986e5beb8",
+    "stable": 27,
+    "beta": 27,
+    "skillBodiesAndProviderPrecedenceUnchanged": true
+  },
+  "officialHeadless": {
+    "acceptedAndDownloadedEach": "source/archive x stable/beta",
+    "skillsPerChannel": 27,
+    "modelVisiblePerChannel": 27,
+    "sourceInvocationCounts": {
+      "modelInvocable": 11,
+      "userOnly": 16
+    },
+    "registryReportsByteIdentical": true,
+    "freshPrivateHomes": true,
+    "homesRemoved": true,
+    "modelInvoked": false,
+    "webStarted": false,
+    "customClient": false
+  },
+  "review": {
+    "reviewedFrozenSource": "288ad5e6cc3b72e2e71b460eebe524fd05f88783",
+    "standards": {
+      "blocking": 0,
+      "optional": 1,
+      "optionalDisposition": "P3 duplicated nonempty text validator deferred"
+    },
+    "spec": {
+      "blocking": 0,
+      "optional": 0
+    },
+    "finalTestOnlyDeltaReviewedByBoth": true,
+    "notAbsoluteDefectAbsence": true
+  },
+  "compatibility": {
+    "structuredDecisionResults": true,
+    "supportedStorageVersions": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "v5OnFirstObjectResultWrite": true,
+    "noEagerV5MigrationForLegacyText": true,
+    "v5RollbackIsNotPackageOnly": true,
+    "modelSchemaVersion": 2,
+    "representationVersion": 2,
+    "readUtf8JsonBytes": 65536,
+    "receiptAndErrorUtf8JsonBytes": 8192,
+    "sourceCitationsDoNotAuthenticateHumanApproval": true
+  },
+  "preservation": {
+    "oldTagRefs": 112,
+    "previousReleaseId": 445132243,
+    "previousReleaseBodyAndSelectedMetadataUnchanged": true,
+    "previousAssetsUnchanged": 5,
+    "dynamicDownloadCountsExcluded": true
+  },
+  "protection": {
+    "originalTrackedAndNonignoredFiles": 418,
+    "originalHeadStatusAndFingerprintsUnchanged": true,
+    "selectedResources": 11,
+    "unchangedSelectedResources": 10,
+    "allSelectedResourcesUnchanged": false,
+    "configurationDrift": {
+      "resource": "Profile cordis.patch.yml",
+      "bytesBefore": 17871,
+      "bytesAfter": 17715,
+      "observedMtime": "2026-11-14T18:28:27.528123692+08:00",
+      "cause": "unattributed; before content was not retained",
+      "restoredOrOverwritten": false
+    },
+    "sdkManifestProfileManifestLockAndSelectedInstalledPluginCodeUnchanged": true,
+    "originalListenerRowPidFdAndSocketUnchanged": true,
+    "listenerStarttimeCoverage": false,
+    "notIgnoredOrFullSdkOrWholeMachineProof": true
+  },
+  "exclusions": {
+    "existingLocalProfileInstall": false,
+    "existingLocalProfileActivation": false,
+    "guiReload": false,
+    "serviceRestart": false,
+    "productionModelInvocation": false,
+    "productionBusinessMigrationOrCleanup": false,
+    "managementOrPolicyEnablement": false,
+    "npmPublish": false
+  },
+  "retainedWorktrees": [
+    {
+      "label": "model-interface-release",
+      "head": "288ad5e6cc3b72e2e71b460eebe524fd05f88783",
+      "clean": true,
+      "changedPaths": 0,
+      "disposition": "retained for audit; not physically removed"
+    },
+    {
+      "label": "decision-result-core",
+      "head": "b1b2fe720aef5d253cea4503a7570c33bef32552",
+      "clean": false,
+      "changedPaths": 8,
+      "disposition": "retained for audit; not physically removed"
+    },
+    {
+      "label": "model-interface-consumers",
+      "head": "1aac2ea93033792c797222d7d51ddf49d54d7027",
+      "clean": false,
+      "changedPaths": 11,
+      "disposition": "retained for audit; not physically removed"
+    },
+    {
+      "label": "model-interface-validation",
+      "head": "b14ce14e5d19338f7ea147bf0a02e2c83957946e",
+      "clean": true,
+      "changedPaths": 0,
+      "disposition": "retained for audit; not physically removed"
+    },
+    {
+      "label": "model-output-v2",
+      "head": "1ea1d0b5d16a2ddb2b7377c2579463a3f608e656",
+      "clean": true,
+      "changedPaths": 0,
+      "disposition": "retained for audit; not physically removed"
+    },
+    {
+      "label": "model-tool-guidance",
+      "head": "64bf5929c4abfb72b6c064af1b8a2a987f31e58e",
+      "clean": false,
+      "changedPaths": 3,
+      "disposition": "retained for audit; not physically removed"
+    },
+    {
+      "label": "model-guidance-combined",
+      "head": "1bb9c63a5f19449e096fe176dc8c864fc24dbace",
+      "clean": true,
+      "changedPaths": 0,
+      "disposition": "retained for audit; not physically removed"
+    }
+  ],
+  "failuresPreserved": {
+    "firstFrozenSourceFullSuite": {
+      "source": "c18cf20d354ffe8e8eea59dd6f4ee9acf15c0ab8",
+      "tests": 1381,
+      "pass": 1377,
+      "fail": 4,
+      "skip": 0
+    },
+    "resolution": "precise typed-contract/current-locator assertions; runtime safety checks preserved; 132 targeted pass and fresh complete suite pass",
+    "publishTransport": "PATCH EOF; GET confirmed same ID still draft; metadata-only retry succeeded without asset reupload",
+    "privatePreparation": "syntax/quoting and bounded-display parse failures preserved; not product passes"
+  },
+  "limits": [
+    "Source/release verification is not current production GUI repair or model obedience proof.",
+    "skipLibCheck=true does not exhaustively check third-party declaration internals.",
+    "Public supplements are verified registry archives, not standalone stock UI or lock-patched runtime equivalence.",
+    "Source blob binding and registry SRI are not a cryptographic signer provenance attestation.",
+    "One live Profile config fingerprint drift remains unattributed; all-11-selected invariance is not claimed."
+  ]
+}
