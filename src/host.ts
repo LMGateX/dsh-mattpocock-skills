@@ -94,8 +94,24 @@ export type HostCapabilities = Omit<typeof HOST_CAPABILITIES, 'nativeInitialChil
  * string: only the public methods the actual service exposes authorize cwd
  * transmission. */
 type InitialChildCwdSeam = 'native' | 'unsupported'
+interface NativeActivationTask {
+  readonly parent: Agent
+  readonly prompt: { readonly type: 'text'; readonly text: string }[]
+  readonly cwd?: string
+  readonly maxDepth?: number
+}
+/** One structurally compatible call: RC3 consumes the top-level task, while RC1
+ * consumes request. Both public implementations ignore the additional fields. */
+interface NativeActivationSpec extends NativeActivationTask {
+  readonly request: NativeActivationTask
+  readonly provider: 'spawn' | 'fork'
+  readonly label: string
+  readonly childId: SessionId
+  readonly signal: AbortSignal
+  readonly delivery: 'parent'
+}
 interface NativeActivationFacade {
-  readonly startActivation?: (spec: unknown) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown; readonly result?: unknown }>
+  readonly startActivation?: (spec: NativeActivationSpec) => Promise<{ readonly childId?: unknown; readonly messageId?: unknown; readonly result?: unknown }>
 }
 function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
   const subagents = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
@@ -1653,14 +1669,16 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         if (cwd !== undefined && !hasNativeInitialChildCwd(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
         // Public manager owns provider capability/depth checks, permissions, lineage,
         // factory headers and durable descriptors. Never mutate parent/child metadata.
-        // Upstream keeps the reserved identity and carries the directory inside the
-        // request, so the provider resolves and records it before the child exists.
+        // Upstream keeps the reserved identity and resolves the task directory
+        // before the child exists. RC3 reads top-level task fields; RC1 reads request.
         // Parent delivery is the model-facing completion notice this plugin's receipt
         // already implies; the returned handle stays with the upstream manager, which
         // settles the child and releases its slot without further action here.
-        const activation = await native.startActivation({ provider: raw.provider, label, childId,
-          request: { parent: exec.agent!, prompt: [{ type: 'text' as const, text: prompt }], ...(maxDepth === undefined ? {} : { maxDepth }), ...(cwd === undefined ? {} : { cwd }) },
-          signal: exec.signal, delivery: 'parent' })
+        const task: NativeActivationTask = { parent: exec.agent!, prompt: [{ type: 'text', text: prompt }],
+          ...(maxDepth === undefined ? {} : { maxDepth }), ...(cwd === undefined ? {} : { cwd }) }
+        const spec: NativeActivationSpec = { ...task, request: task, provider: raw.provider, label, childId,
+          signal: exec.signal, delivery: 'parent' }
+        const activation = await native.startActivation(spec)
         // The result promise rejects on capture failure; nobody here awaits it, and an
         // unhandled rejection would surface in the host process. The parent notice and
         // this plugin's lifecycle observation carry the outcome instead.
