@@ -189,7 +189,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'assets/notification-sounds/toast.mp3',
 ])
 
-const EXPECTED_VERSION = '0.21.2'
+const EXPECTED_VERSION = '0.22.0'
 // This batch targets DSH 0.2.2-rc.3, whose Node floor is >=24.9.0.
 // Its real evaluator gives own `engines.dsh` precedence over component peers and
 // includes prereleases. Older version strings are refused; the floor admits RC1

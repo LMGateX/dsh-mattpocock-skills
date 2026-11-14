@@ -2,6 +2,12 @@
 
 > **状态：0.10.0 clean-source 8ec081d 已通过完整源码回归、双轴复审与唯一精确制品/PluginManager 全矩阵；已 push/tag、发布 GitHub Release 并完成五资产下载回验。** 2026-11-04 后续发布 `0.10.1` 兼容性补丁并安装到当前 Web Profile；模型输出契约、DTO 与 `0.10.0` 验收不变。0.10.0 发布时未安装本机，当前安装与重启状态以 [VERIFICATION.md](<VERIFICATION.md>) 为准。权威决策见 [DESIGN](<DESIGN.md>)，执行阶段见 [实施计划](<IMPLEMENTATION_PLAN.md#bounded-tool-outputs>)。
 
+## 0.22.0 表示细化（先文档，验收另记）
+
+[模型接口契约](<MODEL_INTERFACE_CONTRACT.md>)细化本页旧表示：envelope仍schemaVersion2／同64KiB读、8KiB回执预算，representationVersion2区分精确小结构与独立previews。长字段省略原值，previews不充当编辑输入；授权正文仍canonical JSON UTF-8字符串片段，拼齐done后解析，保留hash／version／当前scope。新增next:{tool,request}携带实际filter／原样cursor或offset。当前record target对象免手写组合键，原recordId兼容。audit未知覆盖不变成current／0，内存summary与持久episodes分别标来源。
+
+结构化决策结果是另一明确V5业务能力，不是把整份RuntimeSnapshot恢复给模型，也不将chunk字符串包装当业务建模。默认读仍不构造完整历史，写入成功与投影失败分开；locator／权限／取消与FIFO不放宽。本页历史说明和读数保留其当时语义，以新契约和[验证摘要](<VERIFICATION.md>)为本批准则。
+
 ## 1. 结论与责任范围
 
 本插件反复把完整 RuntimeSnapshot / InstrumentSnapshot / WindowSnapshot、带全历史的工作树行，或底层共享 RuntimeDocument 作为模型工具结果返回；宿主正常执行日志/spill 后产生累积占用。本机使用 tmpfs 时，它表现为内存持续增长。首要修复是本插件的模型工具 Interface，不以修改 DSH 为前提。

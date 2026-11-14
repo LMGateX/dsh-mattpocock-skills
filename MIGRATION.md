@@ -1,5 +1,16 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.22.0 model interfaces and structured decision results
+
+- Keeps DSH >=0.2.2-rc.1 / Node >=24.9.0; this batch validates the exact RC3 runtime, not every admitted host version. No installation into the existing local DSH/Profile, activation or service restart is authorized.
+- Old string/null decision results remain valid. Check `records.capabilities.structuredDecisionResults === true` before writing an object result: `{answer, selectedOptionKey?, source?, included?, excluded?}`. Known fields only; source is an authored citation, not authenticated user identity or a new permission. An option report does not automatically adopt a recommendation or clear pending/awaiting obligations.
+- The first structured result write upgrades the instrument to **V5 in the same CAS**. Reads and old text-only operations do not eagerly migrate V1–V4; V5 preserves reference, policy, history/checkpoint and idempotency facts. **After V5 is written, rollback to 0.21.2 or earlier is not package-only.** Stop mixed-version writers and use a verified compatible backup or a V5-capable release; do not lower schemaVersion, stringify results, discard retained history or restore stale data over concurrent work. No downgrade utility or production migration runs.
+- Model envelopes remain schemaVersion 2 with `representationVersion:2`. Small fields retain exact JSON types; large fields are omitted and described in sibling `previews`, not replaced by type-changing preview objects. Previews are not complete edit inputs. Use the authorized body locator for exact values.
+- Current record queries can use `target:{workflowId,localTicketId}` or the kind-appropriate decisionId/axisKey; old composite recordId queries remain supported. Do not combine selectors. Execute the supplied `next:{tool,request}` unchanged for continuations. Body chunks are canonical JSON in UTF-8: join all chunks through done before parsing; hashes, versions and offsets still apply.
+- Audit unknown/not-recorded does not mean a current empty collection or zero; memory-only summary and retained episodes have separate coverage. Assigned current-record recovery does not grant coordinator history access.
+
+See the [accepted interface contract](<docs/MODEL_INTERFACE_CONTRACT.md>) and [measured delivery state](<docs/VERIFICATION.md>). Historical installation scopes below are not authorization for this batch.
+
 ## Plugin 0.21.2 DSH RC3 adaptation (no existing local installation)
 
 - Keeps DSH >=0.2.2-rc.1 and Node >=24.9.0; this batch targets the exact DSH 0.2.2-rc.3 SDK/runtime. Legacy request-shape fixtures are not an actual RC1 acceptance run, and admitted version strings are not measured future-host compatibility.

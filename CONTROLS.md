@@ -2,6 +2,14 @@
 
 > **模型工具输出（0.10.0 起）：** [插件模型工具输出减负](<docs/BOUNDED_TOOL_OUTPUTS.md>) 已实施：默认 schema-2 有界当前视图/小回执、按授权版本分段取正文，覆盖插件各工具的同类大返回。它不要求 DSH 补丁、改宿主配置或清理旧 spill；历史 snapshot 返回不作为当前调用格式。
 
+## 0.22.0：结构化结果、准确契约与可执行续读
+
+完整类型和验收依据见[本批模型接口契约](<docs/MODEL_INTERFACE_CONTRACT.md>)。旧文本答复保持；能力`structuredDecisionResults:true`才可写`result:{answer,selectedOptionKey?,source?,included?,excluded?}`。source是作者引用而非真人认证，适用／排除条件保存在result内部；不新增顶层included/excluded，也不凭选项key自动采用／清await。首次结构结果原子升级V5，写后旧版回退需兼容数据，详见[迁移边界](<MIGRATION.md>)。
+
+模型schemaVersion2另标representationVersion2；短文本和小对象保持精确类型，超长字段从原位置省略并列入previews。预览不是可覆盖原记录的完整输入；按locator取正文，UTF-8 JSON片段全部拼齐后再parse。分页与正文提供next:{tool,request}；record当前query可用target对象免手写组合键。assigned当前续读不会导向无权history，audit来源unknown／not-recorded与真实0分开，持久episodes不冒充memory-only。
+
+各工具按action说明类型和省略／null／清除；controls仍完整intent替换、同修订重建完整策略后保存，window代次、资源只读、父链权限、history协调者限制及delegate默认关闭不变。当前公开SDK虽支持嵌套object/array/oneOf schema，本轮保留既有request:json+集中描述和严格parser，避免复制两套不一致校验；不声称generic json已强制嵌套类型。**本批不安装现有本机Profile、不激活或重启DSH**；交付状态另记[验证摘要](<docs/VERIFICATION.md>)。
+
 ## 0.21.1：推荐采纳与待决上下文恢复
 
 在现有1850字符裁决注入预算内，优先展示当前pending-user候选、其他pending-user、其余pending，再保留旧awaiting兼容核对。精简行携带精确推荐支持；过长字段只给状态与受权当前读取入口，不截断key/身份制造可执行凭证。未展示事项仍有真实总数/更多/完整集合签名及查询；不自动清旧账。

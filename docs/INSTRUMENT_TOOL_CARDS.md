@@ -4,6 +4,10 @@
 
 > **后续独立工作（2026-11-04，设计固定、待实施）：** [模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 会在本插件 execute 返回前改变模型 DTO；本页“不改变 Host 输出”的条款限定于原 UI 卡片工作，不阻止该已固定的独立设计。历史卡片继续读取原公开字段/旧 JSON；本页的原发布及测试记录不作新方案验收。
 
+## 0.22.0 模型接口兼容补充
+
+[本批契约](<MODEL_INTERFACE_CONTRACT.md>)让工具模型值保留小对象／独立previews、next请求和结构化decision result；旧工具卡仍须阅读旧snapshot／schema2 JSON，不以模型表示版本拒绝历史卡片。结构结果在裁决详情用可读answer／来源／适用和排除条件展示，不能出现[object Object]或因答复改动丢失旧约束。工具卡折叠／原生组件／只读来源／点击权限和Remote兼容不变；本轮不重设计工具卡，也不意味着当前GUI已加载新版。
+
 ## 1. 目标与范围
 
 0.6.0 发行版有九个固定工具（0.7.0 已移除 `mattpocock_execute`；0.8.0 默认七个固定 + 条件 `mattpocock_audit`，delegate 为 opt-in 第八项；客户端共九个 wire key）。这些工具注册了 `tool.call.toolview`，但 [SourceCard](../src/client.ts#L1519-L1525) 没有使用原生行外壳，也没有折叠：它把 `sourceRecord` 一次性 JSON 序列化到 `<pre>`，一个 `mattpocock_record` read 就能占满时间线。目标是：
