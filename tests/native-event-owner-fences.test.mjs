@@ -182,7 +182,7 @@ test('an absent terminal needs an observed matching run or exact old-incarnation
   }
 })
 
-test('a queued old end cannot read a replacement turn before deferred classification begins', async t => {
+test('a queued old end preserves its published outcome without borrowing the replacement turn', async t => {
   const roots = new Map(); let other
   const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
@@ -196,9 +196,16 @@ test('a queued old end cannot read a replacement turn before deferred classifica
   replacement.session.ownEvents = () => { newReads++; return [...events, { type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'replacement only' } } } }] }
   await settle()
   const stop = f.mounted.ports.nativeSubagentStops('root').find(row => row.itemId.includes('old-deferred-tail'))
-  assert.equal(stop?.turn, null); assert.equal(stop?.outcome, 'refusal')
-  console.log('deferred read diagnostics', JSON.stringify({ newReads, stop, nativeExecutions: (await f.runtimeStorage.read())?.nativeExecutions }))
-  assert.equal(newReads, 0, 'an old queued classifier must not read any events from the replacement incarnation')
+  assert(stop, 'the authentic old end must not disappear while its enrichment source changes')
+  assert.equal(stop.turn, null); assert.equal(stop.outcome, 'refusal')
+  assert.equal(stop.itemId, 'leaf:old-deferred-tail:unknown')
+  assert.equal(stop.diagnostic, null, 'replacement error diagnostics cannot become old-run evidence')
+  const document = await f.runtimeStorage.read()
+  assert(document.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('old-deferred-tail')))
+  assert.equal(document.notifications.some(row => row.ownerSessionId === 'other' && row.notificationId.includes('old-deferred-tail')), false)
+  // Independently reviewed: a separate current ACL/identity read may inspect ownEvents.
+  // Its global count is diagnostic, not authority to borrow that turn for this old outcome.
+  console.log('deferred read diagnostics', JSON.stringify({ newReads, stop, nativeExecutions: document.nativeExecutions }))
 })
 
 test('a cold turn observation rechecks incarnation before opening its deferred event suffix', { timeout: 5000 }, async t => {
