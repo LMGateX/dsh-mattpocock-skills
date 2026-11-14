@@ -1,5 +1,11 @@
 # Migrating an existing repository across Skills v1.3
 
+## Plugin 0.23.0 compact model context (no existing local installation)
+
+- Separates concise tool calling contracts, current action summaries and explicit authorized detail/audit reads. Tool descriptions and owned injection text change; model tool envelopes remain schemaVersion 2 / representationVersion 2 with the same budgets, exact values, previews, cursors, locators and authorization.
+- Empty current categories and ordinary completed execution details may be compacted in automatic context; unknown/restricted is never known-empty. Existing obligations, result conditions, live/abnormal outcomes, T/S coverage and recovery remain. Omitted facts still participate in full change detection; no delta-only or permanently-once injection is introduced.
+- No persistent data migration or new storage version. The V5 rollback boundary below still applies. No installation/activation in the existing local DSH/Profile, SDK modification or service restart is authorized. See the [accepted compaction contract](<docs/CONTEXT_COMPACTION_CONTRACT.md>); measured delivery gates are recorded separately.
+
 ## Plugin 0.22.0 model interfaces and structured decision results
 
 - Keeps DSH >=0.2.2-rc.1 / Node >=24.9.0; this batch validates the exact RC3 runtime, not every admitted host version. No installation into the existing local DSH/Profile, activation or service restart is authorized.

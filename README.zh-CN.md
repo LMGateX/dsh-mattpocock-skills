@@ -4,7 +4,9 @@
 
 **当前状态：核心插件与历史 Phase 4 制品验证已完成；Phase 5 行为评估已关闭，但未通过。** 三次试验为 2 次通过、1 次硬失败，总体失败。当前协作实现与复审修复已通过机械源码／构建／测试验收；结果及单独保存的 clean-source 制品门禁见[公开验证摘要](<docs/VERIFICATION.md>)。源码公开不授权安装、启用、部署或 npm 发布。
 
-**0.22.0 — 模型接口类型与续读：** 旧文本结果继续可用，另支持有界结构化result（answer／选项报告／来源／适用和排除条件）；首次对象写入原子升级V5，旧版不能安全降读，先看[回退边界](<MIGRATION.md>)。模型小字段保持精确JSON类型，大字段使用独立previews；提供结构化当前target与可执行next。audit未知覆盖不当0，assigned续读不绕历史ACL。集中工具指导明确类型、清除／替换，不放宽校验、不自动采用或清账。详见[本批契约](<docs/MODEL_INTERFACE_CONTRACT.md>)和[实测门禁](<docs/VERIFICATION.md>)。本批授权隔离开发、push和新Release，**不为现有本机DSH/Profile安装、激活或重启服务**。
+**0.23.0 — 模型上下文精简：** 已认可范围减少工具说明重复与自动注入的明细转述，采用紧凑当前摘要＋显式受权详情／审计恢复；保留精确类型、既有义务、未知覆盖、权限和baseline／持久消费机制，不改工具envelope与V5存储契约。见[精简契约](<docs/CONTEXT_COMPACTION_CONTRACT.md>)和[实测门禁](<docs/VERIFICATION.md>)。授权隔离开发、push和新Release，**不为现有本机DSH/Profile安装、激活或重启服务**。
+
+**历史 0.22.0 — 模型接口类型与续读：** 旧文本结果继续可用，另支持有界结构化result（answer／选项报告／来源／适用和排除条件）；首次对象写入原子升级V5，旧版不能安全降读，先看[回退边界](<MIGRATION.md>)。模型小字段保持精确JSON类型，大字段使用独立previews；提供结构化当前target与可执行next。audit未知覆盖不当0，assigned续读不绕历史ACL。集中工具指导明确类型、清除／替换，不放宽校验、不自动采用或清账。详见[本批契约](<docs/MODEL_INTERFACE_CONTRACT.md>)和[实测门禁](<docs/VERIFICATION.md>)。本批授权隔离开发、push和新Release，**不为现有本机DSH/Profile安装、激活或重启服务**。
 
 **历史 0.21.2 — DSH RC3适配：** 维持DSH **>=0.2.2-rc.1**、Node **>=24.9.0**；本批精确运行验收目标为 **DSH 0.2.2-rc.3**，不是对范围内所有宿主作兼容保证。范围限于原生目录可选name、legacy嵌套/RC3扁平参数的单次派发载体、冷creator仍有running叶子时的root计数。运行树归属不等于业务权限或工作树绑定，深度缺证可以单独未知。见[适配契约](<docs/DSH_022_RC3_ADAPTATION.md>)及[实测门禁](<docs/VERIFICATION.md>)。本批授权隔离开发、push与发版，**不为现有本机DSH/Profile安装，不自动重启服务**。
 

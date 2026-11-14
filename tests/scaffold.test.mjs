@@ -21,7 +21,7 @@ async function pathExists(path) {
 
 test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.name, '@lmgatex/dsh-mattpocock-skills')
-  assert.equal(packageJson.version, '0.22.0')
+  assert.equal(packageJson.version, '0.23.0')
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
