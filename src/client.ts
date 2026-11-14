@@ -24,6 +24,7 @@ import { parseSupervisionDocument } from './controls/supervision-audit.js'
 import type { SupervisionEpisode } from './controls/supervision-audit.js'
 import type { InstrumentCurrentTaskReference, InstrumentDecisionTime, InstrumentSnapshot } from './controls/instruments.js'
 import type { DecisionRecord, InstrumentCommand } from './controls/instrument-state.js'
+import { decisionResultText } from './controls/decision-result.js'
 import type { WindowSnapshot } from './controls/windows.js'
 import type { WorktreeBindingCurrent } from './controls/worktree-bindings.js'
 import type { WorktreeObservationView } from './controls/worktree-observations.js'
@@ -846,7 +847,7 @@ function DecisionReadingItem(props: { readonly decision: DecisionReadingRow; rea
       value.recommendation ? h('p', { style: decisionBodyStyle }, '建议：' + value.recommendation) : null,
       value.impact ? h('p', { style: decisionBodyStyle }, '影响：' + value.impact) : null,
       value.ticketIds?.length ? h('p', { style: decisionBodyStyle }, '关联任务（引用 / 旧票报告）：' + value.ticketIds.map(id => ticketIdentity(props.records, row.workflowId, id)).join('；')) : null,
-      decisionLongText('背景', value.context), decisionLongText('已记录结果', value.result),
+      decisionLongText('背景', value.context), decisionLongText('已记录结果', decisionResultText(value.result)),
       h('details', { style: { borderTop: decisionBorder, padding: '8px 0' } }, h('summary', null, '标识与来源'),
         h('p', { style: decisionBodyStyle }, '工作流：' + row.workflowId + ' · 事项：' + row.decisionId + ' · 裁决者：' + decisionAddresseeText(row)),
         source === undefined ? h('p', null, '当前版本来源未知') : h('p', { style: decisionBodyStyle }, '来源（authored）：' + source.author.kind + ' / ' + source.author.principalId + ' · 修订 ' + source.revision + (source.references.length ? ' · 引用：' + source.references.join('；') : ''))),
@@ -1149,7 +1150,7 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
     h('label', { style: { display: 'block', margin: '10px 0' } }, '保存意图', h('select', { 'aria-label': '保存意图', value: intent, disabled: busy, onChange: (event: ChangeEvent<HTMLSelectElement>) => { setIntent(event.target.value as 'answer' | 'closeout'); setMessage(null) } },
       h('option', { value: 'answer' }, '记录用户答复'), h('option', { value: 'closeout' }, '登记核账处置'))),
     intent === 'answer' ? props.decision.value.options?.map(option => h(Button, { key: option.key, type: 'button', disabled: busy, onClick: () => setAnswer(option.label) }, option.label)) : null,
-    decisionLongText('已记录结果', props.decision.value.result),
+    decisionLongText('已记录结果', decisionResultText(props.decision.value.result)),
     intent === 'closeout' ? h('fieldset', { style: { border: decisionBorder, padding: '10px', minWidth: 0 } },
       h('legend', null, '登记核账处置'),
       h('p', { style: { color: decisionSecondary, fontSize: '12px', lineHeight: 1.6 } }, '在原背景后追加作者声明与任务去向，不改原用户答复；必要旧来源须由你在下方明确保留，所选内容以 authored 转录写入持久背景，不认证引用内容。这不是完成证明，不自动清除标记。'),
