@@ -86,7 +86,8 @@ test('real Runtime wires V4 creation binding and explicit same-ID adoption to on
   const f = await enabledRuntime(t)
   const put = await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'question', expectedRevision: 1, workflowId: 'flow', decisionId: 'D', action: 'put-decision', references: ['task:source'], value: question }, signal())
   assert.equal(put.snapshot.capabilities.decisionRecommendationAdoption, true)
-  assert.deepEqual(put.snapshot.capabilities.storageVersions, [1, 2, 3, 4])
+  assert.deepEqual(put.snapshot.capabilities.storageVersions, [1, 2, 3, 4, 5])
+  assert.equal(put.snapshot.capabilities.structuredDecisionResults, true)
   assert.equal(put.recommendation.status, 'candidate')
   const candidate = put.recommendation.candidate
   assert.equal(candidate.optionKey, 'B')
