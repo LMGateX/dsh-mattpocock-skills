@@ -277,9 +277,7 @@ test('complete decision signature sees omitted bodies and support changes and re
   f.current.records.decisions = []
   Object.assign(f.current.records.summary, { pendingDecisionCount: 0, pendingUserDecisionCount: 0, awaitingImplementationCount: 0 })
   const facts = consumptionFacts(await f.feed.readForConsumption(identity))
-  assert.deepEqual(facts.records.decisions.rows, [])
-  assert.equal(facts.records.decisions.total, 0)
-  assert.equal(facts.records.decisions.more, false)
+  assert.deepEqual(facts.records.decisions, [], 'known-empty means shown=total=0 and more=false')
   assert.equal(facts.records.summary.pendingUserDecisionCount, 0)
 })
 
@@ -306,7 +304,11 @@ test('a held window slot whose ticket sits in a terminal status is reported for 
   const f = fixture()
   f.current = { ...f.current, pendingRelease: [{ workflowId: 'flow', localTicketId: 'A', generation: 2, label: '已交付' }] }
   const { result } = await consume(f.feed, [])
-  assert.match(result.text, /T pending release: A \(已交付\) — call mattpocock_window release/)
+  assert.match(result.text, /T pending release: review pendingRelease; use mattpocock_window release/)
+  const release = consumptionFacts(result).pendingRelease.rows[0]
+  assert.equal(release.localTicketId, 'A')
+  assert.equal(release.label, '已交付')
+  assert.equal(release.generation, 2)
 })
 
 test('pure emitted module has no Node, SDK or runtime dependency imports', () => {
@@ -355,11 +357,10 @@ test('native execution facts are a current category with inferred lanes and head
   const f = fixture()
   let result = await f.feed.readForConsumption(identity)
   assert.doesNotMatch(result.text, /Native-observed executions/)
-  f.current.nativeExecutions = [nativeExecution()]
+  f.current.nativeExecutions = [nativeExecution({ state: 'running', outcome: null, activity: 'running' })]
   result = await f.feed.readForConsumption(identity)
-  assert.match(result.text, /Native-observed executions: 1 current row\(s\)/)
-  assert.match(result.text, /header cwd \/trees\/A \(source value, not proof of the effective initial directory\)/)
-  assert.match(result.text, /lane inferred flow\/A/)
+  assert.doesNotMatch(result.text, /Native-observed executions:|header cwd \/trees\/A/)
+  assert.match(result.text, /Native execution lanes are inferred/)
   assert.match(result.text, /header cwd is a recorded source value, not proof of the effective initial directory/)
   assert.doesNotMatch(result.text, /worktree observed|exact initial cwd match|worktree=observed|initial cwd match/)
   assert.match(result.text, /not strong bindings or task-completion proof/)
@@ -367,7 +368,8 @@ test('native execution facts are a current category with inferred lanes and head
   const view = JSON.parse(result.text.slice(result.text.indexOf(String.fromCharCode(10, 123)) + 1))
   assert.equal(view.nativeExecutions.total, 1)
   assert.equal(view.nativeExecutions.query.query.kind, 'native-execution')
-  assert.equal(view.nativeExecutions.rows[0].outcome, 'completed')
+  assert.equal(view.nativeExecutions.rows[0].outcome, null)
+  assert.equal(view.nativeExecutions.rows[0].state, 'running')
   assert.equal(view.nativeExecutions.rows[0].headerCwd, '/trees/A')
   assert.equal(view.nativeExecutions.rows[0].worktree, undefined)
   assert.equal(view.nativeExecutions.rows[0].lane.source, 'inferred')
@@ -405,7 +407,7 @@ test('management OFF keeps recorded facts and source limits but adds no new mana
   const result = await f.feed.readForConsumption(identity)
   const text = result.text
   assert.match(text, /Management feature is OFF/)
-  assert.match(text, /Native-observed executions: 1 current row\(s\)/)
+  assert.doesNotMatch(text, /Native-observed executions:/) // no fact rows repeated in notices
   assert.match(text, /A worktree observation lane is inferred from assignment\/binding at read time; cleaned\/notes are authored, and created-tree only proves that child created the tree/)
   assert.match(text, /A tree you detached but did not clean up still needs a disposition\./)
   assert.doesNotMatch(text, /Only prepare a tree with the host's create_worktree/)
@@ -550,12 +552,14 @@ test('a change past the briefed array head is detected, not served as unchanged'
   assert.match(second.text, /tailSignature/)
 })
 
-test('categories without captured history carry no dead query locator', async () => {
+test('capability recovery uses current read rather than uncaptured history', async () => {
   const f = fixture()
   const result = await f.feed.readForConsumption(identity)
   const view = JSON.parse(result.text.slice(result.text.indexOf(String.fromCharCode(10, 123)) + 1))
-  assert.equal(view.capabilities.query, undefined)
-  assert.equal(view.health.query, undefined)
+  assert.equal(view.capabilities.query.tool, 'mattpocock_record')
+  assert.equal(view.capabilities.query.query.kind, 'capability')
+  assert.equal(view.health.coverage, undefined) // known-empty, no dead locator
+  assert.deepEqual(view.health, [])
   assert.equal(view.records.workflows.query.query.kind, 'workflow')
 })
 test('stuck reader is bounded and receives timeout abort without late cache publication', async () => {
@@ -631,7 +635,13 @@ test('physical facts changes refresh below identical ledger/config watermarks', 
   f.current.resources[0].actualCanRetire.facts.digest = 'physical-B'
   assert.notEqual((await f.feed.readForConsumption(identity)).text, null)
   f.current.resources[0].actualCanRetire.facts.untracked = ['new-file'] // even a defective adapter's unchanged digest cannot mask facts
-  assert.match((await f.feed.readForConsumption(identity)).text, /new-file/)
+  const physicalChange = await f.feed.readForConsumption(identity)
+  assert.notEqual(physicalChange.text, null, 'the whole physical fact, not just its adapter digest, invalidates')
+  assert.match(physicalChange.text, /new-file/)
+  const observation = consumptionFacts(physicalChange).resources.rows[0]
+  assert.equal(observation.observation.factsDigest, 'physical-B')
+  assert.equal(observation.query.query.kind, 'resource')
+  assert.equal(observation.query.query.recordId, 'tree-A')
   f.current.resources[0].retireRequest = { kind: 'remove-clean', branch: 'keep', authorId: 'parent-agent' }
   assert.equal((await f.feed.readForConsumption(identity)).text, null)
   assert.doesNotMatch(f.feed.cachedText(identity), /retireRequest|actualCanRetire|nativeColdResumeClosed/)
@@ -659,7 +669,7 @@ test('null scopes/capacity/physical facts stay unknown, degraded health is not f
   f.current.resources = [r]; f.current.health = [{ scope: 'resource', status: 'unknown', reason: 'cannot inspect' }]
   const result = await f.feed.readForConsumption(identity)
   assert.equal(result.freshness, 'stale'); assert.equal(result.reason, 'snapshot-health-degraded')
-  assert.match(result.text, /"records":null/); assert.match(result.text, /"windows":null/); assert.match(result.text, /"facts":null/)
+  assert.match(result.text, /"records":null/); assert.match(result.text, /"windows":null/); assert.equal(JSON.parse(result.text.split('Current runtime facts (null means unavailable/unknown, not zero):\n')[1]).resources.rows[0].observation.facts, null)
   assert.doesNotMatch(result.text, /"totalTickets":0/)
 })
 test('bounded options reject unbounded values and overflow stays unknown until untracked durability settles', async () => {

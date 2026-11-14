@@ -116,16 +116,17 @@ test('all current categories together stay within 24000 characters without hidin
   assert.equal(view.worktreeRelations.counts.cleanupDue, 1, 'the injected facts carry the abandoned-uncleaned count')
   const categories = [view.records.workflows, view.records.tickets, view.records.decisions, view.records.summary.statusCounts,
     view.windows.tickets, view.windows.executions, view.resources, view.worktreeRelations, view.contextConclusions, view.capabilities, view.health]
-  // Capabilities and health are derived facts with no captured history kind: a locator there
-  // pointed at an empty notRecorded page, so only recorded categories advertise a query.
+  // Capability/health recovery uses existing current reads, never uncaptured history.
   const recorded = categories.filter(category => category !== view.capabilities && category !== view.health)
   for (const category of categories) {
     assert.ok(JSON.stringify(category).length <= 2000)
     assert.ok(category.shown > 0 && category.more)
   }
   for (const category of recorded) assert.equal(typeof category.query.query.kind, 'string')
-  assert.equal(view.capabilities.query, undefined)
-  assert.equal(view.health.query, undefined)
+  assert.equal(view.capabilities.query.tool, 'mattpocock_record')
+  assert.equal(view.capabilities.query.query.kind, 'capability')
+  assert.equal(view.health.query.tool, 'mattpocock_record')
+  assert.equal(view.health.query.query.kind, 'health')
   assert.equal(view.health.counts.unknown, 1)
   assert.equal(view.health.total, 41)
   assert.equal(view.records.summary.pendingDecisionCount, 40)
@@ -145,7 +146,7 @@ test('explicit effective conclusions stay brief and separate from resolved quest
     source: { author: { kind: 'user', principalId: 'owner' }, references: ['user-answer'] } }]
   const result = await f.feed.readForConsumption(identity)
   const view = facts(result.text)
-  assert.equal(view.records.decisions.total, 0)
+  assert.deepEqual(view.records.decisions, [])
   assert.equal(view.contextConclusions.total, 1)
   assert.match(result.text, /Use the agreed delivery criteria|user-answer/)
   assert.doesNotMatch(result.text, /obsolete-full-question-payload|obsolete-option-payload/)
@@ -205,7 +206,7 @@ test('already-filtered binding rows project actual relations and latest provenan
   assert.equal(view.worktreeRelations.rows[0].query.query.recordId, 'one')
   f.current.worktreeBindings = [] // runtime filters only after an explicit cleanup report
   const clean = await f.feed.readForConsumption(identity)
-  assert.equal(facts(clean.text).worktreeRelations.total, 0)
+  assert.deepEqual(facts(clean.text).worktreeRelations, [])
   assert.doesNotMatch(f.feed.cachedText(identity), /Still awaiting cleanup/)
 })
 

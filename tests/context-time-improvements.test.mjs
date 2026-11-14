@@ -26,7 +26,8 @@ test('pending release alone is delivered on addition and clearing through the co
   f.current = { ...f.current, pendingRelease: [{ workflowId: 'flow', localTicketId: 'A', generation: 1, label: 'Delivered' }] }
   const added = await f.read()
   assert.equal(typeof added.text, 'string', 'facts-only equality must not consume a new release obligation')
-  assert.match(added.text, /T pending release: A/)
+  assert.match(added.text, /T pending release: review pendingRelease/)
+  assert.equal(JSON.parse(added.text.split(factsMarker)[1]).pendingRelease.rows[0].localTicketId, 'A')
   assert.equal((await f.read()).text, null)
   f.current = { ...f.current, pendingRelease: [] }
   const cleared = await f.read()
@@ -54,10 +55,10 @@ test('ordinary native changes retain the complete policy guidance prefix before 
     const result = await f.read()
     assert.equal(result.text.split(noticesMarker)[0], prefix)
     const tail = result.text.split(noticesMarker)[1]
-    assert.match(tail, /Native-observed executions:/)
+    assert.doesNotMatch(tail, /Native-observed executions:/) // facts are not repeated as notices
     assert.match(tail, /T pending release:/)
     assert.equal(JSON.parse(result.text.split(factsMarker)[1]).nativeExecutions.rows[0].sessionId, row.sessionId)
-    assert.ok(tail.indexOf('Native-observed executions:') < tail.indexOf(factsMarker))
+    assert.ok(tail.indexOf('T pending release:') < tail.indexOf(factsMarker))
     assert.ok(result.text.length <= 24000)
   }
   f.current = { ...f.current, nativeExecutions: [], pendingRelease: [] }
@@ -256,7 +257,7 @@ test('authored task references join held T and pending questions without creatin
   assert.deepEqual(facts.records.capabilities, { taskReferences: true, storageVersions: [1, 2, 3, 4, 5], structuredDecisionResults: true, decisionRecommendationAdoption: false })
   assert.equal(facts.records.summary.totalTaskReferences, 1)
   assert.equal(facts.records.summary.totalTickets, 0)
-  assert.equal(facts.records.tickets.total, 0)
+  assert.deepEqual(facts.records.tickets, [])
   const reference = facts.records.taskReferences.rows[0]
   assert.equal(reference.localTicketId, 'R1')
   assert.equal(reference.sourceState, 'unknown')
@@ -317,7 +318,7 @@ test('reference capability gates new guidance and unknown counts never become bu
   f.current = { ...f.current, records: referenceRecords([]) }
   result = await f.read()
   facts = JSON.parse(result.text.split(factsMarker)[1])
-  assert.equal(facts.records.taskReferences.total, 0)
+  assert.deepEqual(facts.records.taskReferences, [])
   assert.equal(facts.records.summary.totalTaskReferences, 0)
   assert.equal(facts.records.summary.totalTickets, 0)
   assert.match(result.text, /put-task-reference/)

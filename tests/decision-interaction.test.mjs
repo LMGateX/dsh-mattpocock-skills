@@ -21,7 +21,7 @@ test('saved interaction mode enters the next real model-consumption request', as
   assert.match(text, /continue independent work/)
   const facts = factsFrom(text)
   assert.equal(facts.policy.pendingDecisions.interactionMode, 'async-decision')
-  assert.equal(facts.policy.sources['pendingDecisions.interactionMode'], 'global')
+  assert.equal((await f.read()).policy.sources['pendingDecisions.interactionMode'], 'global')
 })
 
 test('mounted model request limits new decisions to genuine unresolved user questions', async t => {
@@ -127,7 +127,7 @@ test('explicit task handoff preserves original replies, inclusion choices and ow
   assert.equal(records.summary.pendingUserDecisionCount, 0)
   assert.equal(records.summary.awaitingImplementationCount, 0)
   let facts = factsFrom(textFrom(await f.runtime.preStep(caller('root'), signal())))
-  assert.equal(facts.records.decisions.total, 0)
+  assert.deepEqual(facts.records.decisions, [])
   assert.equal(facts.contextConclusions.total, 1)
   assert.equal(facts.contextConclusions.rows[0].result, 'Original included reply')
   assert.deepEqual(facts.contextConclusions.rows[0].source.author, operator)
@@ -182,7 +182,7 @@ test('workspace mode overrides one leaf, deletion restores global inheritance, a
   await f.save(policy())
   const text = textFrom(await f.runtime.preStep(caller('root'), signal()))
   assert.equal(factsFrom(text).policy.pendingDecisions.interactionMode, 'native-question')
-  assert.equal(factsFrom(text).policy.sources['pendingDecisions.interactionMode'], 'safe-initial')
+  assert.equal((await f.read()).policy.sources['pendingDecisions.interactionMode'], 'safe-initial')
 })
 
 test('hot native-to-async preference reaches the admitted Host request without restart or rewriting native input', async t => {
