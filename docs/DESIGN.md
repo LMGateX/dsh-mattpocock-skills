@@ -12,6 +12,10 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.22.0 模型工具 Interface（2026-11-14，已认可；文档先行、隔离开发／测试、push／Release，不安装本机）
+
+所有者认可全工具问题与设计合理性审查；唯一细化契约为 [MODEL_INTERFACE_CONTRACT](<MODEL_INTERFACE_CONTRACT.md>)。先固定R结构化决策结果／按需V5兼容、O精确小结构／独立previews／target与next／audit诚实覆盖、G准确工具契约及合法当前续读，再在独立工树/subagents沿公开seams竖切RED→GREEN、串行集成与独立双轴复核。保持旧文本、原身份／权限／CAS／幂等／generation／当前消费前沿，不全面对象化或放宽校验；写V5后旧版回滚需兼容数据。源码／唯一精确包／RC3 strict与完整门禁通过后非force push、新0.22.0 tag与五资产Release及下载回验。**不为本机DSH／Profile安装或激活，不改共享SDK／vendor／channel/provider precedence，不重启当前服务、不启用管理或迁移／清理生产数据，不npm publish或覆盖旧资产。**当前仅固定授权与契约，不冒称完成。
+
 ## 0.21.2 DSH RC3适配（2026-11-14，所有者认可；先文档、隔离开发／测试、push／Release，不安装本机）
 
 所有者认可[RC3检查](<DSH_022_RC3_COMPATIBILITY.md>)并明确要求固定文档，在隔离环境/subagents完成开发和适配，发版、push，暂不为本机DSH安装。唯一细化与测试seams以[本批契约](<DSH_022_RC3_ADAPTATION.md>)为准。基于最新公开0.21.1后main，目标0.21.2；修named目录解析、冷creator链S完备性与可选delegate activation参数，不把版本门禁通过当运行兼容。

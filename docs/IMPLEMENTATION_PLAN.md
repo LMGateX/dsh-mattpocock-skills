@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.22.0 模型工具 Interface（2026-11-14，先文档）
+
+[本批契约](<MODEL_INTERFACE_CONTRACT.md>)固定D→R/C/O/G→V→P→Release；本机安装排除。基线c4b64e4，新隔离integration保护原dirty树；D单独提交后，R结果V5、C消费／Client、O输出／target／next／audit、G工具说明独立单writer/subagent并行，C集成依赖R。按公开解析／真实工具／存储重开／消费／React与RC3 seams保留RED→GREEN，串行集成和独立Standards／Spec必改关闭。V执行完整source／Host／Client strict／原生／headless和生成物；P冻结clean source、唯一0.22.0 accepted包与四sidecars，同包完整门禁后非force push／新annotated tag／五资产Release及下载逐字节strict回验。不安装本机／改Profile／重启／改SDK／vendor／生产数据；状态按实际结果记录，不复用旧1348计数。
+
 ## 0.21.2 RC3适配（2026-11-14，已认可；文档先行）
 
 [RC3契约](<DSH_022_RC3_ADAPTATION.md>)固定本批D→C/A→V→P→R；I本机安装明确排除。先以公开main abc3f13建立隔离集成、单独提交授权／seams，再独立subagents完成目录／冷祖先计数与activation新旧格式竖切RED→GREEN；串行merger和独立Standards／Spec必改关闭后，只在精确RC3上完成strict、源码／唯一包、原生Client／subagent／headless门禁，非force push／新0.21.2tag与五资产Release，下载strict收口。
