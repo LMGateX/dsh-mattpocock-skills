@@ -136,7 +136,7 @@ test('hidden matters survive management OFF and querying a new workflow without 
   const rows = await pages(f, 'decision')
   assert.deepEqual(rows.map(row => row.decisionId).sort(), ['D1', 'D2', 'D3'])
   assert(rows.every(row => row.pending === true && row.awaitingImplementation === true))
-  for (const row of rows) assert.deepEqual(JSON.parse(row.view.preview.text), { hidden: true, read: true })
+  for (const row of rows) assert.deepEqual(row.view, { hidden: true, read: true })
   const latest = await modelRead(f)
   assert.equal(latest.records.summary.pendingDecisionCount, 3)
   assert.equal(latest.records.summary.awaitingImplementationCount, 3)

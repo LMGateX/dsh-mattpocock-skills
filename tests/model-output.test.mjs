@@ -131,7 +131,7 @@ test('locators reject tampering, new mounts, changed principals, changed version
   const forbidden = () => { unauthorizedResolverCalls++; return source }
   for (const field of Object.keys(binding)) await assert.rejects(model.readContent({ ...binding, [field]: 'other' }, { locator }, forbidden), { code: 'invalid-locator' })
   for (const token of [locator.slice(0, -1), locator + '=', locator.slice(0, 25) + (locator[25] === 'A' ? 'B' : 'A') + locator.slice(26), 'x'.repeat(100000), '', null]) await assert.rejects(model.readContent(binding, { locator: token }, forbidden), { code: 'invalid-locator' })
-  for (const changed of [output.createModelOutput({ secret, mountEpoch: 'mount-b' }), output.createModelOutput({ secret, mountEpoch: 'mount-a', representationVersion: 2 }), output.createModelOutput()]) await assert.rejects(changed.readContent(binding, { locator }, forbidden), { code: 'invalid-locator' })
+  for (const changed of [output.createModelOutput({ secret, mountEpoch: 'mount-b' }), output.createModelOutput({ secret, mountEpoch: 'mount-a', representationVersion: 1 }), output.createModelOutput()]) await assert.rejects(changed.readContent(binding, { locator }, forbidden), { code: 'invalid-locator' })
   assert.equal(unauthorizedResolverCalls, 0)
   for (const changed of [{ ...source, sourceVersion: 4 }, { ...source, value: { title: 'modified' } }, { ...source, domain: 'windows' }, { ...source, key: output.sourceKey('records', 'other') }]) await assert.rejects(model.readContent(binding, { locator }, () => changed), { code: 'revision-conflict', reason: 'content-version-changed' })
   await assert.rejects(model.readContent(binding, { locator }, () => null), { code: 'unavailable' })

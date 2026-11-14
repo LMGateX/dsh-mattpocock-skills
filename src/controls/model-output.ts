@@ -185,7 +185,7 @@ export function sourceKey(domain: string, recordId: string): string {
 
 const SOURCE_DOMAINS: readonly string[] = ['records', 'windows', 'assignment', 'worktree-binding', 'observation', 'policy', 'resource', 'audit', 'history']
 const TOKEN_LIMIT = 4096
-const REPRESENTATION_VERSION = 1
+const REPRESENTATION_VERSION = 2
 function digest(value: unknown): string { return createHash('sha256').update(canonicalJson(value)).digest('hex') }
 function validSource(source: ModelSource): void {
   if (!SOURCE_DOMAINS.includes(source.domain) || typeof source.key !== 'string' || !source.key || Buffer.byteLength(source.key) > 1024
@@ -279,7 +279,7 @@ export function createModelOutput(options: { secret?: Uint8Array; mountEpoch?: s
       if (!Number.isSafeInteger(offset) || offset < 0 || offset > totalBytes || (offset < totalBytes && (bytes[offset]! & 0xc0) === 0x80)) {
         throw new ModelOutputError('invalid-offset', 'Content offset must be a UTF-8 code-point byte position within the selected content')
       }
-      const envelope = (end: number) => ({ ...binding, schemaVersion: 2 as const, kind: 'content' as const, locator: request.locator, sourceVersion: source.sourceVersion, contentHash, totalBytes, offset, nextOffset: end, done: end === totalBytes, data: bytes.toString('utf8', offset, end), ...(source.coverage === undefined ? {} : { coverage: source.coverage }) })
+      const envelope = (end: number) => ({ ...binding, schemaVersion: 2 as const, representationVersion: representation, kind: 'content' as const, contentType: 'application/json' as const, encoding: 'utf-8' as const, next: end === totalBytes ? null : { tool: 'mattpocock_record', request: { action: 'detail', locator: request.locator, offset: end } }, locator: request.locator, sourceVersion: source.sourceVersion, contentHash, totalBytes, offset, nextOffset: end, done: end === totalBytes, data: bytes.toString('utf8', offset, end), ...(source.coverage === undefined ? {} : { coverage: source.coverage }) })
       // Upper bound by raw bytes first, then account for all JSON string escaping and metadata.
       let low = offset
       let high = Math.min(totalBytes, offset + MODEL_READ_LIMIT)
@@ -310,7 +310,7 @@ export function jsonBytes(value: unknown): number {
 export function modelEnvelope<I extends object, P extends object>(kind: ModelKind, identity: I, payload: P, budget = kind === 'receipt' || kind === 'error' ? MODEL_RECEIPT_LIMIT : MODEL_READ_LIMIT) {
   const maximum = kind === 'receipt' || kind === 'error' ? MODEL_RECEIPT_LIMIT : MODEL_READ_LIMIT
   if (!Number.isSafeInteger(budget) || budget < 1 || budget > maximum) throw new ModelOutputError('invalid-budget', 'Output budget cannot exceed its fixed model-facing maximum')
-  const value = { ...identity, ...payload, schemaVersion: 2 as const, kind }
+  const value = { ...identity, ...payload, schemaVersion: 2 as const, representationVersion: REPRESENTATION_VERSION, kind }
   if (jsonBytes(value) > budget) throw new ModelOutputError('output-budget-exceeded', 'Projected model output exceeds its JSON byte budget')
   return value
 }

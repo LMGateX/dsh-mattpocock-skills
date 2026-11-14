@@ -29,7 +29,7 @@ export interface ModelRow extends ModelSource {
 export interface ModelCollection {
   readonly rows: readonly ModelRow[]
   readonly version: string
-  readonly coverage: 'current' | 'restricted' | 'unknown'
+  readonly coverage: 'current' | 'restricted' | 'unknown' | 'not-recorded'
   readonly reason?: string
 }
 export interface ModelCurrent extends ModelIdentity {
@@ -62,15 +62,31 @@ function identityFields(identity: ModelIdentity) {
   const scope=identity.scope
   return {instance:identity.instance,sessionId:identity.sessionId,scope:scope.kind==='coordinator'?scope:{kind:scope.kind,workflowId:scope.workflowId,ticketCount:scope.ticketIds.length,fingerprint:sourceVersion(scope)}}
 }
-/** Presentation fields are selected by each domain before this bounded preview is used. */
+/** Domain-selected fields remain exact within their JSON byte budget. Oversized display
+ * values live only in previews; critical coverage is never turned into display text. */
 function previewFields(fields: Readonly<Record<string, unknown>>, byteLimit=256): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(fields).filter(([,v])=>v!==undefined).map(([key,value])=>[key,
-    typeof value==='string'?(Buffer.byteLength(value)<=byteLimit?value:{preview:previewText(value,byteLimit)}):value===null||typeof value!=='object'?value:{preview:previewText(canonicalJson(value),byteLimit)}]))
+  const exact:Record<string,unknown>={},previews:Record<string,unknown>={}
+  for(const [key,value] of Object.entries(fields)){
+    if(value===undefined)continue
+    if(key==='coverage'||jsonBytes(value)<=byteLimit)exact[key]=value
+    else previews[key]=previewText(typeof value==='string'?value:canonicalJson(value),byteLimit)
+  }
+  return {...exact,...(Object.keys(previews).length?{previews}:{})}
 }
-function parseQuery(value: unknown, kinds: readonly string[]) {
-  const q=value===undefined?{}:record(value,'model current query',['kind','workflowId','recordId','limit','cursor'])
+function parseQuery(value: unknown, kinds: readonly string[], allowTarget=false) {
+  const q=value===undefined?{}:record(value,'model current query',['kind','workflowId','recordId','limit','cursor',...(allowTarget?['target']:[])])
   if(q.kind!==undefined&&(typeof q.kind!=='string'||!kinds.includes(q.kind)))throw new ControlsError('invalid-input','query kind must be one of: '+kinds.join(', '))
   for(const field of ['workflowId','recordId','cursor'])if(q[field]!==undefined&&typeof q[field]!=='string')throw new ControlsError('invalid-input',field+' must be a string')
+  if(q.target!==undefined){
+    if(q.workflowId!==undefined||q.recordId!==undefined)throw new ControlsError('invalid-input','target cannot be combined with workflowId or recordId')
+    const local=({workflow:null,ticket:'localTicketId','task-reference':'localTicketId','window-ticket':'localTicketId','pending-release':'localTicketId',decision:'decisionId','status-count':'axisKey'} as Record<string,string|null>)[String(q.kind)]
+    if(local===undefined)throw new ControlsError('invalid-input','target requires a supported current record kind')
+    const target=record(q.target,'query target',['workflowId',...(local===null?[]:[local])])
+    for(const key of ['workflowId',...(local===null?[]:[local])])if(typeof target[key]!=='string'||!target[key]||String(target[key]).includes('\0'))throw new ControlsError('invalid-input','target.'+key+' must be a nonempty string without NUL')
+    q.workflowId=target.workflowId
+    q.recordId=local===null?target.workflowId:JSON.stringify([target.workflowId,target[local]])
+    delete q.target
+  }
   const limit=q.limit??20
   if(!Number.isSafeInteger(limit)||Number(limit)<1||Number(limit)>100)throw new ControlsError('invalid-input','limit must be between 1 and 100')
   return {...q,limit:Number(limit)} as {kind?:string;workflowId?:string;recordId?:string;limit:number;cursor?:string}
@@ -92,12 +108,17 @@ export function createModelTools(runtime: RuntimeFacade) {
     const remaining=selected.filter(row=>last===null||row.key>last)
     // Only selected page candidates may hash/encode bodies; untouched rows remain references.
     const rows=remaining.slice(0,query.limit).map(row=>({key:row.key,value:rowValue(who,row)}))
-    return packModelRows({rows,limit:query.limit,makeEnvelope:(emitted,index,packedMore)=>{const more=packedMore||remaining.length>rows.length;return modelEnvelope('page',identityFields(who),{...extra,query:filter,coverage:collection.coverage,reason:collection.reason??null,sourceVersion:collection.version,rows:emitted.map(row=>row.value),shown:emitted.length,total:selected.length,more,nextCursor:more&&index>=0?output.pageCursor(binding(who),{tool,...filter},collection.version,rows[index]!.key):null})}})
+    return packModelRows({rows,limit:query.limit,makeEnvelope:(emitted,index,packedMore)=>{
+      const more=packedMore||remaining.length>rows.length
+      const nextCursor=collection.coverage==='current'&&more&&index>=0?output.pageCursor(binding(who),{tool,...filter},collection.version,rows[index]!.key):null
+      const next=nextCursor===null?null:{tool,request:{action:'read',query:{...filter,limit:query.limit,cursor:nextCursor}}}
+      return modelEnvelope('page',identityFields(who),{...extra,query:filter,coverage:collection.coverage,...previewFields({reason:collection.reason??null}),sourceVersion:collection.version,rows:emitted.map(row=>row.value),shown:emitted.length,total:collection.coverage==='current'?selected.length:null,more:collection.coverage==='current'?more:null,nextCursor,next})
+    }})
   }
   const current=async(caller:HostCaller,rawQuery:unknown,signal:AbortSignal)=>{
-    requireReads();const view=await runtime.readModelCurrent!(caller,caller.sessionId!,signal),kinds=Object.keys(view.collections),q=parseQuery(rawQuery,kinds)
+    requireReads();const view=await runtime.readModelCurrent!(caller,caller.sessionId!,signal),kinds=Object.keys(view.collections),q=parseQuery(rawQuery,kinds,true)
     if(rawQuery!==undefined){if(!q.kind)throw new ControlsError('invalid-input','query.kind is required');return page(view,view.collections[q.kind]!,q,'mattpocock_record',q.kind,{revisions:view.revisions,localCoverage:view.collections[q.kind]!.coverage==='current'?'local-current':view.collections[q.kind]!.coverage,...(q.kind==='task-reference'?{sourceObservation:'authored-unverified'}:{})})}
-    const collections=Object.fromEntries(Object.entries(view.collections).map(([kind,collection])=>{const shown=['native-stop','health','capability','pending-release','worktree-binding','worktree-observation'].includes(kind)?collection.rows.slice(0,2).map(row=>({recordId:row.recordId,...previewFields(row.preview,128)})):[];return [kind,{rows:shown,shown:shown.length,total:collection.coverage==='current'?collection.rows.length:null,more:collection.coverage==='current'&&collection.rows.length>shown.length,coverage:collection.coverage,reason:collection.reason===undefined?null:previewText(collection.reason,256).text,...(kind==='health'?{counts:Object.fromEntries(['unknown','restricted','unsupported','pending'].map(status=>[status,collection.rows.filter(row=>row.preview.status===status).length]))}:{}),query:collection.coverage==='current'?{tool:'mattpocock_record',action:'read',query:{kind,limit:20}}:null}]}))
+    const collections=Object.fromEntries(Object.entries(view.collections).map(([kind,collection])=>{const shown=['native-stop','health','capability','pending-release','worktree-binding','worktree-observation'].includes(kind)?collection.rows.slice(0,2).map(row=>({recordId:row.recordId,...previewFields(row.preview,128)})):[];return [kind,{rows:shown,shown:shown.length,total:collection.coverage==='current'?collection.rows.length:null,more:collection.coverage==='current'&&collection.rows.length>shown.length,coverage:collection.coverage,...previewFields({reason:collection.reason??null}),...(kind==='health'?{counts:Object.fromEntries(['unknown','restricted','unsupported','pending'].map(status=>[status,collection.rows.filter(row=>row.preview.status===status).length]))}:{}),query:collection.coverage==='current'?{tool:'mattpocock_record',action:'read',query:{kind,limit:20}}:null}]}))
     const policy=object(view.policy)
     const effective=modelSource('policy',['effective',view.instance.controlWorkspaceId],view.revisions.configuration??0,view.policy)
     const ownAssignment=view.scope.kind==='assigned'?await runtime.readModelSource!(caller,caller.sessionId!,{domain:'assignment',key:sourceKey('assignment',view.sessionId)},signal):null
@@ -152,14 +173,16 @@ export function createModelTools(runtime: RuntimeFacade) {
         const source=raw.action==='detail'?modelSource('history',[row.historyId],String(row.version),row):(await runtime.readModelSource!(who.caller,who.sessionId,{domain:'history',key:sourceKey('history',row.historyId)},signal)).source
         if(source)locator=output.locator(binding(who),contentSource(source))
       }
-      rows.push({source:row,value:{historyId:row.historyId,sequence:row.sequence,kind:row.kind,recordId:row.recordId,version:row.version,purged:row.purged,sourceDomain:row.sourceDomain,summary:typeof row.summary==='string'?previewText(row.summary,192):null,...(locator===null?{coverage:row.purged?'purged':'unavailable'}:{detail:{tool:'mattpocock_record',action:'detail',locator}})}})
+      rows.push({source:row,value:{historyId:row.historyId,sequence:row.sequence,kind:row.kind,recordId:row.recordId,version:row.version,purged:row.purged,sourceDomain:row.sourceDomain,...previewFields({summary:row.summary??null},192),...(locator===null?{coverage:row.purged?'purged':'unavailable'}:{detail:{tool:'mattpocock_record',action:'detail',locator}})}})
     }
     return packModelRows({rows,limit:100,makeEnvelope:(emitted,index,more)=>{
       const last=index<0?null:rows[index]!.source,query=object(raw.query)
       // Freeze the original cut but advance only to the last sequence actually delivered.
-      const cursor=last&&(more||data.nextCursor!==null)?{...who.instance,cut:data.cut,after:last.sequence,kind:query.kind??null,recordId:query.recordId??null}:null
+      const cursor=raw.action!=='query'?null:more&&last?{...who.instance,cut:data.cut,after:last.sequence,kind:query.kind??null,recordId:query.recordId??null}:data.nextCursor??null
       const emittedIds=new Set(emitted.map(row=>row.source.historyId))
-      return modelEnvelope(raw.action==='query'?'page':'detail',identityFields(who),{revision:data.revision,coverage:data.coverage,notRecorded:data.notRecorded,sourceRevisions:data.sourceRevisions,sourceRefresh:previewFields(object(data.sourceRefresh)),rows:emitted.map(row=>row.value),shown:emitted.length,...(raw.action==='query'?{cut:data.cut,total:data.total,more:more||data.nextCursor!==null,nextCursor:cursor}:{missingHistoryIds:data.missingHistoryIds,remainingHistoryIds:list(raw.historyIds).filter(id=>!emittedIds.has(id)&&!list(data.missingHistoryIds).includes(id))})})
+      const remainingHistoryIds=list(raw.historyIds).filter(id=>!emittedIds.has(id)&&!list(data.missingHistoryIds).includes(id))
+      const next=raw.action==='query'?(cursor===null?null:{tool:'mattpocock_history',request:{action:'query',query:{...query,cursor}}}):remainingHistoryIds.length?{tool:'mattpocock_history',request:{action:'detail',historyIds:remainingHistoryIds}}:null
+      return modelEnvelope(raw.action==='query'?'page':'detail',identityFields(who),{revision:data.revision,coverage:data.coverage,notRecorded:data.notRecorded,sourceRevisions:data.sourceRevisions,sourceRefresh:previewFields(object(data.sourceRefresh)),rows:emitted.map(row=>row.value),shown:emitted.length,next,...(raw.action==='query'?{cut:data.cut,total:data.total,more:more||cursor!==null,nextCursor:cursor}:{missingHistoryIds:data.missingHistoryIds,remainingHistoryIds})})
     }})
   }
   const mutationOutcome=(result:unknown)=>{const outcome=runtime.modelMutationOutcome?.(result);return outcome?{historyCapture:{status:outcome.historyCapture.status,diagnostic:outcome.historyCapture.diagnostic===null?null:previewText(outcome.historyCapture.diagnostic,384).text}}:{}}
@@ -201,7 +224,7 @@ export function createModelTools(runtime: RuntimeFacade) {
         facts.detail={tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(modelSource(isObservation?'observation':'worktree-binding',[data.bindingId??data.observationId],String(data.revision),body)))}
       }
     }
-    const diagnostics=Object.fromEntries(['diagnostic','error','sourceCoverage','coverage','operation'].filter(key=>data[key]!==undefined).map(key=>[key,typeof data[key]==='string'?previewText(String(data[key]),384):{preview:previewText(canonicalJson(data[key]),384)}]))
+    const diagnostics=previewFields(Object.fromEntries(['diagnostic','error','sourceCoverage','coverage','operation'].filter(key=>data[key]!==undefined).map(key=>[key,data[key]])),384)
     const {detail:_detail,read:_read,historyCapture,...required}=facts
     const minimal={...required,...(historyCapture===undefined?{}:{historyCapture:{status:object(historyCapture).status,diagnosticOmitted:true}})}
     return modelReceipt(identityFields(who),facts,diagnostics,minimal)
@@ -214,18 +237,21 @@ export function createModelTools(runtime: RuntimeFacade) {
     if(name==='mattpocock_resource'){
       const actual=object(data.actualCanRetire),facts=object(actual.facts)
       const durable=Object.fromEntries(Object.entries(data).filter(([key])=>key!=='actualCanRetire'))
-      return modelEnvelope('current',identityFields(who),{resourceId:data.resourceId,status:data.status,ledgerRevision:actual.ledgerRevision,checkedAt:actual.checkedAt,actualCanRetire:{allowed:actual.allowed,reasons:previewText(canonicalJson(actual.reasons??[]),512),facts:actual.facts===null?null:{identityVerified:facts.identityVerified,exists:facts.exists,headOid:facts.headOid,branchOid:facts.branchOid,digest:facts.digest,tracked:{total:list(facts.tracked).length,shown:0,coverage:'live-inspection-not-frozen'},untracked:{total:list(facts.untracked).length,shown:0,coverage:'live-inspection-not-frozen'},ignored:{total:list(facts.ignored).length,shown:0,coverage:'live-inspection-not-frozen'}}},detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(modelSource('resource',[data.resourceId],String(actual.ledgerRevision),durable)))}})
+      return modelEnvelope('current',identityFields(who),{resourceId:data.resourceId,status:data.status,ledgerRevision:actual.ledgerRevision,checkedAt:actual.checkedAt,actualCanRetire:{allowed:actual.allowed,...previewFields({reasons:actual.reasons??[]},512),facts:actual.facts===null?null:{identityVerified:facts.identityVerified,exists:facts.exists,headOid:facts.headOid,branchOid:facts.branchOid,digest:facts.digest,tracked:{total:list(facts.tracked).length,shown:0,coverage:'live-inspection-not-frozen'},untracked:{total:list(facts.untracked).length,shown:0,coverage:'live-inspection-not-frozen'},ignored:{total:list(facts.ignored).length,shown:0,coverage:'live-inspection-not-frozen'}}},detail:{tool:'mattpocock_record',action:'detail',locator:output.locator(binding(who),contentSource(modelSource('resource',[data.resourceId],String(actual.ledgerRevision),durable)))}})
     }
     return receipt(name,who,raw,data)
   }
   const audit=async(caller:HostCaller,rawQuery:unknown,result:unknown,signal:AbortSignal)=>{
-    const who=await identity(caller,signal),data=object(result),summary=object(data.summary),q=parseQuery(rawQuery,['session','episode'])
-    const episodes=auditSources(data),recentBySession=new Map<string,unknown[]>()
+    const who=await identity(caller,signal),data=object(result),summary=object(data.summary),coverage=object(data.coverage),q=parseQuery(rawQuery,['session','episode'])
+    const source=object(coverage.episodes),episodeStatus:ModelCollection['coverage']=source.status==='current'?'current':source.status==='not-recorded'?'not-recorded':source.status==='restricted'?'restricted':'unknown'
+    const episodeReason=episodeStatus==='current'?undefined:typeof source.reason==='string'?source.reason:'episode-source-'+episodeStatus
+    const episodes=episodeStatus==='current'?auditSources(data):[],recentBySession=new Map<string,unknown[]>()
     for(const event of list(summary.recent)){const row=object(event);if(typeof row.sessionId==='string'){const events=recentBySession.get(row.sessionId)??[];events.push(event);recentBySession.set(row.sessionId,events)}}
     const sessions=[...recentBySession].map(([id,events])=>{const row={sessionId:id,recentEvents:events.length,events};return {...modelSource('audit',['session',id],sourceVersion(row),row),recordId:id,durable:false,preview:{sessionId:id,recentEvents:events.length,coverage:'recent-event subset only; lifetime session count is in overview'}}})
-    const rows=q.kind==='session'?sessions:episodes,collection:ModelCollection={rows,version:sourceVersion(rows.map(row=>[row.key,row.sourceVersion])),coverage:'current'}
-    if(rawQuery!==undefined)return page(who,collection,q,'mattpocock_audit',q.kind??'episode',{auditCoverage:{...object(data.coverage),persistence:'memory-only',sessions:'recent-event subset only'}})
-    return modelEnvelope('current',identityFields(who),{generatedAt:data.generatedAt,coverage:previewFields(object(data.coverage)),summary:{...previewFields(Object.fromEntries(Object.entries(summary).filter(([key])=>!['tickets','productFiles','supportFiles','recent'].includes(key)))),...Object.fromEntries(['productFiles','supportFiles'].map(key=>[key,{rows:list(summary[key]).slice(0,20).map(path=>typeof path==='string'?previewText(path,512):null),shown:Math.min(list(summary[key]).length,20),total:list(summary[key]).length,more:list(summary[key]).length>20,coverage:'bounded current aggregate; not a frozen history'}]))},collections:{episode:{shown:0,total:episodes.length,more:episodes.length>0,query:{tool:'mattpocock_audit',action:'read',query:{kind:'episode',limit:20}}},session:{shown:0,total:sessions.length,ownerSessions:summary.sessions,coverage:'recent-event subset only',more:sessions.length>0,query:{tool:'mattpocock_audit',action:'read',query:{kind:'session',limit:20}}}},note:data.note})
+    const rows=q.kind==='session'?sessions:episodes,status=q.kind==='session'?'current':episodeStatus
+    const collection:ModelCollection={rows,version:sourceVersion([status,data.episodeRevision,rows.map(row=>[row.key,row.sourceVersion])]),coverage:status,...(q.kind==='session'||episodeReason===undefined?{}:{reason:episodeReason})}
+    if(rawQuery!==undefined)return page(who,collection,q,'mattpocock_audit',q.kind??'episode',{auditCoverage:coverage,source:q.kind==='session'?coverage.summary??{persistence:'memory-only',status:'current',coverage:'recent-event subset only'}:source})
+    return modelEnvelope('current',identityFields(who),{generatedAt:data.generatedAt,coverage,summary:{...previewFields(Object.fromEntries(Object.entries(summary).filter(([key])=>!['tickets','productFiles','supportFiles','recent'].includes(key)))),...Object.fromEntries(['productFiles','supportFiles'].map(key=>[key,{rows:list(summary[key]).slice(0,20).map(path=>previewFields({path},512)),shown:Math.min(list(summary[key]).length,20),total:list(summary[key]).length,more:list(summary[key]).length>20,coverage:'bounded current aggregate; not a frozen history'}]))},collections:{episode:{shown:0,total:episodeStatus==='current'?episodes.length:null,more:episodeStatus==='current'?episodes.length>0:null,coverage:episodeStatus,reason:episodeReason??null,source,query:episodeStatus==='current'?{tool:'mattpocock_audit',action:'read',query:{kind:'episode',limit:20}}:null},session:{shown:0,total:sessions.length,ownerSessions:summary.sessions,source:coverage.summary??{persistence:'memory-only',status:'current'},coverage:'recent-event subset only',more:sessions.length>0,query:{tool:'mattpocock_audit',action:'read',query:{kind:'session',limit:20}}}},...previewFields({note:data.note},512)})
   }
 
   const isMutation=(name:string,raw:Record<string,unknown>)=>['mattpocock_window','mattpocock_assign','mattpocock_delegate'].includes(name)||name==='mattpocock_record'&&raw.action==='apply'||name==='mattpocock_controls'&&raw.action==='save'||name==='mattpocock_worktree'&&raw.action!=='read'||name==='mattpocock_history'&&!['query','detail'].includes(String(raw.action))
