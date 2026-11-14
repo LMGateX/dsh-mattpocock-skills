@@ -248,6 +248,11 @@ interface NativeRunState {
   sawIdle: boolean
   /** Host runId for this activation, when a start/end edge supplied one. */
   runId: string | null
+  /** Weak incarnation proof for a counted/started run, never a retained Agent graph. */
+  agent: WeakRef<Agent> | null
+  displaced: boolean
+  /** Only unchanged legacy catalog provenance may bridge an unclosed legacy event chain. */
+  legacySource: number | null
   /** In-flight classification token; null when none is pending. */
   settle: number | null
 }
@@ -362,6 +367,10 @@ class NativeRunningCounter {
     let token = this.#identities.get(target)
     if (token === undefined) { token = ++this.#nextIdentity; this.#identities.set(target, token) }
     return token
+  }
+  #legacySource(): number | null {
+    const service = this.#lister()
+    return service === undefined || service.rootOf !== undefined ? null : this.#identity(service)
   }
   #settles = 0
   constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly liveAgent: (sessionId: string) => Agent | undefined; readonly lister: () => NativeSubagentLister | undefined; readonly directChildren?: (owner: SessionId, signal?: AbortSignal) => Promise<unknown>; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
@@ -669,16 +678,50 @@ class NativeRunningCounter {
       for (const owner of this.#idOwners.get(candidate) ?? []) owners.add(owner)
     }
     direct(sessionId)
+    direct(agent?.session.header.parentSession === undefined ? undefined : String(agent.session.header.parentSession))
     if (agent !== undefined) {
+      const ancestry = (owner: string): boolean | undefined => {
+        let parent = agent.session.header.parentSession
+        const seen = new Set<string>()
+        while (parent !== undefined && seen.size < 64 && !seen.has(String(parent))) {
+          const current = String(parent)
+          if (current === owner) return true
+          seen.add(current)
+          const ancestor = this.#liveAgent(current)
+          if (ancestor === undefined) return undefined
+          if (ancestor.session.header.origin !== 'subagent') return false
+          parent = ancestor.session.header.parentSession
+        }
+        return undefined
+      }
       const service = this.#lister()
-      if (service?.rootOf !== undefined && this.#liveAgent(sessionId) === agent) {
+      if (service?.rootOf !== undefined) {
+        // Reverse IDs are discovery hints, not authority for this incarnation's events.
+        // Revalidate the exact registry Agent/root through the currently loaded service.
+        if (this.#liveAgent(sessionId) !== agent) return new Set()
         try {
           const root = service.rootOf(agent)
-          if (this.#liveAgent(String(root.id)) === root && service.rootOf(root) === root) direct(String(root.id))
-        } catch { /* Refused runtime facts cannot manufacture owner attribution. */ }
+          if (this.#liveAgent(String(root.id)) !== root || service.rootOf(root) !== root) return new Set()
+          direct(String(root.id))
+          for (const owner of owners) {
+            const ownerAgent = this.#liveAgent(owner)
+            if (ownerAgent === root) continue
+            try {
+              if (ownerAgent === undefined || service.rootOf(ownerAgent) !== root) { owners.delete(owner); continue }
+            } catch { owners.delete(owner); continue }
+            if (ancestry(owner) !== true) owners.delete(owner)
+          }
+        } catch { return new Set() }
+      } else {
+        if (this.#liveAgent(sessionId) !== agent) return new Set()
+        const source = this.#legacySource()
+        for (const owner of owners) {
+          const related = ancestry(owner), run = this.#ledgers.get(owner)?.runs.get(sessionId)
+          if (related !== true && (related === false || run?.agent?.deref() !== agent || run.displaced
+            || source === null || run.legacySource !== source)) owners.delete(owner)
+        }
       }
     }
-    direct(agent?.session.header.parentSession === undefined ? undefined : String(agent.session.header.parentSession))
     return owners
   }
   #generation(ledger: NativeRunningLedger, sessionId: string): number {
@@ -751,9 +794,9 @@ class NativeRunningCounter {
    * Primary path: the host's `subagent/end` edge publishes the terminal reason. The child's own log
    * is consulted only for the turn number, the aborted cancel cause and any LlmFailure facts.
    */
-  async #classifyEnd(owner: string, sessionId: string, runIdFact: string | null, stopReason: string, generation: number): Promise<void> {
+  async #classifyEnd(owner: string, sessionId: string, runIdFact: string | null, stopReason: string, generation: number, observeTurn = true): Promise<void> {
     let observation: NativeTurnObservation | null = null
-    try { observation = await this.#turnReader(sessionId, this.#signal) } catch { observation = null }
+    if (observeTurn) try { observation = await this.#turnReader(sessionId, this.#signal) } catch { observation = null }
     const ledger = this.#ledgers.get(owner)
     if (ledger === undefined || this.#signal?.aborted === true || this.#generation(ledger, sessionId) !== generation) return
     const end = observation?.end ?? null
@@ -796,11 +839,14 @@ class NativeRunningCounter {
     // stated lower bound instead of inventing an outcome.
     if (!membership.known) return
     const live = this.#liveIndex()
-    if (this.#runtimeMembership(owner, membership, live).reason !== null) return
+    const proof = this.#runtimeMembership(owner, membership, live)
+    if (proof.reason !== null) return
     const running = this.#running(owner, live, membership)
     const skipped = (runId: string): boolean => typeof skip === 'string' ? runId === skip : skip?.has(runId) === true
     for (const [runId, run] of ledger.runs) {
-      if (skipped(runId) || running.has(runId)) continue
+      const current = live.get(runId)
+      if (current !== undefined && (run.agent?.deref() !== current || !proof.ids.has(runId))) run.displaced = true
+      if (skipped(runId) || running.has(runId) || run.displaced) continue
       const agent = live.get(runId)
       if (agent !== undefined) {
         // A live Agent that is not running is a parked inbox or a driver that has not woken yet,
@@ -855,8 +901,15 @@ class NativeRunningCounter {
     let ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
       ledger = { runs: new Map(), drifts: [], stops: new Map(), unresolved: new Set(), generations: new Map() }
-      for (const runId of this.#running(owner, live, membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, runId: null, settle: null })
       this.#ledgers.set(owner, ledger)
+    }
+    for (const sessionId of this.#running(owner, live, membership)) {
+      if (!ledger.runs.has(sessionId)) ledger.runs.set(sessionId, { counted: true, sawIdle: false, runId: null,
+        agent: new WeakRef(live.get(sessionId)!), displaced: false, legacySource: this.#legacySource(), settle: null })
+    }
+    for (const [sessionId, current] of live) {
+      const run = ledger.runs.get(sessionId)
+      if (run !== undefined && (run.agent?.deref() !== current || !proof.ids.has(sessionId))) run.displaced = true
     }
     // A live descendant outside the membership is a membership-change node; the refresh that
     // resolves it is queued, never awaited, so the stated count stays immediate.
@@ -925,8 +978,11 @@ class NativeRunningCounter {
   }
   disposed(agent: Agent): void {
     if (agent.session.header.origin !== 'subagent') return
-    const sessionId = String(agent.id)
-    for (const owner of this.#ownersFor(sessionId, agent)) {
+    const sessionId = String(agent.id), owners = this.#ownersFor(sessionId, agent)
+    // Disposal IDs may request discovery after registry removal, never authorize new run
+    // edges. Reconciliation rechecks catalog coverage and the recorded incarnation itself.
+    for (const owner of this.#idOwners.get(sessionId) ?? []) owners.add(owner)
+    for (const owner of owners) {
       if (this.#ledgers.get(owner) === undefined) continue
       // agent/disposed is a membership-change node: re-walk before deciding whether a run is lost.
       this.#afterWalk(owner, () => this.#reconcile(owner))
@@ -935,17 +991,23 @@ class NativeRunningCounter {
     // Agent to supply the parent chain, and routing must not depend on the Agent still existing.
   }
   start(sessionId: string, local: boolean, agent?: Agent, runId?: string): void {
+    if (local && (agent === undefined || this.#liveAgent(sessionId) !== agent)) return
     for (const owner of this.#ownersFor(sessionId, agent)) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
       if (local) {
-        const run = ledger.runs.get(sessionId) ?? { counted: false, sawIdle: false, runId: null, settle: null }
+        const run = ledger.runs.get(sessionId) ?? { counted: false, sawIdle: false, runId: null, agent: null, displaced: false, legacySource: null, settle: null }
         run.sawIdle = false
+        run.agent = agent === undefined ? null : new WeakRef(agent)
+        run.displaced = false
+        run.legacySource = this.#legacySource()
         run.settle = null
         if (runId !== undefined) run.runId = runId
         this.#activate(ledger, sessionId)
         this.#closeSessionStops(owner, ledger, sessionId)
         ledger.runs.set(sessionId, run)
+        const owners = this.#idOwners.get(sessionId) ?? new Set<string>()
+        owners.add(owner); this.#idOwners.set(sessionId, owners)
       }
       if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner, sessionId)
       else this.#afterWalk(owner, () => this.#reconcileSoon(owner, sessionId))
@@ -957,18 +1019,36 @@ class NativeRunningCounter {
    * also clears any open item for the same child through the existing clearing path.
    */
   end(sessionId: string, local: boolean, agent?: Agent, stopReason?: string, runId?: string): void {
-    for (const owner of this.#ownersFor(sessionId, agent)) {
+    const currentOwners = this.#ownersFor(sessionId, agent), owners = new Set(currentOwners)
+    // A terminal edge can arrive after the registry already holds another incarnation.
+    // Only an observed matching start runId, not a reverse session ID, restores that old route.
+    if (runId !== undefined) for (const owner of this.#idOwners.get(sessionId) ?? []) {
+      if (this.#ledgers.get(owner)?.runs.get(sessionId)?.runId === runId) owners.add(owner)
+    }
+    for (const owner of owners) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
       const run = ledger.runs.get(sessionId)
+      if (runId !== undefined && run === undefined) {
+        const stops = [...ledger.stops.values()].filter(item => item.sessionId === sessionId)
+        if (stops.some(item => item.itemId !== this.#itemId(sessionId, null, item.turn)
+          && item.itemId !== this.#itemId(sessionId, runId, item.turn))) continue
+        if (stops.some(item => item.itemId === this.#itemId(sessionId, runId, item.turn) && item.outcome === stopReason)) continue
+      }
+      if (run?.displaced === true && (runId === undefined || run.runId !== runId)) continue
+      // An old end never retires, clears or classifies a different observed activation.
+      if (runId !== undefined && run?.runId !== undefined && run.runId !== null && run.runId !== runId) continue
       const hostRunId = runId ?? run?.runId ?? null
+      // A matching historical run keeps its published outcome, never a replacement's turn tail.
+      const observeTurn = currentOwners.has(owner) && run?.displaced !== true
+        && (agent === undefined || run === undefined || run.agent?.deref() === agent)
       if (run !== undefined) { run.settle = null; ledger.runs.delete(sessionId) }
       this.#closeSessionStops(owner, ledger, sessionId)
       if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner)
       else this.#afterWalk(owner, () => this.#reconcile(owner))
       if (!local || stopReason === undefined || stopReason === 'completed') continue
       const generation = this.#generation(ledger, sessionId)
-      void this.#serial(owner, () => this.#classifyEnd(owner, sessionId, hostRunId, stopReason, generation)).catch(() => undefined)
+      void this.#serial(owner, () => this.#classifyEnd(owner, sessionId, hostRunId, stopReason, generation, observeTurn)).catch(() => undefined)
     }
   }
   catalog(sessionId: string, childId: string | undefined): void {
