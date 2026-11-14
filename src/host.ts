@@ -1,3 +1,4 @@
+import { symbols } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import { createHash } from 'node:crypto'
 import { lstat, readlink } from 'node:fs/promises'
@@ -133,6 +134,7 @@ interface NativeSubagentRow {
   readonly reason?: string
 }
 interface NativeSubagentLister {
+  readonly rootOf?: (caller: Agent) => Agent
   readonly listDescendants?: (rootSessionId: SessionId, signal?: AbortSignal) => Promise<readonly SubagentDescendantListEntry[]>
   readonly listChildren?: (parentSessionId: SessionId, signal?: AbortSignal) => Promise<readonly SubagentCatalogEntry[]>
 }
@@ -143,10 +145,11 @@ function nativeDirectRows(value: unknown): readonly NativeSubagentRow[] {
   if (!Array.isArray(value)) return [malformed()]
   return Array.from(value, value => {
     try {
-      const row = record(value, 'native direct-child catalog row', ['id', 'createdAt', 'mode', 'label'])
+      const row = record(value, 'native direct-child catalog row', ['id', 'createdAt', 'mode', 'label', 'name'])
       const childId = id(row.id, 'native catalog child id')
       if (typeof row.createdAt !== 'number' || !Number.isFinite(row.createdAt)
         || row.label !== undefined && typeof row.label !== 'string'
+        || row.name !== undefined && typeof row.name !== 'string'
         || row.mode === 'continuable' && typeof row.label !== 'string') {
         throw new ControlsError('invalid-input', 'invalid native direct-child catalog fields')
       }
@@ -303,11 +306,12 @@ export function observeNativeTurn(events: readonly SessionEvent[]): NativeTurnOb
 /**
  * Event-driven native running count for one mount.
  *
- * Membership comes from the durable catalog (`listDescendants`, recursive `listChildren`
- * fallback) and is refreshed only at membership-change nodes (agent/created, agent/disposed,
+ * Creator membership is enriched from one direct catalog (legacy recursive-only services
+ * retain their existing fallback), only at membership-change nodes (agent/created, agent/disposed,
  * `subagent/catalog`, unknown subagent/start-end ids, a first baseline read, or a read that
  * finds a live descendant the membership does not know). A read is O(live agents) and performs
- * no catalog IO once membership is fresh.
+ * no catalog IO once membership is fresh. Exact public runtime-root facts supplement root
+ * owners across cold creator gaps; nonroot owners still require creator ancestry proof.
  *
  * The count is the host's live run status: descendant subagents whose live `Agent.status` is
  * `running`. The catalog `activity` field is session residency, not execution, so idle
@@ -333,7 +337,9 @@ export function observeNativeTurn(events: readonly SessionEvent[]): NativeTurnOb
  */
 class NativeRunningCounter {
   readonly #liveAgents: () => readonly Agent[]
+  readonly #liveAgent: (sessionId: string) => Agent | undefined
   readonly #lister: () => NativeSubagentLister | undefined
+  readonly #directChildren: ((owner: SessionId, signal?: AbortSignal) => Promise<unknown>) | undefined
   readonly #signal: AbortSignal | undefined
   readonly #onStop: ((event: NativeSubagentStopEvent) => void) | undefined
   readonly #turnReader: NativeTurnReader
@@ -347,9 +353,19 @@ class NativeRunningCounter {
   readonly #walkTokens = new Map<string, number>()
   readonly #appliedWalks = new Map<string, number>()
   readonly #opened: NativeSubagentStopEvent[] = []
+  readonly #identities = new WeakMap<object, number>()
+  #nextIdentity = 0
+  #identity(value: object): number {
+    // Cordis's public original symbol distinguishes providers, not transient scoped wrappers.
+    const original: unknown = Reflect.get(value, symbols.original)
+    const target = original !== null && (typeof original === 'object' || typeof original === 'function') ? original : value
+    let token = this.#identities.get(target)
+    if (token === undefined) { token = ++this.#nextIdentity; this.#identities.set(target, token) }
+    return token
+  }
   #settles = 0
-  constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly lister: () => NativeSubagentLister | undefined; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
-    this.#liveAgents = options.liveAgents; this.#lister = options.lister; this.#signal = options.signal; this.#onStop = options.onStop
+  constructor(options: { readonly liveAgents: () => readonly Agent[]; readonly liveAgent: (sessionId: string) => Agent | undefined; readonly lister: () => NativeSubagentLister | undefined; readonly directChildren?: (owner: SessionId, signal?: AbortSignal) => Promise<unknown>; readonly signal?: AbortSignal; readonly onStop?: (event: NativeSubagentStopEvent) => void; readonly turnReader?: NativeTurnReader }) {
+    this.#liveAgents = options.liveAgents; this.#liveAgent = options.liveAgent; this.#lister = options.lister; this.#directChildren = options.directChildren; this.#signal = options.signal; this.#onStop = options.onStop
     this.#turnReader = options.turnReader ?? (async () => { throw new ControlsError('feature-disabled', 'child session log observation is unavailable') })
   }
   /** Serialize per-owner refreshes so a read after a node awaits that node's walk, never a second one. */
@@ -423,10 +439,12 @@ class NativeRunningCounter {
     // Exactly one direct-children read. The full-subtree walk this replaces reads every
     // descendant's own session log, which is unbounded work on a read path (measured on a live
     // profile: 2048 descendant logs, 2.1 GB, a baseline walk that never finished); the resident
-    // subtree comes from the live Agent index instead, whose parent chains already describe it.
+    // subtree comes from live creator links plus exact runtime-root membership, without cold IO.
     const listing: Promise<readonly NativeSubagentRow[]> = typeof list.listChildren === 'function'
       ? list.listChildren(SessionId(owner), control).then(nativeDirectRows)
-      : list.listDescendants!(SessionId(owner), control)
+      : list.rootOf !== undefined && this.#directChildren !== undefined
+        ? this.#directChildren(SessionId(owner), control).then(nativeDirectRows)
+        : list.listDescendants!(SessionId(owner), control)
     listing.catch(() => undefined)
     let rows: readonly NativeSubagentRow[]
     try {
@@ -450,7 +468,7 @@ class NativeRunningCounter {
   }
   /** Publish one walk's rows. Returns false when a newer walk already published membership. */
   #applyWalk(owner: string, token: number, rows: readonly NativeSubagentRow[]): boolean {
-    if (token <= (this.#appliedWalks.get(owner) ?? 0)) return false
+    if (this.#signal?.aborted === true || token <= (this.#appliedWalks.get(owner) ?? 0)) return false
     this.#appliedWalks.set(owner, token)
     this.#walkState(owner).notBefore = 0
     const current = this.#members.get(owner)
@@ -468,9 +486,8 @@ class NativeRunningCounter {
     this.#bump(owner)
     return true
   }
-  /** Membership from the live Agent index alone: no catalog, no session log, no IO. Every
-   * running subagent is a live agent whose parent chain reaches this owner, so the running
-   * count is complete without enumerating cold descendants. */
+  /** Seed only proven live creator membership: no catalog, no session log, no IO. Publication
+   * separately supplements exact runtime-root facts or reports an unclosed chain as unknown. */
   #adoptLiveMembership(owner: string, live: Map<string, Agent>): void {
     const membership: NativeRunningMembership = { ids: new Set<string>(), total: 0, known: true, reason: null }
     this.#absorbLiveMembership(owner, membership, live)
@@ -551,14 +568,73 @@ class NativeRunningCounter {
     }
     return freeze({ direct, deeper, unknown, levels: freeze(published) })
   }
-  #running(live: Map<string, Agent>, membership: NativeRunningMembership): Set<string> {
+  #running(owner: string, live: Map<string, Agent>, membership: NativeRunningMembership): Set<string> {
     const running = new Set<string>()
+    const proof = this.#runtimeMembership(owner, membership, live)
     for (const agent of live.values()) {
       if (agent.session.header.origin !== 'subagent' || agent.status !== 'running') continue
       const sessionId = String(agent.id)
-      if (membership.ids.has(sessionId)) running.add(sessionId)
+      if (proof.ids.has(sessionId)) running.add(sessionId)
     }
     return running
+  }
+  /** Creator ancestry and runtime-tree ownership are deliberately different proofs. Only an
+   * exact registry root owner may use a shared runtime root to bridge cold creator edges.
+   * This synchronous fact is count-only: it never enters session/business authorization. */
+  #runtimeMembership(owner: string, membership: NativeRunningMembership, live: Map<string, Agent>): { ids: Set<string>; reason: string | null; token: string } {
+    const ids = new Set<string>(), service = this.#lister(), ownerAgent = live.get(owner)
+    const serviceSource: object | undefined = service === undefined ? undefined : Reflect.get(service, symbols.original) ?? service
+    const rootMethod: unknown = serviceSource === undefined ? undefined : Reflect.get(serviceSource, 'rootOf')
+    const facts: unknown[] = [serviceSource === undefined ? null : this.#identity(serviceSource),
+      typeof rootMethod === 'function' ? this.#identity(rootMethod) : null]
+    let root: Agent | undefined, reason: string | null = null
+    const rootOf = (agent: Agent): Agent => {
+      const found = service!.rootOf!(agent)
+      if (live.get(String(agent.id)) !== agent || live.get(String(found.id)) !== found
+        || String(found.session.header.id) !== String(found.id) || service!.rootOf!(found) !== found) {
+        throw new Error('native runtime root is not the exact registry root')
+      }
+      return found
+    }
+    if (service?.rootOf !== undefined) {
+      try {
+        if (ownerAgent === undefined) throw new Error('owner is not live')
+        root = rootOf(ownerAgent)
+        facts.push([owner, this.#identity(ownerAgent), String(root.id), this.#identity(root)])
+      }
+      catch { reason = 'native-subagent-runtime-root-unavailable' }
+    }
+    for (const agent of live.values()) {
+      if (String(agent.id) === owner || agent.session.header.origin !== 'subagent') continue
+      let sameTree: boolean | undefined
+      if (service?.rootOf !== undefined) {
+        try {
+          const candidateRoot = rootOf(agent)
+          if (root !== undefined) sameTree = candidateRoot === root
+          // A verified different tree is not an owner dependency. Its later entry into this
+          // tree still changes the next token; rejected/unclosed evidence remains unknown.
+          if (sameTree !== false) facts.push([String(agent.id), this.#identity(agent), String(candidateRoot.id), this.#identity(candidateRoot)])
+        }
+        catch { reason = 'native-subagent-runtime-root-unavailable' }
+      }
+      if (sameTree === false) continue
+      if (sameTree === true && root === ownerAgent) { ids.add(String(agent.id)); continue }
+      // A known catalog member or a closed creator chain proves nonroot ancestry, never siblings.
+      let cursor: string | undefined = String(agent.id), relation: boolean | undefined
+      const seen = new Set<string>()
+      while (cursor !== undefined) {
+        if (cursor === owner || membership.ids.has(cursor)) { relation = true; break }
+        if (seen.has(cursor) || seen.size >= 64) break
+        seen.add(cursor)
+        const current = live.get(cursor)
+        if (current === undefined) break
+        if (current.session.header.origin !== 'subagent') { relation = false; break }
+        cursor = current.session.header.parentSession
+      }
+      if (relation === true) ids.add(String(agent.id))
+      else if (relation === undefined && reason === null) reason = 'native-subagent-membership-unproven'
+    }
+    return { ids, reason, token: createHash('sha256').update(JSON.stringify([facts, reason])).digest('hex') }
   }
   /** A live subagent belongs to the owner when its parent chain reaches the owner or a known descendant. */
   #inOwnerSubtree(owner: string, agent: Agent, membership: NativeRunningMembership, live: Map<string, Agent>): boolean {
@@ -593,6 +669,15 @@ class NativeRunningCounter {
       for (const owner of this.#idOwners.get(candidate) ?? []) owners.add(owner)
     }
     direct(sessionId)
+    if (agent !== undefined) {
+      const service = this.#lister()
+      if (service?.rootOf !== undefined && this.#liveAgent(sessionId) === agent) {
+        try {
+          const root = service.rootOf(agent)
+          if (this.#liveAgent(String(root.id)) === root && service.rootOf(root) === root) direct(String(root.id))
+        } catch { /* Refused runtime facts cannot manufacture owner attribution. */ }
+      }
+    }
     direct(agent?.session.header.parentSession === undefined ? undefined : String(agent.session.header.parentSession))
     return owners
   }
@@ -710,7 +795,9 @@ class NativeRunningCounter {
     // An unreadable catalog cannot distinguish a stopped run from an unlisted branch: keep the
     // stated lower bound instead of inventing an outcome.
     if (!membership.known) return
-    const live = this.#liveIndex(), running = this.#running(live, membership)
+    const live = this.#liveIndex()
+    if (this.#runtimeMembership(owner, membership, live).reason !== null) return
+    const running = this.#running(owner, live, membership)
     const skipped = (runId: string): boolean => typeof skip === 'string' ? runId === skip : skip?.has(runId) === true
     for (const [runId, run] of ledger.runs) {
       if (skipped(runId) || running.has(runId)) continue
@@ -745,7 +832,7 @@ class NativeRunningCounter {
       // No native service: nothing can be enumerated, and the index alone is not a promise of
       // completeness, so the count stays an explicit unknown rather than a live-derived guess.
       const held = this.#members.get(owner)
-      const counted = held === undefined ? new Set<string>() : this.#running(live, held)
+      const counted = held === undefined ? new Set<string>() : this.#running(owner, live, held)
       const running = counted.size
       return { known: false, running, total: held === undefined ? 0 : Math.max(held.total, running), reason: 'native-subagent-service-unavailable',
         depth: this.#depthStructure(owner, counted, live) }
@@ -758,10 +845,17 @@ class NativeRunningCounter {
     if (membership === undefined) return { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable',
       depth: this.#depthStructure(owner, new Set<string>(), live) }
     this.#absorbLiveMembership(owner, membership, live)
+    const proof = this.#runtimeMembership(owner, membership, live)
+    // Count-only runtime membership also routes late native run edges after a creator went
+    // cold. Keep this reverse event index separate from durable creator membership/ACL.
+    for (const member of proof.ids) {
+      const owners = this.#idOwners.get(member) ?? new Set<string>()
+      owners.add(owner); this.#idOwners.set(member, owners)
+    }
     let ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
       ledger = { runs: new Map(), drifts: [], stops: new Map(), unresolved: new Set(), generations: new Map() }
-      for (const runId of this.#running(live, membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, runId: null, settle: null })
+      for (const runId of this.#running(owner, live, membership)) ledger.runs.set(runId, { counted: true, sawIdle: false, runId: null, settle: null })
       this.#ledgers.set(owner, ledger)
     }
     // A live descendant outside the membership is a membership-change node; the refresh that
@@ -771,9 +865,10 @@ class NativeRunningCounter {
       for (const candidate of unknown) ledger.unresolved.add(candidate)
       this.#afterWalk(owner, () => this.#reconcile(owner))
     }
-    const counted = this.#running(live, membership)
+    const counted = this.#running(owner, live, membership)
     const running = counted.size, total = Math.max(membership.total, running)
     const depth = this.#depthStructure(owner, counted, live)
+    if (proof.reason !== null) return { known: false, running, total, reason: proof.reason, depth }
     if (!membership.known) return { known: false, running, total, reason: membership.reason, depth }
     return { known: true, running, total, reason: null, depth }
   }
@@ -791,10 +886,12 @@ class NativeRunningCounter {
     return this.#opened.splice(0, this.#opened.length)
   }
   /** Copy stored count knowledge/membership IDs plus current service availability; no refresh or catalog IO. */
-  state(ownerSessionId: string): { readonly revision: number; readonly known: boolean; readonly reason: string | null; readonly available: boolean; readonly memberSessionIds: readonly string[] } {
+  state(ownerSessionId: string): { readonly revision: number; readonly known: boolean; readonly reason: string | null; readonly available: boolean; readonly memberSessionIds: readonly string[]; readonly liveMembershipToken: string } {
     const owner = String(ownerSessionId), membership = this.#members.get(owner), available = this.#lister() !== undefined
-    return { revision: this.revision(owner), available, known: available && membership?.known === true, memberSessionIds: membership === undefined ? [] : [...membership.ids],
-      reason: !available ? 'native-subagent-service-unavailable' : membership?.reason ?? (membership === undefined ? 'native-subagent-membership-unestablished' : null) }
+    const proof = this.#runtimeMembership(owner, membership ?? { ids: new Set(), known: false, reason: null, total: 0 }, this.#liveIndex())
+    return { revision: this.revision(owner), available, known: available && membership?.known === true && proof.reason === null,
+      memberSessionIds: [...new Set([...(membership?.ids ?? []), ...(this.#lister()?.rootOf === undefined ? [] : proof.ids)])], liveMembershipToken: proof.token,
+      reason: !available ? 'native-subagent-service-unavailable' : proof.reason ?? membership?.reason ?? (membership === undefined ? 'native-subagent-membership-unestablished' : null) }
   }
   /** Monotone count-state revision so a cached snapshot cannot mask an item or a count change. */
   revision(ownerSessionId: string): number {
@@ -1019,7 +1116,7 @@ export interface HostPorts {
   /** Monotone native-count state revision; part of snapshot freshness, never a count. */
   nativeSubagentCountRevision(ownerSessionId: string): number
   /** Optional synchronous freshness proof. Missing membership coverage conservatively disables projection reuse. */
-  nativeSubagentCountState?(ownerSessionId: string): { readonly revision: number; readonly known: boolean; readonly reason: string | null; readonly available: boolean; readonly memberSessionIds?: readonly string[] }
+  nativeSubagentCountState?(ownerSessionId: string): { readonly revision: number; readonly known: boolean; readonly reason: string | null; readonly available: boolean; readonly memberSessionIds?: readonly string[]; readonly liveMembershipToken?: string }
   openRuntimeStorage<T extends { readonly revision: number }>(parse: (value: unknown) => T): Promise<VersionedStorage<T>>
   openUnitStorage<T extends { readonly revision: number }>(suffix: string, parse: (value: unknown) => T): Promise<VersionedStorage<T>>
   readPolicyGrants(): Promise<PolicyGrants>
@@ -1592,12 +1689,27 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const observation = await query.observeSession(sessionId, { projectionMode: 'none', ...(signal === undefined ? {} : { signal }) })
       try { return observeNativeTurn(observation.events.slice(observation.inheritedEventCount)) } finally { observation[Symbol.dispose]() }
     }
-    const nativeCounter = new NativeRunningCounter({ liveAgents: () => ctx.agents.list(), lister: () => nativeSubagentLister(ctx), signal: lifetime.signal, onStop: event => forwardNativeStop(event), turnReader: readNativeTurn })
+    // RC3 exposes rootOf on the runtime but direct catalogs through public SessionQuery
+    // projection values, not a runtime.listChildren method or a package-root helper export.
+    // This observation is background enrichment only, with one disposable parent lease.
+    const directChildren = async (owner: SessionId, signal?: AbortSignal): Promise<unknown> => {
+      signal?.throwIfAborted()
+      const query = ctx.get('sessionQuery')
+      if (query === undefined) throw new ControlsError('feature-disabled', 'native direct catalog query is unavailable')
+      const observation = await query.observeSession(owner, signal === undefined ? {} : { signal })
+      try {
+        signal?.throwIfAborted()
+        return observation.projections?.values.subagentCatalog
+      } finally { observation[Symbol.dispose]() }
+    }
+    const nativeCounter = new NativeRunningCounter({ liveAgents: () => ctx.agents.list(), liveAgent: sessionId => ctx.agents.get(SessionId(sessionId)), lister: () => nativeSubagentLister(ctx), directChildren, signal: lifetime.signal, onStop: event => forwardNativeStop(event), turnReader: readNativeTurn })
     const readNativeActivity = async (sessionId: string, signal?: AbortSignal): Promise<NativeSubagentActivity> => {
       const ownerSessionId = id(sessionId, 'sessionId')
       const control = signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal])
       control.throwIfAborted()
-      return await nativeCounter.read(ownerSessionId, control)
+      const activity = await nativeCounter.read(ownerSessionId, control)
+      control.throwIfAborted()
+      return activity
     }
     const ports: HostPorts = {
       controlsStorage, instrumentStorage, windowStorage, resourceStorage, ...identity,
