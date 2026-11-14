@@ -6,6 +6,12 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.21.2 RC3适配（2026-11-14，已认可；文档先行）
+
+[RC3契约](<DSH_022_RC3_ADAPTATION.md>)固定本批D→C/A→V→P→R；I本机安装明确排除。先以公开main abc3f13建立隔离集成、单独提交授权／seams，再独立subagents完成目录／冷祖先计数与activation新旧格式竖切RED→GREEN；串行merger和独立Standards／Spec必改关闭后，只在精确RC3上完成strict、源码／唯一包、原生Client／subagent／headless门禁，非force push／新0.21.2tag与五资产Release，下载strict收口。
+
+历史RC1／双宿主数字不作为本轮结果，声明>=RC1不等未来版本实测；旧请求格式fixture不启动旧Host。保护原dirty主目录，不改共享SDK／现有Profile／业务数据或当前服务，不为本机安装／激活，不npm publish。当前D与环境准备在进行，后续按实际结果更新VERIFICATION，不提前记完成。
+
 ## 0.21.1 交付收口（2026-11-13；磁盘完成，运行态另核）
 
 D→C/G/N真实RED→GREEN→独立Standards/Spec必改关闭→仅RC1源码／同包各1313/1313、strict／native／headless／生成物／vendor→非force atomic push／新tag及五资产Release／下载strict→备份／官方CLI隔离往返及同包本机磁盘安装均已完成。[验证摘要](<VERIFICATION.md>)与[机器记录](<../dist/verification-0.21.1.json>)保留精确scope／SHA及例外。source冻结0cc34713a2f08be5782a5504904f20f12ef19c7c，当前追加仅docs，不移动tag或重打包；1条Standards P3维护建议非阻塞延期。

@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.21.2 DSH RC3适配（2026-11-14，所有者认可；先文档、隔离开发／测试、push／Release，不安装本机）
+
+所有者认可[RC3检查](<DSH_022_RC3_COMPATIBILITY.md>)并明确要求固定文档，在隔离环境/subagents完成开发和适配，发版、push，暂不为本机DSH安装。唯一细化与测试seams以[本批契约](<DSH_022_RC3_ADAPTATION.md>)为准。基于最新公开0.21.1后main，目标0.21.2；修named目录解析、冷creator链S完备性与可选delegate activation参数，不把版本门禁通过当运行兼容。
+
+保留DSH>=0.2.2-rc.1／Node>=24.9.0声明，本批完整runtime门禁仅精确RC3，旧参数格式以fixture回归；公开runtime-tree事实只供计数，不扩业务ACL或cwd。保持单次创建、权限／取消／幂等／nativeStops／当前消费前沿、未知下界和UI原生label。先单独文档提交、独立单writer树RED→GREEN与串行集成，再独立双轴、strict／源码／唯一精确包／原生／正式headless，通过后非force push／新tag和五资产Release、下载strict。**不安装或激活本机DSH／插件，不改现有Profile／共享SDK／业务数据，不重启或替换当前GUI，不npm publish或覆盖旧tag资产。**当前只是授权与契约，不冒称已完成。
+
 ## 0.21.1 交付记录（2026-11-13，源码／Release／本机磁盘完成；激活未核）
 
 [0.21.1 Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.21.1)及[验证摘要](<VERIFICATION.md>)记录已完成C/G/N隔离实现、真实RED→GREEN、最终独立双轴、仅RC1源码／同一归档各1313/1313、原生／严格类型／官方headless与5资产下载回验，并用同一下载包经官方CLI完成本机Web Profile磁盘0.21.0→0.21.1、171/171逐字节相等。冻结source为0cc34713a2f08be5782a5504904f20f12ef19c7c，新annotated tag不移动、制品不重pack；本段是后续纯文档追加，不冒充归档source。
