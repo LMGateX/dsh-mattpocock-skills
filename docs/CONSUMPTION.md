@@ -4,6 +4,18 @@
 
 > **2026-11-04，设计固定、待实施：** [插件模型工具输出减负](<BOUNDED_TOOL_OUTPUTS.md>) 只投影模型工具的 typed result，不以 UI summary 替代本模块，不削弱 preStep/postExecute durable frontier 或通知/历史捕获。新的 record detail resolver 自身只读，不把取片段当消费提交；现有 hook 仍独立运行。
 
+## 0.23.0 紧凑 owned 当前正文
+
+[精简契约](<CONTEXT_COMPACTION_CONTRACT.md>)取代下文历史表示细节，不改消费类的公开Interface或Host接入：
+
+- 已知空类别用`[]`，等价于`shown=total=0,more=false`；缺失可选观察、restricted／unknown为独立coverage对象，null仍未知。该文本投影不是模型工具schema-2／representation-2 envelope的变更。非空类别保留rows／shown／total／more、完整集合签名与受权当前query。
+- notices仅列动作，pendingRelease与nativeStops事实只在JSON出现一次；新增pendingRelease有界类别保留精确handle／generation。ON及OFF旧义务仍遵守原答复／await／结果适用排除条件、T/S、待处置树和来源限制。
+- 普通明确completed、非live且义务源已知／无关联事项的native当前行可只归总；nativeExecutions含ordinaryEnded／detailsCoverage／全量签名和current query。live、异常、未知结局与关联未结义务优先显示。它是latest当前行摘要，不是完整event log或任务完成证明。
+- policy.sources改由policy.query指向record概览／policy.detail；有效开关／原因／修订保留，detailsSignature覆盖下沉来源。worktree observation check保留state／coverage／detailsSignature，Git材料经当前query／真实detail恢复。native来源live-current-only无伪造detail；仅协调者额外historyQuery指向独立recorded version，不当当前live详情；resource physical facts保留原有有界投影。
+- 所有省略／下沉尾部变化仍进入指纹；viewer-only和无语义读取时间戳仍去重。固定durability frontier、每次权限／鲜读、同step去重、实际baseline可见性与compaction／冷恢复／stale／取消不变；不是delta-only或永久仅注入一次。
+
+[公开消费回归](<../tests/compact-consumption.test.mjs>)与[真实工具恢复](<../tests/model-interface-consumption-locators.test.mjs>)覆盖此表示，实测门禁另记。未部署当前GUI或运行生产provider试验。
+
 ## 范围与状态
 
 [纯 TypeScript 核心](<../src/controls/consumption.ts>)把**最新持久事实用于 parent 本次输入**，不是可选 dashboard。它接收可信宿主身份及快照读取函数，返回独立仪器消息的正文与 freshness；Host adapter 创建真正的 UserMessage 并接入实际 awaited pre-step / 合法工具返回消费路径。

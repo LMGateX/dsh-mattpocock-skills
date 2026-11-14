@@ -95,7 +95,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             workflowId?: string;
             kind: string;
         };
-        coverage: "unknown" | "current" | "restricted" | "not-recorded";
+        coverage: "unknown" | "current" | "not-recorded" | "restricted";
     } & {
         schemaVersion: 2;
         representationVersion: number;
@@ -151,7 +151,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean;
-                coverage: "unknown" | "current" | "restricted" | "not-recorded";
+                coverage: "unknown" | "current" | "not-recorded" | "restricted";
             };
         };
         scopeDetail?: never;
@@ -195,7 +195,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean;
-                coverage: "unknown" | "current" | "restricted" | "not-recorded";
+                coverage: "unknown" | "current" | "not-recorded" | "restricted";
             };
         };
         scopeDetail: {
@@ -262,7 +262,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             workflowId?: string;
             kind: string;
         };
-        coverage: "unknown" | "current" | "restricted" | "not-recorded";
+        coverage: "unknown" | "current" | "not-recorded" | "restricted";
     } & {
         schemaVersion: 2;
         representationVersion: number;
@@ -284,7 +284,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean;
-                coverage: "unknown" | "current" | "restricted" | "not-recorded";
+                coverage: "unknown" | "current" | "not-recorded" | "restricted";
                 query: {
                     tool: string;
                     action: string;
@@ -355,7 +355,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             workflowId?: string;
             kind: string;
         };
-        coverage: "unknown" | "current" | "restricted" | "not-recorded";
+        coverage: "unknown" | "current" | "not-recorded" | "restricted";
     } & {
         schemaVersion: 2;
         representationVersion: number;
@@ -382,7 +382,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean | null;
-                coverage: "unknown" | "current" | "restricted" | "not-recorded";
+                coverage: "unknown" | "current" | "not-recorded" | "restricted";
                 reason: string | null;
                 source: Record<string, unknown>;
                 query: {
