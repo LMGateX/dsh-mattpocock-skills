@@ -80,8 +80,8 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
   const privateBrowserSources = ['client-notifications.ts', 'client-notification-sounds.ts', 'client-notification-sound-data.ts', 'client-subagents.ts', 'client-recommendation-policy.ts']
   assert.deepEqual(sources.filter(path => path.startsWith('client-')), [...privateBrowserSources].sort())
-  assert.equal(sources.filter(path => !path.includes('/')).length, 7 + privateBrowserSources.length)
-  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 26)
+  assert.equal(sources.filter(path => !path.includes('/')).length, 8 + privateBrowserSources.length)
+  assert.equal(sources.filter(path => path.startsWith('controls/')).length, 27)
   for (const file of ['recommendation-contract', 'owner-decision-policy']) {
     for (const path of ['lib/controls/' + file + '.js', 'lib/types/controls/' + file + '.d.ts']) {
       for (const inventory of [packageJson.files, PACKAGE_FILES_ALLOWLIST, FIXED_PACKED_FILES]) {
@@ -95,13 +95,13 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
   const actual = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort()
-  assert.equal(actual.length, 66)
+  assert.equal(actual.length, 70)
   assert.deepEqual(actual, expected)
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), ['locale/en.json', 'locale/zh.json'])
-  assert.equal(FIXED_PACKED_FILES.length, 86)
+  assert.equal(FIXED_PACKED_FILES.length, 90)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 171)
+  assert.equal(EXPECTED_PACKED_FILES, 175)
 })

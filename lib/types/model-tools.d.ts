@@ -24,7 +24,7 @@ export interface ModelRow extends ModelSource {
 export interface ModelCollection {
     readonly rows: readonly ModelRow[];
     readonly version: string;
-    readonly coverage: 'current' | 'restricted' | 'unknown';
+    readonly coverage: 'current' | 'restricted' | 'unknown' | 'not-recorded';
     readonly reason?: string;
 }
 export interface ModelCurrent extends ModelIdentity {
@@ -54,13 +54,6 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             fingerprint: string;
         };
     } & {
-        query: {
-            recordId?: string;
-            workflowId?: string;
-            kind: string;
-        };
-        coverage: "unknown" | "current" | "restricted";
-        reason: string | null;
         sourceVersion: string;
         rows: ({
             detail: {
@@ -81,11 +74,31 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             recordId: string;
         })[];
         shown: number;
-        total: number;
-        more: boolean;
+        total: number | null;
+        more: boolean | null;
         nextCursor: string | null;
+        next: {
+            tool: string;
+            request: {
+                action: string;
+                query: {
+                    limit: number;
+                    cursor: string;
+                    recordId?: string;
+                    workflowId?: string;
+                    kind: string;
+                };
+            };
+        } | null;
+        query: {
+            recordId?: string;
+            workflowId?: string;
+            kind: string;
+        };
+        coverage: "unknown" | "current" | "restricted" | "not-recorded";
     } & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     }) | ({
         instance: InstrumentInstance;
@@ -138,8 +151,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean;
-                coverage: "unknown" | "current" | "restricted";
-                reason: string | null;
+                coverage: "unknown" | "current" | "restricted" | "not-recorded";
             };
         };
         scopeDetail?: never;
@@ -183,8 +195,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean;
-                coverage: "unknown" | "current" | "restricted";
-                reason: string | null;
+                coverage: "unknown" | "current" | "restricted" | "not-recorded";
             };
         };
         scopeDetail: {
@@ -194,6 +205,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         };
     }) & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     }))>;
     detail: (caller: HostCaller, request: Record<string, unknown>, signal: AbortSignal) => Promise<Record<string, unknown>>;
@@ -209,13 +221,6 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             fingerprint: string;
         };
     } & {
-        query: {
-            recordId?: string;
-            workflowId?: string;
-            kind: string;
-        };
-        coverage: "unknown" | "current" | "restricted";
-        reason: string | null;
         sourceVersion: string;
         rows: ({
             detail: {
@@ -236,11 +241,31 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             recordId: string;
         })[];
         shown: number;
-        total: number;
-        more: boolean;
+        total: number | null;
+        more: boolean | null;
         nextCursor: string | null;
+        next: {
+            tool: string;
+            request: {
+                action: string;
+                query: {
+                    limit: number;
+                    cursor: string;
+                    recordId?: string;
+                    workflowId?: string;
+                    kind: string;
+                };
+            };
+        } | null;
+        query: {
+            recordId?: string;
+            workflowId?: string;
+            kind: string;
+        };
+        coverage: "unknown" | "current" | "restricted" | "not-recorded";
     } & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     }) | ({
         instance: InstrumentInstance;
@@ -259,7 +284,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 shown: number;
                 total: number | null;
                 more: boolean;
-                coverage: "unknown" | "current" | "restricted";
+                coverage: "unknown" | "current" | "restricted" | "not-recorded";
                 query: {
                     tool: string;
                     action: string;
@@ -273,6 +298,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         note: string;
     } & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     })>;
     project: (name: string, who: ModelIdentity, raw: Record<string, unknown>, result: unknown, signal: AbortSignal) => Promise<unknown>;
@@ -288,13 +314,6 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             fingerprint: string;
         };
     } & {
-        query: {
-            recordId?: string;
-            workflowId?: string;
-            kind: string;
-        };
-        coverage: "unknown" | "current" | "restricted";
-        reason: string | null;
         sourceVersion: string;
         rows: ({
             detail: {
@@ -315,11 +334,31 @@ export declare function createModelTools(runtime: RuntimeFacade): {
             recordId: string;
         })[];
         shown: number;
-        total: number;
-        more: boolean;
+        total: number | null;
+        more: boolean | null;
         nextCursor: string | null;
+        next: {
+            tool: string;
+            request: {
+                action: string;
+                query: {
+                    limit: number;
+                    cursor: string;
+                    recordId?: string;
+                    workflowId?: string;
+                    kind: string;
+                };
+            };
+        } | null;
+        query: {
+            recordId?: string;
+            workflowId?: string;
+            kind: string;
+        };
+        coverage: "unknown" | "current" | "restricted" | "not-recorded";
     } & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     }) | ({
         instance: InstrumentInstance;
@@ -341,8 +380,11 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         collections: {
             episode: {
                 shown: number;
-                total: number;
-                more: boolean;
+                total: number | null;
+                more: boolean | null;
+                coverage: "unknown" | "current" | "restricted" | "not-recorded";
+                reason: string | null;
+                source: Record<string, unknown>;
                 query: {
                     tool: string;
                     action: string;
@@ -350,12 +392,13 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                         kind: string;
                         limit: number;
                     };
-                };
+                } | null;
             };
             session: {
                 shown: number;
                 total: number;
                 ownerSessions: unknown;
+                source: {};
                 coverage: string;
                 more: boolean;
                 query: {
@@ -368,9 +411,9 @@ export declare function createModelTools(runtime: RuntimeFacade): {
                 };
             };
         };
-        note: unknown;
     } & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     })>;
     finish: (value: unknown, name: string, raw: Record<string, unknown>) => Record<string, unknown>;
@@ -387,6 +430,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         };
     } & Record<string, unknown> & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     }) | ({
         instance: InstrumentInstance;
@@ -404,6 +448,7 @@ export declare function createModelTools(runtime: RuntimeFacade): {
         projected: boolean;
     } & {
         schemaVersion: 2;
+        representationVersion: number;
         kind: import("./controls/model-output.js").ModelKind;
     });
     setAuditReader(reader: ((caller: HostCaller, signal: AbortSignal) => Promise<unknown>) | undefined): void;

@@ -45,7 +45,8 @@ export interface InstrumentSnapshot {
     readonly taskReferences: readonly TaskReferenceRecord[];
     readonly capabilities: {
         readonly taskReferences: true;
-        readonly storageVersions: readonly [1, 2, 3, 4];
+        readonly storageVersions: readonly [1, 2, 3, 4, 5];
+        readonly structuredDecisionResults: true;
         readonly decisionRecommendationAdoption: boolean;
     };
     /** Unfiltered authorized obligations; focusing a new workflow never erases old matters. */

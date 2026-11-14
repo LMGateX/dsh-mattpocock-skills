@@ -50,17 +50,20 @@ export declare function modelError(code: string, message: string, reason?: strin
     message: string;
 } & {
     schemaVersion: 2;
+    representationVersion: number;
     kind: ModelKind;
 };
 /** Required and minimal facts are explicitly selected by the domain Adapter. */
 export declare function modelReceipt<I extends object, F extends object>(identity: I, facts: F, optional?: object, minimalFacts?: object): (I & F & {
     schemaVersion: 2;
+    representationVersion: number;
     kind: ModelKind;
 }) | (I & {
     omittedOptional: boolean;
     projected: boolean;
 } & {
     schemaVersion: 2;
+    representationVersion: number;
     kind: ModelKind;
 });
 /** Packs already-authorized, already-projected rows, never raw history/snapshot values.
@@ -92,7 +95,18 @@ export declare function createModelOutput(options?: {
     }, resolve: AuthorizedSourceResolver, signal?: AbortSignal): Promise<{
         coverage?: {} | null;
         schemaVersion: 2;
+        representationVersion: number;
         kind: "content";
+        contentType: "application/json";
+        encoding: "utf-8";
+        next: {
+            tool: string;
+            request: {
+                action: string;
+                locator: string;
+                offset: number;
+            };
+        } | null;
         locator: string;
         sourceVersion: string | number;
         contentHash: string;
@@ -112,5 +126,6 @@ export declare function jsonBytes(value: unknown): number;
 /** A final check, never an arbitrary-object truncator or full-result fallback. */
 export declare function modelEnvelope<I extends object, P extends object>(kind: ModelKind, identity: I, payload: P, budget?: number): I & P & {
     schemaVersion: 2;
+    representationVersion: number;
     kind: ModelKind;
 };

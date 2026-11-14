@@ -623,7 +623,7 @@ test('supervision config remote is operator-only, independently revisioned and d
   await assert.rejects(f.invoke('saveSupervisionConfig', { intent: { defaults: { reviewer: { routeMode: 'explicit', provider: 'p' } }, workspaceOverrides: {} }, expectedRevision: 1 }), { code: 'gateway/input-invalid' })
 })
 
-test('audit tool is absent by default, appears only with enabled config and returns memory-only observations', options, async t => {
+test('audit tool is absent by default, appears only with enabled config and separates memory and durable observations', options, async t => {
   const off = await assembly(t)
   assert.equal(off.ctx.tools.get('mattpocock_audit'), undefined)
   const config = new Map([['state', { schemaVersion: 1, revision: 0, defaults: { enabled: true, deliverableRoots: ['src'] }, workspaceOverrides: {} }]])
@@ -636,11 +636,15 @@ test('audit tool is absent by default, appears only with enabled config and retu
   await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'audit-write-2', rootCallId: 'ptc-outer', arguments: { path: 'src/b.ts' } }, result, async () => ({ kind: 'accept' }))
   const audited = await executeRegistryTool(f.ctx, { name: 'mattpocock_audit', arguments: { request: { action: 'read' } }, callId: 'audit-read-1', agent: f.owner, signal: signal() }, load)
   assert.equal(audited.isError, false)
-  assert.equal(audited.value.coverage.persistence, 'memory-only')
+  assert.equal(audited.value.coverage.persistence, 'mixed')
+  assert.deepEqual(audited.value.coverage.summary, { persistence: 'memory-only', status: 'current' })
+  assert.equal(audited.value.coverage.episodes.persistence, 'durable')
+  assert.equal(audited.value.coverage.episodes.status, 'not-recorded')
+  assert.equal(audited.value.coverage.episodes.retained, null)
   assert.equal(audited.value.summary.productWrites, 2)
   assert.equal(audited.value.schemaVersion, 2)
   assert.equal(audited.value.kind, 'current')
-  assert.deepEqual(audited.value.summary.productFiles.rows.map(row => row.text), ['src/a.ts', 'src/b.ts'])
+  assert.deepEqual(audited.value.summary.productFiles.rows, [{ path: 'src/a.ts' }, { path: 'src/b.ts' }])
   assert.equal(audited.value.summary.productFiles.total, 2)
   assert.equal(audited.value.summary.productFiles.more, false)
   assert.match(audited.value.note, /no model call/i)

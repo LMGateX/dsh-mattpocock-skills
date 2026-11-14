@@ -1,4 +1,5 @@
 import type { InstrumentInstance } from './state.js';
+import type { DecisionResultValue } from './decision-result.js';
 import type { DecisionPolicyBinding, DecisionPolicySelection, DecisionPolicyEventEffect } from './recommendation-contract.js';
 export interface InstrumentAuthor {
     readonly kind: 'agent' | 'user';
@@ -68,7 +69,7 @@ export interface DecisionValue {
         readonly principalId?: string | null;
         readonly label?: string | null;
     };
-    readonly result?: string | null;
+    readonly result?: DecisionResultValue;
 }
 export interface DecisionViewValue {
     readonly read: boolean;
@@ -142,7 +143,10 @@ export interface InstrumentDocumentV3 extends Omit<InstrumentDocumentV2, 'schema
 export interface InstrumentDocumentV4 extends Omit<InstrumentDocumentV3, 'schemaVersion'> {
     readonly schemaVersion: 4;
 }
-export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4;
+export interface InstrumentDocumentV5 extends Omit<InstrumentDocumentV4, 'schemaVersion'> {
+    readonly schemaVersion: 5;
+}
+export type InstrumentDocument = InstrumentDocumentV1 | InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4 | InstrumentDocumentV5;
 export interface InstrumentDedup {
     readonly operationId: string;
     readonly author: InstrumentAuthor;
@@ -194,7 +198,7 @@ export interface InstrumentPurgeHistoryInput extends InstrumentCompactInput {
     readonly throughRevision: number;
     readonly targets: readonly InstrumentHistoryTarget[];
 }
-export declare function upgradeInstrumentDocument(document: InstrumentDocument, references?: boolean, policy?: boolean): InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4;
+export declare function upgradeInstrumentDocument(document: InstrumentDocument, references?: boolean, policy?: boolean, structuredResults?: boolean): InstrumentDocumentV2 | InstrumentDocumentV3 | InstrumentDocumentV4 | InstrumentDocumentV5;
 export interface Change<T> {
     readonly revision: number;
     readonly recordedAt: number;

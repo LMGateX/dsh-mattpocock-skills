@@ -6,7 +6,7 @@
 
 ## 0.22.0 模型接口兼容补充
 
-[本批契约](<MODEL_INTERFACE_CONTRACT.md>)让工具模型值保留小对象／独立previews、next请求和结构化decision result；旧工具卡仍须阅读旧snapshot／schema2 JSON，不以模型表示版本拒绝历史卡片。结构结果在裁决详情用可读answer／来源／适用和排除条件展示，不能出现[object Object]或因答复改动丢失旧约束。工具卡折叠／原生组件／只读来源／点击权限和Remote兼容不变；本轮不重设计工具卡，也不意味着当前GUI已加载新版。
+[本批契约](<MODEL_INTERFACE_CONTRACT.md>)让工具模型值保留小对象／独立previews、next请求和结构化decision result；旧工具卡仍须阅读旧snapshot／schema2 JSON，不以模型表示版本拒绝历史卡片。结构结果在裁决详情用可读answer／来源／适用和排除条件展示，不能出现[object Object]；核账操作省略result以保留原对象，显式新result（包括现有纯文本用户答复）仍按整体替换语义，不把旧来源自动认证为新答复来源。工具卡折叠／原生组件／只读来源／点击权限和Remote兼容不变；本轮不重设计工具卡，也不意味着当前GUI已加载新版。
 
 ## 1. 目标与范围
 

@@ -37,6 +37,8 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/controls/refresh-gate.js',
   'lib/types/controls/refresh-gate.d.ts',
   'lib/controls/instrument-state.js',
+  'lib/controls/decision-result.js',
+  'lib/types/controls/decision-result.d.ts',
   'lib/controls/instrument-storage.js',
   'lib/controls/instruments.js',
   'lib/controls/versioned-storage.js',
@@ -47,6 +49,8 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/host.js',
   'lib/runtime.js',
   'lib/model-tools.js',
+  'lib/model-tool-contract.js',
+  'lib/types/model-tool-contract.d.ts',
   'lib/types/model-tools.d.ts',
   'lib/controls/model-output.js',
   'lib/types/controls/model-output.d.ts',
@@ -128,6 +132,8 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/controls/refresh-gate.js',
   'lib/types/controls/refresh-gate.d.ts',
   'lib/controls/instrument-state.js',
+  'lib/controls/decision-result.js',
+  'lib/types/controls/decision-result.d.ts',
   'lib/controls/instrument-storage.js',
   'lib/controls/instruments.js',
   'lib/controls/versioned-storage.js',
@@ -138,6 +144,8 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/host.js',
   'lib/runtime.js',
   'lib/model-tools.js',
+  'lib/model-tool-contract.js',
+  'lib/types/model-tool-contract.d.ts',
   'lib/types/model-tools.d.ts',
   'lib/controls/model-output.js',
   'lib/types/controls/model-output.d.ts',
@@ -252,7 +260,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 86
+const EXPECTED_FIXED_PACKED_FILES = 90
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

@@ -1,4 +1,5 @@
 import type { InstrumentInstance } from './state.js';
+import type { DecisionResultValue } from './decision-result.js';
 import type { OwnerDecisionPolicyPublic } from './recommendation-contract.js';
 import type { EffectivePolicy } from './policy.js';
 import type { InstrumentSnapshot, InstrumentCurrentSnapshot } from './instruments.js';
@@ -56,7 +57,7 @@ export interface ConsumptionSnapshot {
     readonly contextConclusions?: readonly {
         readonly decisionId: string;
         readonly workflowId: string;
-        readonly result: string | null;
+        readonly result: DecisionResultValue;
         readonly policySelection?: import('./recommendation-contract.js').DecisionPolicySelection;
         readonly references?: readonly string[];
         readonly sourceRevision: number;
