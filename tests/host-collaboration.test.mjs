@@ -155,7 +155,7 @@ test('existing read-only and danger-full policies retain their native permission
     await f.mounted.ports.createContinuable({ agent: f.owner, signal: signal() }, { provider: 'fork', label: 'Read', prompt: 'Task', childId: 'readonly', cwd: '/outside/existing-tree' })
     assert.equal(f.ctx.sandboxPolicy.resolve({ session: calls[0].request.parent.session }).mode, mode)
     assert.deepEqual(Object.keys(calls[0].request).sort(), ['cwd', 'maxDepth', 'parent', 'prompt'])
-    assert.deepEqual(Object.keys(calls[0]).sort(), ['childId', 'delivery', 'label', 'provider', 'request', 'signal'])
+    assert.deepEqual(Object.keys(calls[0]).sort(), ['childId', 'cwd', 'delivery', 'label', 'maxDepth', 'parent', 'prompt', 'provider', 'request', 'signal'])
   }
 })
 
@@ -178,7 +178,7 @@ test('upstream activation seam carries the explicit cwd and keeps upstream owner
   assert.equal(f.mounted.ports.capabilities.nativeInitialChildCwd, 'supported')
   assert.deepEqual(await f.mounted.ports.createContinuable(exec, { ...request, cwd: '/fixture/tree' }), { childId: 'native-child', messageId: 'activation-message' })
   assert.equal(activations.length, 1)
-  assert.deepEqual(Object.keys(activations[0]).sort(), ['childId', 'delivery', 'label', 'provider', 'request', 'signal'])
+  assert.deepEqual(Object.keys(activations[0]).sort(), ['childId', 'cwd', 'delivery', 'label', 'maxDepth', 'parent', 'prompt', 'provider', 'request', 'signal'])
   assert.equal(activations[0].delivery, 'parent')
   assert.equal(activations[0].childId, 'native-child')
   assert.equal(activations[0].request.cwd, '/fixture/tree')
@@ -299,6 +299,61 @@ test('cwd preflight fails closed on unsupported native capability or absent tech
 
 // Public host seams only: service, registered tool, native creation port. No model.
 // Explicit SDK service fixture; no model, Profile or GUI.
+test('mounted creation sends one compatible task consumed by RC3 top-level and legacy request contracts', options, async t => {
+  const calls = []
+  // Contract fixtures intentionally consume the two documented public shapes, not
+  // adapter internals. Only RC3 is exercised as an actual SDK below.
+  const native = { resolveMaxDepth: () => 7, async startActivation(spec) {
+    calls.push(spec)
+    const { parent, prompt, cwd, maxDepth } = spec
+    assert(parent, 'RC3 requires the exact parent at the top level')
+    assert.equal(parent, spec.request.parent)
+    assert.equal(prompt, spec.request.prompt)
+    assert.equal(cwd, spec.request.cwd)
+    assert.equal(maxDepth, spec.request.maxDepth)
+    return { childId: spec.childId, messageId: 'dual-accepted' }
+  } }
+  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner) })
+  const control = signal()
+  const receipt = await f.mounted.ports.createContinuable({ agent: f.owner, signal: control }, { provider: 'spawn', childId: 'dual-child', label: 'Dual worker', prompt: 'One native task', cwd: '/prepared/tree-A' })
+  assert.deepEqual(receipt, { childId: 'dual-child', messageId: 'dual-accepted' })
+  assert.equal(calls.length, 1, 'no probe, retry, or second child')
+  assert.equal(calls[0].parent, f.owner)
+  assert.deepEqual(calls[0].prompt, [{ type: 'text', text: 'One native task' }])
+  assert.equal(calls[0].cwd, '/prepared/tree-A')
+  assert.equal(calls[0].maxDepth, 7)
+  assert.equal(calls[0].provider, 'spawn')
+  assert.equal(calls[0].label, 'Dual worker')
+  assert.equal(calls[0].signal, control)
+  assert.equal(calls[0].delivery, 'parent')
+})
+
+test('legacy request contract inherits omitted cwd and depth without inventing either value', options, async t => {
+  const calls = []
+  const legacy = { resolveMaxDepth: () => undefined, async startActivation({ request, provider, label, childId, signal: control, delivery, ...topLevel }) {
+    calls.push({ request, provider, label, childId, control, delivery, topLevel })
+    assert.equal(request.parent, topLevel.parent)
+    assert.equal(request.prompt, topLevel.prompt)
+    for (const task of [request, topLevel]) {
+      assert.equal(Object.hasOwn(task, 'cwd'), false)
+      assert.equal(Object.hasOwn(task, 'maxDepth'), false)
+    }
+    return { childId, messageId: 'legacy-inbox' }
+  } }
+  const f = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', legacy))
+  const control = signal()
+  const receipt = await f.mounted.ports.createContinuable({ agent: f.owner, signal: control }, { provider: 'fork', childId: 'legacy-contract', label: 'Inherited', prompt: 'No invented defaults' })
+  assert.deepEqual(receipt, { childId: 'legacy-contract', messageId: 'legacy-inbox' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].request.parent, f.owner)
+  assert.deepEqual(calls[0].request.prompt, [{ type: 'text', text: 'No invented defaults' }])
+  assert.equal(calls[0].provider, 'fork')
+  assert.equal(calls[0].label, 'Inherited')
+  assert.equal(calls[0].childId, 'legacy-contract')
+  assert.equal(calls[0].control, control)
+  assert.equal(calls[0].delivery, 'parent')
+})
+
 test('continuable creation port uses only public native start, exact parent and host depth', options, async t => {
   const calls = []
   const native = { resolveMaxDepth: () => 7, async startActivation(spec) { calls.push(spec); return { childId: spec.childId, messageId: 'native-accepted' } } }
