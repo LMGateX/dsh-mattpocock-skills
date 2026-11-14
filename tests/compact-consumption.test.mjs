@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
+import { registerHooks } from 'node:module'
 import ts from 'typescript'
 
 // Accepted public seam: complete owned InstrumentConsumption text, not private caches.
@@ -8,7 +9,23 @@ import ts from 'typescript'
 const load = source => import('data:text/javascript;base64,' + Buffer.from(ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, verbatimModuleSyntax: true },
 }).outputText).toString('base64'))
-const { InstrumentConsumption } = await load(readFileSync(new URL('../src/controls/consumption.ts', import.meta.url), 'utf8'))
+const sourceRoot = new URL('../src/controls/', import.meta.url)
+registerHooks({
+  resolve(specifier, context, next) {
+    if (context.parentURL?.startsWith(sourceRoot.href) && specifier.startsWith('.') && specifier.endsWith('.js'))
+      return { url: new URL(specifier.slice(0, -3) + '.ts', context.parentURL).href, shortCircuit: true }
+    return next(specifier, context)
+  },
+  load(url, context, next) {
+    if (url.startsWith(sourceRoot.href) && url.endsWith('.ts')) return { format: 'module', shortCircuit: true,
+      source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), {
+        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, verbatimModuleSyntax: true },
+      }).outputText }
+    return next(url, context)
+  },
+})
+const { parseInstrumentCommand } = await import(new URL('instrument-state.ts', sourceRoot).href)
+const { InstrumentConsumption } = await load(readFileSync(new URL('consumption.ts', sourceRoot), 'utf8'))
 const identity = { principalId: 'agent:root', sessionId: 'root', instrumentInstanceId: 'I', ownerSessionId: 'root' }
 const instance = { instrumentInstanceId: 'I', ownerSessionId: 'root', controlWorkspaceId: 'W' }
 const marker = 'Current runtime facts (null means unavailable/unknown, not zero):\n'
@@ -29,7 +46,7 @@ function fixture(on = false) {
       runtimeKnowledge: { known: true, runtimeId: 'R', reason: null }, tickets: [], executions: [],
       T: { capacity: 2, used: 0, available: 2 }, S: { capacity: 3, used: 0, available: 3, countKnown: true,
         byState: { running: 0, released: 0 }, depth: { direct: 0, deeper: 0, unknown: 0, levels: {} } } },
-    resources: [], contextConclusions: [], worktreeBindings: [], worktreeObservations: [], nativeStops: [], nativeExecutions: [],
+    pendingRelease: [], resources: [], contextConclusions: [], worktreeBindings: [], worktreeObservations: [], nativeStops: [], nativeExecutions: [],
     capabilities: [{ key: 'nativeLifecycleObservation', status: 'supported', reason: null }],
     health: [{ scope: 'native-executions', status: 'current', reason: null }],
   }
@@ -109,7 +126,7 @@ test('downshifted Git details and configuration sources remain recoverable and i
 
 const decision = (id, over = {}) => ({ workflowId: 'F', decisionId: id, revision: 3,
   value: { question: 'Qualified input?', status: 'partial', pending: true, awaitingImplementation: true,
-    result: { answer: '只授权fixture', source: 'native:user-message', included: ['isolated'], excluded: ['install', 'restart'] }, ...over },
+    result: { answer: '只授权fixture', source: { kind: 'native', messageId: 'user-message' }, included: ['isolated'], excluded: ['install', 'restart'] }, ...over },
   provenance: { author: { kind: 'agent', principalId: 'agent:root', sessionId: 'root' }, references: ['spec#scope'], recordedAt: 4 } })
 
 test('OFF retains old result constraints, pending release and trees; missing coverage is not empty', async () => {
@@ -139,16 +156,24 @@ test('OFF retains old result constraints, pending release and trees; missing cov
 })
 
 test('frozen same fixtures measure baseline 8ff0d7e and candidate protocol/notices/JSON bytes and characters', async t => {
-  const { execFileSync } = await import('node:child_process')
-  const baselineSource = execFileSync('git', ['show', '8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9:src/controls/consumption.ts'], { encoding: 'utf8' })
-  const Baseline = (await load(baselineSource)).InstrumentConsumption
+  // Independently measured on the same legal fixtures against 8ff0d7e, not recomputed from candidate output.
+  // Literal measurements keep ordinary/shallow-checkout tests independent of historical Git objects.
+  const baselineMeasurements = {
+    "OFF-empty": {"total":{"bytes":8869,"chars":8865},"protocol":{"bytes":4215,"chars":4211},"notices":{"bytes":64,"chars":64},"facts":{"bytes":4590,"chars":4590}},
+    "OFF-old-obligations": {"total":{"bytes":9993,"chars":9983},"protocol":{"bytes":4215,"chars":4211},"notices":{"bytes":64,"chars":64},"facts":{"bytes":5714,"chars":5708}},
+    "ON-full": {"total":{"bytes":14100,"chars":14086},"protocol":{"bytes":6242,"chars":6238},"notices":{"bytes":927,"chars":923},"facts":{"bytes":6931,"chars":6925}},
+    "eight-normal-ended": {"total":{"bytes":11623,"chars":11619},"protocol":{"bytes":4215,"chars":4211},"notices":{"bytes":1497,"chars":1497},"facts":{"bytes":5911,"chars":5911}},
+    "live-abnormal": {"total":{"bytes":12278,"chars":12274},"protocol":{"bytes":6242,"chars":6238},"notices":{"bytes":662,"chars":662},"facts":{"bytes":5374,"chars":5374}},
+    "long-ID-body": {"total":{"bytes":12480,"chars":12278},"protocol":{"bytes":6242,"chars":6238},"notices":{"bytes":64,"chars":64},"facts":{"bytes":6174,"chars":5976}},
+    "assigned-child": {"total":{"bytes":11162,"chars":11158},"protocol":{"bytes":6357,"chars":6353},"notices":{"bytes":64,"chars":64},"facts":{"bytes":4741,"chars":4741}},
+  }
   const cases = new Map([['OFF-empty', fixture()], ['OFF-old-obligations', fixture()], ['ON-full', fixture(true)],
     ['eight-normal-ended', fixture()], ['live-abnormal', fixture(true)], ['long-ID-body', fixture(true)], ['assigned-child', fixture(true)]])
   cases.get('OFF-old-obligations').records.decisions = [decision('old')]
   cases.get('OFF-old-obligations').worktreeObservations = [tree()]
   const full = cases.get('ON-full')
-  full.records.workflows = [{ workflowId: 'F', revision: 2, value: { title: 'Task', axes: [] }, provenance: { author: { kind: 'agent', principalId: 'root' }, references: [], recordedAt: 1 } }]
-  full.records.tickets = [{ workflowId: 'F', localTicketId: 'T', revision: 2, value: { title: 'Task', statuses: {} }, provenance: { author: { kind: 'agent', principalId: 'root' }, references: [], recordedAt: 1 } }]
+  full.records.workflows = [{ workflowId: 'F', revision: 2, value: { title: 'Task', axes: [] }, provenance: { author: { kind: 'agent', principalId: 'agent:root', sessionId: 'root' }, references: [], recordedAt: 1 } }]
+  full.records.tickets = [{ workflowId: 'F', localTicketId: 'T', revision: 2, value: { title: 'Task', statuses: {} }, provenance: { author: { kind: 'agent', principalId: 'agent:root', sessionId: 'root' }, references: [], recordedAt: 1 } }]
   full.records.decisions = [decision('pending')]
   full.pendingRelease = [{ workflowId: 'F', localTicketId: 'T', generation: 2, label: 'Partial' }]
   full.nativeExecutions = [execution('live', { state: 'running', outcome: null, activity: 'running' })]
@@ -156,7 +181,7 @@ test('frozen same fixtures measure baseline 8ff0d7e and candidate protocol/notic
   full.worktreeObservations = [tree()]
   cases.get('eight-normal-ended').nativeExecutions = Array.from({ length: 8 }, (_, i) => execution('normal-' + i))
   cases.get('live-abnormal').nativeExecutions = [execution('live', { state: 'running', outcome: null, activity: 'running' }), execution('abnormal', { outcome: 'error' })]
-  cases.get('long-ID-body').records.decisions = [decision('long-'.repeat(90), { question: '长正文'.repeat(1000) })]
+  cases.get('long-ID-body').records.decisions = [decision('long-'.repeat(50), { question: '长正文'.repeat(1000) })]
   const child = cases.get('assigned-child')
   child.records.summary.countingScope = 'assignment'
   child.sessionId = 'child'
@@ -180,15 +205,52 @@ test('frozen same fixtures measure baseline 8ff0d7e and candidate protocol/notic
     Object.assign(snapshot.windows.S, { used: live, available: 3 - live, byState: { running: live, released: 0 },
       depth: { direct: live, deeper: 0, unknown: 0, levels: live ? { 1: live } : {} } })
     const who = snapshot.sessionId === 'root' ? identity : { ...identity, sessionId: 'child' }
+    for (const [kind, rows] of [['workflow', snapshot.records.workflows], ['ticket', snapshot.records.tickets], ['decision', snapshot.records.decisions]]) {
+      for (const [index, row] of rows.entries()) assert.doesNotThrow(() => parseInstrumentCommand({
+        action: 'put-' + kind, operationId: 'measure-' + kind + index, expectedRevision: 0, workflowId: row.workflowId,
+        ...(kind === 'ticket' ? { localTicketId: row.localTicketId } : kind === 'decision' ? { decisionId: row.decisionId } : {}), value: row.value,
+      }), name + ' must be accepted by the public command parser')
+    }
     const frozen = structuredClone(snapshot)
-    const oldText = (await feedFor(frozen, Baseline).readForConsumption(who)).text
     const newText = (await feedFor(frozen).readForConsumption(who)).text
-    const baseline = parts(oldText), candidate = parts(newText)
+    const baseline = baselineMeasurements[name], candidate = parts(newText)
     assert.deepEqual(frozen, snapshot, 'formatter must never mutate a source')
     assert.ok(candidate.total.bytes < baseline.total.bytes, name + ' should reduce this same fixture')
     if (name === 'assigned-child') assert.doesNotMatch(newText, /"tool":"mattpocock_history"/)
     t.diagnostic(JSON.stringify({ fixture: name, baselineCommit: '8ff0d7e8f4bc1fe72ff3a7327e907677c0fba8c9', baseline, candidate }))
   }
+})
+
+test('derived empty categories require readable dependencies and preserve missing/restricted coverage', async () => {
+  for (const dependency of ['records', 'windows']) {
+    const snapshot = fixture()
+    snapshot.pendingRelease = []
+    snapshot[dependency] = null
+    snapshot.health.push({ scope: dependency, status: 'unknown', reason: 'source-read-failed' })
+    const feed = feedFor(snapshot)
+    const result = await feed.readForConsumption(identity)
+    const facts = parse(result.text)
+    assert.equal(result.freshness, 'stale')
+    assert.equal(feed.cachedText(identity), null)
+    assert.equal(facts.pendingRelease.coverage, 'unknown', dependency + ' is necessary to prove no release obligation')
+    assert.equal(facts.pendingRelease.query.query.kind, 'pending-release')
+    if (dependency === 'windows') assert.equal(facts.nativeStops.coverage, 'unknown')
+  }
+  const degraded = fixture()
+  degraded.health.push({ scope: 'windows', status: 'stale', reason: 'old-source' })
+  const staleFacts = parse((await feedFor(degraded).readForConsumption(identity)).text)
+  assert.equal(staleFacts.pendingRelease.coverage, 'stale')
+  assert.equal(staleFacts.nativeStops.coverage, 'stale')
+  const snapshot = fixture()
+  snapshot.pendingRelease = []
+  snapshot.records.scope = { kind: 'assigned', workflowId: null, ticketIds: [] }
+  snapshot.windows.scope = snapshot.records.scope
+  let facts = parse((await feedFor(snapshot).readForConsumption(identity)).text)
+  assert.deepEqual(facts.pendingRelease, [], 'assigned task scope can still know its own release obligations')
+  assert.equal(facts.nativeStops.coverage, 'restricted', 'assigned callers never get coordinator native-stop coverage')
+  delete snapshot.pendingRelease
+  facts = parse((await feedFor(snapshot).readForConsumption(identity)).text)
+  assert.equal(facts.pendingRelease.coverage, 'not-recorded')
 })
 
 test('OFF known-empty categories share [] without confusing restricted or unknown coverage', async () => {

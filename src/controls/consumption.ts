@@ -263,6 +263,17 @@ function category(rows: readonly unknown[], location: QueryLocator, counts: unkn
 function coverage(snapshot: ConsumptionSnapshot, scope: string, present = true): string {
   return snapshot.health.find(row => row.scope === scope && row.status !== 'current')?.status ?? (present ? 'current' : 'not-recorded')
 }
+/** A derived empty needs every input, not merely an allocated fallback array. */
+function derivedCoverage(snapshot: ConsumptionSnapshot, own: string, dependencies: readonly (readonly [string, boolean])[], present: boolean): string {
+  const ownCoverage = coverage(snapshot, own, present)
+  if (ownCoverage !== 'current') return ownCoverage
+  for (const [scope, available] of dependencies) {
+    const status = coverage(snapshot, scope)
+    if (status !== 'current') return status
+    if (!available) return 'unknown'
+  }
+  return 'current'
+}
 /** Completed is an execution outcome only; associations with retained obligations stay actionable. */
 function executionHasObligation(snapshot: ConsumptionSnapshot, row: NativeExecutionView): boolean {
   if (snapshot.resources.some(resource => resource.status !== 'retired' && resource.references.some(reference => reference.sessionId === row.sessionId))) return true
@@ -343,9 +354,12 @@ function facts(snapshot: ConsumptionSnapshot): unknown {
       business: row.value.business, source: row.source, recordedAt: row.recordedAt,
     })), { kind: 'worktree-observations' }, { open: (snapshot.worktreeObservations ?? []).filter(row => row.value.business.state === 'open').length }, coverage(snapshot, 'worktree-observations', snapshot.worktreeObservations !== undefined)),
     nativeCount: snapshot.nativeCount ?? null,
-    nativeStops: category(sorted(snapshot.nativeStops ?? [], row => row.sessionId), { kind: 'native-stops' }, undefined, coverage(snapshot, 'native-stops', snapshot.nativeStops !== undefined)),
+    nativeStops: category(sorted(snapshot.nativeStops ?? [], row => row.sessionId), { kind: 'native-stops' }, undefined,
+      snapshot.sessionId !== snapshot.instance.ownerSessionId || records?.scope.kind === 'assigned' || windows?.scope.kind === 'assigned' ? 'restricted'
+        : derivedCoverage(snapshot, 'native-stops', [['windows', windows !== null]], snapshot.nativeStops !== undefined)),
     nativeExecutions: nativeExecutionFacts(snapshot),
-    pendingRelease: category(sorted(snapshot.pendingRelease ?? [], row => canonical([row.workflowId, row.localTicketId])), { kind: 'pending-release' }),
+    pendingRelease: category(sorted(snapshot.pendingRelease ?? [], row => canonical([row.workflowId, row.localTicketId])), { kind: 'pending-release' }, undefined,
+      derivedCoverage(snapshot, 'pending-release', [['records', records !== null], ['windows', windows !== null]], snapshot.pendingRelease !== undefined)),
     capabilities: category(sorted(snapshot.capabilities, row => row.key), { kind: 'capabilities' }),
     health: category(sorted(snapshot.health, row => row.scope), { kind: 'health' }, {
       unknown: snapshot.health.filter(row => ['stale', 'unknown', 'unavailable', 'error', 'failed'].includes(row.status)).length }),

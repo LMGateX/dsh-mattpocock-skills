@@ -28,6 +28,9 @@ test('mounted descriptions publish output guidance by capability, not a repeated
     assert.doesNotMatch(descriptions[name], /canonical JSON|complete reassembly/u)
     assert.match(descriptions[name], /next:\{tool,request\}/u)
   }
+  assert.match(descriptions.worktree, /nativeChildren observed from creator identity/u)
+  assert.ok(descriptions.worktree.includes('lane is inferred from assignment/binding'))
+  assert.doesNotMatch(descriptions.worktree, /nativeChildren inferred/u)
   assert.match(descriptions.record, /canonical JSON.*UTF-8/u)
   assert.match(descriptions.record, /done.*complete reassembly/u)
   assert.match(descriptions.record, /source\/scope changes/u)

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mountedFixture, caller, operator, policy, signal } from './fixtures/runtime-host.mjs'
+import { fixture, mountedFixture, caller, operator, policy, signal } from './fixtures/runtime-host.mjs'
 
 const facts = messages => {
   assert.equal(messages.length, 1)
@@ -10,6 +10,19 @@ const value = result => {
   assert.notEqual(result.isError, true, result.error?.message)
   assert.deepEqual(result.value, JSON.parse(result.content.find(part => part.type === 'text').text))
   return result.value
+}
+
+for (const [storage, category] of [['instrumentStorage', 'records'], ['windowStorage', 'windows']]) {
+  test('runtime ' + category + ' source failure cannot publish derived obligations as known-empty', async t => {
+    const f = await fixture(t, { initialPolicy: policy(), known: true })
+    await f.read() // establish real identity, authorization and healthy source before the read failure
+    t.mock.method(f[storage], 'read', async () => { throw new Error('synthetic-' + category + '-source-failure') })
+    const view = facts(await f.runtime.preStep(caller('root'), signal(), [], 'source-failed:' + category))
+    assert.equal(view[category], null)
+    assert.equal(view.pendingRelease.coverage, 'unknown')
+    assert.ok(view.health.rows.some(row => row.scope === category && row.status === 'unknown'))
+    if (category === 'windows') assert.equal(view.nativeStops.coverage, 'unknown')
+  })
 }
 
 // Real Runtime/record/policy and mounted current-read seam, synthetic business data only.

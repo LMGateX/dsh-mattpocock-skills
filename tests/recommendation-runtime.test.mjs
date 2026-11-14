@@ -132,7 +132,7 @@ test('retained adoption history keeps exact version references and provenance, n
   assert.equal(adopted.source.author.kind, 'agent')
   assert.equal(adopted.source.recordedAt, 1000)
   const ordinary = snapshotFacts(await f.runtime.preStep(caller('root'), signal(), [], '1:1'))
-  assert.equal(ordinary.contextConclusions.rows.length, 0)
+  assert.deepEqual(ordinary.contextConclusions, [])
   await f.runtime.historyAction(caller('root'), 'root', { action: 'set-context', kind: 'decision', recordId: JSON.stringify(['flow', 'D']), included: true }, signal())
   const included = snapshotFacts(await f.runtime.preStep(caller('root'), signal(), [], '1:2'))
   assert.equal(included.contextConclusions.rows[0].result, null)
