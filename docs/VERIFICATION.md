@@ -2,6 +2,13 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.24.0-alpha.1 已预发布并完成下载回验；未安装本机（2026-11-26，UTC+08:00）
+
+- **宿主：** [DSH 0.2.3-alpha.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2)，源码 `4b399c39a6d1479cd84ca591b4d7c88e24d38a96`，实测 Node 24.22.3 / pnpm 11.8.0。宿主门禁接受精确 alpha.2、拒绝旧版与相邻版本字符串。细节见[兼容性核对](<HOST_COMPATIBILITY.md>)。
+- **源码及同包：** 精确宿主完整源码回归 **1391/1391**，无失败、跳过或取消。真 SDK 的原生结束事件在 remount/dispose 竞态中仍有精确归属；Remote owner、凭据撤销、继承工作目录、工作树回放和原生导航均有针对性覆盖。加载同一归档的 Client／PluginManager 回归矩阵 **302/302**，无跳过；其中源码专用夹具依然使用源码。归档与下载副本的四个 types export 均通过严格消费者类型检查（Host 393／Client 707 文件；0 diagnostics，保留 `skipLibCheck`；归档声明解析无缺失）。不是生产 GUI 或真实模型验证。
+- **制品：** `249123ff013678b6d198ee667226cf02386ed2b9`（tree `0117ee5b531e5d6ae1da1f14c65ec083f2b388e1`）唯一验收包 **588980 B**，SHA-256 `f87f9d82bcca74de50181233c5fb7f237b8111cafe29f823619ecacf47fc417a`，175 regular / 0 symlink / 70 canonical JS/DTS；85 vendor 文件、296048 B 和原 vendor 根哈希不变。官方 CLI 只用全新临时 Profile，对 checkout 与归档的 `stable` / `beta` 各验证 27 项 Skills，并用下载包重跑，未调用模型。
+- **发布：** `main` 与 annotated `v0.24.0-alpha.1` 非强制原子推送；[GitHub 预发布](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.24.0-alpha.1) id `458886085`，`2026-11-26T02:49:11Z`，非草稿。五个 Release 资产下载后字节、长度与 GitHub API SHA-256 全部一致；旧的 116 条 tag refs 均保留，latest stable 仍为 [v0.23.0](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.23.0)。此节为后续审计，不是制品来源；复验用冻结 tag。未安装到现有本机 DSH/Profile，未激活或重启 Web GUI。
+
 ## 0.23.0 已发布并完成下载回验；未安装本机（2026-11-14，UTC+08:00）
 
 本节与[机器摘要](<../dist/verification-0.23.0.json>)是发版后 main 的纯审计追加；复验须检出 frozen tag／source，不把后续文档 HEAD 当作包源，不移动 tag 或重打包。
