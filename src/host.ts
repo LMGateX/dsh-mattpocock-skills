@@ -118,9 +118,12 @@ interface NativeActivationFacade {
 function initialChildCwdSeam(ctx: Context): InitialChildCwdSeam {
   const subagents = ctx.get('subagents') as (Context['subagents'] & NativeActivationFacade) | undefined
   if (!subagents) return 'unsupported'
-  // Upstream resolves the directory through the session working-directory owner;
-  // a service that carries the method without that owner cannot honor the value.
-  if (typeof subagents.startActivation === 'function' && ctx.get('workingDirectory')?.ensure !== undefined) return 'native'
+  const directories = ctx.get('workingDirectory')
+  // A mutable session directory need not match its immutable project header.
+  // startActivation can still carry cwd, but without a start-specific observation
+  // this adapter cannot confirm an explicit binding. Refuse before dispatch.
+  if (directories && typeof Reflect.get(directories, 'set') === 'function') return 'unsupported'
+  if (typeof subagents.startActivation === 'function' && typeof directories?.ensure === 'function') return 'native'
   return 'unsupported'
 }
 function hasNativeInitialChildCwd(ctx: Context): boolean {
@@ -267,11 +270,14 @@ interface NativeRunningLedger {
   readonly stops: Map<string, NativeSubagentStop>
   /** Weak run provenance retained only while its terminal item remains open. */
   readonly terminalRuns: Map<string, NativeRunState>
+  /** Bounded non-counting proofs awaiting native end publication after exact disposal. */
+  readonly pendingEnds: Map<string, { readonly run: NativeRunState; readonly currentSource: () => boolean }>
   /** Live subagent ids a walk already failed to list, so a read never repeats that walk for them. */
   readonly unresolved: Set<string>
   /** Per-child activation generation: a stale classification never opens an item after a new run. */
   readonly generations: Map<string, number>
 }
+const NATIVE_PENDING_END_LIMIT = 64
 /** Cancellations this owner side caused: a parent turn cancellation or the run's own disposal. */
 const OWN_CANCEL_CAUSES = new Set(['parent', 'disposed'])
 function jsonRecord(value: unknown): Record<string, unknown> | undefined {
@@ -373,6 +379,13 @@ class NativeRunningCounter {
     if (token === undefined) { token = ++this.#nextIdentity; this.#identities.set(target, token) }
     return token
   }
+  #rootMethodIdentity(service: NativeSubagentLister | undefined): number | null {
+    if (service === undefined) return null
+    // Cordis may create a fresh scoped wrapper each time the method is read.
+    // Compare its original service's function, but call via the scoped service.
+    const method: unknown = Reflect.get(Reflect.get(service, symbols.original) ?? service, 'rootOf')
+    return typeof method === 'function' ? this.#identity(method) : null
+  }
   #legacySource(): number | null {
     const service = this.#lister()
     return service === undefined || service.rootOf !== undefined ? null : this.#identity(service)
@@ -382,7 +395,7 @@ class NativeRunningCounter {
     if (!permitted) return () => false
     const ownerAgent = this.#liveAgent(owner), ownerRef = ownerAgent === undefined ? null : new WeakRef(ownerAgent)
     const service = this.#lister(), provider = service === undefined ? null : this.#identity(service)
-    const method = service?.rootOf === undefined ? null : this.#identity(service.rootOf)
+    const method = this.#rootMethodIdentity(service)
     const epoch = this.#startEpochs.get(sessionId) ?? 0
     let rootRef: WeakRef<Agent> | null = null
     try {
@@ -395,7 +408,7 @@ class NativeRunningCounter {
         || (this.#startEpochs.get(sessionId) ?? 0) !== epoch || (current === undefined ? !source.disposed : current !== expected)) return false
       const now = this.#lister()
       if ((now === undefined ? null : this.#identity(now)) !== provider
-        || (now?.rootOf === undefined ? null : this.#identity(now.rootOf)) !== method) return false
+        || this.#rootMethodIdentity(now) !== method) return false
       try {
         if (now?.rootOf !== undefined) {
           const root = rootRef?.deref()
@@ -633,9 +646,7 @@ class NativeRunningCounter {
   #runtimeMembership(owner: string, membership: NativeRunningMembership, live: Map<string, Agent>): { ids: Set<string>; reason: string | null; token: string } {
     const ids = new Set<string>(), service = this.#lister(), ownerAgent = live.get(owner)
     const serviceSource: object | undefined = service === undefined ? undefined : Reflect.get(service, symbols.original) ?? service
-    const rootMethod: unknown = serviceSource === undefined ? undefined : Reflect.get(serviceSource, 'rootOf')
-    const facts: unknown[] = [serviceSource === undefined ? null : this.#identity(serviceSource),
-      typeof rootMethod === 'function' ? this.#identity(rootMethod) : null]
+    const facts: unknown[] = [serviceSource === undefined ? null : this.#identity(serviceSource), this.#rootMethodIdentity(service)]
     let root: Agent | undefined, reason: string | null = null
     const rootOf = (agent: Agent): Agent => {
       const found = service!.rootOf!(agent)
@@ -788,6 +799,7 @@ class NativeRunningCounter {
   /** An item clears when the child runs again, its start edge arrives, or a late end arrives. */
   #closeSessionStops(owner: string, ledger: NativeRunningLedger, sessionId: string): void {
     let closed = false
+    ledger.pendingEnds.delete(sessionId)
     ledger.terminalRuns.delete(sessionId)
     for (const [itemId, item] of ledger.stops) if (item.sessionId === sessionId) { ledger.stops.delete(itemId); closed = true }
     if (closed) this.#bump(owner)
@@ -894,8 +906,17 @@ class NativeRunningCounter {
         if (agent.status === 'idle') run.sawIdle = true
         continue
       }
-      // Never counted running, or an observed idle transition already explained the loss.
-      if (!run.counted || run.sawIdle) { ledger.runs.delete(runId); continue }
+      // Idle explains the count delta, not the native outcome: the manager may publish
+      // its end only after disposal and cleanup. Retain bounded weak attribution outside S.
+      if (!run.counted || run.sawIdle) {
+        ledger.runs.delete(runId)
+        if (run.disposed && (run.counted || run.runId !== null)) {
+          ledger.pendingEnds.delete(runId)
+          ledger.pendingEnds.set(runId, { run, currentSource: this.#turnSource(owner, runId, run) })
+          if (ledger.pendingEnds.size > NATIVE_PENDING_END_LIMIT) ledger.pendingEnds.delete(ledger.pendingEnds.keys().next().value!)
+        }
+        continue
+      }
       if (run.settle !== null) continue
       // Expected-delta mismatch: mechanical drift evidence, then classification from this child's
       // own log only. No other child is read and an ordinary count read never reaches here.
@@ -941,7 +962,7 @@ class NativeRunningCounter {
     }
     let ledger = this.#ledgers.get(owner)
     if (ledger === undefined) {
-      ledger = { runs: new Map(), drifts: [], stops: new Map(), terminalRuns: new Map(), unresolved: new Set(), generations: new Map() }
+      ledger = { runs: new Map(), drifts: [], stops: new Map(), terminalRuns: new Map(), pendingEnds: new Map(), unresolved: new Set(), generations: new Map() }
       this.#ledgers.set(owner, ledger)
     }
     for (const sessionId of this.#running(owner, live, membership)) {
@@ -1011,6 +1032,10 @@ class NativeRunningCounter {
   created(agent: Agent): void {
     if (agent.session.header.origin !== 'subagent') return
     const sessionId = String(agent.id)
+    if (this.#liveAgent(sessionId) === agent) for (const owner of this.#idOwners.get(sessionId) ?? []) {
+      const retired = this.#ledgers.get(owner)?.pendingEnds.get(sessionId)?.run
+      if (retired !== undefined && retired.agent?.deref() !== agent) retired.displaced = true
+    }
     for (const owner of this.#ownersFor(sessionId, agent)) {
       if (this.#ledgers.get(owner) === undefined) continue
       if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner, sessionId)
@@ -1042,7 +1067,7 @@ class NativeRunningCounter {
     // a new runId with an older count-only baseline, before any deferred reconciliation.
     if (local) for (const owner of this.#idOwners.get(sessionId) ?? []) {
       const ledger = this.#ledgers.get(owner)
-      for (const run of [ledger?.runs.get(sessionId), ledger?.terminalRuns.get(sessionId)]) {
+      for (const run of [ledger?.runs.get(sessionId), ledger?.terminalRuns.get(sessionId), ledger?.pendingEnds.get(sessionId)?.run]) {
         if (run !== undefined && (!owners.has(owner) || run.agent?.deref() !== agent)) run.displaced = true
       }
     }
@@ -1080,12 +1105,17 @@ class NativeRunningCounter {
     // Only an observed matching start runId, not a reverse session ID, restores that old route.
     if (runId !== undefined) for (const owner of this.#idOwners.get(sessionId) ?? []) {
       const ledger = this.#ledgers.get(owner)
-      if ((ledger?.runs.get(sessionId) ?? ledger?.terminalRuns.get(sessionId))?.runId === runId) owners.add(owner)
+      if ((ledger?.runs.get(sessionId) ?? ledger?.terminalRuns.get(sessionId) ?? ledger?.pendingEnds.get(sessionId)?.run)?.runId === runId) owners.add(owner)
     }
     for (const owner of owners) {
       const ledger = this.#ledgers.get(owner)
       if (ledger === undefined) continue
-      const activeRun = ledger.runs.get(sessionId), run = activeRun ?? ledger.terminalRuns.get(sessionId)
+      const activeRun = ledger.runs.get(sessionId), pending = ledger.pendingEnds.get(sessionId)
+      // A remounted baseline has no start run ID. Its late end requires the exact
+      // disposed incarnation and unchanged owner/source proof, never a reverse ID alone.
+      const retired = pending !== undefined && (runId !== undefined && pending.run.runId === runId
+        || agent === undefined && pending.run.runId === null && pending.currentSource()) ? pending.run : undefined
+      const run = activeRun ?? ledger.terminalRuns.get(sessionId) ?? retired
       if (agent === undefined && !(runId !== undefined && run?.runId === runId)
         && (run?.disposed !== true || run.displaced)) continue
       if (runId !== undefined && activeRun === undefined) {
@@ -1104,6 +1134,7 @@ class NativeRunningCounter {
       // A matching historical run keeps its published outcome, never a replacement's turn tail.
       const observeTurn = currentOwners.has(owner) && run?.displaced !== true
         && (agent === undefined || run === undefined || run.agent?.deref() === agent)
+        && (pending === undefined || pending.run !== run || pending.currentSource())
       if (run !== undefined) { run.settle = null; ledger.runs.delete(sessionId) }
       this.#closeSessionStops(owner, ledger, sessionId)
       if (this.#members.get(owner)?.ids.has(sessionId) === true) this.#reconcileSoon(owner)
@@ -1282,34 +1313,48 @@ export interface HostMount {
   readonly service: MattPocockControlsService; readonly ports: HostPorts; dispose(): Promise<void> }
 
 function deny(message: string): never { throw new ControlsError('access-denied', message) }
-/** The owner-principal Peer shape both connection generations share; only its id names the operator. */
-export interface ConnectionOperatorPeer { readonly id: string }
-/** One generation's spelling of the operator Peer on the connection service. */
-interface ConnectionOperatorView {
-  /** 0.2.1-alpha.1 and alpha.2: the admitted operator Peer itself. */
-  readonly operator?: ConnectionOperatorPeer
-  /** 0.2.1-alpha.3 and later: the owner Peer every authenticated browser request speaks for. */
-  readonly browserPeer?: ConnectionOperatorPeer
+/** The connection-owned Peer supplies the canonical per-process operator ID. */
+export interface ConnectionOperatorPeer {
+  readonly id: string
+  readonly principal?: { readonly kind: string }
+  readonly signal?: AbortSignal
 }
-/**
- * Resolve the connection service's operator Peer without pinning one host generation.
- * alpha.3 replaced `connection.operator` with `connection.browserPeer`; both carry the
- * per-process owner identity that `invocation.peer.id` is matched against, so authorization
- * keeps working and a host exposing neither fails closed with a diagnosable code.
- */
+interface ConnectionOperatorView {
+  readonly operator?: ConnectionOperatorPeer
+  readonly browserPeer?: ConnectionOperatorPeer
+  readonly createPeer?: unknown
+}
+/** Resolve the canonical operator identity; the caller's credential Peer is not this identity. */
 export function connectionOperatorPeer(ctx: Context): ConnectionOperatorPeer {
-  const connection = ctx.connection as unknown as ConnectionOperatorView
-  const peer = connection.operator ?? connection.browserPeer
+  const connection = ctx.connection as unknown as ConnectionOperatorView | undefined
+  const peer = connection?.browserPeer ?? connection?.operator
   if (peer === undefined || typeof peer.id !== 'string' || peer.id.length === 0)
     throw new ControlsError('feature-disabled', 'this host exposes no operator Peer on the connection service')
   return peer
 }
 export function operatorCaller(ctx: Context): HostCaller {
   const invocation = ctx.invocation
+  const peer: ConnectionOperatorPeer | undefined = invocation?.peer
+  if (!invocation || !peer) return deny('authenticated profile operator invocation required')
+  const connection = ctx.connection as unknown as ConnectionOperatorView | undefined
   const operator = connectionOperatorPeer(ctx)
-  if (!invocation || invocation.peer.id !== operator.id) return deny('authenticated profile operator invocation required')
+  // The connection owns credential Peers separately from its in-process browser Peer.
+  // Only the Host-authenticated principal confers authority on that public API.
+  if (connection?.browserPeer !== undefined && (operator.principal !== undefined || typeof connection.createPeer === 'function')) {
+    if (operator.principal?.kind !== 'owner' || peer.principal?.kind !== 'owner' || peer.signal === undefined)
+      return deny('authenticated profile operator invocation required')
+  } else if (peer.id !== operator.id || peer.principal !== undefined && peer.principal.kind !== 'owner') {
+    // Legacy connection shapes with no principal seam authorize the exact admitted Peer ID only.
+    return deny('authenticated profile operator invocation required')
+  }
+  peer.signal?.throwIfAborted()
   invocation.signal.throwIfAborted()
   return freeze({ kind: 'user', principalId: 'user:' + id(operator.id, 'operator id'), sessionId: null })
+}
+function operatorRemoteSignal(ctx: Context, lifetime: AbortSignal, supplied?: AbortSignal): AbortSignal {
+  const invocation = ctx.invocation! // Both Remote namespaces authenticate synchronously before this call.
+  const peer: ConnectionOperatorPeer = invocation.peer
+  return AbortSignal.any([invocation.signal, lifetime, ...(peer.signal === undefined ? [] : [peer.signal]), ...(supplied === undefined ? [] : [supplied])])
 }
 export function agentCaller(ctx: Context, agent: Agent | undefined): HostCaller {
   if (!agent || ctx.agents.get(agent.id) !== agent || agent.session.header.id !== agent.id) return deny('actual live tool caller required')
@@ -1528,7 +1573,7 @@ export class MattPocockControlsService extends TypertRemoteService {
   private run<T>(operation: (caller: HostCaller, signal: AbortSignal) => Promise<T>, suppliedSignal?: AbortSignal): Promise<T> {
     const caller = operatorCaller(this.ctx)
     this.lifecycle.signal.throwIfAborted()
-    const signal = AbortSignal.any([this.ctx.invocation!.signal, this.lifecycle.signal, ...(suppliedSignal ? [suppliedSignal] : [])])
+    const signal = operatorRemoteSignal(this.ctx, this.lifecycle.signal, suppliedSignal)
     return this.lifecycle.track(() => operation(caller, signal))
   }
   readPolicy(): Promise<PolicySnapshot> { return this.run(async (caller, signal) => parsePolicySnapshot(await this.runtime.readPolicy(caller, signal))) }
@@ -1638,7 +1683,7 @@ export class MattPocockRecommendationSupportService extends TypertRemoteService 
   private run<T>(operation: (caller: HostCaller, signal: AbortSignal) => Promise<T>, suppliedSignal?: AbortSignal): Promise<T> {
     const caller = operatorCaller(this.ctx)
     this.lifecycle.signal.throwIfAborted()
-    const signal = AbortSignal.any([this.ctx.invocation!.signal, this.lifecycle.signal, ...(suppliedSignal ? [suppliedSignal] : [])])
+    const signal = operatorRemoteSignal(this.ctx, this.lifecycle.signal, suppliedSignal)
     return this.lifecycle.track(() => operation(caller, signal))
   }
   readOwnerDecisionPolicy(sessionId: unknown, suppliedSignal?: AbortSignal): Promise<OwnerDecisionPolicySnapshot> {
@@ -2079,7 +2124,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       record(raw, 'history request', allowed)
       await ports.authorizeCaller(caller, caller.sessionId!); return active.historyAction!(caller, caller.sessionId!, parseHostJson(raw), exec.signal)
     })
-    if (active.worktreeAction) tool('mattpocock_worktree', "Record worktree relationships and authored handling of native observations; action stays at request top level. Distinguish authored marks, native binding facts, observed create_worktree/Git identity/creator activity, and read-time nativeChildren observed from creator identity; only lane is inferred from assignment/binding: never a strong binding or directory-use claim. Child header cwd is a source value, not actual initial/current directory proof. Use host working_directory to enter/leave (cd back to the reported project; checkout/branch remain) and host Git/create_worktree to create/merge/delete trees, not this instrument.", async (raw, caller, exec) => {
+    if (active.worktreeAction) tool('mattpocock_worktree', "Record worktree relationships and authored handling of native observations; action stays at request top level. Distinguish authored marks, native binding facts, native creation observations (enter_worktree only when it creates a tree; historical create_worktree), verified Git identity and creator activity, and read-time nativeChildren observed from creator identity; only lane is inferred from assignment/binding: never a strong binding or directory-use claim. Child header cwd is a source value, not actual initial/current directory proof. Use host enter_worktree/exit_worktree when available; use host Git for merge/delete, not this instrument. Exiting does not prove that a tree was deleted.", async (raw, caller, exec) => {
       const action = raw.action
       if (action === 'read') { record(raw, 'worktree read', ['action', 'query']); return model.worktrees(caller, raw.query, exec.signal) }
       else if (action === 'update') record(raw, 'worktree update', ['action', 'command'])
@@ -2092,13 +2137,13 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       }
       await ports.authorizeCaller(caller, caller.sessionId!); return active.worktreeAction!(caller, caller.sessionId!, parseHostJson(raw), exec.signal)
     })
-    tool('mattpocock_resource', "Read one recorded resource: Git identity, retention and retirement facts. Use host Git/create_worktree for checkouts/branches and mattpocock_worktree for lane relationships.", async (raw, caller, exec) => {
+    tool('mattpocock_resource', "Read one recorded resource: Git identity, retention and retirement facts. Use host worktree tools or Git for checkouts/branches and mattpocock_worktree for lane relationships.", async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
       const parsed = parseResourceAction(raw)
       if (parsed.action !== 'read') throw new ControlsError('feature-disabled', 'this tool only reads recorded resources; pass {action:"read", resourceId}. Creating, borrowing and retiring trees is Git work you do with the host tools.')
       return active.resourceAction(caller, caller.sessionId!, parsed, exec.signal)
     })
-    if (options.delegate === true && active.delegate) tool('mattpocock_delegate', 'Binding-first creation of a continuable spawn/fork child. Use this only when you need a durable, verifiable ticket↔worktree binding (or the persistent intent, idempotency and pre-creation scope check that come with it); ordinary unbound lanes should use the host\'s native subagent/subagent_fork and mattpocock_assign instead. Prepare the worktree first with the host\'s create_worktree and pass its absolute path as worktree: the worktree is a requested initial cwd, and the actual child/parent/cwd header is verified only as a header source value — a header cwd does not prove where the child actually started or which directory it now uses. The binding records the requested cwd and the header-derived actual cwd with the task and ticketIds before the ticket assignment is written. Native acceptance of the creation is not a completed binding or assignment; report those effects separately. Omitting worktree records only the inherited intent, not a claim that the lane owns a dedicated tree. Retrying the same operationId never creates a second child; use a new operationId when you want another one. When workflowId is given, ticketIds must name at least one ticket already recorded in this instrument; omit workflowId entirely for a ticketless research lane. If creation was accepted or its metadata is uncertain, use that existing child and verify the binding; never create it again. If assignment was not granted, grant it explicitly to the same child with mattpocock_assign. If recording is reported unknown or failed, read the binding with mattpocock_worktree before retrying.', async (raw, caller, exec) => {
+    if (options.delegate === true && active.delegate) tool('mattpocock_delegate', 'Opt-in creation of a continuable spawn/fork child with durable intent, idempotency and a pre-creation scope check. Ordinary lanes should use native subagent/subagent_fork and mattpocock_assign instead. On DSH 0.2.3 the explicit worktree argument is unsupported: the header records the original project, not the effective checkout. Use native enter_worktree (when available), subagent/subagent_fork and mattpocock_assign; no strong binding is inferred. Native acceptance of the creation is not a completed binding or assignment; report those effects separately. Omitting worktree records only the inherited intent, not a claim that the lane owns a dedicated tree. Retrying the same operationId never creates a second child; use a new operationId when you want another one. When workflowId is given, ticketIds must name at least one ticket already recorded in this instrument; omit workflowId entirely for a ticketless research lane. If creation was accepted or its metadata is uncertain, use that existing child and verify the binding; never create it again. If assignment was not granted, grant it explicitly to the same child with mattpocock_assign. If recording is reported unknown or failed, read the binding with mattpocock_worktree before retrying.', async (raw, caller, exec) => {
       record(raw, 'delegation request', ['description', 'prompt', 'provider', 'worktree', 'operationId', 'workflowId', 'ticketIds'])
       await ports.authorizeCaller(caller, caller.sessionId!); return active.delegate!(caller, parseHostJson(raw), exec)
     })

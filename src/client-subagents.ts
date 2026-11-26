@@ -10,9 +10,10 @@ interface CatalogRow {
   readonly projectionValues?: { readonly subagent?: { readonly label?: string | null } | null }
 }
 interface Catalog { readonly byId: Readonly<Record<string, CatalogRow>> }
+const SUBAGENT_CHAT_KIND = 'subagentchat'
 export interface SubagentHost {
   readonly sessions?: { subagentAddress?(id: string): unknown; readonly list?: { getSnapshot(): Catalog } }
-  readonly sidebarRight?: { readonly mounted?: { getSnapshot(): unknown }; openResource?(address: string, options: { preferNewPane: boolean }): void }
+  readonly sidebarRight?: { readonly mounted?: { getSnapshot(): unknown }; openResource?(address: string, options: { kind: typeof SUBAGENT_CHAT_KIND; preferNewPane: boolean }): void }
 }
 interface SubagentProps extends SubagentFace {
   readonly view: ClientSessionSnapshot
@@ -53,7 +54,7 @@ function createSubagentNavigation(host: SubagentHost, observe: (sessionId: strin
     if (typeof host.sessions?.subagentAddress !== 'function' || typeof host.sidebarRight?.openResource !== 'function') return null
     const address = host.sessions.subagentAddress(id) as { childSessionId?: unknown; parentSessionId?: unknown; mode?: unknown } | undefined
     if (!address || address.childSessionId !== id || address.parentSessionId !== parent || !['one-shot', 'continuable', 'unknown'].includes(String(address.mode))) return null
-    return 'dsh-resource://subagentchat/session/' + encodeURIComponent(id) + '?' + new URLSearchParams({ parent, mode: String(address.mode) })
+    return 'dsh-resource://' + SUBAGENT_CHAT_KIND + '/session/' + encodeURIComponent(id) + '?' + new URLSearchParams({ parent, mode: String(address.mode) })
   }
   return {
     available: (id, parent) => { if (!currentToken()) return false; try { return resource(id, parent) !== null } catch { return false } },
@@ -68,7 +69,8 @@ function createSubagentNavigation(host: SubagentHost, observe: (sessionId: strin
         if (forest.nodes.get(id)?.parent !== parent) return false
         const address = resource(id, parent)
         if (address === null) return false
-        host.sidebarRight!.openResource!(address, { preferNewPane: true })
+        // Match the native subagent entry: do not let an unrelated tab kind win URI ranking.
+        host.sidebarRight!.openResource!(address, { kind: SUBAGENT_CHAT_KIND, preferNewPane: true })
         return true
       } catch { return false }
     },

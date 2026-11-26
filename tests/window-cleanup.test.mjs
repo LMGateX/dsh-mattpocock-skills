@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { registerHooks } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { createHash } from 'node:crypto'
 import ts from 'typescript'
+import { loadStorageSdk } from './fixtures/storage-sdk.mjs'
 
 // Production TypeScript only: transpile imports in memory, never read/rebuild lib.
 const sourceRoot = new URL('../src/', import.meta.url).href
@@ -490,10 +491,7 @@ registerTest('lost durable source purge acknowledgement latches the shared handl
 async function openNativeWindowDomain(storageRoot) {
   const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
   assert(isAbsolute(hostRoot) && isAbsolute(storageRoot))
-  const load = path => import(pathToFileURL(join(hostRoot, 'node_modules', ...path)).href)
-  const { DomainFacility, defineDomain, domainTable } = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
-  const { JsonStorageBackend } = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
-  const { z } = await load(['zod', 'index.js'])
+  const { DomainFacility, defineDomain, domainTable, JsonStorageBackend, z } = await loadStorageSdk(hostRoot)
   const backend = new JsonStorageBackend(storageRoot)
   const facility = new DomainFacility({ storage: { backend: { get() { return backend } } }, emit() {}, logger: { warn() {}, error() {} } }, { backend: 'json' })
   const close = async () => { try { await facility.closeAll() } finally { await backend.close() } }

@@ -94,7 +94,7 @@ async function worker(scenario, tarball) {
   const sdkRequire = createRequire(anchor), profileRequire = createRequire(join(dir, 'package.json'))
   const load = name => import(pathToFileURL(sdkRequire.resolve(name)).href)
   const app = await load('@deepseek-ai/dsh-app-boot')
-  const profileTemplates = app.PROFILE_TEMPLATES ?? (await load('@deepseek-ai/dsh-official-bundles')).PROFILE_TEMPLATES
+  const { PROFILE_TEMPLATES } = await load('@deepseek-ai/dsh-official-bundles')
   const cordis = await load('@deepseek-ai/cordis')
   const { TypertRegistry } = await load('@deepseek-ai/dsh-typert-registry')
   const { SkillRegistry } = await load('@deepseek-ai/dsh-skill')
@@ -104,7 +104,7 @@ async function worker(scenario, tarball) {
   const native = await load('@deepseek-ai/dsh-subagent')
   const { provideCmdline } = await load('@deepseek-ai/dsh-cmdline')
   const readyListeners = new Set()
-  app.initProfile(dir, profileTemplates.web.bundles)
+  app.initProfile(dir, PROFILE_TEMPLATES.web.bundles)
   const profile = app.loadProfileDirectory('manager-proof', dir, anchor)
   assert.deepEqual(profile.skippedBundles, [])
   assert.deepEqual(profile.layers.slice(0, 2).map(layer => layer.packageName), ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
@@ -113,8 +113,12 @@ async function worker(scenario, tarball) {
   assert(defaultRows.some(row => row.id === 'webserver'), 'actual default Web layer participates')
   const overlays = defaultRows.filter(row => !['subagent', 'dsh-mattpocock-skills'].includes(row.id))
     .map(row => ({ id: row.id, disabled: true }))
+  // Alpha.2 reloads the official --patch input from disk each time the
+  // manager recomposes the profile. Keep the bounded overlay in fixture home.
+  const overlayPath = join(home, 'bounded-manager.patch.yml')
+  await writeFile(overlayPath, JSON.stringify(overlays))
   const facts = { name: 'web', dir, patchPath: profile.patchPath, installAnchor: anchor,
-    cwd: dir, home, startedBundles: profile.layers.map(layer => layer.packageName), overlays,
+    cwd: dir, home, startedBundles: profile.layers.map(layer => layer.packageName), overlayPaths: [overlayPath],
     telemetryDisabledEnv: '1' }
   const resolution = await app.createRuntimeResolution({ installAnchor: anchor, profile, home })
   const config = join(dir, 'bounded-root.yml')
@@ -142,6 +146,7 @@ async function worker(scenario, tarball) {
     for (const listener of readyListeners) listener()
     assert(ctx.get('hmr'), 'actual public Hmr must activate, not a fake runExclusive adapter')
     const entry = id => { try { return ctx.loader.resolve('include:' + id) } catch { return undefined } }
+    assert.equal(entry('webserver')?.disabled, true, 'bounded fixture must not mount the Web server')
     const token = value => value?.[cordis.symbols.original] ?? value
     const initial = token(ctx.subagents), uid = entry('subagent').fiber.uid
     assert(initial instanceof native.default, 'the stock native subagent must be the selected provider')
@@ -155,13 +160,15 @@ async function worker(scenario, tarball) {
       assert.equal(result.packageResult?.exitCode, 0, JSON.stringify(result))
       assert.equal(result.application, 'applied', JSON.stringify(result))
       assert.equal(result.bundle, pluginName)
-      assert.equal(result.version, '0.23.0')
+      assert.equal(result.version, expectedVersion, 'manager must install the exact package version under test')
       const installed = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === pluginName)
       assert.equal(installed.installed, true)
       assert.equal(installed.enabled, true)
+      assert.equal(profileRequire(pluginName + '/package.json').version, expectedVersion)
       await packageMetadata(ctx, true)
       assert.equal((await pluginRow()).patchId, 'dsh-mattpocock-skills')
       assert.equal(await skillMounted(), true)
+      assert.equal(entry('webserver')?.disabled, true, 'manager recomposition must retain the no-listen overlay')
       assert.equal(token(ctx.subagents), initial, 'manager install must not replace the stock provider')
       assert.equal(entry('subagent').fiber.uid, uid)
       assert.throws(() => profileRequire.resolve(pluginName + '/native-subagent'), /Package subpath|ERR_PACKAGE_PATH_NOT_EXPORTED/)
@@ -198,7 +205,7 @@ async function worker(scenario, tarball) {
   }
 }
 
-let scratch, tarball, archiveBinding, profile
+let scratch, tarball, archiveBinding, profile, expectedVersion
 const nativeHash = hostRoot ? await nativeEntrySha256(hostRoot) : undefined
 before(async () => {
   if (!hostRoot) { assert(!operatorArchive, 'accepted archive proof requires DSH_CONTROLS_HOST_ROOT'); return }
@@ -213,7 +220,10 @@ before(async () => {
     await run('pnpm', ['pack', '--pack-destination', join(scratch, 'pack')], { cwd: repo, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
     tarball = join(scratch, 'pack', (await readdir(join(scratch, 'pack'))).find(name => name.endsWith('.tgz')))
   }
-  assert.equal(JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version, '0.23.0')
+  const manifest = JSON.parse(await readFile(join(repo, 'package.json'), 'utf8'))
+  assert.equal(manifest.name, pluginName)
+  assert(typeof manifest.version === 'string' && manifest.version, 'package under test must declare its version')
+  expectedVersion = manifest.version
   profile = join(scratch, 'canonical-home/profiles/web')
   await mkdir(profile, { recursive: true })
 })
@@ -228,18 +238,18 @@ async function child(scenario, tar = tarball) {
   assert(isAbsolute(hostRoot), 'manager worker needs an absolute host root')
   const source = [
     "import assert from 'node:assert/strict'", "import { createRequire } from 'node:module'",
-    "import { mkdir, readFile, writeFile, realpath, symlink, lstat } from 'node:fs/promises'",
-    "import { join, dirname, isAbsolute } from 'node:path'", "import { pathToFileURL, fileURLToPath } from 'node:url'",
+    "import { readFile, writeFile } from 'node:fs/promises'",
+    "import { join, dirname } from 'node:path'", "import { pathToFileURL } from 'node:url'",
     "import { createHash } from 'node:crypto'",
     'const hostRoot = ' + JSON.stringify(hostRoot), 'const pluginName = ' + JSON.stringify(pluginName),
-    'const nativeHash = ' + JSON.stringify(nativeHash),
+    'const nativeHash = ' + JSON.stringify(nativeHash), 'const expectedVersion = ' + JSON.stringify(expectedVersion),
     packageMetadata.toString(), worker.toString(),
     'console.log("MANAGER_RESULT:" + JSON.stringify(await worker(' + JSON.stringify(scenario) + ', ' + JSON.stringify(tar) + ')))',
   ].join('\n')
   const workerPath = join(scratch, 'worker-' + scenario + '.mjs')
   await writeFile(workerPath, source)
   const { stdout } = await run(process.execPath, [workerPath], {
-    cwd: profile, env: { ...process.env, NODE_OPTIONS: '', DSH_TELEMETRY_DISABLED: '1' },
+    cwd: profile, env: { ...process.env, NODE_OPTIONS: '', DSH_HOME: dirname(dirname(profile)), DSH_TELEMETRY_DISABLED: '1' },
     timeout: 120000, maxBuffer: 8 * 1024 * 1024,
   })
   const line = stdout.split('\n').find(line => line.startsWith('MANAGER_RESULT:'))

@@ -406,7 +406,7 @@ test('deprecated resource tool and old UI service are read-only before reaching 
   await assert.rejects(f.invoke('resourceAction', { sessionId: 'owner', request: { action: 'retain', resourceId: 'R' } }), { code: 'feature-disabled' })
   assert.equal(requests.length, 1)
   // Model text states the actual read capability, not deprecation or a switch state.
-  assert.match(f.ctx.tools.get('mattpocock_resource').description, /create_worktree/)
+  assert.match(f.ctx.tools.get('mattpocock_resource').description, /Use host worktree tools or Git/)
   assert.doesNotMatch(f.ctx.tools.get('mattpocock_resource').description, /deprecated|disabled/i)
   assert.match(f.ctx.tools.get('mattpocock_resource').description, /Single-target read only; no collection query, create, borrow or retire action/)
 })
@@ -429,8 +429,8 @@ test('delegate tool preserves native permission pipeline and accepts only safe c
   assert.equal(calls.length, 1)
   const description = f.ctx.tools.get('mattpocock_delegate').description
   assert.match(description, /operationId/)
-  assert.match(description, /Binding-first creation/)
-  assert.match(description, /ticket↔worktree binding/)
+  assert.match(description, /Opt-in creation/)
+  assert.match(description, /explicit worktree argument is unsupported/)
   assert.match(description, /native subagent\/subagent_fork and mattpocock_assign/)
   assert.doesNotMatch(description, /Preferred flow|let the lane create its own tree/)
 })

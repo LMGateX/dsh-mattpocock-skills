@@ -85,6 +85,35 @@ test('a failed call writes nothing and an unavailable Git seam records unknown, 
   assert.equal(row.value.check.checkedAt !== null, true)
 })
 
+test('native enter_worktree observes only a successful result explicitly marked as created', async t => {
+  const f = await fixture(t, { initialPolicy: policy() })
+  const child = actualAgent('enter-child', { parent: 'root', managed: true })
+  await f.created(child)
+  f.setRunner(() => gitRunner())
+  const execute = (callId, result, name = 'enter_worktree') => f.runtime.postExecute(
+    caller(child.id), worktreeExec(f.agents.get(child.id), callId, { name }), result, '5:1',
+  )
+  await execute('enter-existing', { isError: false, value: { path: '/trees/existing', repositoryRoot: '/repo', created: false } })
+  await execute('enter-not-created', success({ created: false }))
+  await execute('enter-missing-marker', success())
+  await execute('enter-untyped-marker', success({ created: 'true' }))
+  await execute('enter-missing-base', { isError: false, value: { path: '/trees/A', branch: 'worktree-A', repositoryRoot: '/repo', created: true } })
+  await execute('enter-failed', { ...success({ created: true }), isError: true })
+  await execute('exit', success(), 'exit_worktree')
+  assert.deepEqual((await f.read()).worktreeObservations, [])
+  assert.deepEqual(f.gitCalls, [])
+
+  await execute('enter-created', success({ created: true, repositoryRoot: '/repo/.agents/worktrees/parent' }))
+  await execute('enter-created', success({ created: true, repositoryRoot: '/repo/.agents/worktrees/parent' }))
+  const rows = (await f.read()).worktreeObservations
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].source, 'program')
+  assert.equal(rows[0].value.creatorSessionId, child.id)
+  assert.equal(rows[0].value.callId, 'enter-created')
+  assert.equal(rows[0].value.repositoryRoot, '/repo/.agents/worktrees/parent', 'do not re-anchor a nested pool to the original project')
+  assert.equal(Object.hasOwn(rows[0].value, 'created'), false, 'the tool discriminator is not part of the persisted observation')
+})
+
 test('a PTC sub-dispatch keeps its own call identity inside the outer call', async t => {
   const f = await fixture(t, { initialPolicy: policy() })
   const child = actualAgent('ptc-child', { parent: 'root', managed: true })
@@ -123,6 +152,41 @@ test('durable session events backfill a missing row once and mark it as lower-ev
   assert.equal(logged.value.turn, 7)
   assert.equal(rows.find(row => row.value.path === '/trees/Q').value.callId, 'run-1:ptc:2')
   assert.equal((await f.read()).worktreeObservations.length, 2, 'replay is idempotent')
+})
+
+test('native enter_worktree replay uses the recorded tool and creation discriminator for direct and PTC calls', async t => {
+  const f = await fixture(t, { initialPolicy: policy() })
+  const child = actualAgent('enter-replay-child', { parent: 'root', managed: true })
+  const [descriptor] = child.session.ownEvents()
+  const content = value => [{ type: 'text', text: JSON.stringify(value) }]
+  const direct = (callId, value, { name = 'enter_worktree', error, isError } = {}) => [
+    { type: 'tool/call', data: { turn: 8, step: 3, callId, name, arguments: '{}' } },
+    { type: 'tool/result', data: { message: { toolCallId: callId, content: content(value), ...(isError ? { isError } : {}) }, ...(error ? { error } : {}) } },
+  ]
+  const ptc = (subCallId, value, isError = false) => ({ type: 'tool/ptc-dispatch', data: {
+    name: 'enter_worktree', rootCallId: 'run-8', parentCallId: 'run-8:ptc:1', subCallId, content: content(value), isError,
+  } })
+  child.session.ownEvents = () => [descriptor,
+    ...direct('replayed-entry', success({ created: false }).value),
+    ...direct('replayed-missing-marker', success().value),
+    ...direct('replayed-exit', success().value, { name: 'exit_worktree' }),
+    ...direct('replayed-error', success({ created: true }).value, { error: { name: 'Error', code: 'failed' } }),
+    ...direct('replayed-error-flag', success({ created: true }).value, { isError: true }),
+    { type: 'plugin:worktree/created', data: success({ path: '/trees/forge' }).value },
+    ptc('run-8:ptc:2', success({ created: 'true' }).value),
+    ptc('run-8:ptc:3', success({ created: true }).value, true),
+    ...direct('replayed-create', success({ created: true }).value),
+    ptc('run-8:ptc:4', success({ created: true, path: '/trees/P' }).value),
+  ]
+  await f.created(child)
+  let rows
+  await until(async () => { rows = (await f.read()).worktreeObservations; return rows.length >= 2 })
+  assert.deepEqual(rows.map(row => row.value.callId).sort(), ['replayed-create', 'run-8:ptc:4'])
+  assert(rows.every(row => row.source === 'replay'))
+  const directRow = rows.find(row => row.value.callId === 'replayed-create')
+  assert.deepEqual({ rootCallId: directRow.value.rootCallId, turn: directRow.value.turn, step: directRow.value.step },
+    { rootCallId: 'replayed-create', turn: 8, step: 3 })
+  assert.equal(rows.find(row => row.value.callId === 'run-8:ptc:4').value.rootCallId, 'run-8')
 })
 
 test('the first snapshot returns without waiting for the background replay scan', async t => {

@@ -111,21 +111,41 @@ function contentValue(content:unknown):unknown{
   }
   return null
 }
-/** Durable create_worktree calls of one session: native tool/call+tool/result pairs and PTC
- * sub-dispatches. Failed calls and unparsable payloads are skipped, never guessed. */
+type WorktreeCreationTool = 'create_worktree' | 'enter_worktree'
+function isWorktreeCreationTool(name:unknown):name is WorktreeCreationTool{
+  return name==='create_worktree'||name==='enter_worktree'
+}
+type ObservedWorktreeCreation=Pick<WorktreeObservationInput,'path'|'branch'|'baseCommit'|'repositoryRoot'>
+function worktreeCreationFromValue(name:WorktreeCreationTool,value:unknown):ObservedWorktreeCreation|null{
+  if(value===null||typeof value!=='object'||Array.isArray(value))return null
+  const {path,branch,baseCommit,repositoryRoot,created}=value as Record<string,unknown>
+  // Newer hosts also return successful entry into an existing checkout. Only a
+  // positive creation discriminator establishes the effect; the old tool always created.
+  if(name==='enter_worktree'&&created!==true)return null
+  if(typeof path!=='string'||typeof branch!=='string'||typeof baseCommit!=='string'||typeof repositoryRoot!=='string')return null
+  return {path,branch,baseCommit,repositoryRoot}
+}
+/** Durable native tool/call+tool/result pairs and PTC sub-dispatches of one session.
+ * Skip failures and unrecognized results; Host-only worktree events carry no tool call identity. */
 function scanObservedCreations(events:readonly {readonly type:string;readonly data:unknown}[],creatorSessionId:string):readonly WorktreeObservationInput[]{
-  const calls=new Map<string,{readonly turn:number|null;readonly step:number|null}>(),creations:WorktreeObservationInput[]=[]
-  const creation=(value:unknown)=>{const parsed=value===null||typeof value!=='object'||Array.isArray(value)?null:(()=>{const raw=value as Record<string,unknown>;for(const key of ['path','branch','baseCommit','repositoryRoot'] as const)if(typeof raw[key]!=='string')return null;return {path:raw.path as string,branch:raw.branch as string,baseCommit:raw.baseCommit as string,repositoryRoot:raw.repositoryRoot as string}})();return parsed}
+  const calls=new Map<string,{readonly name:WorktreeCreationTool;readonly turn:number|null;readonly step:number|null}>(),creations:WorktreeObservationInput[]=[]
   for(const event of events){
     if(event.data===null||typeof event.data!=='object')continue
     const data=event.data as Record<string,unknown>
-    if(event.type==='tool/call'&&data.name==='create_worktree'&&typeof data.callId==='string')calls.set(data.callId,{turn:typeof data.turn==='number'?data.turn:null,step:typeof data.step==='number'?data.step:null})
-    else if(event.type==='tool/result'&&data.error===undefined&&data.message!==null&&typeof data.message==='object'){
-      const message=data.message as {readonly toolCallId?:unknown;readonly content?:unknown},position=typeof message.toolCallId==='string'?calls.get(message.toolCallId):undefined
-      if(position===undefined||typeof message.toolCallId!=='string')continue
-      const parsed=creation(contentValue(message.content));if(parsed)creations.push({creatorSessionId,callId:message.toolCallId,rootCallId:message.toolCallId,turn:position.turn,step:position.step,...parsed})
-    }else if(event.type==='tool/ptc-dispatch'&&data.name==='create_worktree'&&data.isError!==true&&typeof data.subCallId==='string'){
-      const parsed=creation(contentValue(data.content));if(parsed)creations.push({creatorSessionId,callId:data.subCallId,rootCallId:typeof data.rootCallId==='string'?data.rootCallId:data.subCallId,turn:null,step:null,...parsed})
+    if(event.type==='tool/call'&&isWorktreeCreationTool(data.name)&&typeof data.callId==='string'){
+      calls.set(data.callId,{name:data.name,turn:typeof data.turn==='number'?data.turn:null,step:typeof data.step==='number'?data.step:null})
+    }else if(event.type==='tool/result'&&data.error===undefined&&data.message!==null&&typeof data.message==='object'){
+      const message=data.message as {readonly toolCallId?:unknown;readonly content?:unknown;readonly isError?:unknown}
+      if(typeof message.toolCallId!=='string'||message.isError===true)continue
+      const call=calls.get(message.toolCallId)
+      if(call===undefined)continue
+      const parsed=worktreeCreationFromValue(call.name,contentValue(message.content))
+      if(parsed)creations.push({creatorSessionId,callId:message.toolCallId,rootCallId:message.toolCallId,turn:call.turn,step:call.step,...parsed})
+    }else if(event.type==='tool/ptc-dispatch'&&isWorktreeCreationTool(data.name)&&typeof data.subCallId==='string'){
+      const successful=data.isError===false||(data.name==='create_worktree'&&data.isError===undefined)
+      if(!successful||data.error!==undefined)continue
+      const parsed=worktreeCreationFromValue(data.name,contentValue(data.content))
+      if(parsed)creations.push({creatorSessionId,callId:data.subCallId,rootCallId:typeof data.rootCallId==='string'?data.rootCallId:data.subCallId,turn:null,step:null,...parsed})
     }
   }
   return creations
@@ -994,9 +1014,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return commit
   }
   const consumptionIdentity=(caller:HostCaller,view:SessionControlsView,permission:InstrumentScope,ownerPolicy:OwnerDecisionPolicyPublic):ConsumptionIdentity=>Object.assign({principalId:caller.principalId,sessionId:view.association.sessionId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId},{scopeFingerprint:sourceVersion(permission),sourceToken:sourceVersion(ownerPolicy)})
-  // Creation observation covers only the native create_worktree tool executed through this
-  // pipeline (including PTC sub-dispatches). Failed calls write nothing; the tool result itself
-  // is never replaced or delayed, and an unparsable value is reported as observation failure.
+  // Observe only creation through the native tool pipeline (including PTC sub-dispatches).
+  // Failed calls, entries into existing trees and unrecognized results write nothing.
+  // An observation failure never replaces the native tool result.
   const observationLifetime=new AbortController()
   const observationFailures=new Map<string,string>(),failedObservationSessions=new Set<string>()
   const observationReplays=new Set<string>()
@@ -1126,12 +1146,6 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(event!==null)await recordNativeExecution(view,event)
     }catch(error){markNativeExecutionFailure(sessionId,error)}
   }
-  const creationFromValue=(value:unknown):{readonly path:string;readonly branch:string;readonly baseCommit:string;readonly repositoryRoot:string}|null=>{
-    if(value===null||typeof value!=='object'||Array.isArray(value))return null
-    const raw=value as Record<string,unknown>
-    for(const key of ['path','branch','baseCommit','repositoryRoot'] as const)if(typeof raw[key]!=='string')return null
-    return {path:raw.path as string,branch:raw.branch as string,baseCommit:raw.baseCommit as string,repositoryRoot:raw.repositoryRoot as string}
-  }
   const stepPosition=(stepKey:string|undefined):{readonly turn:number|null;readonly step:number|null}=>{
     if(stepKey===undefined)return {turn:null,step:null}
     const parts=stepKey.split(':'),turn=Number(parts[0]),step=Number(parts[1])
@@ -1165,8 +1179,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
    * awaited so the durable row exists before the result reaches the model; any failure is recorded
    * as an honest observation failure and never replaces or blocks the native tool result. */
   const recordWorktreeObservation=async(caller:HostCaller,exec:ToolExecution,result:Readonly<ToolExecutionResult>,stepKey?:string):Promise<void>=>{
-    if(caller.sessionId===null||result.isError)return
-    const creation=creationFromValue(result.value)
+    if(caller.sessionId===null||result.isError||!isWorktreeCreationTool(exec.name))return
+    const creation=worktreeCreationFromValue(exec.name,result.value)
     if(creation===null)return
     const creator=caller.sessionId,position=stepPosition(stepKey)
     const input:WorktreeObservationInput={creatorSessionId:creator,callId:String(exec.callId),rootCallId:String(exec.rootCallId),turn:position.turn,step:position.step,...creation}
@@ -1549,7 +1563,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     // Every tool result may carry this plugin's current projection or its honest unknown
     // diagnostic, so the hook stays unrestricted; the refresh gate inside prepare keeps an
     // unchanged projection from being rebuilt per call.
-    async postExecute(caller,exec,result,stepKey){if(stepKey!==undefined)currentStepKey=stepKey;if(exec.name==='create_worktree')await recordWorktreeObservation(caller,exec,result,stepKey);return prepare(caller,exec.signal)},
+    async postExecute(caller,exec,result,stepKey){if(stepKey!==undefined)currentStepKey=stepKey;if(isWorktreeCreationTool(exec.name))await recordWorktreeObservation(caller,exec,result,stepKey);return prepare(caller,exec.signal)},
     context(caller){return caller.sessionId!==null&&cachedSessions.has(caller.sessionId)?'Collaboration instruments: use mattpocock_record for current records, mattpocock_history for scoped history, mattpocock_worktree for recorded bindings. Re-read with mattpocock_record when the injected snapshot is missing or stale.':''},
     async historyAction(caller,sessionId,input,signal){
       const r=record(input,'history action'),view=await identity(caller,sessionId,signal)
@@ -1676,6 +1690,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(r.action==='reconcile'){
           record(input,'worktree reconcile',['action','operationId']);const operationId=id(r.operationId,'operationId'),row=(await registry.query(view.instance)).rows.find(row=>row.value.operationId===operationId)
           if(!row)throw new ControlsError('invalid-input','unknown binding operation')
+          if(row.value.requestedCwd!==null&&ports.capabilities.nativeInitialChildCwd!=='supported')throw new ResourceError('unsupported','explicit binding cannot be re-confirmed from this host header; read the existing binding without redispatching')
           let header=null
           try{if(ports.liveAgent(row.value.plannedChildSessionId)&&(!ports.flushSession||!await ports.flushSession(row.value.plannedChildSessionId,signal)))throw new ControlsError('storage-uncertain','live child native checkpoint unavailable');const facts=await ports.sessionFacts(row.value.plannedChildSessionId,signal);if(facts.header.origin==='subagent'&&facts.header.parentSession&&typeof facts.header.cwd==='string')header={sessionId:facts.header.id,parentSessionId:facts.header.parentSession,cwd:facts.header.cwd}}catch(error){signal.throwIfAborted();if(!(error instanceof ControlsError)||error.code!=='unknown-session')throw error}
           return registry.reconcile(view.instance,operationId,header,caller)
@@ -1696,16 +1711,18 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(workflowId!==null){
         if(ticketIds.length===0)throw new ControlsError('invalid-input','delegation on workflow "'+workflowId+'" must name recorded ticketIds; record the ticket first, or omit workflowId for a ticketless research lane')
       }
-      if(!ports.createContinuable)throw new ResourceError('unsupported','native continuable creation is unavailable; no child was requested')
       const cwd=r.worktree===undefined?undefined:typeof r.worktree==='string'&&isAbsolute(r.worktree)&&normalize(r.worktree)===r.worktree&&!r.worktree.includes('\0')?r.worktree:(()=>{throw new ControlsError('invalid-input','worktree must be normalized absolute path')})()
-      if(cwd!==undefined&&ports.capabilities.nativeInitialChildCwd!=='supported')throw new ResourceError('unsupported','nativeInitialChildCwd unsupported; no child was requested')
-      if(cwd!==undefined){if(!ports.authorizeInitialChildCwd)throw new ResourceError('unsupported','native initial cwd preflight unavailable; no creation intent was written');await ports.authorizeInitialChildCwd(exec,cwd);exec.signal.throwIfAborted();await checkGrant()}
+      if(cwd!==undefined&&ports.capabilities.nativeInitialChildCwd==='supported'){if(!ports.authorizeInitialChildCwd)throw new ResourceError('unsupported','native initial cwd preflight unavailable; no creation intent was written');await ports.authorizeInitialChildCwd(exec,cwd);exec.signal.throwIfAborted();await checkGrant()}
       const fingerprint=createHash('sha256').update(JSON.stringify([caller.sessionId,r.description,r.prompt,provider,r.worktree??null,r.workflowId??null,r.ticketIds??[]])).digest('hex')
       const journal=await ports.openUnitStorage('delegation_'+createHash('sha256').update(view.instance.instrumentInstanceId).digest('hex').slice(0,48),parseDelegationJournal)
       const intent=await queue.run(async()=>{
         await check(caller,caller.sessionId!,exec.signal)
         const raw=await journal.read(),old=raw===undefined?{revision:0,rows:[]}:parseDelegationJournal(raw),prior=old.rows.find(row=>row.operationId===operationId)
         if(prior){if(prior.fingerprint!==fingerprint)throw new ControlsError('operation-conflict','delegation operationId changed request');return {row:prior,replayed:true}}
+        // Read existing receipts even if the current host no longer supports that
+        // effect. A new explicit binding must fail before any durable intent.
+        if(!ports.createContinuable)throw new ResourceError('unsupported','native continuable creation is unavailable; no child was requested')
+        if(cwd!==undefined&&ports.capabilities.nativeInitialChildCwd!=='supported')throw new ResourceError('unsupported','nativeInitialChildCwd unsupported; no child was requested')
         const row={operationId,parentSessionId:caller.sessionId!,fingerprint,childId:randomUUID(),result:null}
         if(!await journal.compareAndSwap(old.revision,{revision:increment(old.revision),rows:[...old.rows,row]}))throw new ControlsError('concurrent-update','delegation intent changed')
         return {row,replayed:false}

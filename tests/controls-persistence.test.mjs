@@ -4,30 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { mkdtemp, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import { WorkspaceControls, createDomainControlsStorage, parseControlsDocument } from '../lib/controls/index.js'
+import { loadStorageSdk } from './fixtures/storage-sdk.mjs'
 
 // Opt-in, source-only host probe. No machine-specific path in the shipped runtime.
 // Missing host does NOT silently substitute a mock or count as integration success.
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
 const options = { skip: hostRoot ? false : 'set DSH_CONTROLS_HOST_ROOT to run the installed-host integration' }
-let host
-if (hostRoot) {
-  assert(isAbsolute(hostRoot), 'host root must be absolute')
-  const load = path => import(pathToFileURL(join(hostRoot, 'node_modules', ...path)).href)
-  const domain = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
-  const json = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
-  const { z } = await load(['zod', 'index.js'])
-  // The inspected storage contract must match whichever installed host is under test;
-  // pinning a literal build number would restate the calendar, not the contract.
-  const hostVersion = JSON.parse(await readFile(join(hostRoot, 'package.json'), 'utf8')).version
-  for (const name of ['dsh-storage-domain', 'dsh-storage-json']) {
-    const pkg = JSON.parse(await readFile(join(hostRoot, 'node_modules', '@deepseek-ai', name, 'package.json'), 'utf8'))
-    assert.equal(pkg.version, hostVersion, 'storage probe matches the inspected host build')
-  }
-  host = { ...domain, ...json, z }
-}
+const host = hostRoot ? await loadStorageSdk(hostRoot) : undefined
 
 async function fixture(t) {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-controls-'))

@@ -101,7 +101,7 @@ test('actual input seat reads changing native labels and opens native direct-par
   const baseline = [...f.calls]
   await f.catalog({ child: catalogRow('Renamed by host', 'owner') })
   await click(button(f, 'Renamed by host'))
-  assert.deepEqual(f.opened, [['dsh-resource://subagentchat/session/child?parent=owner&mode=continuable', { preferNewPane: true }]])
+  assert.deepEqual(f.opened, [['dsh-resource://subagentchat/session/child?parent=owner&mode=continuable', { kind: 'subagentchat', preferNewPane: true }]])
   assert.deepEqual(f.calls, baseline)
   assert.match(f.container.textContent, /宿主在跑数：70/)
   assert.match(f.container.textContent, /64 行/)
@@ -133,7 +133,7 @@ test('missing, null and blank native labels use short ID, never session title or
     await click(action)
   }
   assert.deepEqual(f.opened, Array.from({ length: cases.length }, () => [
-    'dsh-resource://subagentchat/session/' + id + '?parent=owner&mode=continuable', { preferNewPane: true },
+    'dsh-resource://subagentchat/session/' + id + '?parent=owner&mode=continuable', { kind: 'subagentchat', preferNewPane: true },
   ]))
   assert.deepEqual(f.calls, baseline, 'catalog updates and clicks add no RPC, dispatch or writes')
 })

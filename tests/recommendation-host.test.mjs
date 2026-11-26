@@ -17,10 +17,8 @@ test('optional recommendation namespace preserves base Remote and rejects unregi
 })
 
 async function mountedClient(t, ctx, gateway, peer) {
-  const { pathToFileURL } = await import('node:url')
-  const { join } = await import('node:path')
   const { sdk } = await import('./fixtures/runtime-host.mjs')
-  const clientGateway = await import(pathToFileURL(join(process.env.DSH_CONTROLS_HOST_ROOT, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/types/client/index.js')).href)
+  const clientGateway = await loadSDK('@deepseek-ai/dsh-api-gateway/client')
   const base = await import('../src/controls/remote-contract.ts')
   const recommendation = await import('../src/controls/recommendation-contract.ts')
   const client = new sdk.Context(); new sdk.TypertRegistry(client)

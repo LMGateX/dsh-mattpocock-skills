@@ -457,7 +457,8 @@ test('delegate binding-first creation persists intent, confirms the prepared wor
   assert.deepEqual(before.rows[0].value.ticketIds,['A'])
   return native(exec,request)
  }
- const first=await f.runtime.delegate(caller('root'),{description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'bind-A',workflowId:'flow',ticketIds:['A']},f.exec())
+ const request={description:'Build A',prompt:'Implement A',worktree:'/trees/A',operationId:'bind-A',workflowId:'flow',ticketIds:['A']}
+ const first=await f.runtime.delegate(caller('root'),request,f.exec())
  assert.equal(first.accepted,true)
  assert.equal(calls.length,1,'one prepared worktree creates exactly one child')
  assert.equal(calls[0].cwd,'/trees/A')
@@ -472,6 +473,14 @@ test('delegate binding-first creation persists intent, confirms the prepared wor
  assert.deepEqual((await f.read(first.childId)).records.scope,{kind:'assigned',workflowId:'flow',ticketIds:['A']},'delegate assigns the real child in the same creation')
  assert.equal((await f.read()).worktreeBindings.length,1)
  assert.equal(Object.hasOwn((await f.read()).worktreeBindings[0],'history'),false)
+ // An upgrade can no longer confirm a new explicit cwd, but can still report
+ // the saved receipt and must not write another intent or create another child.
+ f.ports.capabilities={...f.ports.capabilities,nativeInitialChildCwd:'unsupported'}
+ assert.deepEqual(await f.runtime.delegate(caller('root'),request,f.exec()).then(result=>[result.childId,result.binding,result.replayed]),[first.childId,'confirmed',true])
+ await assert.rejects(f.runtime.delegate(caller('root'),{...request,operationId:'alpha-new'},f.exec()),{code:'unsupported'})
+ await assert.rejects(f.runtime.worktreeAction(caller('root'),'root',{action:'reconcile',operationId:'bind-A'},signal()),{code:'unsupported'})
+ assert.equal(calls.length,1)
+ assert.deepEqual(await f.runtime.worktreeAction(caller('root'),'root',{action:'read'},signal()),binding)
 })
 
 test('RuntimeFacade delegates an uninstrumented child with native inherited cwd and durable call identity',async t=>{

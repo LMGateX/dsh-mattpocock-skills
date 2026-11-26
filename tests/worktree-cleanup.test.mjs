@@ -7,8 +7,9 @@ import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import { registerHooks } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
+import { loadStorageSdk } from './fixtures/storage-sdk.mjs'
 
 const childRoot = process.env.DSH_WORKTREE_CLEANUP_CHILD_ROOT
 const test = childRoot ? () => {} : nodeTest
@@ -248,10 +249,7 @@ test('worktree cleanup preserves acknowledged success after commit while entry a
 async function openNativeDomain(storageRoot) {
   const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
   assert(isAbsolute(hostRoot) && isAbsolute(storageRoot))
-  const load = path => import(pathToFileURL(join(hostRoot, 'node_modules', ...path)).href)
-  const { DomainFacility, defineDomain, domainTable } = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
-  const { JsonStorageBackend } = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
-  const { z } = await load(['zod', 'index.js'])
+  const { DomainFacility, defineDomain, domainTable, JsonStorageBackend, z } = await loadStorageSdk(hostRoot)
   const backend = new JsonStorageBackend(storageRoot)
   const facility = new DomainFacility({ storage: { backend: { get() { return backend } } }, emit() {}, logger: { warn() {}, error() {} } }, { backend: 'json' })
   const close = async () => { try { await facility.closeAll() } finally { await backend.close() } }

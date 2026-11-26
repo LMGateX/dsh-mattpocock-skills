@@ -12,6 +12,10 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.24.0-alpha.1：DSH 0.2.3-alpha.2 适配（2026-11-26，发布前契约）
+
+按所有者请求，拉取上游固定标签 [dsh-v0.2.3-alpha.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2)，在独立检出和临时运行时检查、适配、验证并 push／GitHub Release。此为仅针对已验证新宿主的预发行，不替代旧宿主的 v0.23.0；声明精确 DSH 0.2.3-alpha.2 与上游 Node 门槛。适配只改公开 SDK、宿主生命周期／工作树观测接线、客户端接线和交付验证；无法证实的工作目录绑定必须明确不支持，不模拟原生权限或用 header 推断实际目录。既有授权、数据、通道、vendor 和 provider precedence 不变。不为本机 DSH／Profile 安装或启用、不重启、不改共享 SDK、不 npm publish。实际验证与发布另记。
+
 ## 0.23.0 模型上下文精简（2026-11-14，已认可；文档先行、隔离开发／测试、push／Release，不安装本机）
 
 所有者认可精简检查的第一、第二批；唯一细化契约为 [CONTEXT_COMPACTION_CONTRACT](<CONTEXT_COMPACTION_CONTRACT.md>)。固定“工具调用契约／当前行动摘要／显式受权审计”分层，按能力裁剪重复说明、公共command单次定义、OFF短协议、notices不重复facts、已知空紧凑表示和非行动明细下沉；保留类型、关键义务与精确受权恢复，完整尾部变化仍参与检测。不改工具envelope v2、业务存储／V5、权限／CAS／generation／幂等／durability frontier、baseline／stale恢复，不delta-only或永久只注入一次。先文档，再新隔离工树/subagents竖切RED→GREEN、串行集成与独立双轴，完整source／唯一包／RC3 strict及原生headless后非force push、新tag和五资产Release／下载回验。**暂不为本机DSH安装或激活，不改现有Profile／共享SDK／vendor／channel/provider precedence，不重启当前服务，不启用管理或迁移清理生产数据，不npm publish或覆盖旧资产。**

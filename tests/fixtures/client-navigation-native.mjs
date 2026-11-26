@@ -45,6 +45,8 @@ export async function mount(t, options = {}) {
   let view = options.view ?? snapshot()
   const api = { readPolicy: async () => ({ ok: false, error: new Error('fixture policy unavailable') }), readSession: async id => { fullCalls.push(id); return { ok: true, value: structuredClone(view) } },
     readSummaries: async request => { summaryCalls.push(request); return { ok: true, value: { rows: request.sessions.map(row => ({ sessionId: row.sessionId, status: 'current', version: 'b'.repeat(64), summary: { sessionId: view.sessionId, instance: view.instance, caller: view.caller, policy: { configurationRevision: 1, controlWorkspaceId: 'workspace', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, display: view.policy.display }, records: { businessRevision: 1, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: view.records.summary.pendingUserDecisionCount } }, health: [] } })) } } } }
+  // The renderer's document-style service is not mounted in this fixture.
+  ctx.provide('modules', {})
   await ctx.plugin(renderer)
   const slots = ctx.get('slots')
   slots.installLocale({ getSnapshot: () => 0, subscribe: () => () => {}, bind: () => key => key })

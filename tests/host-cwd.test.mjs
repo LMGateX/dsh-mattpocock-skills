@@ -123,29 +123,29 @@ async function fixture(t, { prepare = async () => ({}), mounted = false } = {}) 
     pauseStep() { release = Promise.withResolvers(); releases.push(release) } }
 }
 
-test('mounted creation port starts exactly one real RC3 child per reserved id in A, B, and inherited cwd', options, async t => {
+test('mounted creation port starts one real child per reserved id in the inherited effective cwd', options, async t => {
   const f = await fixture(t, { mounted: true })
-  const ids = ['mounted-A', 'mounted-B', 'mounted-inherited']
-  for (const [index, cwd] of [f.pathA, f.pathB, undefined].entries()) {
-    const childId = ids[index]
+  const ids = ['mounted-spawn', 'mounted-fork', 'mounted-inherited']
+  await f.ctx.workingDirectory.set(f.parent, f.pathB)
+  for (const [index, childId] of ids.entries()) {
     const provider = index === 1 ? 'fork' : 'spawn'
-    const receipt = await f.host.ports.createContinuable({ agent: f.parent, signal: signal() }, { provider, childId, label: 'Mounted native cwd', prompt: 'No model', ...(cwd === undefined ? {} : { cwd }) })
+    const receipt = await f.host.ports.createContinuable({ agent: f.parent, signal: signal() }, { provider, childId, label: 'Mounted native cwd', prompt: 'No model' })
     assert.equal(f.prepared[index].parent, f.parent)
     assert.equal(f.prepared[index].sessionId, childId)
-    assert.equal(f.prepared[index].cwd, cwd ?? f.pathA)
+    assert.equal(f.prepared[index].cwd, f.pathB)
     assert.equal(f.starts[index].provider, provider)
     assert.equal(receipt.childId, childId)
     assert.equal(typeof receipt.messageId, 'string')
     assert(receipt.messageId.length > 0, 'real native inbox acceptance required')
     const child = f.ctx.agents.get(childId)
     assert(child, 'real registry must contain the reserved child')
-    assert.equal(f.ctx.workingDirectory.get(child.session), cwd ?? f.pathA)
+    assert.equal(f.ctx.workingDirectory.get(child.session), f.pathB)
     assert.equal(f.ctx.sandboxPolicy.resolve({ session: child.session }).mode, 'read-only', 'directory selection never widens inherited file policy')
     assert.equal(child.session.header.cwd, f.pathA, 'header is the inherited source, not effective cwd')
     const read = await executeRegistryTool(f.ctx, { callId: 'mounted-read-' + childId, name: 'read', arguments: { file_path: 'marker.txt' }, agent: child, signal: signal() }, load)
     assert.equal(read.isError, false, JSON.stringify(read))
-    assert.equal(read.value.lines[0].text, cwd === f.pathB ? 'B native tool' : 'A native tool')
-    assert.equal(read.value.path, join(cwd ?? f.pathA, 'marker.txt'))
+    assert.equal(read.value.lines[0].text, 'B native tool')
+    assert.equal(read.value.path, join(f.pathB, 'marker.txt'))
   }
   assert.equal(f.prepared.length, 3, 'one native preparation for each requested child; no probe or retry')
   assert.deepEqual(f.starts.map(info => String(info.id)).sort(), [...ids].sort())
@@ -156,11 +156,12 @@ test('mounted creation port starts exactly one real RC3 child per reserved id in
   assert.equal(f.prepared.length, 3)
 })
 
-test('mounted native creation rejects invalid cwd, impostor and pre-cancel without publishing a child', options, async t => {
+test('mounted creation rejects all explicit cwd including the matching header, impostor and pre-cancel', options, async t => {
   const f = await fixture(t, { mounted: true })
   const request = { provider: 'spawn', childId: 'denied-mounted', label: 'Denied', prompt: 'No model' }
-  for (const cwd of [join(f.temp, 'missing'), join(f.pathA, 'marker.txt')]) {
-    await assert.rejects(f.host.ports.createContinuable({ agent: f.parent, signal: signal() }, { ...request, cwd }), { code: 'access-denied' })
+  assert.equal(f.host.ports.capabilities.nativeInitialChildCwd, 'unsupported')
+  for (const cwd of [f.pathA, f.pathB, join(f.temp, 'missing'), join(f.pathA, 'marker.txt')]) {
+    await assert.rejects(f.host.ports.createContinuable({ agent: f.parent, signal: signal() }, { ...request, cwd }), { code: 'unsupported' })
   }
   await assert.rejects(f.host.ports.createContinuable({ agent: { ...f.parent }, signal: signal() }, request), { code: 'access-denied' })
   const control = new AbortController(); control.abort(new Error('cancelled before native activation'))
@@ -175,7 +176,7 @@ test('mounted native cancellation during awaited preparation cleans partial reso
   t.after(() => proceed.resolve())
   const f = await fixture(t, { mounted: true, prepare: async () => { entered.resolve(); await proceed.promise; return {} } })
   const control = new AbortController()
-  const operation = f.host.ports.createContinuable({ agent: f.parent, signal: control.signal }, { provider: 'spawn', childId: 'cancelled-mounted', label: 'Cancel native', prompt: 'No model', cwd: f.pathB })
+  const operation = f.host.ports.createContinuable({ agent: f.parent, signal: control.signal }, { provider: 'spawn', childId: 'cancelled-mounted', label: 'Cancel native', prompt: 'No model' })
   const rejected = assert.rejects(operation, /cancelled during native preparation/)
   await entered.promise
   control.abort(new Error('cancelled during native preparation'))
@@ -213,7 +214,7 @@ test('native activation records B as the effective child working directory and p
   assert.equal(f.ctx.workingDirectory.get(child.session), f.pathB)
   assert.equal(child.session.header.cwd, f.pathA)
   assert(Object.isFrozen(child.session.header))
-  assert(child.session.ownEvents().some(event => event.type === 'working-directory/change' && event.data.cwd === f.pathB))
+  assert(child.session.ownEvents().some(event => event.type === 'workspace-root/change' && event.data.cwd === f.pathB))
   assert.equal((await f.ctx.sessionPersistence.stat(started.childId)).header.cwd, f.pathA)
 })
 

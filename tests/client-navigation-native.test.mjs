@@ -18,7 +18,7 @@ test('original Cordis plugin scope exposes actual Controller navigation through 
   assert.equal(f.sessions.retainInfo('child').getSnapshot().referenceCount, 0, 'title read never retains a Session')
   await React.act(async () => title.click())
   const address = 'dsh-resource://subagentchat/session/child?parent=owner&mode=continuable'
-  assert.deepEqual(f.opened, [[address, { preferNewPane: true }]])
+  assert.deepEqual(f.opened, [[address, { kind: 'subagentchat', preferNewPane: true }]])
   let resource
   await React.act(async () => { await settle(); resource = await f.nativeSidebar.resource(address) })
   assert.deepEqual(resource.address, { childSessionId: 'child', parentSessionId: 'owner', mode: 'continuable' }, 'native codec/provider accepted the exact address')
@@ -31,6 +31,18 @@ test('original Cordis plugin scope exposes actual Controller navigation through 
   await React.act(async () => f.nativeSidebar.close(tab.id))
   assert.equal(f.sessions.retainInfo('child').getSnapshot().referenceCount, 0)
   assert.equal(f.nativeSidebar.resources.source(address).getSnapshot().status, 'loading')
+})
+
+test('S uses the native subagent tab when an unrelated kind also claims its resource', native, async t => {
+  const f = await mount(t); await f.openS()
+  const address = 'dsh-resource://subagentchat/session/child?parent=owner&mode=continuable'
+  const unregister = f.nativeSidebar.tabs.register({ id: 'fixture-alternate', kind: 'fixture-alternate',
+    patterns: ['dsh-resource://subagentchat/session/**'], title: () => 'Unrelated tab' })
+  t.after(unregister)
+  assert.equal(f.nativeSidebar.tabs.claim(address).kind, 'fixture-alternate', 'unqualified routing would pick another type')
+  await React.act(async () => f.button('Dispatch label').click())
+  const layout = f.nativeSidebar.store.getSnapshot().bySession.owner.layout
+  assert.equal(Object.values(layout.tabs).find(tab => tab.contentId === address)?.kind, 'subagentchat')
 })
 
 test('mounted naming details distinguish native label from session titles without retaining the child', native, async t => {

@@ -47,17 +47,16 @@ test('delegate config is opt-in and defaults off', async () => {
   assert.equal(Config({ delegate: true }).delegate, true)
 })
 
-test('delegate is described as binding-first creation, not a general dispatcher', async t => {
+test('delegate documents explicit binding refusal and ordinary native dispatch', async t => {
   const f = await mountedFixture(t, { delegate: true })
   const description = f.ctx.tools.get('mattpocock_delegate').description
-  assert.match(description, /Binding-first creation/)
-  assert.match(description, /ticket↔worktree binding/)
+  assert.match(description, /Opt-in creation/)
+  assert.match(description, /explicit worktree argument is unsupported/)
   assert.match(description, /native subagent\/subagent_fork and mattpocock_assign/)
-  assert.match(description, /create_worktree/)
-  assert.match(description, /actual child\/parent\/cwd header/)
+  assert.match(description, /enter_worktree/)
   assert.match(description, /operationId/)
   assert.match(description, /ticketIds/)
-  assert.match(description, /does not prove where the child actually started/, 'the header is a source value, not proof of the actual initial directory')
+  assert.match(description, /header records the original project, not the effective checkout/, 'the header is a source value, not proof of the actual initial directory')
   assert.match(description, /not a completed binding or assignment/, 'native acceptance is not binding or assignment completion')
   assert.match(description, /use that existing child/, 'an accepted or uncertain creation reuses its existing child')
   assert.match(description, /never create it again/, 'metadata failure is never a reason for a second creation')

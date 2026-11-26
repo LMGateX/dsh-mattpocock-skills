@@ -2,12 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { registerHooks } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import ts from 'typescript'
+import { loadStorageSdk } from './fixtures/storage-sdk.mjs'
 
 const sourceRoot = new URL('../src/controls/', import.meta.url).href
 const compiledRoot = new URL('../lib/controls/', import.meta.url).href
@@ -52,10 +53,7 @@ const ticket=(summary='current-safe')=>({title:'票',statuses:{},summary})
 async function nativeOpen(storageRoot) {
   const hostRoot=process.env.DSH_CONTROLS_HOST_ROOT
   assert(isAbsolute(hostRoot)&&isAbsolute(storageRoot))
-  const load=parts=>import(pathToFileURL(join(hostRoot,'node_modules',...parts)).href)
-  const {DomainFacility,defineDomain,domainTable}=await load(['@deepseek-ai','dsh-storage-domain','lib','index.js'])
-  const {JsonStorageBackend}=await load(['@deepseek-ai','dsh-storage-json','lib','index.js'])
-  const {z}=await load(['zod','index.js'])
+  const {DomainFacility,defineDomain,domainTable,JsonStorageBackend,z}=await loadStorageSdk(hostRoot)
   const backend=new JsonStorageBackend(storageRoot)
   const facility=new DomainFacility({storage:{backend:{get(){return backend}}},emit(){},logger:{warn(){},error(){}}},{backend:'json'})
   const close=async()=>{try{await facility.closeAll()}finally{await backend.close()}}

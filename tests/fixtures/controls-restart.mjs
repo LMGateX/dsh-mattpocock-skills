@@ -1,14 +1,11 @@
 // Source-only subprocess reader. No profile/plugin/Cordis mounting.
 import assert from 'node:assert/strict'
-import { join, isAbsolute } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { isAbsolute } from 'node:path'
 import { WorkspaceControls, createDomainControlsStorage, parseControlsDocument } from '../../lib/controls/index.js'
+import { loadStorageSdk } from './storage-sdk.mjs'
 const [hostRoot, storageRoot] = process.argv.slice(2)
 assert(isAbsolute(hostRoot) && isAbsolute(storageRoot))
-const load = path => import(pathToFileURL(join(hostRoot, 'node_modules', ...path)).href)
-const { DomainFacility, defineDomain, domainTable } = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
-const { JsonStorageBackend } = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
-const { z } = await load(['zod', 'index.js'])
+const { DomainFacility, defineDomain, domainTable, JsonStorageBackend, z } = await loadStorageSdk(hostRoot)
 const backend = new JsonStorageBackend(storageRoot)
 const facility = new DomainFacility({ storage: { backend: { get() { return backend } } }, emit() {}, logger: { warn() {}, error() {} } }, { backend: 'json' })
 try {

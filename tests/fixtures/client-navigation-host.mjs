@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict'
-import vm from 'node:vm'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './client-primitives.mjs'
+import { clientSdk, clientRegistration, readShellModules, staticModules } from './client-sdk.mjs'
 
 // Explicit read-only host. Never substitute an object ctx, patch compiled strings,
 // deep-import private constructors, start a server, connect, or read real Sessions.
@@ -23,41 +22,27 @@ for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputE
 }
 const originals = new Map()
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
-const assets = join(hostRoot, 'node_modules/@deepseek-ai/dsh-web-frontend/dist/assets')
-const shell = (await readdir(assets)).find(name => /^index-.*[.]js$/.test(name)); assert(shell)
-const shellPath = join(assets, shell)
-originals.set(shellPath, digest(await readFile(shellPath)))
-let baseline, stopped = false
-const stop = new Error('navigation fixture stops original shell at public module baseline handoff')
-const originalError = console.error
-console.error = (...args) => { if (args[0] === stop) stopped = true; else originalError(...args) }
-globalThis.__ModuleLoader__ = { create(options) { baseline = options.staticModules; throw stop } }
-try { await import(pathToFileURL(shellPath)); await new Promise(resolve => setImmediate(resolve)) }
-finally { console.error = originalError; delete globalThis.__ModuleLoader__ }
-assert(stopped && baseline, 'entire original shell stopped before runtime boot')
-assert.equal(typeof baseline['@deepseek-ai/dsh-client-ui-slots'].SlotCore, 'function')
-const req = createRequire(join(hostRoot, 'package.json')), local = createRequire(import.meta.url)
-const cache = new Map(Object.entries(baseline))
-cache.set('react', React); cache.set('react/jsx-runtime', local('react/jsx-runtime'))
-cache.set('react-dom', local('react-dom')); cache.set('react-dom/client', local('react-dom/client'))
-cache.set('@deepseek-ai/cordis', await import(pathToFileURL(req.resolve('@deepseek-ai/cordis'))))
-export const cordis = cache.get('@deepseek-ai/cordis')
+const req = clientSdk(hostRoot), local = createRequire(import.meta.url)
+const baseline = await readShellModules(req, async file => originals.set(file, digest(await readFile(file))))
+export const cordis = await import(pathToFileURL(req.resolve('@deepseek-ai/cordis')))
+const { cache, get, has } = staticModules(baseline, {
+  react: React, 'react/jsx-runtime': local('react/jsx-runtime'),
+  'react-dom': local('react-dom'), 'react-dom/client': local('react-dom/client'), '@deepseek-ai/cordis': cordis,
+})
+assert.equal(typeof get('@deepseek-ai/dsh-client-ui-slots').SlotCore, 'function')
 export async function loadNode(id) { const value = await import(pathToFileURL(req.resolve(id))); cache.set(id, value); return value }
 export async function load(id) {
-  if (cache.has(id)) return cache.get(id)
-  const file = join(hostRoot, 'node_modules', id, 'lib/client.js'), bytes = await readFile(file)
+  if (has(id)) return get(id)
+  const file = req.resolve(id + '/client'), bytes = await readFile(file)
   originals.set(file, digest(bytes))
-  let registration
-  vm.runInThisContext('(function(window){' + bytes.toString('utf8') + '\n})', { filename: file })({ __ModuleLoader__: { load: value => { registration = value } } })
-  assert(registration, 'normal native loader registration: ' + id)
-  const value = registration.factory(name => { assert(cache.has(name), id + ': load original dependency first: ' + name); return cache.get(name) })
+  const registration = clientRegistration(bytes.toString('utf8'), file)
+  const value = registration.factory(get)
   cache.set(id, value); return value
 }
-export function get(id) { assert(cache.has(id), id); return cache.get(id) }
+export { get }
 const built = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? { code: await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') } : await buildClient()
 export const clientHash = digest(built.code)
-let registration
-vm.runInThisContext('(function(window){' + built.code + '\n})')({ __ModuleLoader__: { load: value => { registration = value } } })
+const registration = clientRegistration(built.code, 'navigation-plugin.js')
 export const client = registration.factory(name => name === 'react' ? React : name === PRIMITIVES_ID ? (process.env.DSH_CONTROLS_NATIVE_PRIMITIVES === '1' ? get(PRIMITIVES_ID) : clientPrimitives(React)) : assert.fail('unexpected client dependency ' + name))
 export { React }
 export const settle = () => new Promise(resolve => setTimeout(resolve, 15))

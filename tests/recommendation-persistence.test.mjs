@@ -3,19 +3,16 @@ import { test } from 'node:test'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { join, isAbsolute, basename } from 'node:path'
 import { tmpdir } from 'node:os'
-import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { OwnerDecisionPolicyStore, SessionInstruments, parseOwnerDecisionPolicyDocument, parseInstrumentDocument, createDomainInstrumentStorage, ownerDecisionPolicyTableName } from '../lib/controls/index.js'
 import { createDomainVersionedStorage } from '../lib/controls/versioned-storage.js'
 import { instrumentFixture } from './fixtures/instrument-fixture.mjs'
+import { loadStorageSdk } from './fixtures/storage-sdk.mjs'
 const hostRoot=process.env.DSH_CONTROLS_HOST_ROOT
 async function nativeOpen(root,instanceId) {
  assert(hostRoot&&isAbsolute(hostRoot),'mandatory native fixture: set DSH_CONTROLS_HOST_ROOT to an isolated installed SDK root')
  assert(isAbsolute(root)&&basename(root).startsWith('dsh-recommendation-'),'only an explicit fresh temporary storage root is allowed')
- const load=parts=>import(pathToFileURL(join(hostRoot,'node_modules',...parts)).href)
- const {DomainFacility,defineDomain,domainTable}=await load(['@deepseek-ai','dsh-storage-domain','lib','index.js'])
- const {JsonStorageBackend}=await load(['@deepseek-ai','dsh-storage-json','lib','index.js'])
- const {z}=await load(['zod','index.js'])
+ const {DomainFacility,defineDomain,domainTable,JsonStorageBackend,z}=await loadStorageSdk(hostRoot)
  const backend=new JsonStorageBackend(root)
  const facility=new DomainFacility({storage:{backend:{get(){return backend}}},emit(){},logger:{warn(){},error(){}}},{backend:'json'})
  const close=async()=>{try{await facility.closeAll()}finally{await backend.close()}}

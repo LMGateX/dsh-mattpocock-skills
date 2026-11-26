@@ -208,7 +208,9 @@ test('hot native-to-async preference reaches the admitted Host request without r
   const commonTail = text => {
     const start = text.indexOf('Skip/cancel/silence is not approval')
     assert.ok(start >= 0, 'shared non-approval guidance is present')
-    return text.slice(start, text.indexOf('Only prepare a tree'))
+    const end = text.indexOf('Use native enter_worktree', start)
+    assert.ok(end > start, 'the shared worktree protocol follows decision guidance')
+    return text.slice(start, end)
   }
   assert.equal(commonTail(nativeText), commonTail(asyncText), 'only mode-specific channel/wait fragments differ')
   assert.match(asyncText, /Block only actions that actually depend on the decision/)

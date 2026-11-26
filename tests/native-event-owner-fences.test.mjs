@@ -182,6 +182,33 @@ test('an absent terminal needs an observed matching run or exact old-incarnation
   }
 })
 
+test('idle reconciliation preserves a delayed native end only for the exact disposed incarnation', async t => {
+  for (const proof of ['exact-disposal', 'different-disposal', 'new-foreign-start', 'same-id-root-replacement']) {
+    const roots = new Map()
+    const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+      agents.delete('child'); agents.set('other', actualAgent('other'))
+      ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
+    } })
+    const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
+    assert.equal((await f.mounted.ports.nativeSubagentActivity('root')).running, 1); await settle()
+    old.status = 'idle'; f.ctx.emit('agent/status', { agent: old, status: 'idle' })
+    f.agents.delete('leaf')
+    f.ctx.emit('agent/disposed', { agent: proof === 'different-disposal' ? running('leaf', 'other') : old })
+    await settle() // Native manager may finish teardown and publish its end after reconciliation.
+    assert.equal((await f.mounted.ports.nativeSubagentActivity('root')).running, 0)
+    assert.deepEqual(f.mounted.ports.nativeSubagentStops('root'), [])
+    if (proof === 'new-foreign-start') {
+      const replacement = running('leaf', 'other'); roots.set(replacement, f.agents.get('other')); f.agents.set(replacement.id, replacement)
+      start(f, 'delayed-' + proof); f.agents.delete('leaf')
+    }
+    if (proof === 'same-id-root-replacement') f.agents.set('root', actualAgent('root'))
+    end(f, 'delayed-' + proof); await settle()
+    const stops = f.mounted.ports.nativeSubagentStops('root').filter(row => row.itemId.includes('delayed-' + proof))
+    assert.equal(stops.length, proof === 'exact-disposal' ? 1 : 0, proof)
+    if (stops.length) assert.equal(stops[0].outcome, 'refusal')
+  }
+})
+
 test('a queued old end preserves its published outcome without borrowing the replacement turn', async t => {
   const roots = new Map(); let other
   const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {

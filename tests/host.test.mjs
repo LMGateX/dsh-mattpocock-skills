@@ -75,6 +75,27 @@ test('operator identity accepts the alpha.3+ browserPeer spelling and fails clos
   assert.throws(() => api.connectionOperatorPeer(f.ctx), { code: 'feature-disabled' })
   assert.throws(() => api.createHostAuthority(f.ctx, f.storage, f.grants), { code: 'feature-disabled' })
 })
+test('owner credential Peer is authorized independently of the in-process browserPeer identity', options, async t => {
+  const { Peer } = await load('@deepseek-ai/dsh-client-connection')
+  const ctx = new sdk.Context(), f = authorityFixture()
+  const browserPeer = new Peer(ctx, { principal: { kind: 'owner' } })
+  const credentialPeer = new Peer(ctx, { principal: { kind: 'owner' }, interactions: 'none' })
+  t.after(() => Promise.all([browserPeer.dispose(), credentialPeer.dispose()]))
+  f.ctx.connection = { browserPeer }
+  const { operatorPrincipal } = api.createHostAuthority(f.ctx, f.storage, f.grants)
+  assert.notEqual(credentialPeer.id, browserPeer.id)
+  assert.throws(() => api.operatorCaller(f.ctx), { code: 'access-denied' })
+  f.ctx.invocation = { peer: credentialPeer, signal: signal() }
+  assert.deepEqual(api.operatorCaller(f.ctx), { kind: 'user', principalId: operatorPrincipal, sessionId: null })
+  f.ctx.invocation = { peer: { id: browserPeer.id, principal: { kind: 'viewer' }, signal: signal() }, signal: signal() }
+  assert.throws(() => api.operatorCaller(f.ctx), { code: 'access-denied' }, 'matching a Peer id cannot grant operator authority')
+  f.ctx.invocation = { peer: { id: browserPeer.id, signal: signal() }, signal: signal() }
+  assert.throws(() => api.operatorCaller(f.ctx), { code: 'access-denied' }, 'missing host principal is not operator authority')
+  const revoked = new Error('credential revoked')
+  f.ctx.invocation = { peer: { id: credentialPeer.id, principal: credentialPeer.principal, signal: AbortSignal.abort(revoked) }, signal: signal() }
+  assert.throws(() => api.operatorCaller(f.ctx), error => error === revoked)
+})
+
 test('owner classifier keeps ordinary forks independent and cold child own descriptor authoritative', options, async () => {
   const f = authorityFixture(), port = api.createHostAuthority(f.ctx, f.storage, f.grants)
   assert.deepEqual(await port.authority.resolveSession('owner'), { kind: 'owner', controlWorkspaceId: 'W' })
@@ -152,6 +173,29 @@ test('host mount derives the same operator principal from the alpha.3+ browserPe
   assert.equal(f.calls[0].principalId, 'user:operator')
   assert.equal((await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() }, load)).isError, false)
 })
+test('mounted Remote accepts a distinct owner credential and observes its revocation', options, async t => {
+  const { Peer } = await load('@deepseek-ai/dsh-client-connection')
+  const f = await assembly(t, {}, undefined, new Map(), 'browserPeer')
+  const credential = new Peer(f.ctx, { principal: { kind: 'owner' }, interactions: 'none' })
+  t.after(() => credential.dispose())
+  assert.notEqual(credential.id, f.ctx.connection.browserPeer.id)
+  assert.equal((await f.invoke('readPolicy', {}, credential)).revision, 0)
+  assert.equal(f.calls[0].principalId, 'user:operator')
+
+  const entered = Promise.withResolvers(), released = Promise.withResolvers()
+  f.runtime.readPolicy = async (_, control) => {
+    entered.resolve(control)
+    await released.promise
+    control.throwIfAborted()
+    return { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} }
+  }
+  const outcome = f.invoke('readPolicy', {}, credential).then(value => ({ value }), error => ({ error }))
+  const control = await entered.promise
+  try { await credential.dispose() } finally { released.resolve() }
+  assert.equal(control.aborted, true, 'the in-flight Remote loses authority when its credential Peer is revoked')
+  assert.ok((await outcome).error)
+})
+
 test('mounted record description narrows new questions without rejecting legacy closeout', options, async t => {
   const f = await assembly(t)
   const description = f.ctx.tools.get('mattpocock_record').description
@@ -340,10 +384,7 @@ test('Remote in-flight work observes teardown cancellation, drains before dispos
 test('actual Client Remote accepts final readSession AbortSignal and never sends it as JSON', options, async t => {
   const f = await assembly(t)
   const contract = await import('../src/controls/remote-contract.ts')
-  const hostRequire = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
-  // Load the shipped unbundled Client implementation: its public browser bundle
-  // expects window.__ModuleLoader__, while this fixture has no browser/DOM/server.
-  const clientGateway = await import(pathToFileURL(join(hostRoot, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/types/client/index.js')).href)
+  const clientGateway = await load('@deepseek-ai/dsh-api-gateway/client')
   const client = new sdk.Context(); new sdk.TypertRegistry(client)
   const wire = []
   client.provide('connection', { isLoopback: true, generation: { getSnapshot: () => undefined, subscribe: () => () => {} }, registerGenerationSource: () => () => {}, start: () => ({ stop() {} }),
@@ -371,7 +412,7 @@ test('actual Client Remote accepts final readSession AbortSignal and never sends
 test('actual summary Remote uses a bounded codec and a signal channel, not JSON authority or cancellation', options, async t => {
   const f = await assembly(t)
   const contract = await import('../src/controls/remote-contract.ts')
-  const clientGateway = await import(pathToFileURL(join(hostRoot, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/types/client/index.js')).href)
+  const clientGateway = await load('@deepseek-ai/dsh-api-gateway/client')
   const client = new sdk.Context(); new sdk.TypertRegistry(client)
   const wire = [], calls = []
   client.provide('connection', { isLoopback: true, generation: { getSnapshot: () => undefined, subscribe: () => () => {} }, registerGenerationSource: () => () => {}, start: () => ({ stop() {} }),

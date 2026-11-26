@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 0.24.0-alpha.1：DSH alpha.2 发布门槛
+
+先读上游标签和实际 SDK，再按公开接口关闭 Host 与 Client 兼容差异，编译并生成产物；目标 DSH／Node 的真实插件装载、隔离 Host／Client 回归和精确归档通过后才 push、新 tag、GitHub prerelease、下载校验。不得把历史 0.2.2 夹具或仅通过 engines 检查说成新宿主验证。核对新旧工作树事件的证据边界并保留旧记录查询，不改现有 Profile 或服务。
+
 ## 0.23.0 交付收口（2026-11-14，已发布；本机安装排除）
 
 第一、第二批按下述先行契约完成，独立双轴原finding均关闭；冻结source `2c2882eb34868ee6654a62b863843860354df114`，源码与真实归档模块矩阵各1393/1393、原生各53/53、strict/canonical/官方双渠道headless通过。非force atomic push、新annotated tag、五资产[Release](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.23.0)及下载逐字节/strict/headless回验完成，失败候选和私有回放反例保留、不放宽验包器。计量、补读成本、精确身份、旧配置漂移与部署限制见[验证摘要](<VERIFICATION.md>)及[机器记录](<../dist/verification-0.23.0.json>)。当前追加仅审计文档，不移动tag或重打包；未为现有本机安装/激活，不改Profile/共享SDK/服务。

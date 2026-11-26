@@ -296,16 +296,15 @@ export interface HostMount {
     readonly ports: HostPorts;
     dispose(): Promise<void>;
 }
-/** The owner-principal Peer shape both connection generations share; only its id names the operator. */
+/** The connection-owned Peer supplies the canonical per-process operator ID. */
 export interface ConnectionOperatorPeer {
     readonly id: string;
+    readonly principal?: {
+        readonly kind: string;
+    };
+    readonly signal?: AbortSignal;
 }
-/**
- * Resolve the connection service's operator Peer without pinning one host generation.
- * alpha.3 replaced `connection.operator` with `connection.browserPeer`; both carry the
- * per-process owner identity that `invocation.peer.id` is matched against, so authorization
- * keeps working and a host exposing neither fails closed with a diagnosable code.
- */
+/** Resolve the canonical operator identity; the caller's credential Peer is not this identity. */
 export declare function connectionOperatorPeer(ctx: Context): ConnectionOperatorPeer;
 export declare function operatorCaller(ctx: Context): HostCaller;
 export declare function agentCaller(ctx: Context, agent: Agent | undefined): HostCaller;

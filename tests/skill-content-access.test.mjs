@@ -84,16 +84,17 @@ for (const channel of ['stable', 'beta']) {
 // SkillRegistry, scoped layers, tool definition, invocation checks and render
 // are the actual installed host implementations.
 if (hostRoot) {
-  const toolsModule = await load('@deepseek-ai/dsh-tools')
-  const ToolsService = toolsModule.ToolsService ?? toolsModule.default
+  const { ToolsService } = await load('@deepseek-ai/dsh-tools')
   const { default: SystemPrompt } = await load('@deepseek-ai/dsh-system-prompt')
+  const { SessionProjectionRegistry } = await load('@deepseek-ai/dsh-session-projection')
+  const { AgentRegistry } = await load('@deepseek-ai/dsh-agent')
   const nativeSkill = await load('@deepseek-ai/dsh-tool-skill')
   const { createScope } = await load('@deepseek-ai/dsh-scope')
 
   async function nativeMount(channel, providerOptions) {
     const ctx = new Context()
     const fibers = []
-    for (const service of [SystemPrompt, ToolsService, SkillRegistry]) {
+    for (const service of [SessionProjectionRegistry, SystemPrompt, ToolsService, SkillRegistry, AgentRegistry]) {
       const fiber = ctx.plugin(service)
       await fiber
       fibers.push(fiber)
@@ -113,11 +114,13 @@ if (hostRoot) {
     } })
     await delivery
     fibers.push(delivery)
-    // No agents service/AgentLoop/model or real file operations are mounted.
+    // Mount the public loader with its own dependency declaration; no agent
+    // factory, live AgentLoop, model or working-directory effects are needed.
     ctx.provide('workingDirectory', { async ensure(agent, signal) { signal?.throwIfAborted(); return agent.cwd } })
-    const loader = ctx.plugin({ name: 'content-native-loader', inject: ['tools', 'skills', 'workingDirectory'], apply: nativeSkill.apply })
+    const loader = ctx.plugin(nativeSkill)
     await loader
     fibers.push(loader)
+    assert(ctx.get('tools')?.get('skill', parent), 'actual native Skill loader must mount')
     return { ctx, parent, child, stranger, ownerScope, childScope, unrelatedScope, invalidate: () => deliveryControl.invalidate(),
       async dispose() {
         for (const fiber of fibers.reverse()) await fiber.dispose()
@@ -247,7 +250,8 @@ if (hostRoot) {
       assert.equal(f.ctx.tools.get('skill', f.child), undefined)
       assert(f.ctx.tools.get('skill', f.parent))
       assert(f.ctx.tools.get('skill', f.stranger))
-      if (typeof f.ctx.tools.executable === 'function') assert.equal(f.ctx.tools.executable('skill', f.child), undefined)
+      assert.equal(f.ctx.tools.executable('skill', f.child), undefined)
+      assert(f.ctx.tools.executable('skill', f.parent))
     } finally {
       for (const fiber of additions.reverse()) await fiber.dispose()
       await f.dispose()

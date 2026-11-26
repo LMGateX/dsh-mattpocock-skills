@@ -2,11 +2,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { registerHooks } from 'node:module'
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import ts from 'typescript'
+import { loadStorageSdk } from './fixtures/storage-sdk.mjs'
 
 const sourceRoot = new URL('../src/controls/', import.meta.url).href
 registerHooks({
@@ -164,10 +165,7 @@ const nativeOptions={skip:process.env.DSH_CONTROLS_HOST_ROOT ? false : 'set DSH_
 async function nativeFixture(t) {
   const hostRoot=process.env.DSH_CONTROLS_HOST_ROOT
   assert(isAbsolute(hostRoot))
-  const load=parts=>import(pathToFileURL(join(hostRoot,'node_modules',...parts)).href)
-  const {DomainFacility,defineDomain,domainTable}=await load(['@deepseek-ai','dsh-storage-domain','lib','index.js'])
-  const {JsonStorageBackend}=await load(['@deepseek-ai','dsh-storage-json','lib','index.js'])
-  const {z}=await load(['zod','index.js'])
+  const {DomainFacility,defineDomain,domainTable,JsonStorageBackend,z}=await loadStorageSdk(hostRoot)
   const temporary=await mkdtemp(join(tmpdir(),'dsh-history-'))
   let current
   const reopen=async()=>{

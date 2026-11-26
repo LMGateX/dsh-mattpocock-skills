@@ -86,15 +86,15 @@ const contracts: Readonly<Record<string, ToolContract>> = {
       { shape: '{action:"read", ' + query + '}', rules: queryLimit + ' query.kind is binding or observation; cleaned rows remain readable.', example: { action: 'read' } },
       { shape: '{action:"update", command:{operationId: string, bindingId: string, expectedRevision: number, state:"active"|"discarded"|"cleaned", notes?: string}}', rules: 'Binding notes: string, at most 65536 UTF-16 characters, no NUL.' },
       { shape: '{action:"update-observation", command:{operationId: string, observationId: string, expectedRevision: number, state:"open"|"cleaned", notes?: string}}', rules: 'Observation notes: string, at most 4096 UTF-16 characters, no NUL.' },
-      { shape: '{action:"reconcile", operationId: string}', rules: 'operationId identifies an existing delegation intent, not a fresh business update or observed create_worktree call.', example: { action: 'reconcile', operationId: 'existing-delegation-operation-id' } },
+      { shape: '{action:"reconcile", operationId: string}', rules: 'operationId identifies an existing delegation intent, not a fresh business update or native worktree creation observation.', example: { action: 'reconcile', operationId: 'existing-delegation-operation-id' } },
     ],
     rules: ['For both notes fields, omission preserves the previous notes; a supplied string replaces them; empty string clears them; null is rejected. States and cleaned marks are authored reports, not physical cleanup evidence. Read/update/reconcile are coordinator registry operations, not permission to create, delete or switch trees.'],
   },
   mattpocock_delegate: {
     actions: [{ shape: '{description: string, prompt: string, provider?: "spawn"|"fork", worktree?: string, operationId?: string, workflowId?: string, ticketIds?: string[]}',
-      rules: 'worktree is a prepared normalized absolute path; omit it to inherit intent (null is rejected). provider defaults to spawn; operationId may be omitted and the host uses the tool-call identity. workflowId requires nonempty existing local ticketIds. No workflowId means a ticketless lane.',
+      rules: 'Omit worktree to inherit the native checkout; DSH 0.2.3 does not support explicit worktree binding. provider defaults to spawn; operationId may be omitted and the host uses the tool-call identity. workflowId requires nonempty existing local ticketIds. No workflowId means a ticketless lane.',
       example: { description: 'Focused child', prompt: 'Read the agreed contract', operationId: 'create-one-child' } }],
-    rules: ['This tool is opt-in binding-first creation, never required for ordinary native dispatch. Native acceptance, binding verification and assignment are independent outcomes; accepted/unknown creation reuses that same child and never creates another on retry.'],
+    rules: ['This tool is opt-in managed creation, never required for ordinary native dispatch. Native acceptance, binding verification and assignment are independent outcomes; accepted/unknown creation reuses that same child and never creates another on retry.'],
   },
   mattpocock_audit: {
     actions: [{ shape: '{action:"read", ' + query + '}', rules: queryLimit + ' query.kind is session or episode; read only the current authenticated owner. Unknown/not-recorded sources cannot promise an exhaustive continuation.', example: { action: 'read' } }],

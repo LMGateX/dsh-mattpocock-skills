@@ -197,33 +197,29 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'assets/notification-sounds/toast.mp3',
 ])
 
-const EXPECTED_VERSION = '0.23.0'
-// This batch targets DSH 0.2.2-rc.3, whose Node floor is >=24.9.0.
-// Its real evaluator gives own `engines.dsh` precedence over component peers and
-// includes prereleases. Older version strings are refused; the floor admits RC1
-// and higher strings, but does not claim those future hosts were runtime-tested.
-const EXPECTED_DSH_ENGINE = '>=0.2.2-rc.1'
-export const EXPECTED_ENGINES = Object.freeze({ node: '>=24.9.0', dsh: EXPECTED_DSH_ENGINE })
+const EXPECTED_VERSION = '0.24.0-alpha.1'
+// Only the exact target has passed the alpha release gate. Keep prerelease matching narrow.
+export const EXPECTED_ENGINES = Object.freeze({ node: '^24.22.3 || >=26.13.1', dsh: '0.2.3-alpha.2' })
 
 export const EXPECTED_PEERS = Object.freeze({
-  '@deepseek-ai/cordis': '^4.0.2 || ~4.0.5-alpha.1',
-  '@deepseek-ai/dsh-skill': '^0.1.2-rc.1 || ^0.1.5-rc.2 || ^0.1.7-alpha.2 || ^0.2.0-rc.1 || ~0.2.1-alpha.1',
-  '@deepseek-ai/schemastery': '^3.18.2',
-  '@deepseek-ai/dsh-session': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-workspace': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-storage-domain': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-subagent': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-tools': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-llm': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-typert-protocol': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-sandbox': '~0.2.1-alpha.1',
-  '@deepseek-ai/cordis-plugin-loader': '~1.0.6-alpha.1',
-  '@deepseek-ai/dsh-agent': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-attachment': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-brand': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-chunked-list': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-util-time': '~0.2.1-alpha.1',
-  '@deepseek-ai/dsh-util-values': '~0.2.1-alpha.1',
+  '@deepseek-ai/cordis': '4.2.0-alpha.1',
+  '@deepseek-ai/dsh-skill': '0.2.3-alpha.2',
+  '@deepseek-ai/schemastery': '3.20.0-alpha.1',
+  '@deepseek-ai/dsh-session': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-workspace': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-storage-domain': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-subagent': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-tools': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-llm': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-typert-protocol': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-sandbox': '0.2.3-alpha.2',
+  '@deepseek-ai/cordis-plugin-loader': '1.2.0-alpha.1',
+  '@deepseek-ai/dsh-agent': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-attachment': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-brand': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-chunked-list': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-util-time': '0.2.3-alpha.2',
+  '@deepseek-ai/dsh-util-values': '0.2.3-alpha.2',
   'react': '^18.2.0',
   'zod': '^4.6.5',
 })
@@ -239,6 +235,7 @@ export const EXPECTED_CLIENT = Object.freeze({
   inject: Object.freeze([
     '@deepseek-ai/dsh-client-ui-renderer',
     '@deepseek-ai/dsh-client-ui-session',
+    '@deepseek-ai/dsh-client-ui-session-status',
     '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-sidebar-right',
     '@deepseek-ai/dsh-client-ui-workspace',
@@ -344,7 +341,7 @@ export function validatePackagePolicy(packageJson) {
   assert(packageJson.main === './lib/index.js', 'package main target is invalid')
   assert(packageJson.types === './lib/types/index.d.ts', 'package types target is invalid')
   assert(packageJson.packageManager === 'pnpm@11.8.0', 'package manager pin is invalid')
-  assert(sameJson(packageJson.engines, EXPECTED_ENGINES), 'declared engine floors differ from the accepted RC1 metadata policy')
+  assert(sameJson(packageJson.engines, EXPECTED_ENGINES), 'declared engine requirements differ from the exact alpha metadata policy')
   assert(sameJson(packageJson.files, PACKAGE_FILES_ALLOWLIST), 'package files allowlist differs from the accepted Phase 4 allowlist')
   assert(sameJson(packageJson.peerDependencies, EXPECTED_PEERS), 'peer dependency policy differs from the tested host seams')
   assert(sameJson(packageJson.peerDependenciesMeta, EXPECTED_PEER_META), 'optional peer metadata differs from the accepted capability seams')

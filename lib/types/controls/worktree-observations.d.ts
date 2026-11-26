@@ -2,7 +2,7 @@ import type { InstrumentInstance } from './state.js';
 import type { InstrumentAuthor } from './instrument-state.js';
 import type { VersionedStorage } from './versioned-storage.js';
 import type { NativeExecutionChild } from './native-executions.js';
-/** One native create_worktree call observed through the tool pipeline. Immutable creation facts. */
+/** Immutable worktree creation facts from a native tool call, never from entering an existing tree. */
 export interface WorktreeObservationInput {
     readonly creatorSessionId: string;
     /** Tool call identity; a PTC sub-dispatch uses its own sub-call id. */

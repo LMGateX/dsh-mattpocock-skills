@@ -12,6 +12,9 @@ export async function installSidebar(ctx) {
     c.provide('slots', { provideRoot: noop, inject(_name, fn) { const effect = fn(); if (effect && typeof effect.next === 'function') { const disposers = [...effect]; return () => { for (const dispose of disposers.reverse()) dispose() } } return effect },
       register(definition, component) { definitions.push({ definition, component }); return () => {} }, entriesOfSlot: () => [], subscribe: noop })
     c.provide('locale', { bind: () => key => key, register: noop }); c.provide('uiSession', { adapter: { current } })
+    // This fixture does not render native lineage/status slots; the actual subagent
+    // plugin still requires its session-status service to contribute navigation.
+    c.provide('uiSession.sessionStatus', {})
     c.provide('layout', { panelInfo, openRightbar() {}, closeRightbar() {} }); c.provide('contextMenus', { register: noop, active: source(undefined) })
     c.provide('shortcuts', { register: noop, catalog: source([]), runtime: 'web', closeWindow: async () => {} })
     c.provide('uiWorkspace', { openSession: () => assert.fail('must not main-navigate') })

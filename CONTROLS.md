@@ -2,6 +2,10 @@
 
 > **模型工具输出（0.10.0 起）：** [插件模型工具输出减负](<docs/BOUNDED_TOOL_OUTPUTS.md>) 已实施：默认 schema-2 有界当前视图/小回执、按授权版本分段取正文，覆盖插件各工具的同类大返回。它不要求 DSH 补丁、改宿主配置或清理旧 spill；历史 snapshot 返回不作为当前调用格式。
 
+## 0.24.0-alpha.1：适配 DSH 0.2.3-alpha.2
+
+原生 `enter_worktree`（工具可用时）新建成功才产生观测；重用与 `exit_worktree` 不产生创建记录；历史 `create_worktree` 仍可回放。普通派发使用继承当前有效目录的原生 `subagent` / `subagent_fork`，再以 `mattpocock_assign` 授受权仪器范围。宿主 header 仅保存原项目，故显式 `mattpocock_delegate.worktree` 拒绝新请求，不写创建意图或派发，不推翻已有回执。见[兼容性核对](<docs/HOST_COMPATIBILITY.md>)。
+
 ## 0.23.0：工具调用契约与当前行动摘要分层
 
 [精简契约](<docs/CONTEXT_COMPACTION_CONTRACT.md>)固定第一、第二批：工具说明按能力保留必要字段／效果，自动注入压缩重复叙述、已知空类别与普通结束明细，诊断材料经现有受权读取恢复。保留旧义务、结果适用／排除条件、T/S真实覆盖、unknown与当前事实完整变化检测；OFF不命令新增管理操作，也不清旧账。工具envelope仍schemaVersion2／representationVersion2，next／cursor／locator、64KiB读／8KiB回执错误与V5回滚边界不变。不delta-only、不永久一次注入，compaction／撤权／stale恢复与durability frontier保持。**本批不为现有本机DSH安装或激活、不改Profile或重启服务**；交付实测另见[验证摘要](<docs/VERIFICATION.md>)。

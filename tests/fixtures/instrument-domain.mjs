@@ -1,21 +1,13 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { isAbsolute } from 'node:path'
 import { parseControlsDocument, parseInstrumentDocument, createDomainControlsStorage, createDomainInstrumentStorage } from '../../lib/controls/index.js'
 import { instrumentFixture } from './instrument-fixture.mjs'
+import { loadStorageSdk } from './storage-sdk.mjs'
 
 export async function openInstrumentDomain(storageRoot) {
   const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
   assert(isAbsolute(hostRoot) && isAbsolute(storageRoot))
-  const load = path => import(pathToFileURL(join(hostRoot, 'node_modules', ...path)).href)
-  const { DomainFacility, defineDomain, domainTable } = await load(['@deepseek-ai', 'dsh-storage-domain', 'lib', 'index.js'])
-  const { JsonStorageBackend } = await load(['@deepseek-ai', 'dsh-storage-json', 'lib', 'index.js'])
-  const { z } = await load(['zod', 'index.js'])
-  // The peers must match the host build actually under test; pinning a literal build number
-  // would only restate the calendar, not the contract.
-  const hostVersion = JSON.parse(await readFile(join(hostRoot, 'package.json'), 'utf8')).version
-  for (const name of ['dsh-storage-domain', 'dsh-storage-json']) assert.equal(JSON.parse(await readFile(join(hostRoot, 'node_modules', '@deepseek-ai', name, 'package.json'), 'utf8')).version, hostVersion)
+  const { DomainFacility, defineDomain, domainTable, JsonStorageBackend, z } = await loadStorageSdk(hostRoot)
   const backend = new JsonStorageBackend(storageRoot)
   const events = []
   const facility = new DomainFacility({ storage: { backend: { get() { return backend } } }, emit(name, value) { events.push({ name, value }) }, logger: { warn() {}, error() {} } }, { backend: 'json' })

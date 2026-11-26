@@ -1299,8 +1299,8 @@ export function WorktreeObservationsPanel(props: { readonly view: ClientSessionS
   try { rows = observationRows(props.view) } catch (error) { return diagnostic('工作树观测未知：' + errorText(error)) }
   const reason = props.view.health.find(row => row.scope === 'worktree-observations' && row.status === 'unknown')?.reason
   const linked = rows?.reduce((total, row) => total + row.nativeChildren.length, 0) ?? 0
-  return h('section', { 'aria-label': '工作树观测仪器' }, h('h4', null, '原生建树观测（create_worktree）'),
-    diagnostic('只登记经 DSH 工具管线成功执行的原生 create_worktree；创建者活动性是读取时的宿主事实，树是否存在以受权 Git 核验为准。不记录、不推测目录被谁使用，也不创建或删除任何树。'),
+  return h('section', { 'aria-label': '工作树观测仪器' }, h('h4', null, '原生建树观测'),
+    diagnostic('只登记 DSH 工具管线确认的原生创建（enter_worktree 的 created 为 true，或历史 create_worktree）；进入已有树与退出不算创建。创建者活动性是读取时的宿主事实，树是否存在以受权 Git 核验为准。不记录、不推测目录被谁使用，也不创建或删除任何树。'),
     rows === null ? diagnostic('工作树观测数量未知：' + (reason ?? '宿主未返回观测投影')) : h('div', null,
       diagnostic('当前观测 ' + rows.length + (linked === 0 ? '' : ' · 原生子会话关联 ' + linked + ' 条（created-tree；observed）') + '（已登记清理的行退出当前视图，记录与历史保留）'),
       rows.map(row => h(WorktreeObservationEditor, { key: props.view.sessionId + ':' + row.observationId, sessionId: props.view.sessionId, row, remote: props.remote, refresh: props.refresh }))))

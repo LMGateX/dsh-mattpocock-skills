@@ -1,6 +1,16 @@
 # DSH 宿主版本兼容性核对
 
-## 0.21.2 当前边界：DSH RC3适配
+## 0.24.0-alpha.1：精确适配 DSH 0.2.3-alpha.2
+
+[上游发布](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2)对应源码 `4b399c39a6d1479cd84ca591b4d7c88e24d38a96`。插件要求精确 `engines.dsh: 0.2.3-alpha.2`，Node `^24.22.3 || >=26.13.1`。验收仅针对 Node 24.22.3，不声称测试 Node 26 或其他宿主。
+
+- 远端凭据的 Peer ID 不等于进程内 browser Peer；Remote 验证宿主提供的 owner principal，响应取消跟随凭据生命周期，原插件身份键不变。
+- 子代理导航显式选择原生 `subagentchat`；客户端仍使用原生 loader 与基础 externals。
+- `enter_worktree` 成功且 `created: true` 才产生创建观测，历史 `create_worktree` 及直接／PTC 回放保留。重用、退出、失败及无调用身份的宿主日志不产生行。
+- 原生子代理继承有效目录，header cwd 只是原项目。当前适配拒绝显式强绑定和根据该 header 重新确认，不用当前目录、请求路径或泛化的目录切换事件补作启动证明。过去的回执可以读取。
+- Skills 双渠道、vendor、provider 优先级和业务记录架构保持。只在隔离 profile 验证，不安装或激活现有本机 Profile。
+
+## 历史 0.21.2：DSH RC3适配
 
 最新范围固定在[RC3适配契约](<DSH_022_RC3_ADAPTATION.md>)：保留`engines.dsh >=0.2.2-rc.1`与Node `>=24.9.0`，本批精确运行目标仅`0.2.2-rc.3`。legacy格式fixture不是实际RC1 SDK验收，metadata范围接受高版本字符串也不证明其运行兼容。三项已确认差异、公开seam与隔离验证方法见[RC3核对](<DSH_022_RC3_COMPATIBILITY.md>)；实际完成门禁见[VERIFICATION](<VERIFICATION.md>)。本批不安装既有本机DSH/Profile，不改shared SDK、不重启GUI。以下各旧版本段落保留为历史，不覆盖最新范围。
 

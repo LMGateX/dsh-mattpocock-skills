@@ -2,21 +2,38 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRequire } from 'node:module'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import vm from 'node:vm'
 import React from 'react'
+import { Window } from 'happy-dom'
 import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
+import { clientSdk, clientRegistration, readShellModules, staticModules } from './fixtures/client-sdk.mjs'
+import { buildClient } from '../scripts/build-client.mjs'
 
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-const hostRequire = hostRoot ? createRequire(pathToFileURL(join(hostRoot, 'package.json'))) : undefined
-// 0.2.1-alpha.4 still makes the Renderer require the `@deepseek-ai/dsh-client-ui-slots` module id
-// but no longer installs the package: the Web frontend seeds that id from its own bundle
-// (dsh-web-frontend/dist). This fixture assembles the Renderer from installed packages, so it
-// reports the missing precondition instead of a product failure.
-const slotsInstalled = hostRequire !== undefined && (() => { try { hostRequire.resolve('@deepseek-ai/dsh-client-ui-slots'); return true } catch { return false } })()
-const native = { timeout: 2000, skip: !hostRoot ? 'Set DSH_CONTROLS_HOST_ROOT for native Client activation'
-  : !slotsInstalled ? 'the installed host does not provide @deepseek-ai/dsh-client-ui-slots to fixture assembly' : false }
+const hostRequire = hostRoot ? clientSdk(hostRoot) : undefined
+const native = { timeout: 5000, skip: !hostRoot ? 'Set DSH_CONTROLS_HOST_ROOT for native Client activation' : false }
+const local = createRequire(import.meta.url)
+let sdkBaseline
+
+async function shellBaseline() {
+  if (sdkBaseline) return sdkBaseline
+  const shell = new Window({ url: 'http://activation-fixture.test/' })
+  shell.document.write('<!doctype html><html><head></head><body><div id="root"></div></body></html>')
+  const globals = new Map()
+  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'Event', 'MutationObserver', 'ResizeObserver', 'CSSStyleSheet', 'CustomEvent']) {
+    globals.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: key === 'window' ? shell : shell[key] })
+  }
+  try { return sdkBaseline = await readShellModules(hostRequire) }
+  finally {
+    await shell.happyDOM.close()
+    for (const [key, value] of globals) {
+      if (value) Object.defineProperty(globalThis, key, value)
+      else delete globalThis[key]
+    }
+  }
+}
 
 function assertUnmounted(f) {
   for (const namespace of ['remote.mattpocockControls', 'remote.mattpocockRecommendationSupport'])
@@ -28,28 +45,21 @@ function assertUnmounted(f) {
 }
 
 async function assembly(t) {
-  const require = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
-  const load = name => import(pathToFileURL(require.resolve(name)))
-  const { Context } = await load('@deepseek-ai/cordis')
+  const load = name => import(pathToFileURL(hostRequire.resolve(name)))
+  const cordis = await load('@deepseek-ai/cordis')
   const { TypertRegistry } = await load('@deepseek-ai/dsh-typert-registry')
-  const gateway = await import(pathToFileURL(join(hostRoot, 'node_modules/@deepseek-ai/dsh-api-gateway/lib/types/client/index.js')))
-  const ctx = new Context()
-  t.after(() => ctx.fiber.dispose(), { timeout: 2000 })
+  const gateway = await load('@deepseek-ai/dsh-api-gateway/client')
+  const ctx = new cordis.Context()
+  t.after(() => ctx.fiber.dispose(), { timeout: 5000 })
   new TypertRegistry(ctx)
   const calls = [], tabs = []
-  const nativeSlots = await load('@deepseek-ai/dsh-client-ui-slots')
-  let rendererRegistration
-  const rendererSource = await readFile(join(hostRoot, 'node_modules/@deepseek-ai/dsh-client-ui-renderer/lib/client.js'), 'utf8')
-  vm.runInThisContext('(function(window){' + rendererSource + '\n})', { filename: 'native-slot-registry.js' })({ __ModuleLoader__: { load: value => { rendererRegistration = value } } })
-  const renderer = rendererRegistration.factory(name => {
-    if (name === '@deepseek-ai/cordis') return { Context, Service: require('@deepseek-ai/cordis').Service }
-    if (name === '@deepseek-ai/dsh-client-ui-slots') return nativeSlots
-    if (name === 'react') return React
-    if (name === 'react/jsx-runtime') return createRequire(import.meta.url)('react/jsx-runtime')
-    // DOM mounting is outside this no-server activation/registration test.
-    if (name === 'react-dom' || name === 'react-dom/client') return Object.freeze({})
-    throw new Error('Unexpected renderer external ' + name)
+  const baseline = await shellBaseline()
+  const modules = staticModules(baseline, {
+    react: React, 'react/jsx-runtime': local('react/jsx-runtime'), '@deepseek-ai/cordis': cordis,
+    'react-dom': local('react-dom'), 'react-dom/client': local('react-dom/client'),
   })
+  const rendererPath = hostRequire.resolve('@deepseek-ai/dsh-client-ui-renderer/client')
+  const renderer = clientRegistration(await readFile(rendererPath, 'utf8'), rendererPath).factory(modules.get)
   new renderer.SlotRegistry(ctx)
   const kinds = {
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' }, 'plugins.row.config': { kind: 'keyed', scope: 'root' },
@@ -66,12 +76,11 @@ async function assembly(t) {
   ctx.provide('sidebarRight', { mounted: { getSnapshot: () => null }, openTab() { throw new Error('Activation must not open a tab') } })
   ctx.provide('sidebarRightTabs', { register: definition => { tabs.push(definition); return () => { tabs.splice(tabs.indexOf(definition), 1) } } })
   await ctx.plugin(gateway)
-  let registration
-  const source = await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE ?? new URL('../lib/client.js', import.meta.url), 'utf8')
-  vm.runInThisContext('(function(window){' + source + '\n})', { filename: 'native-client.bundle.js' })({ __ModuleLoader__: { load: value => { registration = value } } })
+  const source = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') : (await buildClient()).code
+  const registration = clientRegistration(source, 'native-client.bundle.js')
   const primitives = clientPrimitives(React)
   const plugin = registration.factory(name => { if (name === 'react') return React; if (name === PRIMITIVES_ID) return primitives; throw new Error('Unexpected request ' + name) })
-  return { ctx, plugin, calls, tabs, load, source, primitives }
+  return { ctx, plugin, calls, tabs, load, source, primitives, baseline, modules }
 }
 
 test('native Client plugin fiber activates after self-mounting its declared Remote namespace', native, async t => {
@@ -120,15 +129,16 @@ async function browserBoot(f) {
   const { default: Loader } = await f.load('@deepseek-ai/cordis-plugin-loader')
   await f.ctx.plugin(Loader, { baseUrl: import.meta.url })
   const target = { mode: 'queue', pendingQueue: [], load(registration) { this.pendingQueue.push(registration) } }
-  let bootstrap
-  const moduleSource = await readFile(join(hostRoot, 'node_modules/@deepseek-ai/dsh-client-modules/lib/client.js'), 'utf8')
-  vm.runInThisContext('(function(window){' + moduleSource + '\n})')({ __ModuleLoader__: { load: registration => { bootstrap = registration } } })
-  const moduleExports = bootstrap.factory(name => { throw new Error('Unexpected module bootstrap external ' + name) })
+  const bootstrapPath = hostRequire.resolve('@deepseek-ai/dsh-client-modules/client')
+  const bootstrap = clientRegistration(await readFile(bootstrapPath, 'utf8'), bootstrapPath)
+  const moduleExports = bootstrap.factory(f.modules.get)
   const id = '@lmgatex/dsh-mattpocock-skills'
   const graph = { rev: 'synthetic-boot', entries: [{ id, url: '/synthetic-client.js', rev: 'synthetic-client' }],
     batches: [{ phase: 'application', url: '/synthetic-client.js', rev: 'synthetic-client', entries: [id] }] }
   const modules = moduleExports.createClientModuleSystem(target, { id: bootstrap.id, exports: moduleExports }, {
-    boot: graph, staticModules: { react: React, [PRIMITIVES_ID]: f.primitives }, loadBundle: async url => {
+    boot: graph, staticModules: Array.isArray(f.baseline)
+      ? f.baseline.map(row => row.id === 'react' ? { id: row.id, factory: () => React } : row.id === PRIMITIVES_ID ? { id: row.id, factory: () => f.primitives } : row)
+      : { react: React, [PRIMITIVES_ID]: f.primitives }, loadBundle: async url => {
       assert.equal(url, '/synthetic-client.js')
       vm.runInThisContext('(function(window){' + f.source + '\n})')({ __ModuleLoader__: target })
     },

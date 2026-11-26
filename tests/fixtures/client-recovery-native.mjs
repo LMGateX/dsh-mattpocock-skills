@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import vm from 'node:vm'
 import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './client-primitives.mjs'
+import { clientSdk, clientRegistration, readShellModules, staticModules } from './client-sdk.mjs'
 
 // Explicit native-host precondition: never silently substitute a fake SlotCore or skip.
-// The RC1 shell seeds ui-slots instead of installing a standalone package. Import the
-// ENTIRE ORIGINAL shell through its normal loader.create port. A fixture-only sentinel
-// stops boot before any runtime/plugin dispatch. No source slicing/replacement is used.
+// The original Web shell supplies the SlotCore through its public loader handoff.
 export const hostRoot = process.env.DSH_RECOVERY_HOST_ROOT ?? process.env.DSH_CONTROLS_HOST_ROOT
-if (!hostRoot) throw new Error('Set DSH_RECOVERY_HOST_ROOT to an isolated native DSH host (RC1 supported); no native slot fallback')
+if (!hostRoot) throw new Error('Set DSH_RECOVERY_HOST_ROOT to an isolated native DSH host; no native slot fallback')
 const metadata = JSON.parse(await readFile(join(hostRoot, 'package.json'), 'utf8'))
 assert.match(metadata.version, /^0[.]2[.]/, 'explicit supported native fixture version')
 export const window = new Window({ url: 'http://recovery-fixture.test/' })
@@ -24,34 +22,18 @@ for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputE
   previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
   Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: key === 'window' ? window : key === 'IS_REACT_ACT_ENVIRONMENT' ? true : window[key] })
 }
-const assets = join(hostRoot, 'node_modules/@deepseek-ai/dsh-web-frontend/dist/assets')
-const shellName = (await readdir(assets)).find(name => /^index-.*[.]js$/.test(name))
-assert.ok(shellName, 'isolated host supplies its original frontend shell')
-let baseline
-const stop = new Error('fixture stops original shell after loader baseline handoff')
-const originalError = console.error
-let stopped = false
-console.error = (...args) => { if (args[0] === stop) stopped = true; else originalError(...args) }
-globalThis.__ModuleLoader__ = { create(options) { baseline = options.staticModules; throw stop } }
-try { await import(pathToFileURL(join(assets, shellName))); await new Promise(resolve => setImmediate(resolve)) }
-finally { console.error = originalError; delete globalThis.__ModuleLoader__ }
-assert.equal(stopped, true, 'unmodified shell stopped before runtime boot')
-assert.equal(typeof baseline?.['@deepseek-ai/dsh-client-ui-slots']?.SlotCore, 'function')
-const requireHost = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
+const requireHost = clientSdk(hostRoot), local = createRequire(import.meta.url)
+const registrations = await readShellModules(requireHost)
 const cordis = await import(pathToFileURL(requireHost.resolve('@deepseek-ai/cordis')))
-let rendererRegistration
-vm.runInThisContext('(function(window){' + await readFile(join(hostRoot, 'node_modules/@deepseek-ai/dsh-client-ui-renderer/lib/client.js'), 'utf8') + '\n})')({ __ModuleLoader__: { load: value => { rendererRegistration = value } } })
-const renderer = rendererRegistration.factory(name => {
-  if (name === 'react') return React
-  if (name === 'react/jsx-runtime') return createRequire(import.meta.url)(name)
-  if (name === 'react-dom' || name === 'react-dom/client') return createRequire(import.meta.url)(name)
-  if (name === '@deepseek-ai/cordis') return cordis
-  if (name === '@deepseek-ai/dsh-client-ui-slots') return baseline[name]
-  throw new Error('Unexpected native renderer dependency ' + name)
+const modules = staticModules(registrations, {
+  react: React, 'react/jsx-runtime': local('react/jsx-runtime'),
+  'react-dom': local('react-dom'), 'react-dom/client': local('react-dom/client'), '@deepseek-ai/cordis': cordis,
 })
+assert.equal(typeof modules.get('@deepseek-ai/dsh-client-ui-slots').SlotCore, 'function')
+const rendererPath = requireHost.resolve('@deepseek-ai/dsh-client-ui-renderer/client')
+const renderer = clientRegistration(await readFile(rendererPath, 'utf8'), rendererPath).factory(modules.get)
 const code = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') : (await buildClient()).code
-let registration
-vm.runInThisContext('(function(window){' + code + '\n})')( { __ModuleLoader__: { load: value => { registration = value } } })
+const registration = clientRegistration(code, 'recovery-plugin.js')
 export const client = registration.factory(name => {
   if (name === 'react') return React
   if (name === PRIMITIVES_ID) return clientPrimitives(React)
