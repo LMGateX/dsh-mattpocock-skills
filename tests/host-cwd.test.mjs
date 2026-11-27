@@ -98,11 +98,14 @@ async function fixture(t, { prepare = async () => ({}), mounted = false } = {}) 
   let host
   if (mounted) {
     ctx.provide('connection', { operator: operatorPeer(ctx), rpc: { intercept() { return async () => {} } } })
-    const workspace = { id: 'native-workspace', path: temp, title: 'Native fixture', status: async () => 'ok', sessionIds: [parent.id] }
-    ctx.provide('workspaceRegistry', { get: id => id === workspace.id ? workspace : undefined, resolveByPath: async () => workspace, list: () => [workspace] })
+    // Policy follows the registered workspace at the parent header, not the effective cwd.
+    const workspace = { id: 'native-workspace', path: pathA, title: 'Native fixture', status: async () => 'ok', sessionIds: [parent.id] }
+    ctx.provide('workspaceRegistry', { get: id => id === workspace.id ? workspace : undefined, resolveByPath: async path => path === workspace.path ? workspace : undefined, list: () => [workspace] })
     await ctx.plugin(sdk.SandboxPolicyService, { mode: 'read-only', workspaceRoot: temp })
-    const backend = { kv: { async open() {
-      const rows = {}
+    const policy = { revision: 0, extensionEnabled: true, defaults: {}, workspaceOverrides: { [workspace.id]: { workspace: { enabled: true } } } }
+    const backend = { kv: { async open(descriptor) {
+      const rows = descriptor.name === 'mattpocock_controls'
+        ? { state: { schemaVersion: 1, revision: 0, policy, instances: [], associations: [] } } : {}
       return { async loadAll() { return { global: null, tables: { records: rows } } }, async putRecord(_table, key, value) { rows[key] = structuredClone(value) }, async deleteRecord(_table, key) { delete rows[key] }, async close() {} }
     } } }
     ctx.provide('storage', { backend: { get: () => backend } })
@@ -177,11 +180,10 @@ test('mounted native cancellation during awaited preparation cleans partial reso
   const f = await fixture(t, { mounted: true, prepare: async () => { entered.resolve(); await proceed.promise; return {} } })
   const control = new AbortController()
   const operation = f.host.ports.createContinuable({ agent: f.parent, signal: control.signal }, { provider: 'spawn', childId: 'cancelled-mounted', label: 'Cancel native', prompt: 'No model' })
-  const rejected = assert.rejects(operation, /cancelled during native preparation/)
-  await entered.promise
+  await Promise.race([entered.promise, operation.then(() => assert.fail('activation accepted before entering preparation'))])
   control.abort(new Error('cancelled during native preparation'))
   proceed.resolve()
-  await rejected
+  await assert.rejects(operation, /cancelled during native preparation/)
   assert.equal(f.prepared.length, 1, 'native failure is not retried')
   assert.equal(f.starts.length, 0)
   assert.equal(f.ctx.agents.get('cancelled-mounted'), undefined)
