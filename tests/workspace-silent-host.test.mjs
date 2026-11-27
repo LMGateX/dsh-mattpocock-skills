@@ -4,6 +4,8 @@ import { actualAgent, createRuntime, host, loadSDK, mountedFixture, operator, po
 import { operatorPeer } from './fixtures/peer.mjs'
 import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
+const strictSilence = process.env.MATTPOCOCK_STRICT_SILENCE_REQUIRED === '1'
+if (strictSilence) assert(process.env.DSH_CONTROLS_HOST_ROOT, 'strict silence requires the exact installed Host')
 const installedHost = { skip: !process.env.DSH_CONTROLS_HOST_ROOT && 'set DSH_CONTROLS_HOST_ROOT for installed-host probes' }
 const resolve = (ctx, agent) => ctx.tools.resolve({ agent, modelSelection: { provider: 'fixture', model: 'fixture' }, signal: signal() })
 const owned = (ctx, agent, toolSet) => ctx.tools.schemas(agent, toolSet).map(t => t.name).filter(name => name.startsWith('mattpocock_'))
@@ -117,12 +119,16 @@ for (const { executor, held } of requestProbes) test(
   }
   await first
   assert.equal(requests.length, 1)
-  if (executor === 'native') assert(requests[0].tools.some(tool => tool.name === 'mattpocock_controls'))
-  else assert(requests[0].messages.some(message => message.role === 'system' && JSON.stringify(message.content).includes('mattpocock_controls:')))
-  // The held probe deliberately records an upstream admission limitation,
-  // not a passing strict-silence acceptance. The stale snapshot crossed
-  // pre-step before OFF even though the model stream had not yet started.
-  assert(requests[0].messages.some(message => message.source?.kind === 'mattpocock-controls'))
+  const initial = requests[0]
+  const declaration = executor === 'native'
+    ? initial.tools?.some(tool => tool.name === 'mattpocock_controls') === true || initial.toolHistory.tools.some(tool => tool.name === 'mattpocock_controls')
+    : initial.messages.some(message => message.role === 'system' && JSON.stringify(message.content).includes('mattpocock_controls:'))
+  const snapshot = initial.messages.some(message => message.source?.kind === 'mattpocock-controls')
+  // By default the held probe detects drift of the installed alpha.2 limitation;
+  // release mode flips it into the actual OFF acceptance assertion.
+  const expectEnabled = !(held && strictSilence)
+  assert.equal(declaration, expectEnabled, 'model declaration must follow the current release-mode policy expectation')
+  assert.equal(snapshot, expectEnabled, 'plugin snapshot must follow the current release-mode policy expectation')
   agent.inject(host.makeSnapshotMessage('fixture-not-yet-admitted-plugin-snapshot'))
   if (!held) await disable()
   await follow('ordinary second input')
