@@ -7,7 +7,7 @@ import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { operatorPeer } from './fixtures/peer.mjs'
-import { executeRegistryTool } from './fixtures/nested-tool.mjs'
+import { executeModelTool, executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
 const sourceRoot = new URL('../src/', import.meta.url).href
@@ -124,6 +124,8 @@ test('policy writes default denied for agents, exact operator grants are revisio
   await f.grants.compareAndSwap(1, { schemaVersion: 1, revision: 2, grants: [{ sessionId: 'owner', enabled: false }] })
   await assert.rejects(port.authority.authorizePolicy('agent:owner', 'write'), { code: 'access-denied' })
 })
+const collaborationPolicy = { revision: 0, extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }
+const enabledUnits = (seedUnits = new Map()) => new Map([...seedUnits, ['mattpocock_controls', new Map([['state', { schemaVersion: 1, revision: 0, policy: collaborationPolicy, instances: [], associations: [] }]])]])
 async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map(), connectionShape = 'operator') {
   const ctx = new sdk.Context(), f = authorityFixture()
   const operator = operatorPeer(ctx)
@@ -148,7 +150,7 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   let permissionTail = Promise.resolve()
   const runtime = {
     serializePolicyPermission(effect) { const result = permissionTail.then(effect); permissionTail = result.catch(() => {}); return result },
-    async readPolicy(caller) { calls.push(caller); return { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } },
+    async readPolicy(caller) { calls.push(caller); return units.get('mattpocock_controls')?.get('state')?.policy ?? { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } },
     async savePolicy(caller, intent, expectedRevision) { calls.push(caller); return { ...intent, revision: expectedRevision + 1 } },
     async readSession(caller, sessionId) { calls.push(caller); return { sessionId, capabilities: api.HOST_CAPABILITIES } },
     // Explicit current-only Host facade fixture. Production has its own actual-runtime seam tests.
@@ -167,11 +169,13 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   const invoke = (method, args = {}, peer = operator) => gateway.invoke({ namespace: 'mattpocockControls', method, args, peer, signal: signal() })
   return { ctx, mounted, gateway, invoke, calls, events, owner: f.owner, owned, units, runtime }
 }
+const collaborationAssembly = (t, runtimeExtras, factorySetup, seedUnits, connectionShape) => assembly(t, runtimeExtras, factorySetup, enabledUnits(seedUnits), connectionShape)
+
 test('host mount derives the same operator principal from the alpha.3+ browserPeer spelling', options, async t => {
-  const f = await assembly(t, {}, undefined, new Map(), 'browserPeer')
+  const f = await collaborationAssembly(t, {}, undefined, new Map(), 'browserPeer')
   assert.equal((await f.invoke('readPolicy')).revision, 0)
   assert.equal(f.calls[0].principalId, 'user:operator')
-  assert.equal((await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() }, load)).isError, false)
+  assert.equal((await executeModelTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'browser-peer-call', agent: f.owner, signal: signal() }, load)).isError, false)
 })
 test('mounted Remote accepts a distinct owner credential and observes its revocation', options, async t => {
   const { Peer } = await load('@deepseek-ai/dsh-client-connection')
@@ -232,16 +236,16 @@ test('actual Cordis/Typert gateway dispatches strict bound Remote and rejects fo
 })
 test('a failing post-execute observation never replaces the native tool result', options, async t => {
   let observed = 0
-  const f = await assembly(t, { async postExecute() { observed += 1; throw new Error('observer exploded') } })
+  const f = await collaborationAssembly(t, { async postExecute() { observed += 1; throw new Error('observer exploded') } })
   await f.invoke('grantPolicy', { sessionId: 'owner', enabled: true, expectedRevision: 0 })
-  const result = await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'observer-failure', agent: f.owner, signal: signal() }, load)
+  const result = await executeModelTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'observer-failure', agent: f.owner, signal: signal() }, load)
   // An observer's failure must not turn an accepted native result into an error.
   assert.equal(result.isError, false)
   assert.equal(observed, 1, 'the fixture runtime post-execute must actually be reached')
 })
 
 test('PTC-style nested post-execute keeps the plugin contract with and without an attributable agent', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   const result = Object.freeze({ isError: false, value: null, content: [] })
   // A nested program call carries the effective agent, so name and nesting do not matter:
   // the plugin appends its own separate message and leaves the tool result untouched.
@@ -256,8 +260,8 @@ test('PTC-style nested post-execute keeps the plugin contract with and without a
 })
 
 test('actual registry native/nested tool execution authenticates caller and cannot self-grant policy', options, async t => {
-  const f = await assembly(t)
-  const execute = (name, args, agent = f.owner) => executeRegistryTool(f.ctx, { name, arguments: args, callId: 'fixture-call', agent, signal: signal() }, load)
+  const f = await collaborationAssembly(t)
+  const execute = (name, args, agent = f.owner) => executeModelTool(f.ctx, { name, arguments: args, callId: 'fixture-call', agent, signal: signal() }, load)
   assert.equal((await execute('mattpocock_controls', { request: { action: 'read' } })).isError, false)
   assert.equal((await execute('mattpocock_controls', { request: { action: 'save', intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }, expectedRevision: 0 } })).isError, true)
   assert.equal((await execute('mattpocock_record', { request: { action: 'read', principal: 'user:operator' } })).isError, true)
@@ -269,7 +273,7 @@ test('actual registry native/nested tool execution authenticates caller and cann
   assert.equal((await execute('mattpocock_controls', { request: { action: 'save', intent: { extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }, expectedRevision: 0 } })).isError, true)
 })
 test('native pre-step and post-result preserve original identities and append only separate plugin messages', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   const native = sdk.createUserMessage({ content: [{ type: 'text', text: 'native settled output' }], source: { kind: 'user' } })
   f.ctx.on('agent/pre-step', async () => ({ kind: 'enter', messages: [native], startsRequestSeries: true }))
   const decision = await f.ctx.waterfall('agent/pre-step', { agent: f.owner, messages: [native], turn: 1, step: 1, signal: signal() }, async () => ({ kind: 'enter', messages: [native] }))
@@ -280,7 +284,7 @@ test('native pre-step and post-result preserve original identities and append on
   assert.deepEqual(result, { isError: false, value: null, content: [] })
 })
 test('telemetry forwards real event identities without parsing report text and disposal removes tools', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   f.ctx.emit('subagent/start', { id: 'child', runId: 'epoch-1', provider: 'spawn', local: true })
   f.ctx.emit('agent/status', { agent: f.owner, status: 'running' })
   f.ctx.emit('subagent/end', { id: 'child', runId: 'epoch-1', provider: 'spawn', local: true, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: 'do not infer release from this text' }] })
@@ -309,7 +313,7 @@ test('shared Client contribution is browser-safe strict schema data and rejects 
   assert.equal(msg.source.sections[0].text, msg.content[0].text)
 })
 test('rejected native step neither consumes nor injects instrument messages', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   f.ctx.on('agent/pre-step', async () => ({ kind: 'reject' }))
   const decision = await f.ctx.waterfall('agent/pre-step', { agent: f.owner, messages: [], turn: 1, step: 1, signal: signal() }, async () => ({ kind: 'enter', messages: [] }))
   assert.deepEqual(decision, { kind: 'reject' })
@@ -451,7 +455,7 @@ test('actual summary Remote uses a bounded codec and a signal channel, not JSON 
 })
 
 test('native event program callback registers its receipt fence synchronously before another step can inspect', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   let registered = false, release; const fence = new Promise(resolve => { release = resolve })
   f.runtime.observe = event => { registered = true; assert.equal(event.runId, 'epoch-fence'); return fence }
   f.ctx.emit('subagent/end', { id: 'child', runId: 'epoch-fence', provider: 'spawn', local: true, stopReason: 'completed' })
@@ -459,7 +463,7 @@ test('native event program callback registers its receipt fence synchronously be
   release()
 })
 test('a local subagent/end after registry loss is still delivered without a fabricated Agent', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   // The published end survives the registry entry; the Host must forward the run identity and
   // let the runtime use durable facts instead of inventing an actual Agent.
   f.ctx.agents.get = () => undefined
@@ -471,15 +475,15 @@ test('a local subagent/end after registry loss is still delivered without a fabr
   assert.equal(Object.hasOwn(seen, 'actualAgent'), false)
 })
 test('instrument tool rejects forged principal fields at both outer and business argument envelopes', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   for (const args of [{ request: { action: 'read' }, principal: 'user:operator' }, { request: { action: 'read', sessionId: 'another-root' } }]) {
-    const outcome = await executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: args, callId: 'forged-envelope', agent: f.owner, signal: signal() }, load)
+    const outcome = await executeModelTool(f.ctx, { name: 'mattpocock_controls', arguments: args, callId: 'forged-envelope', agent: f.owner, signal: signal() }, load)
     assert.equal(outcome.isError, true)
   }
 })
 
 test('operator revocation and agent policy commits share one permission-effect queue, never stale authorization', options, async t => {
-  const f = await assembly(t)
+  const f = await collaborationAssembly(t)
   const core = await import('../src/controls/index.ts')
   const controls = new core.WorkspaceControls(f.mounted.ports.controlsStorage, f.mounted.ports.authority)
   await f.invoke('grantPolicy', { sessionId: 'owner', enabled: true, expectedRevision: 0 })
@@ -491,9 +495,14 @@ test('operator revocation and agent policy commits share one permission-effect q
   const revocation = f.invoke('grantPolicy', { sessionId: 'owner', enabled: false, expectedRevision: 1 })
   await revokeQueued
   f.runtime.savePolicy = (caller, intent, expected) => f.runtime.serializePolicyPermission(() => controls.savePolicy(caller.principalId, intent, expected))
-  const policy = executeRegistryTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'save', intent: { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, expectedRevision: 0 } }, callId: 'revoked-save', agent: f.owner, signal: signal() }, load)
-  await policyQueued; release(); await blocker; await revocation
-  assert.equal((await policy).isError, true)
+  const policy = executeModelTool(f.ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'save', intent: { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, expectedRevision: 0 } }, callId: 'revoked-save', agent: f.owner, signal: signal() }, load)
+  try {
+    await Promise.race([policyQueued, policy.then(result => assert.fail('save never reached the permission queue: ' + result.error?.message))])
+  } finally { release() }
+  await blocker; await revocation
+  const denied = await policy
+  assert.equal(denied.isError, true)
+  assert.match(denied.error.message, /agent policy write requires explicit operator delegation/)
   assert.equal((await controls.readPolicy(f.mounted.ports.operatorPrincipal)).revision, 0)
   assert.equal((await f.mounted.ports.readPolicyGrants()).grants[0].enabled, false)
 })
@@ -569,7 +578,7 @@ test('operator workspace navigation exposes actual sessionIds without loading co
 
 const notificationInput = { notificationId: 'notification-1', ownerSessionId: 'owner', instrumentInstanceId: 'instance-1', businessRevision: 7, authorPrincipalId: 'agent:child' }
 test('owned notifications never activate cold owners and accepted attempts have fresh native IDs', options, async t => {
-  const f = await assembly(t), inbox = []
+  const f = await collaborationAssembly(t), inbox = []
   f.ctx.sessionQuery.observeSession = async () => { throw new Error('must not observe or resume a cold owner') }
   assert.deepEqual(await f.mounted.ports.notifyOwner({ ...notificationInput, ownerSessionId: 'cold' }, signal()), { status: 'offline', messageId: null })
   f.owner.status = 'idle'; f.owner.steer = message => { inbox.push(message) }
@@ -585,7 +594,7 @@ test('owned notifications never activate cold owners and accepted attempts have 
   assert.equal(f.mounted.ports.liveAgent('cold'), undefined)
 })
 test('notification acknowledgement waits for real native SessionStore durable checkpoint after user/message append', options, async t => {
-  const f = await assembly(t), inbox = [], acknowledgements = [], buffered = [], persisted = []
+  const f = await collaborationAssembly(t), inbox = [], acknowledgements = [], buffered = [], persisted = []
   const store = new sdk.SessionStore(f.ctx), session = store.create('owner', { meta: { cwd: '/fixture' } })
   f.owner.session = session; f.owner.steer = message => inbox.push(message)
   f.runtime.notificationCommitted = async (...args) => { assert.equal(persisted.length, 1); acknowledgements.push(args) }
@@ -607,7 +616,7 @@ test('notification acknowledgement waits for real native SessionStore durable ch
   } finally { release() }
 })
 test('append without a persistence participant is not a notification acknowledgement', options, async t => {
-  const f = await assembly(t), inbox = [], acknowledgements = []
+  const f = await collaborationAssembly(t), inbox = [], acknowledgements = []
   const store = new sdk.SessionStore(f.ctx), session = store.create('owner', { meta: { cwd: '/fixture' } })
   f.owner.session = session; f.owner.steer = message => inbox.push(message)
   f.runtime.notificationCommitted = async (...args) => acknowledgements.push(args)
@@ -618,7 +627,7 @@ test('append without a persistence participant is not a notification acknowledge
 })
 
 test('durability rejection or a model-owned receipt claim never acknowledges an owned notice', options, async t => {
-  const f = await assembly(t), inbox = [], acknowledgements = []
+  const f = await collaborationAssembly(t), inbox = [], acknowledgements = []
   const store = new sdk.SessionStore(f.ctx), session = store.create('owner', { meta: { cwd: '/fixture' } })
   f.owner.session = session; f.owner.steer = message => inbox.push(message)
   f.runtime.notificationCommitted = async (...args) => acknowledgements.push(args)
@@ -668,14 +677,14 @@ test('audit tool is absent by default, appears only with enabled config and sepa
   const off = await assembly(t)
   assert.equal(off.ctx.tools.get('mattpocock_audit'), undefined)
   const config = new Map([['state', { schemaVersion: 1, revision: 0, defaults: { enabled: true, deliverableRoots: ['src'] }, workspaceOverrides: {} }]])
-  const f = await assembly(t, {
+  const f = await collaborationAssembly(t, {
     async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true } } },
   }, undefined, new Map([['mattpocock_supervision_config', config]]))
   assert.ok(f.ctx.tools.get('mattpocock_audit'))
   const result = Object.freeze({ isError: false, value: null, content: [] })
   await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'audit-write-1', arguments: { path: 'src/a.ts' } }, result, async () => ({ kind: 'accept' }))
   await f.ctx.waterfall('tools/post-execute', { agent: f.owner, signal: signal(), name: 'write', callId: 'audit-write-2', rootCallId: 'ptc-outer', arguments: { path: 'src/b.ts' } }, result, async () => ({ kind: 'accept' }))
-  const audited = await executeRegistryTool(f.ctx, { name: 'mattpocock_audit', arguments: { request: { action: 'read' } }, callId: 'audit-read-1', agent: f.owner, signal: signal() }, load)
+  const audited = await executeModelTool(f.ctx, { name: 'mattpocock_audit', arguments: { request: { action: 'read' } }, callId: 'audit-read-1', agent: f.owner, signal: signal() }, load)
   assert.equal(audited.isError, false)
   assert.equal(audited.value.coverage.persistence, 'mixed')
   assert.deepEqual(audited.value.coverage.summary, { persistence: 'memory-only', status: 'current' })
@@ -699,7 +708,7 @@ test('scheduled dry-run persists one episode and exposes it through the read-onl
   const config = { schemaVersion: 1, revision: 0, defaults: { enabled: true, dryRun: true, deliverableRoots: ['src'], checkIntervalMinutes: 5, scheduledIntervalMinutes: 15 }, workspaceOverrides: {} }
   const state = { schemaVersion: 1, revision: 0, ownerSessionId: 'owner', workspaceId: 'W', createdAt: 0, lastScheduledAt: 0,
     lastSuspicionAt: null, consecutiveOnTrack: 0, backoffUntil: null, hourKey: '2026-10-30T08', hourCalls: 0, dailyKey: '2026-10-30', dailyCalls: 0, dailyTokens: 0, episodes: [] }
-  const f = await assembly(t, {
+  const f = await collaborationAssembly(t, {
     async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true } } },
   }, undefined, new Map([
     ['mattpocock_supervision_config', new Map([['state', config]])],
@@ -725,7 +734,7 @@ test('optional reviewer records adapter token usage without a real provider', op
     yield { type: 'text-delta', text: JSON.stringify({ verdict: 'on-track', severity: 'info', observed: 'fixture review', possibleIssue: 'fixture possible issue', confidence: 0.2 }) }
     yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }
   } }
-  const f = await assembly(t, {
+  const f = await collaborationAssembly(t, {
     async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true } } },
   }, (_ports, _runtime, ctx, owner) => { ctx.provide('llm', fakeLlm); owner.model = { current: () => ({ provider: 'fixture', model: 'fixture' }) }; owner.inject = message => injected.push(message) }, new Map([
     ['mattpocock_supervision_config', new Map([['state', config]])],
@@ -746,7 +755,7 @@ test('assigned ticket off marks the scheduled episode as research/review', optio
   const config = { schemaVersion: 1, revision: 0, defaults: { enabled: true, dryRun: true, deliverableRoots: ['src'], checkIntervalMinutes: 5, scheduledIntervalMinutes: 15 }, workspaceOverrides: {} }
   const state = { schemaVersion: 1, revision: 0, ownerSessionId: 'owner', workspaceId: 'W', createdAt: 0, lastScheduledAt: 0,
     lastSuspicionAt: null, consecutiveOnTrack: 0, backoffUntil: null, hourKey: '2026-10-30T08', hourCalls: 0, dailyKey: '2026-10-30', dailyCalls: 0, dailyTokens: 0, episodes: [] }
-  const f = await assembly(t, {
+  const f = await collaborationAssembly(t, {
     async readSession() { return { instance: { ownerSessionId: 'owner', controlWorkspaceId: 'W' }, policy: { extensionEnabled: true, workspaceEnabled: true },
       assignment: { workflowId: 'flow', ticketIds: ['T1'] }, records: { tickets: [{ workflowId: 'flow', localTicketId: 'T1', revision: 1, value: { title: 'research', statuses: {}, suspicionMode: 'off' }, history: [] }] } } },
   }, undefined, new Map([
@@ -783,7 +792,7 @@ test('cached runtime unit preserves table-wide indeterminate latch after committ
 test('startup background notification waits for real receipt registration before synchronous steer append', options, async t => {
   let pending, ready = false, accept, ackResolve
   const acknowledgements = [], ack = new Promise(resolve => { ackResolve = resolve })
-  const f = await assembly(t, {
+  const f = await collaborationAssembly(t, {
     async notificationCommitted(...args) { acknowledgements.push(args); ackResolve() },
   }, (ports, _runtime, ctx, owner) => {
     const store = new sdk.SessionStore(ctx), session = store.create('owner', { meta: { cwd: '/fixture' } })

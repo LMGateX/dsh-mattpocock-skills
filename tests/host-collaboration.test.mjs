@@ -8,7 +8,7 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { operatorPeer } from './fixtures/peer.mjs'
-import { executeRegistryTool } from './fixtures/nested-tool.mjs'
+import { executeModelTool } from './fixtures/nested-tool.mjs'
 
 // Explicit installed-SDK probes: no profile, GUI, server, AgentLoop or model.
 const sourceRoot = new URL('../src/', import.meta.url).href
@@ -52,6 +52,8 @@ function authorityFixture() {
 }
 const modelIdentity = (caller, sessionId) => ({ caller, sessionId, instance: { instrumentInstanceId: 'I', ownerSessionId: 'owner', controlWorkspaceId: 'W' }, scope: { kind: 'coordinator' } })
 const modelCurrent = (caller, sessionId) => ({ ...modelIdentity(caller, sessionId), policy: {}, revisions: {}, records: null, windows: null, nativeCount: null, collections: { 'worktree-binding': { rows: [], version: '0', coverage: 'current' }, 'worktree-observation': { rows: [], version: '0', coverage: 'current' } } })
+const collaborationPolicy = { revision: 0, extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }
+const enabledUnits = (seedUnits = new Map()) => new Map([...seedUnits, ['mattpocock_controls', new Map([['state', { schemaVersion: 1, revision: 0, policy: collaborationPolicy, instances: [], associations: [] }]])]])
 async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map(), { workingDirectory = true } = {}) {
   const ctx = new sdk.Context(), f = authorityFixture()
   const operator = operatorPeer(ctx)
@@ -76,7 +78,7 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   let permissionTail = Promise.resolve()
   const runtime = {
     serializePolicyPermission(effect) { const result = permissionTail.then(effect); permissionTail = result.catch(() => {}); return result },
-    async readPolicy(caller) { calls.push(caller); return { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } },
+    async readPolicy(caller) { calls.push(caller); return units.get('mattpocock_controls')?.get('state')?.policy ?? { revision: 0, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } },
     async savePolicy(caller, intent, expectedRevision) { calls.push(caller); return { ...intent, revision: expectedRevision + 1 } },
     async readSession(caller, sessionId) { calls.push(caller); return { sessionId, capabilities: api.HOST_CAPABILITIES } },
     // Required explicit model-only capability; no production full-read fallback.
@@ -96,6 +98,7 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   return { ctx, mounted, gateway, invoke, calls, events, owner: f.owner, owned, units, runtime }
 }
 
+const collaborationAssembly = (t, runtimeExtras) => assembly(t, runtimeExtras, undefined, enabledUnits())
 
 // Controlled peers implement public FsTarget/process mapping semantics; no native cwd claim.
 function filesystemBoundary(ctx, parent, { mode = 'danger-full-access', root = '/fixture', targets = {} } = {}) {
@@ -372,7 +375,7 @@ test('continuable creation port uses only public native start, exact parent and 
 })
 test('worktree registered tool routes the actual session and cannot fabricate program attribution', options, async t => {
   const calls = []
-  const f = await assembly(t, { async worktreeAction() { throw new Error('model current must not call the full registry reader') }, async readModelCurrent(caller, sessionId) { calls.push({ caller, sessionId }); return modelCurrent(caller, sessionId) } })
+  const f = await collaborationAssembly(t, { async worktreeAction() { throw new Error('model current must not call the full registry reader') }, async readModelCurrent(caller, sessionId) { calls.push({ caller, sessionId }); return modelCurrent(caller, sessionId) } })
   const result = await execute(f, 'mattpocock_worktree', { action: 'read' })
   assert.equal(result.isError, false)
   assert.equal(result.value.schemaVersion, 2)
@@ -398,7 +401,7 @@ test('host without a native activation seam fails closed and creates no child, w
 
 test('deprecated resource tool and old UI service are read-only before reaching runtime', options, async t => {
   const requests = []
-  const f = await assembly(t, { async resourceAction(_, __, request) { requests.push(request); return { resourceId: request.resourceId, status: 'retained', actualCanRetire: { allowed: false, checkedAt: 1, ledgerRevision: 1, reasons: ['unknown physical state'], facts: null } } } })
+  const f = await collaborationAssembly(t, { async resourceAction(_, __, request) { requests.push(request); return { resourceId: request.resourceId, status: 'retained', actualCanRetire: { allowed: false, checkedAt: 1, ledgerRevision: 1, reasons: ['unknown physical state'], facts: null } } } })
   assert.equal((await execute(f, 'mattpocock_resource', { action: 'read', resourceId: 'R' })).isError, false)
   const borrow = await execute(f, 'mattpocock_resource', { action: 'borrow', path: '/prepared/tree' })
   assert.equal(borrow.isError, true)
@@ -413,7 +416,7 @@ test('deprecated resource tool and old UI service are read-only before reaching 
 
 test('delegate tool preserves native permission pipeline and accepts only safe creation fields', options, async t => {
   const calls = []
-  const f = await assembly(t, { async delegate(caller, request, exec) { calls.push({ caller, request, exec }); return { accepted: true } } })
+  const f = await collaborationAssembly(t, { async delegate(caller, request, exec) { calls.push({ caller, request, exec }); return { accepted: true } } })
   const request = { description: 'Worker', prompt: 'Implement', provider: 'fork', worktree: '/prepared/tree-A', operationId: 'OP', workflowId: 'WF', ticketIds: ['T'] }
   const result = await execute(f, 'mattpocock_delegate', request)
   assert.equal(result.isError, false)
@@ -446,7 +449,7 @@ test('worktree service routes strict operator input and rejects unavailable old 
 
 test('history registered tool exposes all retained-history actions without caller or receipt forgery', options, async t => {
   const calls = []
-  const f = await assembly(t, { async historyAction(caller, sessionId, request) { calls.push({ caller, sessionId, request }); return { action: request.action, revision: 0, rows: [], missingHistoryIds: request.historyIds ?? [], nextCursor: null, cut: 0, total: 0, coverage: { sources: [], purged: false, notRecorded: true }, notRecorded: true } } })
+  const f = await collaborationAssembly(t, { async historyAction(caller, sessionId, request) { calls.push({ caller, sessionId, request }); return { action: request.action, revision: 0, rows: [], missingHistoryIds: request.historyIds ?? [], nextCursor: null, cut: 0, total: 0, coverage: { sources: [], purged: false, notRecorded: true }, notRecorded: true } } })
   const requests = [
     { action: 'query', query: { kind: 'worktree', recordId: 'R', limit: 2 } },
     { action: 'detail', historyIds: ['H'] },
@@ -505,7 +508,7 @@ test('session durability port checkpoints only actual live sessions and preserve
   await assert.rejects(f.mounted.ports.flushSession('owner', signal()), /checkpoint rejected after native acceptance/)
 })
 
-const execute = (f, name, request, agent = f.owner) => executeRegistryTool(f.ctx, { name, arguments: { request }, callId: 'collaboration-call', agent, signal: signal() }, load)
+const execute = (f, name, request, agent = f.owner) => executeModelTool(f.ctx, { name, arguments: { request }, callId: 'collaboration-call', agent, signal: signal() }, load)
 
 test('history service authenticates the operator and crosses only strict JSON to the runtime', options, async t => {
   const calls = []

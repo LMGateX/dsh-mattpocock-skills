@@ -11,3 +11,11 @@ export async function executeRegistryTool(ctx, input, load) {
   if (preparation.kind !== 'dispatch') return preparation.result
   return pipeline.complete(preparation.exec, await pipeline.dispatch(preparation.exec))
 }
+
+// Opt in only for model-step dispatch. Direct or stale-set probes must call
+// executeRegistryTool with their original input, without refreshing admission.
+export async function executeModelTool(ctx, input, load) {
+  const toolSet = await ctx.tools.resolve({ agent: input.agent, modelSelection: { provider: 'fixture', model: 'fixture' }, signal: input.signal })
+  try { return await executeRegistryTool(ctx, { ...input, toolSet }, load) }
+  finally { toolSet.dispose() }
+}

@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { operatorPeer } from './peer.mjs'
-import { executeRegistryTool } from './nested-tool.mjs'
+import { executeModelTool } from './nested-tool.mjs'
 
 // Node 24 source-only loader: no lib/package emission, profile, model or AgentLoop.
 const sourceRoot = new URL('../../src/', import.meta.url).href
@@ -254,6 +254,7 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, del
   }
   t.after(async () => { await mounted.dispose(); await domain.closeAll() })
   return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, sessionLogs, sessionReads, get runtimeStorage() { return runtimeStorage },
-    execute(name, args = {}, agent = root) { return executeRegistryTool(ctx, { name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }, load) },
+    // This fixture stands in for a normal model dispatch; raw/stale calls use executeRegistryTool directly.
+    execute(name, args = {}, agent = root) { return executeModelTool(ctx, { name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }, load) },
   }
 }

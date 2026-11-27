@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createHash } from 'node:crypto'
 import { actualAgent, caller, mountedFixture, operator, policy, signal, workflow, sdk, loadSDK, deferred } from './fixtures/runtime-host.mjs'
-import { executeRegistryTool } from './fixtures/nested-tool.mjs'
+import { executeModelTool, executeRegistryTool } from './fixtures/nested-tool.mjs'
+
+const enableWorkspace = (f, features = {}) => f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true }, ...features } } }, 0, signal())
 
 const value = result => {
   assert.notEqual(result.isError, true, result.error?.message)
@@ -50,7 +52,7 @@ test('actual mounted decision receipts retain exact candidate and historical ado
   let nestedParent
   f.ctx.on('tools/post-execute', async (exec, result, next) => { if (exec.name === 'mattpocock_record' && exec.parent !== undefined) nestedParent = exec.parent; return next() })
   f.ctx.tools.register(sdk.defineTool({ name: 'recommendation_nested', description: 'mechanical actual nested recommendation receipt probe', parameters: {}, output: { schema: { type: 'json' }, render: () => [] }, async execute(_, exec) {
-    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal }, loadSDK))
+    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolSet: exec.toolSet }, loadSDK))
   } }))
   const nested = await f.execute('recommendation_nested')
   assert.notEqual(nested.isError, true); assert.ok(nestedParent)
@@ -61,6 +63,7 @@ test('actual mounted decision receipts retain exact candidate and historical ado
 
 test('mounted model read preserves compact owner policy facts in typed and rendered output', async t => {
   const f = await mountedFixture(t)
+  await enableWorkspace(f)
   const current = value(await f.execute('mattpocock_record', { request: { action: 'read' } }))
   assert.equal(current.ownerDecisionPolicy.status, 'feature-disabled')
   assert.equal(current.ownerDecisionPolicy.revision, 0)
@@ -106,6 +109,7 @@ async function content(f, locator, agent = f.root) {
 
 test('a cleaned observation receipt still resolves its real creation provenance and authored update', async t => {
   const f=await mountedFixture(t)
+  await enableWorkspace(f)
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
   const module=await import('../src/controls/worktree-observations.ts')
   const suffix='worktree_observations_'+createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0,40)
@@ -201,11 +205,16 @@ test('policy pages and content fully reconstruct one revision without becoming a
     cursor=page.nextCursor;firstCursor??=cursor
   }while(cursor)
   assert.deepEqual(overrides,saved.workspaceOverrides)
-  const updated=await f.runtime.savePolicy(operator,{extensionEnabled:false,defaults:saved.defaults,workspaceOverrides:saved.workspaceOverrides},saved.revision,signal())
+  const updated=await f.runtime.savePolicy(operator,{extensionEnabled:true,defaults:saved.defaults,workspaceOverrides:{...saved.workspaceOverrides,'workspace-extra':{workspace:{enabled:false}}}},saved.revision,signal())
   assert.equal(updated.revision,saved.revision+1)
   const stale=await f.execute('mattpocock_controls',{request:{action:'read',query:{kind:'workspace',limit:7,cursor:firstCursor}}})
   assert.equal(stale.isError,true)
   assert.match(stale.error.message,/changed/)
+
+  await f.runtime.savePolicy(operator,{extensionEnabled:false,defaults:updated.defaults,workspaceOverrides:updated.workspaceOverrides},updated.revision,signal())
+  const off=await f.execute('mattpocock_controls',{request:{action:'read'}})
+  assert.equal(off.isError,true)
+  assert.match(off.error.message,/unknown tool/i,'global OFF rejects dispatch before serving the policy query')
 })
 
 test('assignment receipts expose only the authenticated target and content rechecks narrowed scope', async t => {
@@ -366,7 +375,7 @@ test('all seven tools plus optional delegate and standalone audit bound direct a
     outerToken=exec.token;rootCall=exec.rootCallId
     const results=[]
     for(const [name,request] of requests){
-      const result=await executeRegistryTool(f.ctx,{name,arguments:{request},callId:'nested-'+name,rootCallId:exec.rootCallId,parent:exec.token,agent:exec.agent,signal:exec.signal},loadSDK)
+      const result=await executeRegistryTool(f.ctx,{name,arguments:{request},callId:'nested-'+name,rootCallId:exec.rootCallId,parent:exec.token,agent:exec.agent,signal:exec.signal,toolSet:exec.toolSet},loadSDK)
       results.push({name,value:value(result)})
     }
     return results
@@ -512,16 +521,16 @@ test('an asynchronous descendant cannot keep a closed model read permit and bypa
 
 test('plugin errors stay bounded and cancellation releases the content read permit without exposing a body', async t => {
   const f=await mountedFixture(t)
+  await enableWorkspace(f, { ticketProgress: { enabled: true } })
   const bad=await f.execute('mattpocock_worktree',{request:{action:'x'.repeat(200000)}})
   assert.equal(bad.isError,true)
   assert.ok(Buffer.byteLength(JSON.stringify({error:bad.error,content:bad.content}))<=8192)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
   await f.runtime.applyInstrument(caller('root'),'root',{action:'put-workflow',operationId:'flow',expectedRevision:0,workflowId:'flow',value:workflow},signal())
   const page=value(await f.execute('mattpocock_record',{request:{action:'read',query:{kind:'workflow'}}}))
   const original=f.runtime.readModelSource.bind(f.runtime),entered=deferred(),release=deferred()
   f.runtime.readModelSource=async(...args)=>{const result=await original(...args);entered.resolve();await release.promise;return result}
   const controller=new AbortController()
-  const pending=executeRegistryTool(f.ctx,{name:'mattpocock_record',arguments:{request:{action:'detail',locator:page.rows[0].detail.locator}},callId:'cancel-content',agent:f.root,signal:controller.signal},loadSDK).then(result=>result,error=>error)
+  const pending=executeModelTool(f.ctx,{name:'mattpocock_record',arguments:{request:{action:'detail',locator:page.rows[0].detail.locator}},callId:'cancel-content',agent:f.root,signal:controller.signal},loadSDK).then(result=>result,error=>error)
   await entered.promise
   controller.abort(new Error('cancel selected content'))
   release.resolve()
@@ -534,6 +543,7 @@ test('plugin errors stay bounded and cancellation releases the content read perm
 
 test('binding update receipts resolve exact current header provenance without embedding retained versions', async t => {
   const f=await mountedFixture(t)
+  await enableWorkspace(f)
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
   const module=await import('../src/controls/worktree-bindings.ts')
   const store=await f.mounted.ports.openUnitStorage('worktrees_'+createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0,48),module.parseWorktreeBindingsDocument)
@@ -563,6 +573,7 @@ test('binding update receipts resolve exact current header provenance without em
 
 test('binding cleanup observation changes invalidate record and worktree cursors without changing durable content', async t => {
   const f=await mountedFixture(t)
+  await enableWorkspace(f)
   const second=actualAgent('cursor-child',{parent:'root',managed:true});f.agents.set(second.id,second)
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
   const module=await import('../src/controls/worktree-bindings.ts')
@@ -610,6 +621,7 @@ test('binding cleanup observation changes invalidate record and worktree cursors
 
 test('a replayed binding operation reports current business facts but never invents its original commit revision', async t => {
   const f=await mountedFixture(t)
+  await enableWorkspace(f)
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
   const module=await import('../src/controls/worktree-bindings.ts')
   const store=await f.mounted.ports.openUnitStorage('worktrees_'+createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0,48),module.parseWorktreeBindingsDocument)
