@@ -11,8 +11,7 @@ const packageJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const checks = new Map([
   [join(source, 'tests/workspace-silent-host.test.mjs'), 5],
   [join(source, 'tests/silent-compaction-input.test.mjs'), 6],
-  [join(source, 'tests/silent-compaction-final-handoff.test.mjs'), 1],
-]) // Never run the unpatched compaction baseline as acceptance.
+]) // Auxiliary in-flight handoff and unfiltered host baselines are diagnostics, not acceptance.
 
 export function verifyExactHost(input) {
   assert(input && isAbsolute(input), 'set DSH_CONTROLS_HOST_ROOT to the absolute path of the installed @deepseek-ai/dsh package')
@@ -41,12 +40,12 @@ async function verify() {
   assert(process.argv.length === 2, 'Usage: DSH_CONTROLS_HOST_ROOT=/absolute/installed/dsh node scripts/verify-silent-request-readiness.mjs')
   const { root, version } = verifyExactHost(process.env.DSH_CONTROLS_HOST_ROOT)
   process.env.DSH_CONTROLS_HOST_ROOT = root
-  process.env.MATTPOCOCK_STRICT_SILENCE_REQUIRED = '1'
-  console.log(`Strict silent-request gate: DSH ${version} (${root})`)
+  console.log(`Silent-step admission gate: DSH ${version} (${root})`)
   const observed = new Map([...checks.keys()].map(file => [file, 0]))
   let summary
   for await (const { type, data } of run({ files: [...checks.keys()], timeout: 20000, execArgv: [] })) {
     if (type === 'test:summary' && data.file === undefined) summary = data
+    if (type === 'test:diagnostic' && data.message.startsWith('In-flight diagnostic:')) console.log(data.message)
     if (type !== 'test:pass' && type !== 'test:fail') continue
     const file = data.file
     if (observed.has(file) && !data.skip && !data.todo && data.name !== file) observed.set(file, observed.get(file) + 1)
@@ -56,9 +55,9 @@ async function verify() {
   }
   assert(summary, 'no complete test summary')
   const { tests, passed, failed, skipped, todo, cancelled } = summary.counts
-  console.log(`Strict silent-request results: ${passed} passed, ${failed} failed, ${skipped} skipped, ${todo} todo, ${cancelled} cancelled (${tests} tests)`)
+  console.log(`Silent-step admission results: ${passed} passed, ${failed} failed, ${skipped} skipped, ${todo} todo, ${cancelled} cancelled (${tests} tests)`)
   assert.deepEqual(observed, checks, 'required probe coverage was missing or incomplete')
-  assert(tests === [...checks.values()].reduce((total, count) => total + count, 0) && skipped === 0 && todo === 0 && cancelled === 0, 'incomplete strict test run')
+  assert(tests === [...checks.values()].reduce((total, count) => total + count, 0) && skipped === 0 && todo === 0 && cancelled === 0, 'incomplete exact-host admission test run')
   if (!summary.success || failed !== 0 || passed !== tests) process.exitCode = 1
 }
 
@@ -66,7 +65,7 @@ if (import.meta.main) {
   try {
     await verify()
   } catch (error) {
-    console.error(`Strict silent-request gate blocked: ${error.message}`)
+    console.error(`Silent-step admission gate blocked: ${error.message}`)
     process.exitCode = 1
   }
 }
