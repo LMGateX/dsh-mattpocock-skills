@@ -5,6 +5,9 @@ const collaborationTools = new Set([
   'mattpocock_history', 'mattpocock_record', 'mattpocock_resource', 'mattpocock_window', 'mattpocock_worktree',
 ])
 
+/** Match only names owned by this bundle's verified collaboration surface. */
+export function isCollaborationToolName(name: string): boolean { return collaborationTools.has(name) }
+
 const heading = '## Writing code for run_code\n\n'
 const prelude = [
   '', '', '```ts',

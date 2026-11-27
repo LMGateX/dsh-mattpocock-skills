@@ -82,6 +82,33 @@ test('a structured runtime-context node keeps its unrelated sections and unknown
   assert.deepEqual(replay.stripOwnedCollaborationReplay(cold), { startsRequestSeries: false, unsupported: ['runtime-context-format'] })
 })
 
+test('shadowing an attributed PTC section preserves other already projected system content', options, () => {
+  const projection = { type: 'fixture/redact-message', project(event, context) {
+    const target = context.events[event.data.target - context.baseSeq].data.message
+    return new Map([[event.data.target, { ...target, content: [...blocks('Native content after redaction.'), target.content[1]] }]])
+  } }
+  const session = Session.create(SessionId('projected-ptc'), undefined, undefined, undefined, [projection])
+  const parameters = { type: 'object', properties: {} }, output = { type: 'string' }
+  const sdkText = renderToolsSdk([
+    { name: 'read', description: 'Native tool', parameters, output },
+    { name: 'mattpocock_record', description: 'Owned tool', parameters, output },
+  ], 'function-body')
+  const raw = session.append('system/message', { turn: 1, step: 1, message: sdk.createMessage({
+    role: 'system', content: [...blocks('Prior raw content must not reappear.'), ...blocks(sdkText)],
+    source: { kind: 'system-prompt', sections: [
+      { state: 'active', name: 'native-context', order: 1, contentIndex: 0 },
+      { state: 'active', name: 'tools:sdk', order: 2, contentIndex: 1 },
+    ] },
+  }) }, { surfaceOp: 'append' })
+  session.append('fixture/redact-message', { target: raw.seq })
+  assert.equal(visible(session)[0], 'Native content after redaction.')
+  assert.equal(replay.stripOwnedCollaborationReplay(session).startsRequestSeries, true)
+  const [message] = session.deriveMessages()
+  assert.equal(message.content[0].text, 'Native content after redaction.', 'silent replay must not resurrect the unrelated original block')
+  assert(!message.content[1].text.includes('mattpocock_record'))
+  assert.equal(session.eventAt(raw.seq).data.message.content[0].text, 'Prior raw content must not reappear.')
+})
+
 test('detect historical native declarations in a cold addition series, then stop asking for a reset', options, () => {
   const session = Session.create(SessionId('history'))
   const schema = name => ({ name, description: `definition for ${name}`, parameters: { type: 'object', properties: {} } })

@@ -1,18 +1,12 @@
 import { createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextSnapshotSection, Message, SystemMessage, SystemPromptSectionState, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEventInput, SessionSeq } from '@deepseek-ai/dsh-session'
-import { stripSilentPtcSdk } from './silent-ptc-sdk.js'
-
-// Match our actual declarations, never an arbitrary prefix in another tool name.
-const COLLABORATION_TOOLS = new Set([
-  'mattpocock_controls', 'mattpocock_record', 'mattpocock_window', 'mattpocock_resource', 'mattpocock_assign',
-  'mattpocock_history', 'mattpocock_worktree', 'mattpocock_delegate', 'mattpocock_audit',
-])
+import { isCollaborationToolName, stripSilentPtcSdk } from './silent-ptc-sdk.js'
 
 function hasCollaborationToolHistory(session: Session): boolean {
   const { tools, updates } = session.toolHistory()
-  return tools.some(tool => COLLABORATION_TOOLS.has(tool.name))
-    || updates.some(update => update.additions.some(tool => COLLABORATION_TOOLS.has(tool.name)))
+  return tools.some(tool => isCollaborationToolName(tool.name))
+    || updates.some(update => update.additions.some(tool => isCollaborationToolName(tool.name)))
 }
 
 /** True only for a standalone generated collaboration message, never an ordinary chat mention. */
@@ -130,19 +124,24 @@ export function stripOwnedCollaborationReplay(
     // Exact-version compatibility: Session has no non-deprecated synchronous
     // event reader for its own positional surface. Do not scan the raw log.
     const event = session.eventAt(seq)
-    if (event?.type === 'system/message') {
-      const replacement = stripPtcSystemMessage(event.data.message)
+    if (event?.type !== 'system/message' && event?.type !== 'user/message') continue
+    // Other producers may already have projected this node (e.g. redacted a
+    // different block). A replacement must preserve the current view, not
+    // resurrect raw text just because an older event still stores it.
+    const message = session.deriveEventMessage(event)
+    if (event.type === 'system/message' && message?.role === 'system') {
+      const replacement = stripPtcSystemMessage(message)
       if (replacement === 'unsupported') unsupported.add('ptc-sdk-format')
       else if (replacement !== undefined) writes.push(['system/message', { ...position, message: replacement }, shadow(seq)])
       continue
     }
-    if (event?.type !== 'user/message') continue
-    const standalone = isOwnedCollaborationReplayMessage(event.data)
-    if (!standalone && standaloneKind(event.data.source.kind) !== undefined) {
+    if (event.type !== 'user/message' || message?.role !== 'user') continue
+    const standalone = isOwnedCollaborationReplayMessage(message)
+    if (!standalone && standaloneKind(message.source.kind) !== undefined) {
       unsupported.add('standalone-format')
       continue
     }
-    const replacement = standalone ? null : stripRuntimeContext(event.data)
+    const replacement = standalone ? null : stripRuntimeContext(message)
     if (replacement === 'unsupported') {
       unsupported.add('runtime-context-format')
     } else if (replacement === null) {
