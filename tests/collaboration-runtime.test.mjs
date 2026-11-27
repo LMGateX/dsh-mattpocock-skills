@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
-import {core,fixture,mountedFixture,caller,operator,signal,actualAgent,policy,workflow,ticket} from './fixtures/runtime-host.mjs'
+import {core,fixture,mountedFixture,caller,signal,actualAgent,policy,workflow,ticket} from './fixtures/runtime-host.mjs'
 
 function installCreation(f,{supported=true}={}) {
  const calls=[]
@@ -237,7 +237,7 @@ test('mounted native public history and worktree tools use the RuntimeFacade wit
 
 test('the mounted worktree tool lets every advertised action through its host gate',async t=>{
  const f=await mountedFixture(t)
- await f.runtime.savePolicy(operator,{extensionEnabled:true,defaults:{},workspaceOverrides:{W:{workspace:{enabled:true}}}},0,signal())
+ await f.saveEnabledFixturePolicy({extensionEnabled:true,defaults:{},workspaceOverrides:{W:{workspace:{enabled:true}}}})
  const cases=[
   [{action:'read'},null],
   [{action:'update',command:{operationId:'gate-update',bindingId:'missing-binding',expectedRevision:0,state:'cleaned'}},/binding does not belong to this owner/],

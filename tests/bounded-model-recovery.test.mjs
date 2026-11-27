@@ -19,7 +19,7 @@ async function modelRead(f, query, agent = f.root) {
 
 test('record model read alone recovers current window knowledge without preStep or consumed injection', async t => {
   const f = await mountedFixture(t, { futureNativeActivityKnown: true })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const current = await modelRead(f)
   assert.equal(current.kind, 'current')
   assert.equal(current.windows.T.used, 0)
@@ -36,7 +36,7 @@ test('record recovery reports an unknown positive running lower bound rather tha
     child.status = 'running'
     ctx.provide('subagents', { async listChildren() { throw new Error('discovery unavailable') } })
   } })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   // One public read admits the live membership; the second observes the rejected discovery.
   await modelRead(f)
   const current = await modelRead(f)
@@ -85,7 +85,7 @@ async function pages(f, kind, filter = {}, agent = f.root) {
 
 test('model read and query recover every terminal held slot as pending release without releasing it', async t => {
   const f = await mountedFixture(t, { futureNativeActivityKnown: true })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const terminal = { title: 'Delivery', axes: [{ axisKey: 'delivery', label: 'Delivery', counting: 'exclusive',
     statuses: [{ statusKey: 'partial', label: 'Partial' }, { statusKey: 'delivered', label: 'Delivered', terminal: true }] }] }
   await apply(f, 'put-workflow', { value: terminal })
@@ -116,7 +116,7 @@ test('model read and query recover every terminal held slot as pending release w
 
 test('hidden matters survive management OFF, and a later focused query does not clear them', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   await apply(f, 'put-workflow', { value: workflow })
   for (const decisionId of ['D1', 'D2', 'D3']) {
     await apply(f, 'put-decision', { decisionId, value: { question: 'Old workflow obligation ' + decisionId, status: 'pending-user', pending: true,
@@ -124,16 +124,17 @@ test('hidden matters survive management OFF, and a later focused query does not 
     await apply(f, 'set-decision-view', { decisionId, value: { read: true, hidden: true } })
   }
   await apply(f, 'put-workflow', { workflowId: 'new-focus', value: workflow })
+  const before = await modelRead(f)
+  const instruments = f.mounted.ports.instrumentStorage
+  const persisted = await instruments.read(before.instance.instrumentInstanceId)
+  assert(persisted)
   const policyState = await f.runtime.readPolicy(operator, signal())
   const off = await f.runtime.savePolicy(operator, { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, policyState.revision, signal())
   const denied = await f.execute('mattpocock_record', { request: { action: 'read' } })
   assert.equal(denied.isError, true)
   assert.equal(denied.error.info.code, 'UNKNOWN_TOOL')
-  const retained = await f.runtime.readSession(operator, 'root', signal())
-  assert.equal(retained.policy.extensionEnabled, false)
-  assert.equal(retained.records.summary.pendingDecisionCount, 3)
-  assert.equal(retained.records.summary.pendingUserDecisionCount, 3)
-  assert.equal(retained.records.summary.awaitingImplementationCount, 3)
+  assert.equal((await f.runtime.readPolicy(operator, signal())).extensionEnabled, false)
+  assert.deepEqual(await instruments.read(before.instance.instrumentInstanceId), persisted, 'silence preserves the existing durable record exactly')
 
   await f.runtime.savePolicy(operator, policy(), off.revision, signal())
   const focused = await pages(f, 'decision', { workflowId: 'new-focus' })
@@ -144,6 +145,7 @@ test('hidden matters survive management OFF, and a later focused query does not 
   for (const row of rows) assert.deepEqual(row.view, { hidden: true, read: true })
   const latest = await modelRead(f)
   assert.equal(latest.records.summary.pendingDecisionCount, 3)
+  assert.equal(latest.records.summary.pendingUserDecisionCount, 3)
   assert.equal(latest.records.summary.awaitingImplementationCount, 3)
   assert.equal(latest.revisions.viewer, 3)
 })
@@ -160,7 +162,7 @@ for (const outcome of ['error', 'unobservable']) {
       ctx.provide('subagents', { async listDescendants() { return [catalog('worker')] } })
     } })
     f.mounted.ports.notifyOwner = async input => { acceptNotice(input); return { status: 'accepted', messageId: 'recovery-wake' } }
-    await f.runtime.savePolicy(operator, policy(), 0, signal())
+    await f.saveEnabledFixturePolicy(policy())
     const before = await modelRead(f)
     assert.equal(before.windows.S.used, 1)
     assert.equal(before.windows.S.countKnown, true)
@@ -193,7 +195,7 @@ for (const outcome of ['error', 'unobservable']) {
 
 test('record recovery exposes a native worktree creation observation for disposition without claiming physical verification', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   await modelRead(f, undefined, f.child)
   // This is a controlled native tool-result event, not an authored business record or
   // proof that this test created a real tree. The unavailable Git seam must stay unknown.
@@ -220,7 +222,7 @@ test('record recovery exposes a native worktree creation observation for disposi
 
 test('assigned model recovery preserves all-ticket and creator scope without opening coordinator history or registries', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   await apply(f, 'put-workflow', { value: workflow })
   for (const localTicketId of ['T1', 'T2']) await apply(f, 'put-ticket', { localTicketId, value: ticket() })
   const assign = await f.execute('mattpocock_assign', { request: { sessionId: 'child', workflowId: 'flow', ticketIds: ['T1'] } })

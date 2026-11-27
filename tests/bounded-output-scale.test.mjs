@@ -23,7 +23,7 @@ async function seededMounted(t, oldVersions) {
     original.compareAndSwap = (instanceId, expected, next) => stores.has(instanceId) ? stores.get(instanceId).compareAndSwap(instanceId, expected, next) : cas(instanceId, expected, next)
   } })
   assert.ok(ports?.instrumentStorage, 'fixture callback exposes the existing public HostPorts dependency')
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const initial = await f.runtime.readSession(caller('root'), 'root', signal())
   const instance = initial.instance
   const store = new core.MemoryInstrumentStorage()

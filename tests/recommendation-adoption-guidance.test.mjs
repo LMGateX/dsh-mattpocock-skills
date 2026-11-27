@@ -21,7 +21,7 @@ const question = {
 
 test('mounted guidance adopts the same path explicitly without re-confirmation or external operation permission', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
   await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'enable', expectedRevision: 0, expectedScope: initial.instance, action: 'enable', durationMs: null }, signal())
   const apply = async command => value(await f.execute('mattpocock_record', { request: { action: 'apply', command } }))

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { actualAgent, caller, mountedFixture, operator, policy, signal, workflow, sdk, loadSDK, deferred } from './fixtures/runtime-host.mjs'
 import { executeModelTool, executeRegistryTool } from './fixtures/nested-tool.mjs'
 
-const enableWorkspace = (f, features = {}) => f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true }, ...features } } }, 0, signal())
+const enableWorkspace = (f, features = {}) => f.saveEnabledFixturePolicy({ extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true }, ...features } } })
 
 const value = result => {
   assert.notEqual(result.isError, true, result.error?.message)
@@ -18,7 +18,7 @@ const value = result => {
 
 test('actual mounted decision receipts retain exact candidate and historical adoption distinct from current support, including nested typed output', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
   await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'enable', expectedRevision: 0, expectedScope: initial.instance, action: 'enable', durationMs: 600000 }, signal())
   const execute = command => f.execute('mattpocock_record', { request: { action: 'apply', command } })
@@ -72,7 +72,7 @@ test('mounted model read preserves compact owner policy facts in typed and rende
 
 test('model execute returns a current-only schema2 value and a small committed receipt', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const written = value(await f.execute('mattpocock_record', { request: { action: 'apply', command: { operationId: 'flow', expectedRevision: 0, action: 'put-workflow', workflowId: 'wf', references: [], value: workflow } } }))
   assert.equal(written.schemaVersion, 2)
   assert.equal(written.kind, 'receipt')
@@ -142,7 +142,7 @@ test('a cleaned observation receipt still resolves its real creation provenance 
 
 test('same workflow ticket and decision IDs have independent exact-version Unicode content', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   let revision=0
   const apply=async(command)=>{const receipt=value(await f.execute('mattpocock_record',{request:{action:'apply',command:{operationId:'op-'+revision,expectedRevision:revision,workflowId:'same',...command}}}));revision=receipt.businessRevision;return receipt}
   await apply({action:'put-workflow',value:workflow})
@@ -187,7 +187,7 @@ test('policy pages and content fully reconstruct one revision without becoming a
   const f=await mountedFixture(t)
   const intent=policy()
   intent.workspaceOverrides=Object.fromEntries([['defaults',{workspace:{enabled:false}}],...Array.from({length:35},(_,index)=>['workspace-'+index,{windows:{enabled:index%2===0,ticketWindowSize:index+1}}])])
-  const saved=await f.runtime.savePolicy(operator,intent,0,signal())
+  const saved=await f.saveEnabledFixturePolicy(intent)
   const current=value(await f.execute('mattpocock_controls',{request:{action:'read'}}))
   assert.equal(current.completeIntent,false)
   assert.equal(current.revision,saved.revision)
@@ -219,7 +219,7 @@ test('policy pages and content fully reconstruct one revision without becoming a
 
 test('assignment receipts expose only the authenticated target and content rechecks narrowed scope', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   let revision=0
   for(const command of [{action:'put-workflow',value:workflow},{action:'put-ticket',localTicketId:'A',value:{title:'A',statuses:{delivery:['partial']}}},{action:'put-ticket',localTicketId:'B',value:{title:'B',statuses:{delivery:['partial']}}},{action:'put-decision',decisionId:'shared',value:{question:'requires both tickets',status:'open',pending:true,ticketIds:['A','B']}},{action:'put-decision',decisionId:'A-only',value:{question:'for A',status:'open',pending:true,ticketIds:['A']}}]){
     const written=await f.runtime.applyInstrument(caller('root'),'root',{operationId:'seed-'+revision,expectedRevision:revision,workflowId:'flow',...command},signal());revision=written.snapshot.businessRevision
@@ -253,7 +253,7 @@ test('assignment receipts expose only the authenticated target and content reche
 
 test('window receipts preserve original replay cut ignored fence and generation with current detail', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'flow',expectedRevision:0,workflowId:'flow',action:'put-workflow',value:workflow},signal())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'ticket',expectedRevision:1,workflowId:'flow',localTicketId:'A',action:'put-ticket',value:{title:'A',statuses:{delivery:['partial']}}},signal())
   const run=async(action,operationId,generation)=>value(await f.execute('mattpocock_window',{request:{action,operationId,workflowId:'flow',localTicketId:'A',...(generation===undefined?{}:{generation})}}))
@@ -275,7 +275,7 @@ test('window receipts preserve original replay cut ignored fence and generation 
 
 test('projection failure after a committed business action returns its real receipt without another write', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   const apply=f.runtime.applyInstrument.bind(f.runtime)
   let calls=0
   f.runtime.applyInstrument=async(...args)=>{calls++;return {...await apply(...args),diagnostic:{notJson:1n}}}
@@ -293,7 +293,7 @@ test('projection failure after a committed business action returns its real rece
 
 test('projection failure keeps an accepted delegate child and all separate effect facts on retry', async t => {
   const f=await mountedFixture(t,{delegate:true})
-  await f.runtime.savePolicy(operator,policy({enabled:false}),0,signal())
+  await f.saveEnabledFixturePolicy(policy({enabled:false}))
   let creations=0
   f.mounted.ports.flushSession=async()=>true
   f.mounted.ports.createContinuable=async(exec,request)=>{creations++;f.agents.set(request.childId,actualAgent(request.childId,{parent:'root',managed:true}));return {childId:request.childId,messageId:'accepted-message'}}
@@ -319,7 +319,7 @@ test('projection failure keeps an accepted delegate child and all separate effec
 
 test('long status-count dimensions are recoverable as exact authorized stable current content', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   const statuses=Array.from({length:64},(_,index)=>({statusKey:'s'+index,label:'Label-'+index+'-中'.repeat(700)}))
   const valueOfWorkflow={title:'Many statuses',axes:[{axisKey:'delivery',label:'Dimensions',counting:'exclusive',statuses}]}
   await f.runtime.applyInstrument(caller('root'),'root',{action:'put-workflow',operationId:'flow',expectedRevision:0,workflowId:'flow',value:valueOfWorkflow},signal())
@@ -335,7 +335,7 @@ test('long status-count dimensions are recoverable as exact authorized stable cu
 test('all seven tools plus optional delegate and standalone audit bound direct and genuinely nested typed values', async t => {
   const config={schemaVersion:1,revision:0,defaults:{enabled:true,dryRun:true},workspaceOverrides:{}}
   const f=await mountedFixture(t,{delegate:true,seedUnits:new Map([['mattpocock_supervision_config',new Map([['state',config]])]])})
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   const flow=await f.runtime.applyInstrument(caller('root'),'root',{operationId:'flow',expectedRevision:0,workflowId:'flow',action:'put-workflow',value:workflow},signal())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'ticket',expectedRevision:flow.snapshot.businessRevision,workflowId:'flow',localTicketId:'A',action:'put-ticket',value:{title:'A',statuses:{delivery:['partial']}}},signal())
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
@@ -389,7 +389,7 @@ test('all seven tools plus optional delegate and standalone audit bound direct a
 
 test('detail encoding and a concurrent assignment revocation share the permission FIFO through completion', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'flow',expectedRevision:0,workflowId:'flow',action:'put-workflow',value:workflow},signal())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'ticket',expectedRevision:1,workflowId:'flow',localTicketId:'A',action:'put-ticket',value:{title:'A',statuses:{delivery:['partial']},summary:'中😀'.repeat(16000)}},signal())
   await f.runtime.assign(caller('root'),{sessionId:'child',workflowId:'flow',ticketIds:['A']},signal())
@@ -414,7 +414,7 @@ test('detail encoding and a concurrent assignment revocation share the permissio
 
 test('native recovery discovers more than the injection cap and fences lane and observation association changes', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'seed-flow',expectedRevision:0,workflowId:'flow',action:'put-workflow',value:workflow},signal())
   await f.runtime.applyInstrument(caller('root'),'root',{operationId:'seed-ticket',expectedRevision:1,workflowId:'flow',action:'put-ticket',localTicketId:'A',value:{title:'A',statuses:{delivery:['partial']}}},signal())
   await f.runtime.assign(caller('root'),{sessionId:'child'},signal())
@@ -451,7 +451,7 @@ test('native recovery discovers more than the injection cap and fences lane and 
 
 test('a history capture failure is associated with the committed receipt even if the later hook repairs health', async t => {
   const f=await mountedFixture(t)
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   const who=await f.runtime.readModelIdentity(caller('root'),'root',signal())
   const historyModule=await import('../src/controls/history.ts')
   const history=await f.mounted.ports.openUnitStorage('history_'+createHash('sha256').update(who.instance.instrumentInstanceId).digest('hex').slice(0,56),historyModule.parseHistoryDocument)
@@ -479,7 +479,7 @@ test('standalone audit pages every retained episode and never resurrects an evic
   const suffix='supervision_state_'+createHash('sha256').update('root').digest('hex').slice(0,32)
   const config={schemaVersion:1,revision:0,defaults:{enabled:true,dryRun:true},workspaceOverrides:{}}
   const f=await mountedFixture(t,{seedUnits:new Map([['mattpocock_supervision_config',new Map([['state',config]])],['mattpocock_'+suffix,new Map([['state',state]])]])})
-  await f.runtime.savePolicy(operator,policy(),0,signal())
+  await f.saveEnabledFixturePolicy(policy())
   const current=value(await f.execute('mattpocock_audit',{request:{action:'read'}}))
   assert.equal(current.coverage.persistence,'mixed')
   assert.deepEqual(current.coverage.summary,{persistence:'memory-only',status:'current'})
@@ -505,6 +505,7 @@ test('standalone audit pages every retained episode and never resurrects an evic
 
 test('an asynchronous descendant cannot keep a closed model read permit and bypass a later FIFO holder', async t => {
   const f=await mountedFixture(t)
+  await enableWorkspace(f)
   const trigger=deferred(),entered=deferred(),release=deferred()
   let late,completed=false
   await f.runtime.withModelRead(caller('root'),'root',signal(),async()=>{

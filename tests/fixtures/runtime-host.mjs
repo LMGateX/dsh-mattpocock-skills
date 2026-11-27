@@ -253,7 +253,21 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, del
     return await observe(event)
   }
   t.after(async () => { await mounted.dispose(); await domain.closeAll() })
-  return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, sessionLogs, sessionReads, get runtimeStorage() { return runtimeStorage },
+  // Opt-in setup for probes that model already-registered live fixture sessions but
+  // cannot run a real pre-step (e.g. bounded reads without automatic injection).
+  async function saveEnabledFixturePolicy(intent, revision = 0) {
+    const control = signal()
+    const saved = await runtime.savePolicy(operator, intent, revision, control)
+    const controls = new core.WorkspaceControls(mounted.ports.controlsStorage, mounted.ports.authority)
+    for (const agent of [root, child]) {
+      if (agents.get(agent.id) !== agent) continue
+      const effective = await mounted.ports.readSessionPolicy(agent.id, control)
+      if (!effective?.workspaceVerified || !effective.extensionEnabled || !effective.workspaceEnabled || !effective.skillsEnabled) continue
+      await controls.ensureSession(operator.principalId, agent.id)
+    }
+    return saved
+  }
+  return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, sessionLogs, sessionReads, saveEnabledFixturePolicy, get runtimeStorage() { return runtimeStorage },
     // This fixture stands in for a normal model dispatch; raw/stale calls use executeRegistryTool directly.
     execute(name, args = {}, agent = root) { return executeModelTool(ctx, { name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }, load) },
   }

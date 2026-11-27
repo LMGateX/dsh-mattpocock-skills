@@ -207,7 +207,7 @@ test('the native running count reads live Agent status, never catalog residency'
   assert.equal(f.mounted.ports.capabilities.allNativeWakeAdmission, 'supported')
   // The idle row has catalog activity 'running' (resident) but Agent.status 'idle': not counted.
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 1, total: 2, reason: null, depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.used, 1); assert.equal(snap.windows.S.countKnown, true); assert.equal(snap.windows.S.countReason, null)
   assert.equal(snap.health.find(row => row.scope === 'execution-admission').status, 'current')
@@ -231,7 +231,7 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     await new Promise(resolve => setTimeout(resolve, 5))
   }
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.used, 1, 'the readable running row is a stated lower bound')
   assert.equal(snap.windows.S.countKnown, false)
@@ -256,9 +256,10 @@ test('a host exposing only direct children resolves the resident subtree without
     'branch-a': [{ id: 'leaf-b', createdAt: 0, mode: 'one-shot' }],
     'leaf-b': [],
   }
-  const calls = []
+  const calls = [], retried = deferred()
   const listing = async id => {
     calls.push(String(id))
+    if (calls.length === 2) retried.resolve()
     const rows = children[id]
     if (rows === undefined) throw new Error('unreadable child catalog')
     return rows
@@ -280,6 +281,7 @@ test('a host exposing only direct children resolves the resident subtree without
   children['branch-a'] = undefined
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'branch-a' } })
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } } })
+  await retried.promise
   assert.deepEqual(calls, ['root', 'root'], 'the retry reads the owner catalog again, never the unreadable branch')
 })
 
@@ -675,7 +677,7 @@ test('caller cancellation during an uncertain policy read retains the exact SDK 
 
 test('uncertain window evidence remains explicitly unknown when collaboration policy verifies', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true }, windows: { enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 } } } }, 0, signal())
+  await f.saveEnabledFixturePolicy({ extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true }, windows: { enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 } } } })
   const storage = f.mounted.ports.windowStorage, read = storage.read
   storage.read = async () => { throw new core.ControlsError('storage-uncertain', 'controlled uncertain window storage') }
   t.after(() => { storage.read = read })

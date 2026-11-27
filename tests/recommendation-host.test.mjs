@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mountedFixture, loadSDK, signal, actualAgent, operator } from './fixtures/runtime-host.mjs'
+import { mountedFixture, loadSDK, signal, actualAgent } from './fixtures/runtime-host.mjs'
 
 // Real Cordis, Typert registry/gateway and mounted Host/Runtime; no profile or model.
 test('optional recommendation namespace preserves base Remote and rejects unregistered owner without ensuring it', async t => {
@@ -11,9 +11,10 @@ test('optional recommendation namespace preserves base Remote and rejects unregi
   const invoke = (namespace, method, args) => gateway.invoke({ namespace, method, args, peer: f.peer, signal: signal() })
   const policy = await invoke('mattpocockControls', 'readPolicy', {})
   assert.equal(policy.revision, 0)
+  const enabled = await f.saveEnabledFixturePolicy({ extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } })
   await assert.rejects(invoke('mattpocockRecommendationSupport', 'readOwnerDecisionPolicy', { sessionId: 'later' }), error => error.code === 'unknown-session')
   const again = await invoke('mattpocockControls', 'readPolicy', {})
-  assert.equal(again.revision, 0)
+  assert.equal(again.revision, enabled.revision)
 })
 
 async function mountedClient(t, ctx, gateway, peer) {
@@ -42,6 +43,7 @@ test('actual Client mounts both namespaces with independent registry identity, a
   const gateway = new TypertGatewayService(f.ctx, {})
   const { client, wire } = await mountedClient(t, f.ctx, gateway, f.peer)
   assert.equal((await client.remote.mattpocockControls.readPolicy()).ok, true)
+  await f.saveEnabledFixturePolicy({ extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } })
   const result = await client.remote.mattpocockRecommendationSupport.readOwnerDecisionPolicy('root', signal())
   assert.equal(result.ok, true)
   assert.equal(result.value.effective.status, 'feature-disabled')
@@ -81,7 +83,7 @@ test('optional namespace registration failure does not abort base services tools
     const { recommendationHostRemoteContribution } = await import('../src/host.ts')
     ctx.typert.register(recommendationHostRemoteContribution())
   } })
-  await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }, 0, signal())
+  await f.saveEnabledFixturePolicy({ extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } })
   const { TypertGatewayService } = await loadSDK('@deepseek-ai/dsh-api-gateway')
   const gateway = new TypertGatewayService(f.ctx, {})
   const { client } = await mountedClient(t, f.ctx, gateway, f.peer)
