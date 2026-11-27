@@ -44,11 +44,16 @@ test('settings turn off collaboration in existing owner and child tool sets with
 })
 
 // Capture the actual AgentLoop request at a local inert model adapter; no service, profile, or network.
-for (const executor of ['native', 'ptc']) test(`${executor}: existing session drops owned replay on its next model request without erasing history`, installedHost, async t => {
+const requestProbes = ['native', 'ptc'].flatMap(executor => [false, true].map(held => ({ executor, held })))
+for (const { executor, held } of requestProbes) test(
+  `${executor}: ${held ? 'known limitation of alpha.2: an already assembled request can arrive after OFF' : 'existing session drops owned replay on its next model request without erasing history'}`,
+  { ...installedHost, timeout: 10000 }, async t => {
   const [{ AgentRegistry }, { AgentLoop }, { SessionStore }] = await Promise.all([
     loadSDK('@deepseek-ai/dsh-agent'), loadSDK('@deepseek-ai/dsh-agent-loop'), loadSDK('@deepseek-ai/dsh-session'),
   ])
   const ctx = new sdk.Context(), requests = []
+  const prepareEntered = Promise.withResolvers(), prepareReleased = Promise.withResolvers()
+  let heldPreparation = false
   await ctx.plugin(sdk.TypertRegistry)
   await ctx.plugin(SessionStore)
   await ctx.plugin(sdk.SessionProjectionRegistry)
@@ -58,10 +63,17 @@ for (const executor of ['native', 'ptc']) test(`${executor}: existing session dr
   if (executor === 'ptc') ctx.provide('ptcRuntime', { language: 'typescript', programFormat: 'function-body' })
   await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-executor-' + executor))
   ctx.tools.register(sdk.defineTool({ name: 'unrelated_host_tool', description: 'Other tool remains available.', parameters: {}, output: { schema: { type: 'string' }, render: (_, text) => [{ type: 'text', text }] }, execute() { throw new Error('not exercised') } }))
-  ctx.provide('llm', { async prepareCall(config) { return { config, async *stream(request) {
-    requests.push(request)
-    yield { type: 'finish', reason: { kind: 'stop' } }
-  } } } })
+  ctx.provide('llm', { async prepareCall(config) {
+    if (held && !heldPreparation) {
+      heldPreparation = true
+      prepareEntered.resolve()
+      await prepareReleased.promise
+    }
+    return { config, async *stream(request) {
+      requests.push(request)
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    } }
+  } })
   await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 10 })
   const peer = operatorPeer(ctx)
   ctx.provide('connection', { operator: peer, rpc: { intercept() { return async () => {} } } })
@@ -83,21 +95,36 @@ for (const executor of ['native', 'ptc']) test(`${executor}: existing session dr
   const { agent } = agentHandle
   let runtime
   const mounted = await host.mountHost(ctx, { async createRuntime(ports) { runtime = await createRuntime(ports); return runtime } })
-  t.after(async () => { await mounted.dispose(); await agentHandle.dispose(); await domain.closeAll(); await ctx.fiber.dispose() })
+  t.after(async () => { prepareReleased.resolve(); await mounted.dispose(); await agentHandle.dispose(); await domain.closeAll(); await ctx.fiber.dispose() })
   ctx.systemPrompt.context({ name: 'other-plugin-fixture', order: 126, text: 'unrelated context stays' })
   const follow = async text => {
     agent.followup(sdk.createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     await agent.whenIdle()
   }
   const enabled = policy()
+  const disable = () => runtime.savePolicy(operator, { ...enabled, workspaceOverrides: { W: { workspace: { enabled: false } } } }, 1, signal())
   await runtime.savePolicy(operator, enabled, 0, signal())
-  await follow('ordinary first input')
+  const first = follow('ordinary first input')
+  if (held) {
+    // Actual AgentLoop has assembled and run pre-step but has not sent the
+    // request at all. Commit OFF while native adapter preparation is held.
+    try {
+      await prepareEntered.promise
+      assert.equal(requests.length, 0)
+      await disable()
+      assert.equal((await mounted.ports.readSessionPolicy(agent.id)).collaborationEnabled, false)
+    } finally { prepareReleased.resolve() }
+  }
+  await first
   assert.equal(requests.length, 1)
   if (executor === 'native') assert(requests[0].tools.some(tool => tool.name === 'mattpocock_controls'))
   else assert(requests[0].messages.some(message => message.role === 'system' && JSON.stringify(message.content).includes('mattpocock_controls:')))
+  // The held probe deliberately records an upstream admission limitation,
+  // not a passing strict-silence acceptance. The stale snapshot crossed
+  // pre-step before OFF even though the model stream had not yet started.
   assert(requests[0].messages.some(message => message.source?.kind === 'mattpocock-controls'))
   agent.inject(host.makeSnapshotMessage('fixture-not-yet-admitted-plugin-snapshot'))
-  await runtime.savePolicy(operator, { ...enabled, workspaceOverrides: { W: { workspace: { enabled: false } } } }, 1, signal())
+  if (!held) await disable()
   await follow('ordinary second input')
   assert.equal(requests.length, 2)
   const request = requests[1], projected = sdk.projectToolUpdates(request.messages, request.tools, 'in-history', request.toolHistory)
