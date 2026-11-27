@@ -15,7 +15,12 @@ test('activity resolves through direct children and never walks the whole subtre
       async listDescendants() { walks += 1; return [] },
     })
   } })
-  const activity = await f.mounted.ports.nativeActivity('root')
+  let activity = await f.mounted.ports.nativeActivity('root')
+  // Policy admission creates the first baseline; catalog enrichment is still asynchronous.
+  for (let attempts = 0; (children === 0 || !activity.known) && attempts < 50; attempts++) {
+    await new Promise(resolve => setImmediate(resolve))
+    activity = await f.mounted.ports.nativeActivity('root')
+  }
   assert.equal(walks, 0, 'the per-descendant subtree walk is never used when direct children are available')
   assert.ok(children >= 1, 'membership comes from the direct-children catalog read')
   assert.equal(activity.known, true)
