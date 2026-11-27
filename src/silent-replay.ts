@@ -48,7 +48,7 @@ function runtimeContextText(intro: string, sections: readonly ContextSnapshotSec
   return `<system-reminder>\n${intro}\n\n${body}\n</system-reminder>`
 }
 
-function stripRuntimeContext(message: UserMessage): UserMessage | null | 'unsupported' | undefined {
+export function stripRuntimeContext(message: UserMessage): UserMessage | null | 'unsupported' | undefined {
   const { kind, form, sections } = sourceFields(message.source)
   if (kind !== 'runtime-context') return undefined
   if (form !== 'snapshot' || !Array.isArray(sections) || !sections.every(isContextSection)) return 'unsupported'
@@ -73,7 +73,7 @@ function isStructuredSystemSection(value: unknown): value is SystemPromptSection
     && 'contentIndex' in value && Number.isInteger(value.contentIndex)
 }
 
-function stripPtcSystemMessage(message: SystemMessage): SystemMessage | 'unsupported' | undefined {
+export function stripPtcSystemMessage(message: SystemMessage): SystemMessage | 'unsupported' | undefined {
   const sections: readonly unknown[] | undefined = message.source.sections
   if (!Array.isArray(sections) || !sections.some(section => section !== null && typeof section === 'object'
     && 'name' in section && section.name === 'tools:sdk')) return undefined
