@@ -98,6 +98,7 @@ function verifierOverlay(verifier, channel, output) {
     '      config:',
     '        channel: ' + channel,
     '        output: ' + JSON.stringify(output),
+    '        installedHeadless: true',
     '',
   ].join('\n')
 }
@@ -257,6 +258,8 @@ async function main() {
       homes: { fresh: true, securelyCreatedUnderSystemTmp: true, removedAfterVerification: true },
       channels: channelReports,
       checkoutTarballReportsByteIdentical: true,
+      runtimeSkills: 'headless-unverified-workspace-fail-closed',
+      corpusSkills: 'installed-factory-in-separate-exact-host-registry',
       modelInvoked: false,
       webStarted: false,
       customClient: false,

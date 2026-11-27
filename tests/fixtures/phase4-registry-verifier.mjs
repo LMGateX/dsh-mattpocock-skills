@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
-import { isAbsolute, resolve, sep } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 
 export const name = 'dsh-mattpocock-phase4-verifier'
 export const inject = ['skills']
@@ -88,8 +90,37 @@ async function inspectDefinition(summary, definition, row, packageRoot) {
   }
 }
 
-/** Inspect every installed definition through an actual booted DSH Skill Registry. */
+/** Separate stock headless fail-closed behavior from the installed corpus check. */
 export async function apply(ctx, config) {
+  if (config.installedHeadless !== true) return await verifyCorpus(ctx, config)
+  const profile = ctx.get('profileContext')
+  assert(profile && isAbsolute(profile.dir) && isAbsolute(profile.installAnchor), 'requires the actual isolated DSH profile')
+  assert.equal((await ctx.skills.list()).some(skill => skill.provider === providerName), false,
+    'unverified headless lookup must not discover an installed workspace-gated provider')
+  assert.equal((await ctx.skills.get('tdd'))?.provider === providerName, false,
+    'unverified headless lookup must not load installed bundled content')
+
+  const profileRequire = createRequire(join(profile.dir, 'package.json'))
+  const runtimeRequire = createRequire(profile.installAnchor)
+  const load = (require, name) => import(pathToFileURL(require.resolve(name)).href)
+  const [{ Context }, { SkillRegistry }, { createMattPocockSkillProvider }] = await Promise.all([
+    load(runtimeRequire, '@deepseek-ai/cordis'), load(runtimeRequire, '@deepseek-ai/dsh-skill'),
+    load(profileRequire, '@lmgatex/dsh-mattpocock-skills'),
+  ])
+  // This private Registry checks shipped bytes, not workspace authorization.
+  const corpus = new Context()
+  const registry = corpus.plugin(SkillRegistry)
+  await registry.ready
+  const provider = corpus.plugin({ inject: ['skills'], apply(scope) {
+    scope.skills.registerProvider(control => createMattPocockSkillProvider(config.channel, { lifecycleSignal: control.signal }))
+  } })
+  try {
+    await provider.ready
+    await verifyCorpus(corpus, config)
+  } finally { await provider.dispose(); await registry.dispose() }
+}
+
+async function verifyCorpus(ctx, config) {
   assert(Object.hasOwn(catalog.channels, config.channel), 'unknown verification channel')
   const rows = catalog.skills.filter((row) => row.channels.includes(config.channel))
   assert.equal(rows.length, 27)

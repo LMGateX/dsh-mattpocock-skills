@@ -103,6 +103,7 @@ async function worker(scenario, tarball) {
   const Timer = (await load('@deepseek-ai/cordis-plugin-timer')).default
   const native = await load('@deepseek-ai/dsh-subagent')
   const { provideCmdline } = await load('@deepseek-ai/dsh-cmdline')
+  const connection = await load('@deepseek-ai/dsh-client-connection')
   const readyListeners = new Set()
   app.initProfile(dir, PROFILE_TEMPLATES.web.bundles)
   const profile = app.loadProfileDirectory('manager-proof', dir, anchor)
@@ -111,7 +112,12 @@ async function worker(scenario, tarball) {
   const defaultRows = app.composeEntries(profile.layers.map(layer => layer.patches))
   assert(defaultRows.some(row => row.id === 'subagent' && row.name === '@deepseek-ai/dsh-subagent'))
   assert(defaultRows.some(row => row.id === 'webserver'), 'actual default Web layer participates')
-  const overlays = defaultRows.filter(row => !['subagent', 'dsh-mattpocock-skills'].includes(row.id))
+  const retainedRows = new Set([
+    'subagent', 'dsh-mattpocock-skills', 'workspace', 'storage', 'storage-json', 'storage-domain',
+    'session', 'session-persistence-jsonl', 'session-query-sqlite', 'agent', 'agent-loop',
+    'session-projection', 'system-prompt', 'tools',
+  ])
+  const overlays = defaultRows.filter(row => !retainedRows.has(row.id))
     .map(row => ({ id: row.id, disabled: true }))
   // Alpha.2 reloads the official --patch input from disk each time the
   // manager recomposes the profile. Keep the bounded overlay in fixture home.
@@ -131,13 +137,11 @@ async function worker(scenario, tarball) {
         ready: { onReady(listener) { readyListeners.add(listener); return () => readyListeners.delete(listener) } } })
       new app.PluginPackages(ctx, { resolution })
       new TypertRegistry(ctx); new SkillRegistry(ctx)
+      // Stock Connection can supply its local owner Peer without an HTTP listener.
+      await ctx.plugin(connection)
       ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model forbidden') }, stream() { modelCalls++; throw new Error('model forbidden') } })
       if (native.default.inject?.includes('workingDirectory') && ctx.get('workingDirectory') === undefined)
         ctx.provide('workingDirectory', { async ensure() { return dir }, async set() {} })
-      if (native.default.inject?.includes('sessionProjections') && ctx.get('sessionProjections') === undefined) {
-        const { SessionProjectionRegistry } = await load('@deepseek-ai/dsh-session-projection')
-        new SessionProjectionRegistry(ctx)
-      }
       await ctx.plugin(Timer)
       await ctx.plugin(Hmr, { root: [], base: dir, ignored: [], debounce: 1 })
       await ctx.plugin(PluginManager, { fallbackRegistries: [], idleTimeoutMs: 30000 })
@@ -152,7 +156,22 @@ async function worker(scenario, tarball) {
     assert(initial instanceof native.default, 'the stock native subagent must be the selected provider')
     assert.equal(entry('mattpocock-native-subagent'), undefined, 'retired compatibility row must not exist')
     const pluginRow = () => ctx.pluginManager.listPlugins().then(rows => rows.find(row => row.moduleName === pluginName))
-    const skillMounted = async () => (await ctx.skills.list()).some(skill => skill.name === 'tdd')
+    const workspaceDir = join(home, 'manager-proof-workspace')
+    await mkdir(workspaceDir, { recursive: true })
+    assert.equal(ctx.get('webServer'), undefined, 'bounded smoke is not an HTTP/GUI launch')
+    await ctx.workspaceRegistry.create(workspaceDir, 'Manager proof')
+    const { agent } = await ctx.agents.create({ sessionId: 'manager-proof-' + scenario, meta: { cwd: workspaceDir }, agentOptions: {} })
+    assert.equal(ctx.agents.get(agent.id), agent, 'lookup is an actual factory-registered Agent')
+    const skillMounted = async () => {
+      await ctx.fiber.await()
+      const lookup = { cwd: workspaceDir, scope: agent }
+      const bundled = (await ctx.skills.list(lookup)).find(skill => skill.name === 'tdd' && skill.provider === 'dsh-mattpocock-skills')
+      if (!bundled) return false
+      assert.equal((await ctx.skills.get('tdd', lookup))?.provider, bundled.provider)
+      assert.equal((await ctx.skills.list({ cwd: workspaceDir })).some(skill => skill.provider === bundled.provider), false,
+        'the same cwd without its actual Agent never grants bundled Skills')
+      return true
+    }
     if (scenario === 'install') {
       assert.equal((await pluginRow()), undefined)
       assert.equal(await skillMounted(), false)
@@ -238,7 +257,7 @@ async function child(scenario, tar = tarball) {
   assert(isAbsolute(hostRoot), 'manager worker needs an absolute host root')
   const source = [
     "import assert from 'node:assert/strict'", "import { createRequire } from 'node:module'",
-    "import { readFile, writeFile } from 'node:fs/promises'",
+    "import { mkdir, readFile, writeFile } from 'node:fs/promises'",
     "import { join, dirname } from 'node:path'", "import { pathToFileURL } from 'node:url'",
     "import { createHash } from 'node:crypto'",
     'const hostRoot = ' + JSON.stringify(hostRoot), 'const pluginName = ' + JSON.stringify(pluginName),
