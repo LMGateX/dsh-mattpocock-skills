@@ -23,7 +23,7 @@ const author = { kind: 'user', principalId: 'user:test', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'inline-instance', ownerSessionId: 'inline-owner', controlWorkspaceId: 'inline-workspace' }
   return { sessionId: 'inline-session', instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, features: {},
+    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {},
       windows: { ticketWindowSize: 8, runningSubagentLimit: 100 },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, viewerRevision: 0, workflows: [], tickets: [], decisions: [], decisionViews: [],
@@ -589,11 +589,9 @@ test('session prop and observer mismatch cannot expose the old selected snapshot
   assert.doesNotMatch(f.container.textContent, /sensitive-old-session/)
 })
 
-test('rightPanel=false still permits all four local disclosures while closed management explicitly labels saved non-live records', async t => {
-  const view = snapshot(); view.policy.display.rightPanel = false; view.policy.extensionEnabled = false
+test('rightPanel=false still permits all four local disclosures while collaboration is eligible', async t => {
+  const view = snapshot(); view.policy.display.rightPanel = false
   const { container } = await mount(t, view)
-  assert.match(container.textContent, /已保存记录/)
-  assert.match(container.textContent, /不会随工作更新|非实时|不是实时/)
   for (const kind of Object.keys(labels)) {
     await click(entry(container, kind))
     assert(region(container, kind))

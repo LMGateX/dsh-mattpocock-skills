@@ -25,7 +25,7 @@ const author = { kind: 'user', principalId: 'user:test', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'instance', ownerSessionId: 'owner', controlWorkspaceId: 'workspace' }
   return { sessionId: 'session', instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { display: { header: false, inputSummary: false, rightPanel: false, sessionList: false, timeline: false } },
+    policy: { collaborationEnabled: true, display: { header: false, inputSummary: false, rightPanel: false, sessionList: false, timeline: false } },
     records: { instance, scope: { kind: 'coordinator' }, revision: 0, businessRevision: 0, viewerRevision: 0, decisions: [], changes: [], summary: {} } }
 }
 function put(view, id, patch = {}, workflowId = 'workflow') {

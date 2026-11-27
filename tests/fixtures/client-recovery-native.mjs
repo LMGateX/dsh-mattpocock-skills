@@ -47,13 +47,13 @@ export function snapshot(sessionId = 'native-session') {
   const author = { kind: 'user', principalId: 'native-operator', sessionId: null }
   const value = { question: 'Native fixture decision', status: 'open', pending: true, addressee: { kind: 'user' } }
   return { sessionId, instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { configurationRevision: 1, controlWorkspaceId: instance.controlWorkspaceId, workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
+    policy: { configurationRevision: 1, controlWorkspaceId: instance.controlWorkspaceId, workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, scope: { kind: 'coordinator' }, revision: 1, businessRevision: 1, viewerRevision: 0, workflows: [], tickets: [], decisions: [{ workflowId: 'fixture', decisionId: 'decision', value, revision: 1, creator: author, history: [] }], decisionViews: [], changes: [],
       summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 1, pendingUserDecisionCount: 1, pendingForPrincipalCount: 1, awaitingImplementationCount: 0 } }, windows: null, nativeExecutions: [], resources: [], capabilities: [], health: [] }
 }
 export function summary(view) {
-  return { sessionId: view.sessionId, instance: view.instance, caller: view.caller, policy: { configurationRevision: view.policy.configurationRevision, controlWorkspaceId: view.policy.controlWorkspaceId, workspaceVerified: view.policy.workspaceVerified, extensionEnabled: view.policy.extensionEnabled, workspaceEnabled: view.policy.workspaceEnabled, display: view.policy.display },
+  return { sessionId: view.sessionId, instance: view.instance, caller: view.caller, policy: { configurationRevision: view.policy.configurationRevision, controlWorkspaceId: view.policy.controlWorkspaceId, workspaceVerified: view.policy.workspaceVerified, extensionEnabled: view.policy.extensionEnabled, workspaceEnabled: view.policy.workspaceEnabled, collaborationEnabled: view.policy.collaborationEnabled, display: view.policy.display },
     records: { businessRevision: view.records.businessRevision, viewerRevision: view.records.viewerRevision, summary: { countingScope: view.records.summary.countingScope, pendingUserDecisionCount: view.records.summary.pendingUserDecisionCount } }, health: [] }
 }
 export async function activation(initial = snapshot()) {

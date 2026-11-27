@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { parsePolicyIntent, resolvePolicy } from './policy.js'
+import { parsePolicyIntent, protectSkillsTransition, resolvePolicy } from './policy.js'
 import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './policy.js'
 import { INITIAL_DOCUMENT, parseControlsDocument } from './state.js'
 import type { ControlsDocument, InstrumentInstance, SessionAssociation } from './state.js'
@@ -94,8 +94,9 @@ export class WorkspaceControls {
       if (current.policy.revision !== expectedRevision) throw new ControlsError('revision-conflict', 'policy changed; reload the saved revision')
       const oldIntent = parsePolicyIntent({ extensionEnabled: current.policy.extensionEnabled,
         defaults: current.policy.defaults, workspaceOverrides: current.policy.workspaceOverrides })
-      if (JSON.stringify(oldIntent) === JSON.stringify(draft)) return current
-      return { ...current, revision: increment(current.revision), policy: { ...draft, revision: increment(current.policy.revision) } }
+      const intent = protectSkillsTransition(oldIntent, draft)
+      if (JSON.stringify(oldIntent) === JSON.stringify(intent)) return current
+      return { ...current, revision: increment(current.revision), policy: { ...intent, revision: increment(current.policy.revision) } }
     })
     return saved.policy
   }

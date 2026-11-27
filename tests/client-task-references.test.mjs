@@ -27,7 +27,7 @@ function snapshot() {
   const instance = { instrumentInstanceId: 'reference-instance', ownerSessionId: 'reference-owner', controlWorkspaceId: 'reference-workspace' }
   return { sessionId: 'reference-session', instance, caller: { kind: 'user', principalId: 'operator', sessionId: null },
     policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, features: {},
+    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {},
       windows: { ticketWindowSize: 4, runningSubagentLimit: 4 }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: true, timeline: true } },
     records: { instance, revision: 3, businessRevision: 3, viewerRevision: 0, scope: { kind: 'coordinator' }, focusedWorkflowId: 'work',
       capabilities: { taskReferences: true, storageVersions: [1, 2, 3] }, taskReferences: [reference()],

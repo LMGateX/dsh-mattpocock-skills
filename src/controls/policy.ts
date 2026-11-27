@@ -53,13 +53,15 @@ export interface EffectivePolicy {
   readonly extensionEnabled: boolean
   /** Per-workspace gate, resolved; the safe initial is closed. */
   readonly workspaceEnabled: boolean
-  /** Skill distribution for this workspace, resolved; the safe initial is open. */
+  /** Skill distribution preference for this workspace, resolved; the safe initial is open. */
   readonly skillsEnabled: boolean
+  /** Positive, verified eligibility for collaboration; raw gate preferences are not sufficient. */
+  readonly collaborationEnabled: boolean
   readonly features: Readonly<Record<FeatureName, {
     readonly requested: boolean
     /** configured is policy intent, NOT a claim of installed/enforced host capability. */
     readonly status: 'disabled' | 'configured' | 'unsupported'
-    readonly reason: 'extension-disabled' | 'workspace-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null
+    readonly reason: 'extension-disabled' | 'workspace-disabled' | 'skills-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null
   }>>
   readonly windows: { readonly ticketWindowSize: number | null; readonly runningSubagentLimit: number | null }
   readonly pendingDecisions: { readonly interactionMode: DecisionInteractionMode }
@@ -129,6 +131,32 @@ export function parsePolicySnapshot(value: unknown): PolicySnapshot {
     workspaceOverrides: raw.workspaceOverrides }), revision: revision(raw.revision, 'policy revision') })
 }
 
+/** Apply the save-time master-gate transition to complete, parsed sparse intents.
+ * Keep the other leaves untouched, including inactive feature and display settings.
+ */
+export function protectSkillsTransition(previous: PolicyIntent, draft: PolicyIntent): PolicyIntent {
+  const skills = (patch: WorkspacePolicyPatch, defaults: WorkspacePolicyPatch) => patch.skills?.enabled ?? defaults.skills?.enabled ?? true
+  const workspace = (patch: WorkspacePolicyPatch, defaults: WorkspacePolicyPatch) => patch.workspace?.enabled ?? defaults.workspace?.enabled ?? false
+  const toggleDefaults = skills({}, previous.defaults) !== skills({}, draft.defaults)
+  const resetDefaults = toggleDefaults && workspace({}, draft.defaults)
+  const defaults = resetDefaults ? { ...draft.defaults, workspace: { enabled: false } } : draft.defaults
+  const overrides = new Map(Object.entries(draft.workspaceOverrides))
+  const find = (intent: PolicyIntent, key: string) => Object.hasOwn(intent.workspaceOverrides, key) ? intent.workspaceOverrides[key]! : {}
+  for (const key of new Set([...Object.keys(previous.workspaceOverrides), ...overrides.keys()])) {
+    const oldSkills = skills(find(previous, key), previous.defaults)
+    const patch = overrides.get(key) ?? {}
+    const newSkills = skills(patch, draft.defaults)
+    if (oldSkills !== newSkills && workspace(patch, defaults)) {
+      // Includes an inherited ON or a simultaneous explicit attempt to turn both gates on.
+      overrides.set(key, { ...patch, workspace: { enabled: false } })
+    } else if (oldSkills && newSkills && workspace(patch, draft.defaults) && !workspace(patch, defaults)) {
+      // A pinned Skills-on exception should not be turned off by a synthesized default reset.
+      overrides.set(key, { ...patch, workspace: { enabled: true } })
+    }
+  }
+  return parsePolicyIntent({ ...draft, defaults, workspaceOverrides: Object.fromEntries(overrides) })
+}
+
 /** Pure server-side resolution; display preferences never control functional eligibility. */
 export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string, workspaceVerified: boolean): EffectivePolicy {
   const parsed = parsePolicySnapshot(policy)
@@ -152,10 +180,11 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
   const pendingDecisions = { interactionMode: choose('pendingDecisions', 'interactionMode', 'native-question') as DecisionInteractionMode }
   const workspaceEnabled = choose('workspace', 'enabled', false) as boolean
   const skillsEnabled = choose('skills', 'enabled', true) as boolean
+  const collaborationEnabled = parsed.extensionEnabled && workspaceEnabled && skillsEnabled && workspaceVerified
   const features = {} as Record<FeatureName, EffectivePolicy['features'][FeatureName]>
   for (const feature of FEATURE_NAMES) {
     const requested = choose(feature, 'enabled', false) as boolean
-    const reason = !parsed.extensionEnabled ? 'extension-disabled' : !workspaceEnabled ? 'workspace-disabled' : !requested ? 'feature-disabled'
+    const reason = !skillsEnabled ? 'skills-disabled' : !parsed.extensionEnabled ? 'extension-disabled' : !workspaceEnabled ? 'workspace-disabled' : !requested ? 'feature-disabled'
       : !workspaceVerified ? 'workspace-unverified'
       : feature === 'windows' && (windows.ticketWindowSize === null || windows.runningSubagentLimit === null) ? 'window-capacity-unset' : null
     features[feature] = { requested, status: reason === null ? 'configured'
@@ -163,5 +192,5 @@ export function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string
   }
   const display = Object.fromEntries(DISPLAY_NAMES.map(key => [key, choose('display', key, DISPLAY_INITIAL[key])])) as Required<DisplayPatch>
   return freeze({ configurationRevision: parsed.revision, controlWorkspaceId: workspaceId, workspaceVerified,
-    extensionEnabled: parsed.extensionEnabled, workspaceEnabled, skillsEnabled, features, windows, pendingDecisions, display, sources })
+    extensionEnabled: parsed.extensionEnabled, workspaceEnabled, skillsEnabled, collaborationEnabled, features, windows, pendingDecisions, display, sources })
 }

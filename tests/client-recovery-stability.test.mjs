@@ -26,7 +26,7 @@ const author = { kind: 'user', principalId: 'user:test', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'inline-instance', ownerSessionId: 'inline-owner', controlWorkspaceId: 'inline-workspace' }
   return { sessionId: 'inline-session', instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, features: {},
+    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {},
       windows: { ticketWindowSize: 8, runningSubagentLimit: 100 },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, viewerRevision: 0, workflows: [], tickets: [], decisions: [], decisionViews: [],
@@ -62,7 +62,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
     sessionId, status: 'current', version: (++version).toString(16).padStart(64, '0'), summary: {
       sessionId, instance: current.instance, caller: current.caller,
       policy: { configurationRevision: version, controlWorkspaceId: current.instance.controlWorkspaceId, workspaceVerified: true,
-        extensionEnabled: true, workspaceEnabled: true, display: current.policy.display },
+        extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, display: current.policy.display },
       records: { businessRevision: 7, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 3 } }, health: [],
     }
   })) } }) }, 600000)
@@ -77,7 +77,7 @@ async function mount(t, { multipleSeats = false, stableHolder = false } = {}) {
     // A fresh real lazy handle and callback on every render, like native slot injection.
     root.render(mounted ? React.createElement(React.Fragment, null,
       React.createElement(client.InputSummary, { sessionId: current.sessionId, summary: scheduler.observe(current.sessionId), observe: () => cache.observe(current.sessionId), openDetails: () => assert.fail('no navigation') }),
-      multipleSeats ? React.createElement(client.DecisionNotificationReader, { sessionId: current.sessionId, observer: cache.observe(current.sessionId), reading }) : null) : null)
+      multipleSeats ? React.createElement(client.DecisionNotificationReader, { sessionId: current.sessionId, summary: scheduler.observe(current.sessionId), observer: cache.observe(current.sessionId), reading }) : null) : null)
   })
   const settle = () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
   t.after(async () => {
@@ -159,8 +159,8 @@ test('last real unmount aborts in-flight work and a remount is cold', async t =>
   const request = ui.requests[0], before = ui.calls
   await ui.render(false)
   assert.equal(request.signal.aborted, true, 'last release cancels immediately')
-  await ui.render()
-  assert.equal(ui.calls, before + 1, 'remount cannot use the previous current snapshot')
+  await ui.render(); await ui.settle()
+  assert.equal(ui.calls, before + 1, 'remount rechecks eligibility before reading a fresh full snapshot')
   assert.doesNotMatch(ui.container.textContent, /T 2[/]8/)
   await ui.finishRequests(); await ui.settle()
   assert.equal(entry(ui.container, 'T').getAttribute('aria-expanded'), 'false')

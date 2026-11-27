@@ -17,7 +17,7 @@ const client = registration.factory(name => {
 function snapshot() {
   const instance = { instrumentInstanceId: 'instance', ownerSessionId: 'owner', controlWorkspaceId: 'workspace' }
   return { sessionId: 'owner', instance, caller: { kind: 'user', principalId: 'operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'workspace', extensionEnabled: true, workspaceEnabled: true, features: {}, windows: { ticketWindowSize: 8, runningSubagentLimit: 80 },
+    policy: { controlWorkspaceId: 'workspace', extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {}, windows: { ticketWindowSize: 8, runningSubagentLimit: 80 },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: true, timeline: true } },
     records: null, windows: { instance, capability: 'cooperative', scope: { kind: 'coordinator' }, T: { used: 0, capacity: 8, overage: 0, gap: 8 },
       S: { used: 70, capacity: 80, overage: 0, gap: 10, countKnown: true, depth: null } },

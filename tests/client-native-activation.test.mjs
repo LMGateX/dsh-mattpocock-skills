@@ -39,7 +39,7 @@ function assertUnmounted(f) {
   for (const namespace of ['remote.mattpocockControls', 'remote.mattpocockRecommendationSupport'])
     assert.equal(f.ctx.get(namespace), undefined, namespace)
   for (const seat of ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
-    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview'])
+    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'sidebar.session.row.leading', 'tool.call.toolview'])
     assert.equal(f.ctx.slots.entriesOfSlot(seat).length, 0, seat)
   assert.equal(f.tabs.length, 0)
 }
@@ -64,7 +64,7 @@ async function assembly(t) {
   const kinds = {
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' }, 'plugins.row.config': { kind: 'keyed', scope: 'root' },
     'conversation.session.header.utilities': { kind: 'list', scope: 'session' }, 'conversation.input.dock': { kind: 'list', scope: 'session' },
-    'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' }, 'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+    'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' }, 'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' }, 'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
     'tool.call.toolview': { kind: 'keyed', scope: 'session' },
   }
   ctx.slots.register({ name: 'root', children: kinds }, () => null)
@@ -96,7 +96,7 @@ test('native Client plugin fiber activates after self-mounting its declared Remo
 test('native Client teardown removes all namespace-owned UI and permits a clean remount', native, async t => {
   const f = await assembly(t)
   const seats = ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
-    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview']
+    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'sidebar.session.row.leading', 'tool.call.toolview']
   for (let turn = 0; turn < 3; turn++) {
     const fiber = f.ctx.plugin(f.plugin); await fiber
     assert.equal(fiber.state, 2)
@@ -182,7 +182,7 @@ test('native browser graph removal and re-add replace the fiber without leaked o
   const { entry, modules, id } = await browserBoot(f)
   const originalFiber = entry.fiber
   const seats = ['plugins.bundle.config', 'plugins.row.config', 'conversation.session.header.utilities',
-    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.session.row.leading', 'tool.call.toolview']
+    'conversation.input.dock', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'sidebar.session.row.leading', 'tool.call.toolview']
   const registered = () => {
     for (const seat of seats) assert.equal(f.ctx.slots.entriesOfSlot(seat).length, seat === 'tool.call.toolview' ? 9 : ['conversation.session.header.utilities', 'conversation.input.dock'].includes(seat) ? 2 : 1, seat)
     assert.equal(f.tabs.length, 1)

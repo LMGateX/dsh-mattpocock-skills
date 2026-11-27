@@ -33,6 +33,7 @@ const rowKey = (row: { workflowId: string; decisionId: string }): string => JSON
 const notificationIdentity = (view: ClientSessionSnapshot): string => JSON.stringify([view.caller.kind, view.caller.principalId, view.caller.sessionId, view.instance.instrumentInstanceId, view.instance.ownerSessionId, view.instance.controlWorkspaceId])
 /** Actual authenticated caller/instance only; neither policy display nor business text is identity. */
 export function notificationScope(view: ClientSessionSnapshot): string | null {
+  if (view.policy?.collaborationEnabled !== true) return null
   const r = view.records, i = view.instance, c = view.caller
   if (!r || !Array.isArray(r.decisions) || !Array.isArray(r.changes) || !r.scope || (r.scope.kind !== 'coordinator' && (r.scope.kind !== 'assigned' || !Array.isArray(r.scope.ticketIds))) || !view.policyGrants || !integer(view.policyGrants.revision, 0, Number.MAX_SAFE_INTEGER)) return null
   if (!i || !r.instance || !c || (c.kind === 'user' ? c.sessionId !== null : c.kind !== 'agent' || c.sessionId !== view.sessionId) || !c.principalId || !i.instrumentInstanceId || !i.ownerSessionId || !i.controlWorkspaceId || r.instance.instrumentInstanceId !== i.instrumentInstanceId || r.instance.ownerSessionId !== i.ownerSessionId || r.instance.controlWorkspaceId !== i.controlWorkspaceId || !integer(r.revision, 0, Number.MAX_SAFE_INTEGER)) return null
@@ -328,11 +329,11 @@ export function BrowserNotificationPreferencesPanel(props: { readonly center?: B
 }
 
 /** Mount in an independent strict Session utility seat; never under display-policy gates. */
-export function DecisionNotifications(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly onOpenDecision: (workflowId: string, decisionId: string) => void; readonly center?: BrowserNotificationCenter }): ReactElement {
+export function DecisionNotifications(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly onOpenDecision: (workflowId: string, decisionId: string) => void; readonly center?: BrowserNotificationCenter; readonly isEligible?: () => boolean }): ReactElement | null {
   // A keyed child makes a Session/observer replacement a hard lifetime boundary.
   return h(MountedDecisionNotifications, { ...props, key: props.sessionId })
 }
-function MountedDecisionNotifications(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly onOpenDecision: (workflowId: string, decisionId: string) => void; readonly center?: BrowserNotificationCenter }): ReactElement {
+function MountedDecisionNotifications(props: { readonly sessionId: string; readonly observer: SessionObservation; readonly onOpenDecision: (workflowId: string, decisionId: string) => void; readonly center?: BrowserNotificationCenter; readonly isEligible?: () => boolean }): ReactElement | null {
   const center = useMemo(() => props.center ?? defaultCenter(), [props.center])
   const observation = useSyncExternalStore(props.observer.subscribe, props.observer.getSnapshot, props.observer.getSnapshot)
   const settings = useSyncExternalStore(center.subscribe, center.getSnapshot, center.getSnapshot)
@@ -348,7 +349,7 @@ function MountedDecisionNotifications(props: { readonly sessionId: string; reado
   const scope = ready && notificationScope(ready)
   const current = (episode: DecisionNotificationEpisode): boolean => {
     const latest = props.observer.getSnapshot()
-    return latest.status === 'ready' && latest.value.sessionId === props.sessionId && notificationScope(latest.value) === episode.scope && tracker.isCurrent(episode) && latest.value.records?.decisions.some(row => row && row.value && rowKey(row) === rowKey(episode) && pendingUser(row.value)) === true
+    return props.isEligible?.() !== false && latest.status === 'ready' && latest.value.sessionId === props.sessionId && notificationScope(latest.value) === episode.scope && tracker.isCurrent(episode) && latest.value.records?.decisions.some(row => row && row.value && rowKey(row) === rowKey(episode) && pendingUser(row.value)) === true
   }
   const dismiss = (id: string): void => { const timer = timers.get(id); if (timer !== undefined) center.ports.cancel(timer.handle); timers.delete(id); setToasts(rows => rows.filter(row => row.id !== id)) }
   useEffect(() => {
@@ -368,6 +369,7 @@ function MountedDecisionNotifications(props: { readonly sessionId: string; reado
     })
   }, [observation, props.observer, tracker, delivery])
   useEffect(() => { if (!settings.preferences.toast) { setToasts([]); for (const timer of timers.values()) center.ports.cancel(timer.handle); timers.clear() } }, [settings.preferences.toast, center, timers])
+  if (ready !== null && ready.policy.collaborationEnabled !== true) return null
   return h('div', { 'aria-label': '待用户裁决提醒', style: { minWidth: 0 } },
     h('details', null, h('summary', null, '提醒状态'), h('p', { role: 'status' }, diagnostic), h('p', null, settings.delivery), h('p', null, settings.coordination)),
     scope && settings.preferences.toast ? toasts.filter(row => row.scope === scope && current(row)).map(episode => h('div', { key: episode.id, role: 'status', 'aria-label': '新待用户裁决', style: { overflowWrap: 'anywhere', maxWidth: '28rem' } },

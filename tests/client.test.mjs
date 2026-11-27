@@ -25,7 +25,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve))
 const policy = { revision: 4, extensionEnabled: true, defaults: { workspace: { enabled: true },}, workspaceOverrides: {} }
 const instance = { instrumentInstanceId: 'i-one', ownerSessionId: 'owner-one', controlWorkspaceId: 'workspace-one' }
 function snapshot(sessionId = 'session-one', overrides = {}) {
-  return { sessionId, instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'workspace-one', extensionEnabled: true,
+  return { sessionId, instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'workspace-one', extensionEnabled: true, collaborationEnabled: true,
     features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
     display: { header: true, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } },
     records: null, windows: null, resources: [], capabilities: [], health: [], ...overrides }
@@ -33,7 +33,7 @@ function snapshot(sessionId = 'session-one', overrides = {}) {
 
 function summarySnapshot(sessionId) {
   return { sessionId, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, instance,
-    policy: { configurationRevision: 4, controlWorkspaceId: 'workspace-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true,
+    policy: { configurationRevision: 4, controlWorkspaceId: 'workspace-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       display: { header: true, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } },
     records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] }
 }
@@ -45,7 +45,7 @@ function contextFixture() {
   const declarations = new Map([
     ['plugins.bundle.config', 'keyed'], ['plugins.row.config', 'keyed'],
     ['conversation.session.header.utilities', 'list'], ['conversation.input.dock', 'list'],
-    ['sidebar.right.pane.tab', 'keyed'], ['sidebar.session.row.leading', 'list'], ['tool.call.toolview', 'keyed'],
+    ['sidebar.right.pane.tab', 'keyed'], ['sidebar.right.pane.tab.title', 'keyed'], ['sidebar.session.row.leading', 'list'], ['tool.call.toolview', 'keyed'],
   ])
   const remote = { $mount: async contribution => { mounts.push(contribution); return async () => {} },
     mattpocockControls: { readPolicy: async () => ok(policy), savePolicy: async intent => ok({ ...intent, revision: 5 }),
@@ -153,9 +153,8 @@ test('refresh supersession retains the newest committed result only', async () =
 
 test('header unknown does not counterfeit a pending count and details opens only on click', async () => {
   const unknown = new client.SessionObserver('A', async () => ok(snapshot('A')), 0)
-  const rendered = client.ObservedHeaderEntry({ observer: unknown, openDetails: () => { throw new Error('automatic open') } })
-  assert.match(JSON.stringify(rendered), /状态未知/)
-  assert(!JSON.stringify(rendered).includes('裁决 0'))
+  const rendered = client.ObservedHeaderEntry({ sessionId: 'A', observer: unknown, openDetails: () => { throw new Error('automatic open') } })
+  assert.equal(rendered, null)
   const fixture = contextFixture(); await client.apply(fixture.ctx)
   const entry = fixture.entries.find(row => row.options?.name === 'conversation.session.header.utilities')
   const face = entry.options.inject('session-one'); const stop = face.summary.retain(); await new Promise(resolve => setTimeout(resolve, 10)); await settle()
@@ -198,7 +197,7 @@ test('actual installed SlotCore accepts native contribution options and unloads 
   const kinds = {
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' }, 'plugins.row.config': { kind: 'keyed', scope: 'root' },
     'conversation.session.header.utilities': { kind: 'list', scope: 'session' }, 'conversation.input.dock': { kind: 'list', scope: 'session' },
-    'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' }, 'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+    'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' }, 'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' }, 'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
     'tool.call.toolview': { kind: 'keyed', scope: 'session' },
   }
   const owner = core.register({ name: 'root', children: kinds }, () => null)
@@ -385,7 +384,7 @@ test('default header persistently shows custom ticket status, T, unknown-safe S 
   const view = snapshot('A', { records, windows, resources: [{ resourceId: 'r1', status: 'retained' }] })
   const observer = new client.SessionObserver('A', async () => ok(view), 0)
   const release = observer.retain(); await settle()
-  const rendered = client.ObservedHeaderEntry({ observer, openDetails: () => { throw new Error('automatic open') } })
+  const rendered = client.ObservedHeaderEntry({ sessionId: 'A', observer, openDetails: () => { throw new Error('automatic open') } })
   const text = JSON.stringify(rendered)
   assert.match(text, /票 7/); assert.match(text, /部分接口可评审 3/)
   assert.match(text, /待用户裁决 2/); assert.match(text, /记录核对/); assert.doesNotMatch(text, /待落实 1/)
@@ -766,7 +765,7 @@ test('mounted detail editors retain Session-qualified identities and reject an u
   assert.deepEqual(roleKeys, ['A:bindings', 'A:history', 'A:policy-grants'])
   assert.equal(new Set(roleKeys).size, roleKeys.length, 'sibling roles must not reuse the same Session key')
   const mismatched = client.Details({ ...props, sessionId: 'B' })
-  assert.match(JSON.stringify(mismatched), /归属不一致/)
+  assert.equal(mismatched, null)
   assert(!treeRows(mismatched).some(row => row.type?.name === 'DecisionEditor'))
 })
 
@@ -933,7 +932,7 @@ test('resource domain failure is unknown rather than zero, while cold physical f
   assert(!client.compactInstrumentSummary(failed).parts.some(part => part.includes('资源 0')))
   const observer = new client.SessionObserver('A', async () => ok(failed), 0)
   const release = observer.retain(); await settle()
-  const header = client.ObservedHeaderEntry({ observer, openDetails: () => {} })
+  const header = client.ObservedHeaderEntry({ sessionId: 'A', observer, openDetails: () => {} })
   assert.match(JSON.stringify(header), /资源未知/)
   assert(!JSON.stringify(header).includes('资源 0'))
   const details = client.Details({ observer, sessionId: 'A', remote: {}, openDetails: () => {}, useTabInfo: () => ({ tab: { visible: true } }) })

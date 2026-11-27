@@ -23,7 +23,7 @@ test('summary batches have a strict bounded request and real cancellation channe
 
 const summary = () => ({ sessionId: 'root', caller: { kind: 'user', principalId: 'user:operator', sessionId: null },
   instance: { instrumentInstanceId: 'I', ownerSessionId: 'root', controlWorkspaceId: 'W' },
-  policy: { configurationRevision: 2, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: false,
+  policy: { configurationRevision: 2, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
     display: { header: false, inputSummary: false, rightPanel: true, sessionList: true, timeline: true } },
   records: { businessRevision: 7, viewerRevision: 1, summary: { countingScope: 'instance', pendingUserDecisionCount: 3 } }, health: [] })
 const batch = (value = summary()) => ({ rows: [{ sessionId: 'root', status: 'current', version: 'a'.repeat(64), summary: value }] })
@@ -49,6 +49,19 @@ test('summary results reject unbounded, foreign or full-detail fields and contra
   const statuses = { rows: [{ sessionId: 'root', status: 'unchanged', version: 'b'.repeat(64) }, { sessionId: 'child', status: 'unavailable', reason: 'access-denied' }] }
   assert.deepEqual(contract.parseSessionSummaryBatch(statuses), statuses)
   assert.throws(() => contract.parseSessionSummaryBatch({ rows: Array(33).fill(statuses.rows[0]) }))
+})
+
+test('summary eligibility is explicit and silent rows have no collaboration records', () => {
+  const silent = summary(); silent.policy.collaborationEnabled = false; silent.records = null
+  assert.deepEqual(contract.parseSessionSummaryBatch(batch(silent)), batch(silent))
+  const stale = summary(); stale.policy.collaborationEnabled = false
+  assert.throws(() => contract.parseSessionSummaryBatch(batch(stale)), /coverage/)
+  const legacy = summary(); delete legacy.policy.collaborationEnabled
+  assert.throws(() => contract.parseSessionSummaryBatch(batch(legacy)), /collaboration enabled/)
+  for (const gate of ['workspaceVerified', 'extensionEnabled', 'workspaceEnabled']) {
+    const invalid = summary(); invalid.policy[gate] = false
+    assert.throws(() => contract.parseSessionSummaryBatch(batch(invalid)), /collaboration and workspace policy disagree/)
+  }
 })
 
 test('maximum-length legal Unicode identities fit the bounded UTF-8 summary batch', () => {

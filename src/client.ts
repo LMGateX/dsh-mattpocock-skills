@@ -16,7 +16,7 @@ import { NativeSubagentTree, createSubagentNavigationSource } from './client-sub
 import { OwnerDecisionPolicyPanel, installRecommendationPolicy, DecisionRecommendationProvenance } from './client-recommendation-policy.js'
 import type { RecommendationRemote } from './controls/recommendation-contract.js'
 import { BrowserNotificationPreferencesPanel, DecisionNotifications, notificationScope } from './client-notifications.js'
-import { parsePolicyIntent, parsePolicySnapshot, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
+import { parsePolicyIntent, parsePolicySnapshot, protectSkillsTransition, resolvePolicy, FEATURE_NAMES, DISPLAY_NAMES } from './controls/policy.js'
 import type { EffectivePolicy, PolicyField, PolicyIntent, PolicySnapshot } from './controls/policy.js'
 import { ownSupervisionLeaf, parseSupervisionConfigSnapshot, resolveSupervisionSettings, setSupervisionLeaf, supervisionIntentOf } from './controls/supervision-config.js'
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot, SupervisionField, SupervisionSettings } from './controls/supervision-config.js'
@@ -108,8 +108,9 @@ export class SessionObserver {
     let released = false
     return () => { if (released || this.closed) return; released = true; if (--this.holds === 0) { this.generation++; this.controller?.abort(); this.clearTimer(); this.state = { status: 'unknown', value: null, error: null } } }
   }
-  refresh = async (): Promise<void> => {
+  refresh = async (invalidate = false): Promise<void> => {
     if (this.closed || this.holds === 0) return
+    if (invalidate) this.publish(SESSION_UNKNOWN)
     this.clearTimer()
     const generation = ++this.generation
     this.controller?.abort()
@@ -173,7 +174,7 @@ export class SessionObserverCache {
     observationDomains.set(handle, this)
     return handle
   }
-  refreshAll(): void { for (const entry of this.entries.values()) if (entry.active > 0) void entry.observer.refresh() }
+  refreshAll(invalidate = false): void { for (const entry of this.entries.values()) if (entry.active > 0) void entry.observer.refresh(invalidate) }
   dispose(): void { this.closed = true; for (const entry of this.entries.values()) entry.observer.dispose(); this.entries.clear() }
   private prune(): void {
     const idle = [...this.entries].filter(([, entry]) => entry.active === 0).sort((a, b) => a[1].idleSince - b[1].idleSince)
@@ -265,9 +266,12 @@ export class SummaryScheduler {
       }
     }
   }
-  refresh(sessionId?: string): void {
+  refresh(sessionId?: string, invalidate = false): void {
     if (this.closed) return
-    for (const entry of this.entries.values()) if (entry.holds > 0 && (sessionId === undefined || entry.sessionId === sessionId)) { entry.generation++; entry.due = Date.now() }
+    for (const entry of this.entries.values()) if (entry.holds > 0 && (sessionId === undefined || entry.sessionId === sessionId)) {
+      entry.generation++; entry.due = Date.now()
+      if (invalidate) { entry.version = undefined; this.publish(entry, SUMMARY_UNKNOWN) }
+    }
     for (const flight of this.flights) if (!flight.members.some(member => this.current(member, flight))) flight.controller.abort()
     this.arm()
   }
@@ -391,10 +395,14 @@ export async function savePolicyDraft(remote: Pick<ControlsRemote, 'savePolicy'>
 export function policyDraftImpact(saved: PolicySnapshot, draft: PolicyIntent, workspaceId: string | null, verified: boolean): { readonly readRevision: number; readonly scope: string; readonly changes: readonly { readonly field: string; readonly before: unknown; readonly after: unknown }[]; readonly executionEffects: string } {
   const scope = workspaceId ?? 'global-preview'
   const old = resolvePolicy({ ...saved, workspaceOverrides: workspaceId === null ? {} : saved.workspaceOverrides }, scope, verified)
-  const next = resolvePolicy({ ...draft, revision: saved.revision, workspaceOverrides: workspaceId === null ? {} : draft.workspaceOverrides }, scope, verified)
+  const protectedDraft = protectSkillsTransition(saved, draft)
+  const next = resolvePolicy({ ...protectedDraft, revision: saved.revision, workspaceOverrides: workspaceId === null ? {} : protectedDraft.workspaceOverrides }, scope, verified)
   const changes: { field: string; before: unknown; after: unknown }[] = []
   const add = (field: string, before: unknown, after: unknown): void => { if (JSON.stringify(before) !== JSON.stringify(after)) changes.push({ field, before, after }) }
   add('extensionEnabled', old.extensionEnabled, next.extensionEnabled)
+  add('skills.enabled', { value: old.skillsEnabled, source: old.sources['skills.enabled'] }, { value: next.skillsEnabled, source: next.sources['skills.enabled'] })
+  add('workspace.enabled', { value: old.workspaceEnabled, source: old.sources['workspace.enabled'] }, { value: next.workspaceEnabled, source: next.sources['workspace.enabled'] })
+  add('collaborationEnabled', old.collaborationEnabled, next.collaborationEnabled)
   for (const feature of FEATURE_NAMES) add(feature + '.enabled', { value: old.features[feature], source: old.sources[(feature + '.enabled') as PolicyField] }, { value: next.features[feature], source: next.sources[(feature + '.enabled') as PolicyField] })
   for (const key of ['ticketWindowSize', 'runningSubagentLimit'] as const) add('windows.' + key, { value: old.windows[key], source: old.sources[('windows.' + key) as PolicyField] }, { value: next.windows[key], source: next.sources[('windows.' + key) as PolicyField] })
   add('pendingDecisions.interactionMode', { value: old.pendingDecisions.interactionMode, source: old.sources['pendingDecisions.interactionMode'] }, { value: next.pendingDecisions.interactionMode, source: next.sources['pendingDecisions.interactionMode'] })
@@ -450,7 +458,7 @@ function decisionTemplateAccess(props: DecisionInputFace & { readonly sessionId:
   const identity = decisionReadingIdentity(view)
   return { actions: decisionInputActions(props.inputActions), current: row => {
     const latest = props.observer.getSnapshot()
-    if (!extra() || latest.status !== 'ready' || props.sessionId !== props.observer.sessionId || latest.value.sessionId !== props.sessionId
+    if (!extra() || latest.status !== 'ready' || props.sessionId !== props.observer.sessionId || latest.value.sessionId !== props.sessionId || latest.value.policy.collaborationEnabled !== true
       || display !== null && (!latest.value.policy.display[display] || props.observer.getDisplay()?.[display] === false) || decisionReadingIdentity(latest.value) !== identity) return false
     const current = inputRecords(latest.value)?.decisions.find(item => decisionRecordKey(item) === decisionRecordKey(row))
     return current !== undefined && current.revision === row.revision && isPendingUserDecision(current)
@@ -463,6 +471,9 @@ function useSummaryObservation(incoming: SummaryObserver, active = true): Observ
   const { observer } = useStableObservation(incoming)
   useEffect(() => active ? observer.retain() : undefined, [observer, active])
   return useSyncExternalStore(observer.subscribe, observer.getSnapshot, observer.getSnapshot)
+}
+function permitsCollaboration(observation: Observation<SessionSummary>, sessionId: string): boolean {
+  return observation.status === 'ready' && observation.value.sessionId === sessionId && observation.value.policy.collaborationEnabled === true
 }
 function countText(value: unknown): string { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? String(value) : '未知' }
 function capacityText(value: unknown): string { return value === null ? '未配置' : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? String(value) : '未知' }
@@ -561,8 +572,8 @@ export function compactInstrumentSummary(view: ClientSessionSnapshot): { readonl
 }
 export function HeaderEntry(props: HeaderProps): ReactElement | null {
   const observation = useSummaryObservation(props.summary)
-  if (props.summary.getDisplay()?.header === false) return null
-  if (observation.status !== 'ready') return h('span', { title: observation.error ?? '尚无已确认的状态摘要', role: 'status', style: { display: 'inline-block', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, '协作 · 状态未知')
+  if (observation.status !== 'ready' || props.summary.sessionId !== props.sessionId || observation.value.sessionId !== props.sessionId
+    || observation.value.policy.collaborationEnabled !== true || !observation.value.policy.display.header) return null
   return h(HeaderSnapshot, props)
 }
 function HeaderSnapshot(props: HeaderProps): ReactElement | null {
@@ -571,10 +582,9 @@ function HeaderSnapshot(props: HeaderProps): ReactElement | null {
 }
 export function ObservedHeaderEntry(props: PropsRuntime<'conversation.session.header.utilities'> & SessionFace): ReactElement | null {
   const observation = useObservation(props.observer)
-  if (props.observer.getDisplay()?.header === false) return null
-  if (observation.status === 'unknown') return h('span', { title: observation.error ?? '尚无已确认的状态快照', role: 'status', style: { display: 'inline-block', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, '协作 · 状态未知')
+  if (observation.status !== 'ready' || props.observer.sessionId !== props.sessionId || observation.value.sessionId !== props.sessionId) return null
   const view = observation.value
-  if (!view.policy.display.header) return null
+  if (view.policy.collaborationEnabled !== true || !view.policy.display.header) return null
   const summary = compactInstrumentSummary(view)
   const style = { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(36vw, 320px)', minWidth: 0, overflow: 'hidden', fontSize: '11px' }
   const content = [h('span', { key: 'identity', style: { flexShrink: 0 } }, '协作'), ...summary.parts.map((part, index) => h('span', { key: index, style: { minWidth: 0, maxWidth: index === 1 ? '220px' : '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, part)), needsRecordCheck(inputRecords(view)) ? h('span', { key: 'record-check', style: { color: 'var(--dsw-alias-label-secondary, #61666b)', fontWeight: 400, flexShrink: 0 } }, '记录核对') : null]
@@ -639,14 +649,9 @@ export function InputSummary(props: PropsRuntime<'conversation.input.dock'> & Su
   const { observer: summary, key } = useStableObservation(props.summary)
   const observation = useSummaryObservation(summary)
   const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && summary.sessionId === props.sessionId ? observation.value : null
-  // Keep only permission/identity metadata, never an old summary or its counts.
-  const [permit, setPermit] = useState<{ readonly sessionId: string; readonly summary: SummaryObserver; readonly identity: string | null }>(() => ({ sessionId: props.sessionId, summary, identity: null }))
-  const identity = current?.policy.display.inputSummary ? summaryReadingIdentity(current) : null
-  const same = permit.sessionId === props.sessionId && permit.summary === summary
-  const allowed = current !== null ? identity : same && summary.getDisplay()?.inputSummary !== false ? permit.identity : null
-  if (!same || current !== null && permit.identity !== identity) setPermit({ sessionId: props.sessionId, summary, identity })
-  if (allowed === null) return null
-  return h(InputSnapshot, { ...props, summary, key: key + ':' + allowed, summaryAvailable: current !== null, summaryIdentity: allowed })
+  if (current?.policy.collaborationEnabled !== true || !current.policy.display.inputSummary) return null
+  const identity = summaryReadingIdentity(current)
+  return h(InputSnapshot, { ...props, summary, key: key + ':' + identity, summaryAvailable: true, summaryIdentity: identity })
 }
 function InputSnapshot(props: PropsRuntime<'conversation.input.dock'> & SummaryFace & { readonly summaryAvailable: boolean; readonly summaryIdentity: string }): ReactElement | null {
   const { observer, key } = useStableObservation(props.observe())
@@ -918,17 +923,26 @@ function createNotificationReading(): NotificationReading {
     } }
 }
 /** Independent native header lifetime; no policy display gate or automatic navigation. */
-export function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement {
+interface NotificationFace { readonly summary: SummaryObserver; readonly observer: SessionObservation; readonly reading: NotificationReading }
+export function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & NotificationFace): ReactElement | null {
+  const observation = useSummaryObservation(props.summary)
   const { observer, key } = useStableObservation(props.observer)
-  return h(DecisionNotifications, { key, sessionId: props.sessionId, observer, onOpenDecision: (workflowId, decisionId) => {
+  if (!permitsCollaboration(observation, props.sessionId)) return null
+  const isEligible = () => permitsCollaboration(props.summary.getSnapshot(), props.sessionId)
+  return h(DecisionNotifications, { key, sessionId: props.sessionId, observer, isEligible, onOpenDecision: (workflowId, decisionId) => {
     const latest = observer.getSnapshot()
-    if (latest.status !== 'ready' || observer.sessionId !== props.sessionId || latest.value.sessionId !== props.sessionId || inputRecords(latest.value) === null) return
+    if (!isEligible() || latest.status !== 'ready' || observer.sessionId !== props.sessionId || latest.value.sessionId !== props.sessionId || inputRecords(latest.value) === null) return
     const scope = notificationScope(latest.value), row = latest.value.records?.decisions.find(row => row.workflowId === workflowId && row.decisionId === decisionId)
     if (scope !== null && row !== undefined && isPendingUserDecision(row)) props.reading.select(latest.value, decisionRecordKey(row))
   } })
 }
 /** Reuse the native input dock, not a custom overlay or a second composer. */
-export function DecisionNotificationReader(props: PropsRuntime<'conversation.input.dock'> & { readonly observer: SessionObservation; readonly reading: NotificationReading }): ReactElement | null {
+type NotificationReaderProps = PropsRuntime<'conversation.input.dock'> & NotificationFace
+export function DecisionNotificationReader(props: NotificationReaderProps): ReactElement | null {
+  const observation = useSummaryObservation(props.summary)
+  return permitsCollaboration(observation, props.sessionId) ? h(ObservedDecisionNotificationReader, props) : null
+}
+function ObservedDecisionNotificationReader(props: NotificationReaderProps): ReactElement | null {
   const observation = useObservation(props.observer), store = props.reading
   const selection = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const view = observation.status === 'ready' ? observation.value : null
@@ -936,12 +950,13 @@ export function DecisionNotificationReader(props: PropsRuntime<'conversation.inp
   const identityMatches = props.observer.sessionId === props.sessionId && (view === null || (view.sessionId === props.sessionId && notificationReadingIdentity(view) === selection.identity))
   const unknown = view === null || scope === null || inputRecords(view) === null
   const present = view?.records?.decisions.some(row => decisionRecordKey(row) === selection.key) === true
-  const valid = selection.sessionId === props.sessionId && selection.key !== null && identityMatches && (scope === null || scope === selection.scope) && (unknown || present)
+  const valid = selection.sessionId === props.sessionId && selection.key !== null && identityMatches && (view === null || view.policy.collaborationEnabled === true)
+    && (scope === null || scope === selection.scope) && (unknown || present)
   useEffect(() => { if (selection.sessionId === props.sessionId && !valid && selection.key !== null) store.select(null, null) }, [store, valid, selection, props.sessionId])
   useEffect(() => () => { if (store.getSnapshot().sessionId === props.sessionId) store.select(null, null) }, [store, props.sessionId])
   if (!valid) return null
   return h('section', { 'aria-label': '通知裁决阅读', style: { boxSizing: 'border-box', width: 'calc(100% - 2 * var(--dsh-composer-side-clearance, 16px))', maxWidth: 'var(--dsh-composer-card-max-width, 952px)', marginInline: 'auto', padding: '8px 12px', maxHeight: '50vh', overflow: 'auto', overflowWrap: 'anywhere' } },
-    h(Button, { type: 'button', onClick: () => store.select(null, null) }, '关闭通知阅读'), unknown || view === null ? diagnostic('裁决读取未知；暂停显示正文，待相同授权范围恢复后继续阅读。') : inputDecisionDetails(view, 'pending', [selection.key!], decisionTemplateAccess(props, view, null, () => store.getSnapshot() === selection && notificationScope(view) === selection.scope)))
+    h(Button, { type: 'button', onClick: () => store.select(null, null) }, '关闭通知阅读'), unknown || view === null ? diagnostic('裁决读取未知；暂停显示正文，待相同授权范围恢复后继续阅读。') : inputDecisionDetails(view, 'pending', [selection.key!], decisionTemplateAccess(props, view, null, () => store.getSnapshot() === selection && permitsCollaboration(props.summary.getSnapshot(), props.sessionId) && notificationScope(view) === selection.scope)))
 }
 
 function inputRunningDetails(view: ClientSessionSnapshot, props: PropsRuntime<'conversation.input.dock'> & SessionFace): ReactElement {
@@ -966,10 +981,10 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   const observation = useObservation(observer)
   const view = observation.status === 'ready' && props.sessionId === observer.sessionId && observation.value.sessionId === props.sessionId
     && (props.summaryIdentity === undefined || summaryReadingIdentity(observation.value) === props.summaryIdentity) ? observation.value : null
-  const shown = view !== null && view.policy.display.inputSummary && observer.getDisplay()?.inputSummary !== false
+  const shown = view?.policy.collaborationEnabled === true && view.policy.display.inputSummary && observer.getDisplay()?.inputSummary !== false
   const [permit, setPermit] = useState<{ readonly observer: SessionObservation; readonly sessionId: string; readonly allowed: boolean }>(() => ({ observer, sessionId: props.sessionId, allowed: false }))
   const same = permit.observer === observer && permit.sessionId === props.sessionId
-  const allowed = view !== null ? shown : same && permit.allowed && observer.getDisplay()?.inputSummary !== false
+  const allowed = view !== null ? shown : same && permit.allowed && props.summary !== undefined && permitsCollaboration(props.summary.getSnapshot(), props.sessionId)
   if (!same || view !== null && permit.allowed !== shown) setPermit({ observer, sessionId: props.sessionId, allowed: shown })
   // Render-time fencing prevents even one stale frame on a new Session/instance or an unreadable/gated view.
   // Healthy refresh keeps selection/DOM. Only removal of a focused trigger or explicit close repairs focus.
@@ -1009,7 +1024,6 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   }
   if (!allowed) return null
   if (view === null || props.summaryAvailable === false) return h('section', { 'aria-label': '协作进度摘要', style: inputSummaryStyle }, diagnostic('协作状态暂不可用，正在恢复；不显示旧正文或计数。'))
-  const inactive = view.policy.extensionEnabled === false ? '全局总闸已关闭' : view.policy.workspaceEnabled === false ? '本工作区总闸已关闭' : null
   const workflows = records === null ? [] : inputSummaryWorkflows(records)
   // Collapsing without an enabled details entrance would make the omitted rows unreachable.
   const visible = view.policy.display.rightPanel ? workflows.slice(0, INPUT_SUMMARY_WORKFLOW_LIMIT) : workflows
@@ -1034,7 +1048,6 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
   }
   return h('section', { ref: root, 'aria-label': '协作进度摘要', style: inputSummaryStyle },
     h('div', { 'aria-label': '常驻协作提醒', style: { flexShrink: 0, width: '100%' } },
-      inactive === null ? null : diagnostic('协作管理未生效：' + inactive + '，下列数字仅为已保存记录，不会随工作更新（非实时更新）。'),
       records === null ? diagnostic('任务引用与旧票报告未知') : h('span', null, '任务引用 ' + taskReferenceCount(records) + ' · 旧票 ' + countText(records.summary.totalTickets) + '（业务报告） · ' + countingScopeText(records.summary.countingScope)),
       h('div', { style: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '4px 12px' } },
         pending === 0 ? h('button', { type: 'button', 'aria-label': '裁决设置', 'aria-expanded': selected === 'pending', 'aria-controls': regionPrefix, style: { ...inputTextButtonStyle, color: decisionSecondary }, onClick: () => selected === 'pending' ? close() : select('pending') }, '裁决设置') : entrance('pending', '待你裁决 ' + countText(pending)),
@@ -1066,7 +1079,7 @@ export function ObservedInputSummary(props: PropsRuntime<'conversation.input.doc
         h(Button, { variant: 'ghost', 'aria-label': '关闭详情', onClick: close }, '关闭详情')),
       selected === 'T' ? inputTicketDetails(view) : selected === 'S' ? inputRunningDetails(view, { ...props, observer }) : h('div', null, h(OwnerDecisionPolicyPanel, { view, observer, source: props.recommendationPolicy, display: 'inputSummary' }), inputDecisionDetails(view, selected, selection.decisionKeys, decisionTemplateAccess({ ...props, observer }, view, 'inputSummary', () => {
         const summary = props.summary?.getSnapshot()
-        return summary === undefined || summary.status === 'ready' && summary.value.policy.display.inputSummary && summaryReadingIdentity(summary.value) === summaryReadingIdentity(view)
+        return summary === undefined || summary.status === 'ready' && summary.value.policy.collaborationEnabled === true && summary.value.policy.display.inputSummary && summaryReadingIdentity(summary.value) === summaryReadingIdentity(view)
       }))))))
 }
 
@@ -1175,18 +1188,24 @@ function DecisionEditor(props: { readonly decision: DecisionRecord; readonly rec
     h(DecisionTechnicalDetails, { label: '来源历史（不是当前状态）', value: props.decision.history }))
 }
 
-export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & { readonly remote: ControlsRemote }): ReactElement {
+type DetailsProps = PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & { readonly remote: ControlsRemote }
+function SummaryGatedDetails(props: DetailsProps & { readonly summary: SummaryObserver }): ReactElement | null {
+  const observation = useSummaryObservation(props.summary)
+  if (observation.status !== 'ready' || !permitsCollaboration(observation, props.sessionId) || !observation.value.policy.display.rightPanel) return null
+  return h(Details, { ...props, summaryIdentity: summaryReadingIdentity(observation.value) })
+}
+export function Details(props: DetailsProps & { readonly summaryIdentity?: string }): ReactElement | null {
   const { observer, key } = useStableObservation(props.observer)
   const observation = useObservation(observer)
   const tab = props.useTabInfo()
-  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && observer.sessionId === props.sessionId ? observation.value : null
+  const current = observation.status === 'ready' && observation.value.sessionId === props.sessionId && observer.sessionId === props.sessionId
+    && (props.summaryIdentity === undefined || summaryReadingIdentity(observation.value) === props.summaryIdentity) ? observation.value : null
   const readIdentity = JSON.stringify([key, props.sessionId, observer.sessionId, current === null ? null : summaryReadingIdentity(current), current?.policyGrants.revision, current?.records?.scope,
     current?.policy.display.rightPanel, current !== null && inputRecords(current) !== null])
   const [reading, setReading] = useState<{ readonly identity: string; readonly key: string | null }>({ identity: readIdentity, key: null })
   if (reading.identity !== readIdentity) setReading({ identity: readIdentity, key: null })
-  if (observer.sessionId !== props.sessionId) return diagnostic('会话选择与观察归属不一致；状态未知。')
-  if (observation.status === 'unknown') return h('section', { style: panelStyle }, diagnostic('当前状态未知：' + (observation.error ?? '读取中')), h('button', { type: 'button', onClick: () => { void observer.refresh() } }, '重新读取'))
-  const view = observation.value
+  if (current?.policy.collaborationEnabled !== true) return null
+  const view = current
   if (!view.policy.display.rightPanel) return h('section', { style: panelStyle }, diagnostic('右侧显示已关闭；账本和模型消费不受影响。'))
   const records = inputRecords(view)
   const decisions = records === null || !Array.isArray(records.decisions) ? [] : uniqueDecisionRecords(records.decisions)
@@ -1224,6 +1243,15 @@ export function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionF
     h(SupervisionHistory, { remote: props.remote, sessionId: props.sessionId }),
     h(PolicyDelegation, { key: props.sessionId + ':policy-grants', view, remote: props.remote, refresh: observer.refresh }),
     h('details', null, h('summary', null, '有效策略及来源'), pretty(view.policy)))
+}
+
+/** The host owns layout; retire only our own tab occurrence after confirmed silence. */
+export function CollaborationTabTitle(props: PropsRuntime<'sidebar.right.pane.tab.title'> & { readonly summary: SummaryObserver }): ReactElement | null {
+  const observation = useSummaryObservation(props.summary)
+  const tab = props.useTabInfo().tab
+  const silent = observation.status === 'ready' && observation.value.sessionId === props.sessionId && observation.value.policy.collaborationEnabled === false
+  useEffect(() => { if (silent && !tab.signal.aborted) tab.actions.close() }, [silent, tab.actions, tab.signal])
+  return permitsCollaboration(observation, props.sessionId) ? h('span', null, '协作') : null
 }
 
 function bindingRows(view: ClientSessionSnapshot): readonly WorktreeBindingCurrent[] | null {
@@ -1533,7 +1561,11 @@ export function HistoryPanel(props: { readonly sessionId: string; readonly insta
 }
 
 export function sessionListRequested(policy: PolicySnapshot | null): boolean {
-  return policy !== null && (policy.defaults.display?.sessionList === true || Object.values(policy.workspaceOverrides).some(patch => patch.display?.sessionList === true))
+  if (!policy?.extensionEnabled) return false
+  const visible = (patch: PolicyIntent['defaults']): boolean => (patch.skills?.enabled ?? policy.defaults.skills?.enabled ?? true)
+    && (patch.workspace?.enabled ?? policy.defaults.workspace?.enabled ?? false)
+    && (patch.display?.sessionList ?? policy.defaults.display?.sessionList ?? false)
+  return visible({}) || Object.values(policy.workspaceOverrides).some(visible)
 }
 export class PolicyObserver {
   private value: PolicySnapshot | null = null
@@ -1576,8 +1608,7 @@ function BadgeContent(props: { readonly observer: SummaryObserver; readonly poli
   const observation = useSyncExternalStore(props.observer.subscribe, props.observer.getSnapshot, props.observer.getSnapshot)
   const active = props.observer.getDisplay()?.sessionList !== false || props.observer.getConfigurationRevision() !== props.policyRevision
   useEffect(() => active ? props.observer.retain() : undefined, [props.observer, active])
-  if (observation.status !== 'ready') return props.observer.getDisplay()?.sessionList ? h('span', { title: observation.error ?? '协作提醒未知' }, '?') : null
-  if (!observation.value.policy.display.sessionList) return null
+  if (observation.status !== 'ready' || observation.value.policy.collaborationEnabled !== true || !observation.value.policy.display.sessionList) return null
   const count = observation.value.records?.summary.pendingUserDecisionCount
   return count === undefined ? h('span', { title: '协作提醒未知' }, '?') : count === 0 ? null : h('span', { title: '待用户裁决 ' + count, 'aria-label': '待用户裁决 ' + count, style: { display: 'inline-block', maxWidth: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, String(count))
 }
@@ -1646,8 +1677,8 @@ const FEATURE_LABELS = { binding: '工作树绑定', lifecycle: '子代理生命
 const DISPLAY_LABELS = { header: '会话标题栏', inputSummary: '输入区摘要', rightPanel: '右侧协作面板', sessionList: '会话列表提醒', timeline: '工具记录标注' } satisfies Record<typeof DISPLAY_NAMES[number], string>
 const CAPACITY_LABELS = { ticketWindowSize: '任务票参考上限（T）', runningSubagentLimit: '运行中子代理参考上限（S）' }
 const SOURCE_LABELS = { workspace: '工作区覆盖', global: '全局默认', 'safe-initial': '安全初始值' } satisfies Record<EffectivePolicy['sources'][PolicyField], string>
-const POLICY_FIELD_LABELS: Readonly<Record<PolicyField | 'extensionEnabled', string>> = {
-  extensionEnabled: '协作管理总闸（全局）', 'workspace.enabled': '本工作区总闸', 'skills.enabled': '本工作区技能分发', 'binding.enabled': FEATURE_LABELS.binding, 'lifecycle.enabled': FEATURE_LABELS.lifecycle,
+const POLICY_FIELD_LABELS: Readonly<Record<PolicyField | 'extensionEnabled' | 'collaborationEnabled', string>> = {
+  extensionEnabled: '协作管理总闸（全局）', collaborationEnabled: '实际生效的协作管理', 'workspace.enabled': '本工作区协作管理', 'skills.enabled': '本工作区技能分发', 'binding.enabled': FEATURE_LABELS.binding, 'lifecycle.enabled': FEATURE_LABELS.lifecycle,
   'windows.enabled': FEATURE_LABELS.windows, 'ticketProgress.enabled': FEATURE_LABELS.ticketProgress, 'pendingDecisions.enabled': FEATURE_LABELS.pendingDecisions, 'pendingDecisions.interactionMode': '裁决交互偏好',
   'windows.ticketWindowSize': CAPACITY_LABELS.ticketWindowSize, 'windows.runningSubagentLimit': CAPACITY_LABELS.runningSubagentLimit,
   'display.header': DISPLAY_LABELS.header, 'display.inputSummary': DISPLAY_LABELS.inputSummary, 'display.rightPanel': DISPLAY_LABELS.rightPanel,
@@ -1655,7 +1686,7 @@ const POLICY_FIELD_LABELS: Readonly<Record<PolicyField | 'extensionEnabled', str
 }
 function policyFeatureText(value: EffectivePolicy['features'][typeof FEATURE_NAMES[number]]): string {
   const state = ({ configured: '已配置（仅意图）', disabled: '未启用', unsupported: '条件不满足' } satisfies Record<typeof value.status, string>)[value.status]
-  const reasons = { 'extension-disabled': '全局总闸已关闭', 'workspace-disabled': '本工作区总闸已关闭', 'feature-disabled': '此功能已关闭', 'workspace-unverified': '工作区未核验', 'window-capacity-unset': '参考上限未配置' } satisfies Record<Exclude<typeof value.reason, null>, string>
+  const reasons = { 'extension-disabled': '全局总闸已关闭', 'workspace-disabled': '本工作区协作管理已关闭', 'skills-disabled': 'Matt Pocock Skills 已停用', 'feature-disabled': '此功能已关闭', 'workspace-unverified': '工作区未核验', 'window-capacity-unset': '参考上限未配置' } satisfies Record<Exclude<typeof value.reason, null>, string>
   return state + (value.reason === null ? '' : ' · ' + reasons[value.reason])
 }
 function policyImpactText(value: unknown): string {
@@ -1885,6 +1916,7 @@ export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicy
   const [message, setMessage] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   useEffect(() => {
+    if (props.view === 'summary') return
     let active = true
     setNavigationUnknown(true)
     void props.remote.listWorkspaces().then(list => {
@@ -1896,7 +1928,7 @@ export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicy
       setSaved(snapshot); setDraft(intentOf(snapshot)); setMessage(null)
     }).catch(error => { if (active) setMessage('协作配置不可用：' + errorText(error)) })
     return () => { active = false }
-  }, [props.remote, reload])
+  }, [props.remote, props.view, reload])
   if (props.view === 'summary') return h('span', null, '协作管理、交付监督与会话仪器；配置分别保存。')
   const pageStyle = { display: 'grid', gap: '28px', minWidth: 0, width: '100%', maxWidth: '1040px', margin: '0 auto', color: 'var(--dsw-alias-label-primary, CanvasText)', fontSize: '14px', lineHeight: 1.6, overflowWrap: 'anywhere' as const }
   const recommendationSettings = h(RecommendationSettings, { key: 'recommendation-settings', workspaces, unknown: navigationUnknown, observe: props.observe, recommendationPolicy: props.recommendationPolicy })
@@ -1907,23 +1939,29 @@ export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicy
   const selected = workspaces.find(row => row.workspaceId === workspace)
   const sessionChoices = settingsSessionChoices(workspaces, workspace)
   const selectedInspection = inspection !== null && sessionChoices.ids.includes(inspection) ? inspection : null
-  const preview = resolvePolicy({ ...draft, workspaceOverrides: workspace === null ? {} : draft.workspaceOverrides, revision: saved.revision }, workspace ?? 'global-preview', workspace === null || selected?.verified === true)
-  const impact = policyDraftImpact(saved, draft, workspace, workspace === null || selected?.verified === true)
+  const verified = workspace === null || selected?.verified === true
+  const scope = workspace ?? 'global-preview'
+  const savedIntent = intentOf(saved)
+  const protectedDraft = protectSkillsTransition(savedIntent, draft)
+  const preview = resolvePolicy({ ...protectedDraft, workspaceOverrides: workspace === null ? {} : protectedDraft.workspaceOverrides, revision: saved.revision }, scope, verified)
+  const committed = resolvePolicy({ ...saved, workspaceOverrides: workspace === null ? {} : saved.workspaceOverrides }, scope, verified)
+  const skillsReopening = preview.skillsEnabled && !committed.skillsEnabled
+  const impact = policyDraftImpact(saved, draft, workspace, verified)
   const change = (field: PolicyField, value: PolicyLeafValue): void => {
     try { setDraft(setPolicyLeaf(draft, workspace, field, value)); setMessage(null) } catch (error) { setMessage('配置值无效：' + errorText(error)) }
   }
   const save = async (): Promise<void> => {
     setBusy(true); setMessage(null)
     try {
-      const snapshot = await savePolicyDraft(props.remote, draft, saved.revision)
+      const snapshot = await savePolicyDraft(props.remote, protectedDraft, saved.revision)
       setSaved(snapshot); setDraft(intentOf(snapshot)); props.refreshAll()
-      setMessage('已保存并应用配置（修订 ' + snapshot.revision + '）；协作管理' + (snapshot.extensionEnabled ? '已启用' : '已关闭') + '，无需额外启用按钮。功能可用性仍以宿主能力与会话观测为准。' + (snapshot.extensionEnabled ? '' : '协作管理总闸（全局）仍为关闭，各工作区的「协作功能」「参考上限」都不会生效。'))
+      setMessage('已保存并应用配置（修订 ' + snapshot.revision + '）；全局协作总闸' + (snapshot.extensionEnabled ? '已开启' : '已关闭') + '。各工作区的生效状态还取决于本工作区策略与核验结果。')
     } catch (error) { setMessage('保存结果未确认：' + errorText(error) + '。请重新读取协作配置核对，草稿未作为成功回执。') } finally { setBusy(false) }
   }
   const globalScope = workspace === null
   const inheritLabel = globalScope ? '未设置（用安全初始值）' : '继承全局'
   const scopeWord = globalScope ? '所有工作区默认' : '本工作区'
-  const gateReason = (value: { readonly reason: string | null }): boolean => value.reason === 'extension-disabled' || value.reason === 'workspace-disabled'
+  const gateReason = (value: { readonly reason: string | null }): boolean => value.reason === 'extension-disabled' || value.reason === 'workspace-disabled' || value.reason === 'skills-disabled'
   const booleanField = (field: PolicyField, label: string, effective: string, alert = false): ReactElement => {
     const explicit = ownLeaf(draft, workspace, field)
     return h('label', { key: field, style: { ...settingsField, justifyContent: 'space-between' } }, h('span', { style: { flex: '1 1 170px', fontWeight: 550 } }, label),
@@ -1934,11 +1972,11 @@ export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicy
         settingsState((alert ? '总闸未开 · ' : '') + '草稿有效值：' + effective, alert ? 'warning' : 'muted'),
         h('span', { style: { display: 'block', marginTop: '2px' } }, '来源：' + SOURCE_LABELS[preview.sources[field]])))
   }
-  const gateField = (field: PolicyField, label: string, open: boolean, effectiveText: string): ReactElement => {
-    const explicit = ownLeaf(draft, workspace, field)
+  const gateField = (field: PolicyField, label: string, open: boolean, effectiveText: string, disabled = false): ReactElement => {
+    const explicit = ownLeaf(protectedDraft, workspace, field)
     return h('div', { key: field, style: settingsField },
       h('span', { style: { fontWeight: 600, flex: '1 1 180px' } }, label),
-      h('select', { style: settingsSelect, 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy,
+      h('select', { style: settingsSelect, 'aria-label': label, value: explicit === undefined ? 'inherit' : explicit ? 'on' : 'off', disabled: busy || disabled,
         onChange: (event: ChangeEvent<HTMLSelectElement>) => change(field, event.target.value === 'inherit' ? undefined : event.target.value === 'on') },
         h('option', { value: 'inherit' }, inheritLabel), h('option', { value: 'on' }, '启用'), h('option', { value: 'off' }, '禁用')),
       settingsState(effectiveText, open ? 'accent' : 'muted'),
@@ -1952,16 +1990,17 @@ export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicy
         ...workspaces.map(row => h('option', { key: row.workspaceId, value: row.workspaceId }, row.label + (row.verified ? '' : '（未核验）'))), h('option', { value: '' }, '全局默认'))),
     h('div', { style: { ...settingsField, gap: '12px', borderBottom: 0 } },
       h(Checkbox, { label: '协作管理总闸（全局）', checked: draft.extensionEnabled, disabled: busy, onChange: (checked: boolean) => { setDraft({ ...draft, extensionEnabled: checked }); setMessage(null) } }),
-      settingsState(draft.extensionEnabled ? '草稿：已开启' : '草稿：已关闭', draft.extensionEnabled ? 'accent' : 'warning'),
-      settingsState(preview.workspaceEnabled ? scopeWord + '总闸：已开' : scopeWord + '总闸：未开', preview.workspaceEnabled ? 'accent' : 'warning')),
-    h('p', { style: settingsHint }, '两级总闸都打开后，当前范围的「协作功能」才生效；只开一级时下面会标出原因。总闸不影响技能分发。'),
-    gateField('workspace.enabled', scopeWord + '总闸', preview.workspaceEnabled, preview.workspaceEnabled ? '已启用' : '未启用'),
+      settingsState(draft.extensionEnabled ? '草稿：已开启' : '草稿：已关闭', draft.extensionEnabled ? 'accent' : 'warning')),
+    h('p', { style: settingsHint }, '协作需要开启 Skills、全局总闸及工作区协作管理；全局总闸不影响技能分发。'),
+    h('p', { 'aria-label': '生效状态', role: 'status' }, '草稿生效状态：' + (!preview.skillsEnabled ? '停用 Matt Pocock' : preview.collaborationEnabled ? '启用 Skills 和协作管理' : '仅启用 Skills')),
     gateField('skills.enabled', scopeWord + '技能分发', preview.skillsEnabled, preview.skillsEnabled ? '启用' : '禁用'),
+    gateField('workspace.enabled', scopeWord + '协作管理', preview.collaborationEnabled, preview.collaborationEnabled ? '已生效' : '未生效', !preview.skillsEnabled || skillsReopening),
+    skillsReopening ? diagnostic('请先保存以重新开启 Skills；之后可单独开启协作管理。') : !preview.skillsEnabled ? diagnostic('停用 Skills 时协作不会生效。') : !verified ? diagnostic('工作区未核验；协作不会生效。') : null,
     h('p', { style: { ...settingsHint, marginBottom: 0 } }, globalScope
-      ? '当前编辑的是「全局默认」：选「未设置（用安全初始值）」表示没有默认值，该叶子回落到安全初始值（本工作区总闸＝关闭，技能分发＝开启）。'
+      ? '当前编辑的是「全局默认」：选「未设置（用安全初始值）」表示没有默认值，该叶子回落到安全初始值（本工作区协作管理＝关闭，技能分发＝开启）。'
       : '选「继承全局」表示删除本工作区的覆盖，回落到上面的全局默认；参考上限留空同理。'))
   const gateRow = h('div', { style: { color: settingsWarning, borderLeft: !draft.extensionEnabled ? '3px solid ' + settingsWarning : undefined, paddingLeft: '12px', marginBottom: '20px' } },
-    !draft.extensionEnabled ? diagnostic('全局总闸当前为关闭：下面各范围的「协作功能」「参考上限」都不会生效，只有「界面显示位置」与技能分发不受影响。') : null)
+    !draft.extensionEnabled ? diagnostic('全局总闸当前为关闭：不会显示会话协作入口或生效协作功能；参考上限与显示偏好仍可保存，技能分发不受影响。') : null)
   const featureField = (name: typeof FEATURE_NAMES[number]): ReactElement => booleanField((name + '.enabled') as PolicyField, FEATURE_LABELS[name], policyFeatureText(preview.features[name]), gateReason(preview.features[name]))
   const interactionField = 'pendingDecisions.interactionMode' as PolicyField
   const interactionMode = preview.pendingDecisions.interactionMode
@@ -1982,7 +2021,7 @@ export function SettingsPage(props: PluginConfigViewProps & RecommendationPolicy
       gatePanel,
       gateRow,
       h('div', { style: settingsGrid },
-        h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '协作功能'), h('p', { style: settingsHint }, '选择需要的协作能力；每个功能仍受两级总闸约束。'), FEATURE_NAMES.map(name => featureField(name)), interaction,
+        h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '协作功能'), h('p', { style: settingsHint }, '选择需要的协作能力；每个功能仅在本范围的协作管理生效时可用。'), FEATURE_NAMES.map(name => featureField(name)), interaction,
           h('details', null, h('summary', null, '交互偏好说明'), h('p', null, '原生提问优先沿用可用的原生问答；异步裁决优先使用裁决仪器，由你通过下方原生会话消息答复，agent 可继续不依赖该裁决的工作。偏好不越过明确的等待确认或宿主权限，关闭功能时不激活该引导。'))),
         h('div', { style: { display: 'grid', gap: '20px', minWidth: 0 } },
         h('fieldset', { disabled: busy, style: settingsGroup }, h('legend', { style: settingsLegend }, '参考上限'), h('p', { style: settingsHint }, 'T/S 仅提供规模参考，不是硬名额；留空继承，不猜测默认数值。'),
@@ -2212,7 +2251,7 @@ export function SourceCard(props: ToolCallViewProps & SummaryFace): ReactElement
   const observation = useSummaryObservation(props.summary)
   const disclosure = props.useDisclosure()
   const view = useMemo(() => sourceView(props), [props.phase, props.block, props.toolName])
-  const annotate = observation.status === 'ready' && observation.value.policy.display.timeline
+  const annotate = observation.status === 'ready' && observation.value.policy.collaborationEnabled === true && observation.value.policy.display.timeline
   const canOpenDetails = annotate && observation.status === 'ready' && observation.value.policy.display.rightPanel
   const open = disclosure.expanded && view.expandable
   const body = useMemo(() => open ? sourceBody(props, props.openDetails, annotate, canOpenDetails) : null,
@@ -2256,12 +2295,12 @@ export async function apply(ctx: Context): Promise<void> {
     const observeSummary = (sessionId: string): SummaryObserver => summaries.observe(sessionId)
     const visibility = new PolicyObserver(() => remote.readPolicy())
     ctx.effect(() => { void visibility.refresh(); return () => visibility.dispose() }, 'collaboration: committed policy visibility')
-    const refreshAll = (): void => { void visibility.refresh(); summaries.refresh(); observers.refreshAll() }
+    const refreshAll = (): void => { void visibility.refresh(); summaries.refresh(undefined, true); observers.refreshAll(true) }
     ctx.effect(() => () => { summaries.dispose(); observers.dispose() }, 'collaboration: observations')
     const face = (sessionId: string): SummaryFace => ({ recommendationPolicy, subagentNavigation: navigation.source, summary: observeSummary(sessionId), observe: () => observe(sessionId), openDetails: () => {
       if (ctx.sidebarRight.mounted.getSnapshot() !== sessionId) return
       const snapshot = observeSummary(sessionId).getSnapshot()
-      if (snapshot.status !== 'ready' || !snapshot.value.policy.display.rightPanel) return
+      if (snapshot.status !== 'ready' || snapshot.value.sessionId !== sessionId || snapshot.value.policy.collaborationEnabled !== true || !snapshot.value.policy.display.rightPanel) return
       ctx.sidebarRight.openTab(TAB_KIND, { preferNewPane: true })
     } })
     const definition: SidebarRightTabDefinition = { id: TAB_ID, kind: TAB_KIND, title: () => '协作', keepMounted: false }
@@ -2273,13 +2312,15 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
       id: TAB_ID + ':header', order: 100, inject: face }, HeaderEntry))
     ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({ name: 'conversation.session.header.utilities',
-      id: TAB_ID + ':notifications', order: 110, inject: (sessionId) => ({ observer: observe(sessionId), reading: notificationReading }) }, DecisionNotificationSeat))
+      id: TAB_ID + ':notifications', order: 110, inject: (sessionId) => ({ summary: observeSummary(sessionId), observer: observe(sessionId), reading: notificationReading }) }, DecisionNotificationSeat))
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
-      id: TAB_ID + ':notification-reader', order: 110, inject: (sessionId) => ({ observer: observe(sessionId), reading: notificationReading }) }, DecisionNotificationReader))
+      id: TAB_ID + ':notification-reader', order: 110, inject: (sessionId) => ({ summary: observeSummary(sessionId), observer: observe(sessionId), reading: notificationReading }) }, DecisionNotificationReader))
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock',
       id: TAB_ID + ':input', order: 100, inject: face }, InputSummary))
     ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID,
-      inject: (sessionId) => ({ observer: observe(sessionId), openDetails: face(sessionId).openDetails, remote, recommendationPolicy }) }, Details))
+      inject: (sessionId) => ({ summary: observeSummary(sessionId), observer: observe(sessionId), openDetails: face(sessionId).openDetails, remote, recommendationPolicy }) }, SummaryGatedDetails))
+    ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID,
+      inject: (sessionId) => ({ summary: observeSummary(sessionId) }) }, CollaborationTabTitle))
     ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({ name: 'sidebar.session.row.leading',
       id: TAB_ID + ':row', order: 100, inject: () => ({ observeSummary, visibility }) }, WorkspaceBadge))
     ctx.slots.inject('tool.call.toolview', () => OWN_TOOL_NAMES.map(key => ctx.slots.register({ name: 'tool.call.toolview', key, inject: face }, SourceCard)))

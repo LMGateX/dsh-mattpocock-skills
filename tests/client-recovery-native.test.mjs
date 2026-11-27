@@ -119,7 +119,7 @@ nativeTest('native actual summary error withdraws selected business details with
   f.initial.summaryFailure = true; await f.refreshSummary()
   assert.equal(f.container.querySelector(regionSelector), null)
   assert.doesNotMatch(f.container.textContent, /Native fixture decision/)
-  assert.match(f.container.textContent, /暂不可用|恢复|未知/)
+  assert.equal(f.container.querySelector('[aria-label="协作进度摘要"]'), null)
 })
 
 for (const change of ['scope', 'grant']) nativeTest('native real ' + change + ' change fences previously selected reading', async t => {

@@ -11,7 +11,7 @@ const ok = value => ({ ok: true, value })
 function summary(sessionId, display = {}) {
   return { sessionId, caller: { kind: 'user', principalId: 'user:operator', sessionId: null },
     instance: { instrumentInstanceId: 'instance-' + sessionId, ownerSessionId: sessionId, controlWorkspaceId: 'W' },
-    policy: { configurationRevision: 1, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: false, workspaceEnabled: false,
+    policy: { configurationRevision: 1, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       display: { header: true, inputSummary: false, rightPanel: true, sessionList: true, timeline: true, ...display } },
     records: { businessRevision: 1, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 1 } }, health: [] }
 }

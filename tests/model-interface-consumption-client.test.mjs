@@ -24,7 +24,7 @@ const author = { kind: 'user', principalId: 'user:test', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'inline-instance', ownerSessionId: 'inline-owner', controlWorkspaceId: 'inline-workspace' }
   return { sessionId: 'inline-session', instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, features: {},
+    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {},
       windows: { ticketWindowSize: 8, runningSubagentLimit: 100 },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, viewerRevision: 0, workflows: [], tickets: [], decisions: [], decisionViews: [],

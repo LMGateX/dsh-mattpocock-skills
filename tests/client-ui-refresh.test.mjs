@@ -23,7 +23,7 @@ const author = { kind: 'user', principalId: 'user:test', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'inline-instance', ownerSessionId: 'inline-owner', controlWorkspaceId: 'inline-workspace' }
   return { sessionId: 'inline-session', instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, features: {},
+    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {},
       windows: { ticketWindowSize: 8, runningSubagentLimit: 100 },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, viewerRevision: 0, workflows: [], tickets: [], decisions: [], decisionViews: [],
@@ -62,7 +62,7 @@ async function mount(t, initial = snapshot(), actions, component = 'InputSummary
     return { ok: true, value: { rows: request.sessions.map(({sessionId}) => ({ sessionId, status: 'current', version: (++version).toString(16).padStart(64, '0'), summary: {
       sessionId, instance: current.instance, caller: current.caller,
       policy: { configurationRevision: version, controlWorkspaceId: current.instance.controlWorkspaceId, workspaceVerified: true,
-        extensionEnabled: true, workspaceEnabled: true, display: current.policy.display },
+        extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, display: current.policy.display },
       records: { businessRevision: 7, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: current.records.summary.pendingUserDecisionCount } }, health: [],
     } })) } }
   }, 600000)
@@ -196,7 +196,7 @@ for (const recommendation of ['建议选择 B，因为更安全', 'duplicate', '
   assert.doesNotMatch([...ui.container.querySelectorAll('[data-decision-option]')].map(node => node.textContent).join(''), /推荐 ·/)
 })
 
-test('summary deadline leaves only a neutral section through the actual mounted chain', async t => {
+test('summary deadline withdraws the collaboration section without verified eligibility', async t => {
   const ui = await mount(t)
   const section = named(ui.container, '协作进度摘要')
   // Preserve cancellation of pre-existing real scheduler timers while advancing only new deadlines.
@@ -208,10 +208,9 @@ test('summary deadline leaves only a neutral section through the actual mounted 
   globalThis.clearTimeout = token => { if (!timers.delete(token)) realClearTimeout(token) }
   try { await ui.summaryDeadline(ms => { now += ms; for (const [token, timer] of [...timers]) if (timer.due <= now) { timers.delete(token); timer.fn() } }) }
   finally { globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout; Date.now = realNow }
-  assert.equal(named(ui.container, '协作进度摘要'), section)
-  assert.match(section.textContent, /暂不可用|恢复/)
-  assert.equal(section.querySelectorAll('button,a').length, 0)
-  assert.doesNotMatch(section.textContent, /T 2|S 70|待你裁决 3/)
+  assert.equal(section.isConnected, false)
+  assert.equal(ui.container.querySelector('[aria-label="协作进度摘要"]'), null)
+  assert.doesNotMatch(ui.container.textContent, /T 2|S 70|待你裁决 3/)
 })
 
 for (const failure of ['full', 'summary']) test('initial ' + failure + ' read failure cannot invent a display shell', async t => {
@@ -228,7 +227,7 @@ test('actual input chain clears selected body and actions on summary caller iden
   assert.doesNotMatch(ui.container.textContent, /选择发布方向/)
   assert.equal(ui.container.querySelector('[aria-label="待你裁决详情"]') === null, true)
   await ui.summaryFailure()
-  assert.equal(named(ui.container, '协作进度摘要').querySelectorAll('button,a').length, 0)
+  assert.equal(ui.container.querySelector('[aria-label="协作进度摘要"]'), null)
 })
 
 test('T foregrounds the genuine external id and bold label without deriving ids or totals from locators', async t => {
@@ -267,7 +266,7 @@ test('detail title uses the same decision T S navigation and a secondary record-
   assert.equal(named(ui.container, '查看 S 在跑子代理').getAttribute('aria-expanded'), 'false')
 })
 
-test('actual input chain keeps a neutral section on full and summary transport errors without stale facts or actions', async t => {
+test('actual input chain distinguishes full-read recovery from loss of summary eligibility', async t => {
   const ui = await mount(t)
   const section = named(ui.container, '协作进度摘要')
   await click(entry(ui.container, 'T'))
@@ -280,11 +279,10 @@ test('actual input chain keeps a neutral section on full and summary transport e
   await ui.refresh(snapshot())
   assert.match(section.textContent, /T 2/)
   await ui.summaryFailure()
-  assert.equal(named(ui.container, '协作进度摘要'), section, 'summary failure must not unmount the actual full chain')
-  assert.doesNotMatch(section.textContent, /T 2|S 70|待你裁决 3/)
-  assert.equal(section.querySelectorAll('button,a').length, 0)
+  assert.equal(section.isConnected, false, 'summary eligibility is no longer proven')
+  assert.doesNotMatch(ui.container.textContent, /T 2|S 70|待你裁决 3/)
   await ui.summaryRefresh(snapshot())
-  assert.match(section.textContent, /T 2/)
+  assert.match(named(ui.container, '协作进度摘要').textContent, /T 2/)
   const disabled = snapshot(); disabled.policy.display.inputSummary = false
   await ui.summaryRefresh(disabled)
   assert.equal(ui.container.querySelector('[aria-label="协作进度摘要"]'), null)

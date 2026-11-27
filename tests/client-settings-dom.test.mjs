@@ -79,7 +79,7 @@ async function closeoutFixture(t, apply = async () => ok({}), configure = value 
   const instance = { instrumentInstanceId: 'closeout-i', ownerSessionId: 'closeout-owner', controlWorkspaceId: 'work-one' }
   const author = { kind: 'agent', principalId: 'agent:original', sessionId: 'original-session' }
   let view = { sessionId: 'closeout-session', instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: false, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, collaborationEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, workflows: [], tickets: [], decisions: [{ workflowId: 'wf', decisionId: 'legacy', revision: 3,
       history: [{ revision: 1, recordedAt: 1000, author, references: ['https://example.test/original-answer'], value: {} }, { revision: 3, recordedAt: 3000, author, references: ['https://example.test/task-link'], value: {} }],
       value: { question: '需要保留原答复的旧事项', status: '任务原自定义状态', pending: true, awaitingImplementation: true, addressee: { kind: 'user' }, ticketIds: ['original-ticket'], context: '原背景与任务指针 https://example.test/task/42', result: '原用户明确答复：仅批准甲', recommendation: '旧建议', impact: '旧影响', options: [{ key: 'a', label: '原选项' }] } }],
@@ -290,7 +290,7 @@ test('sidebar mixed authorized decisions keep user queue strict and compatibilit
   const instance = { instrumentInstanceId: 'mixed-i', ownerSessionId: 'mixed-owner', controlWorkspaceId: 'work-one' }
   const make = (id, value) => ({ workflowId: 'wf', decisionId: id, revision: 1, history: [], value: { question: '原问题-' + id, status: '自定义状态', ...value } })
   let view = { sessionId: 'mixed-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, collaborationEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 4, workflows: [], tickets: [], decisions: [make('user', { pending: true, addressee: { kind: 'user' } }), make('both', { pending: true, awaitingImplementation: true, addressee: { kind: 'user' } }), make('agent', { pending: true, addressee: { kind: 'agent' } }), make('none', { pending: true }), make('unspecified', { pending: true, addressee: { kind: 'unspecified' } }), make('await', { awaitingImplementation: true, addressee: { kind: 'agent' } }), make('resolved-user', { addressee: { kind: 'user' }, result: '原答复' }), make('resolved-agent', { addressee: { kind: 'agent' } })],
       summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 5, pendingUserDecisionCount: 2, awaitingImplementationCount: 2 } }, windows: null, resources: [], capabilities: [], health: [] }
   view.records.decisions.push(copy(view.records.decisions[2]))
@@ -335,7 +335,7 @@ test('DOM saves management policy under revision forty-two and preserves the sav
 test('sidebar collapsed decision reading survives classification and never claims awaiting means adjudicated', async t => {
   const instance = { instrumentInstanceId: 'native-i', ownerSessionId: 'native-owner', controlWorkspaceId: 'work-one' }
   let view = { sessionId: 'native-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, collaborationEnabled: true, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: false } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 4, workflows: [], tickets: [], decisions: [{ workflowId: 'wf', decisionId: 'd', revision: 1, history: [], value: { question: '双旗标原生阅读问题', status: '仍需确认', pending: true, awaitingImplementation: true, addressee: { kind: 'user' }, options: [{ key: 'a', label: '选项真实甲' }] } }], summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingDecisionCount: 1, pendingUserDecisionCount: 1, awaitingImplementationCount: 1 } }, windows: null, resources: [], capabilities: [], health: [] }
   const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (...args) => { calls.push(args); return ok({}) } }
   const observer = new client.SessionObserver(view.sessionId, async () => ok(copy(view)), 0); t.after(() => observer.dispose())
@@ -361,7 +361,7 @@ test('sidebar collapsed decision reading survives classification and never claim
 test('sidebar deliberate reading keeps the same editor, draft CAS and focus when an item changes category', async t => {
   const instance = { instrumentInstanceId: 'reading-instance', ownerSessionId: 'reading-owner', controlWorkspaceId: 'work-one' }
   let view = { sessionId: 'reading-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
-    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true,
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, collaborationEnabled: true,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, scope: { kind: 'coordinator' }, businessRevision: 7, workflows: [], tickets: [], decisions: [{ workflowId: 'wf', decisionId: 'd', revision: 1, history: [], value: { question: '保持阅读的事项', status: '待确认', pending: true, addressee: { kind: 'user' } } }], summary: { countingScope: 'instance', totalTickets: 0, statusCounts: [], pendingUserDecisionCount: 1, awaitingImplementationCount: 0 } }, windows: null, resources: [], capabilities: [], health: [] }
   const calls = [], remote = { readSupervision: async () => ok(null), applyInstrument: async (...args) => { calls.push(args); return ok({}) } }
@@ -472,6 +472,30 @@ test('decision interaction enum preserves sparse inheritance, scope drafts, sour
   assert.equal(f.calls.supervision.length, 0)
 })
 
+test('Workspace settings show three effective modes and require a later save to re-enable collaboration', async t => {
+  const policy = { revision: 42, extensionEnabled: true, defaults: { workspace: { enabled: true } },
+    workspaceOverrides: { 'work-one': { skills: { enabled: false }, windows: { ticketWindowSize: 3 }, display: { inputSummary: true } } } }
+  const f = fixture({ readPolicy: async () => ok(copy(policy)) })
+  const { container } = await mount(t, client.SettingsPage, f.props)
+  const collaboration = () => named(container, '本工作区协作管理')
+  const state = () => named(container, '生效状态').textContent
+  assert.match(state(), /停用 Matt Pocock/)
+  assert.equal(collaboration().disabled, true)
+  await select(named(container, '本工作区技能分发'), 'inherit')
+  assert.match(state(), /仅启用 Skills/)
+  assert.equal(collaboration().disabled, true, 'Skills must first be saved as its own transition')
+  await click(button(container, '保存并应用配置'))
+  assert.equal(f.calls.policy[0].revision, 42)
+  assert.deepEqual(f.calls.policy[0].intent.workspaceOverrides['work-one'], { workspace: { enabled: false }, windows: { ticketWindowSize: 3 }, display: { inputSummary: true } })
+  assert.match(state(), /仅启用 Skills/)
+  assert.equal(collaboration().disabled, false)
+  await select(collaboration(), 'on')
+  assert.match(state(), /启用 Skills 和协作管理/)
+  await click(button(container, '保存并应用配置'))
+  assert.equal(f.calls.policy[1].revision, 43)
+  assert.equal(f.calls.policy[1].intent.workspaceOverrides['work-one'].workspace.enabled, true)
+})
+
 test('Chinese field controls preserve raw wire names, explicit false and sparse inheritance', async t => {
   const policy = { revision: 42, extensionEnabled: true, defaults: { workspace: { enabled: true }, binding: { enabled: true } }, workspaceOverrides: { 'work-one': { binding: { enabled: false } } } }
   const f = fixture({ readPolicy: async () => ok(copy(policy)) }), { container, window } = await mount(t, client.SettingsPage, f.props)
@@ -499,7 +523,7 @@ test('Chinese field controls preserve raw wire names, explicit false and sparse 
 test('input summary DOM centers its bounded box and column text without turning unknown usage into zero', async t => {
   const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
   const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
-    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true,
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, collaborationEnabled: true,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: null, windows: null, resources: [], capabilities: [], health: [] }
@@ -552,7 +576,7 @@ test('DOM session selection cancels old reads and does not upgrade policy draft 
   let finishA
   const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
   const view = sessionId => ({ sessionId, instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
-    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', configurationRevision: 99, extensionEnabled: true,
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', configurationRevision: 99, extensionEnabled: true, collaborationEnabled: true,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } },
     records: null, windows: null, resources: [], capabilities: [], health: [] })
@@ -588,7 +612,7 @@ for (const [countingScope, label, otherLabel] of [
   test('input summary DOM preserves actual ' + countingScope + ' counting scope and business counts', async t => {
     const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
     const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
-      policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true,
+      policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, collaborationEnabled: true,
         features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
         display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
       records: { instance, summary: { countingScope, totalTickets: 7, statusCounts: [{ workflowId: 'workflow-test', axisKey: 'review', label: '任务自定义验收', counting: 'exclusive',
@@ -633,7 +657,7 @@ test('input summary orders workflows by latest activity and collapses older work
   ]
   const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true,
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, workflows, tickets, summary: { countingScope: 'instance', totalTickets: 6, statusCounts } },
@@ -672,7 +696,7 @@ test('input summary shows a ticketless workflow compactly and never hides rows w
   ]
   const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true,
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: false, sessionList: false, timeline: true } },
     records: { instance, workflows, tickets, summary: { countingScope: 'instance', totalTickets: 2, statusCounts } },
@@ -725,27 +749,26 @@ test('settings DOM separates Chinese configuration groups and collapsed technica
 test('real DOM exposes the workspace gate and skill switch as explicit per-workspace leaves', async t => {
   const f = fixture()
   const { container } = await mount(t, client.SettingsPage, f.props)
-  const gate = named(container, '本工作区总闸')
+  const gate = named(container, '本工作区协作管理')
   const skills = named(container, '本工作区技能分发')
   assert.equal(gate.value, 'inherit')
   assert.equal(skills.value, 'inherit')
-  assert.match(normalText(container), /本工作区总闸继承全局启用禁用未启用/)
-  assert.match(normalText(container), /本工作区总闸：未开/)
+  assert.match(normalText(container), /本工作区协作管理继承全局启用禁用未生效/)
   assert.match(normalText(container), /本工作区技能分发继承全局启用禁用启用/)
   await select(named(container, '配置编辑范围'), 'work-one')
   await select(gate, 'on')
   await select(skills, 'off')
   await click(button(container, '保存并应用配置'))
   const saved = f.calls.policy.at(-1)
-  assert.deepEqual(saved.intent.workspaceOverrides['work-one'], { workspace: { enabled: true }, skills: { enabled: false } })
+  assert.deepEqual(saved.intent.workspaceOverrides['work-one'], { workspace: { enabled: false }, skills: { enabled: false } })
   assert.deepEqual(saved.intent.defaults, {})
 })
 
-test('input summary reports the closed global gate instead of live-looking numbers', async t => {
+test('input summary is absent when the global gate is closed', async t => {
   const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
   const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: false, workspaceEnabled: true,
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: false, workspaceEnabled: true, collaborationEnabled: false,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, summary: { countingScope: 'instance', totalTickets: 7, statusCounts: [] } },
@@ -753,16 +776,14 @@ test('input summary reports the closed global gate instead of live-looking numbe
   const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
   t.after(() => observer.dispose())
   const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
-  const summary = named(container, '协作进度摘要')
-  assert.match(summary.textContent, /协作管理未生效：全局总闸已关闭/)
-  assert.doesNotMatch(summary.textContent, /本工作区总闸已关闭/)
+  assert.equal(container.textContent, '')
 })
 
-test('input summary reports the closed workspace gate distinctly from the global gate', async t => {
+test('input summary is absent when the workspace gate is closed', async t => {
   const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
   const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: false,
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: false, collaborationEnabled: false,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, summary: { countingScope: 'instance', totalTickets: 7, statusCounts: [] } },
@@ -770,16 +791,14 @@ test('input summary reports the closed workspace gate distinctly from the global
   const observer = new client.SessionObserver('dom-session', async () => ok(view), 0)
   t.after(() => observer.dispose())
   const { container } = await mount(t, client.ObservedInputSummary, { sessionId: 'dom-session', observer, openDetails: () => { throw new Error('automatic panel opening') } })
-  const summary = named(container, '协作进度摘要')
-  assert.match(summary.textContent, /协作管理未生效：本工作区总闸已关闭/)
-  assert.doesNotMatch(summary.textContent, /全局总闸已关闭/)
+  assert.equal(container.textContent, '')
 })
 
-test('input summary stays silent while both gates are open', async t => {
+test('input summary displays live counts only when collaboration is eligible', async t => {
   const instance = { instrumentInstanceId: 'dom-instance', ownerSessionId: 'dom-owner', controlWorkspaceId: 'work-one' }
   const view = { sessionId: 'dom-session', instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true,
+    policy: { controlWorkspaceId: 'work-one', extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null },
       display: { header: true, inputSummary: true, rightPanel: true, sessionList: false, timeline: true } },
     records: { instance, summary: { countingScope: 'instance', totalTickets: 7, statusCounts: [] } },
@@ -792,16 +811,67 @@ test('input summary stays silent while both gates are open', async t => {
   assert.doesNotMatch(summary.textContent, /协作管理未生效/)
 })
 
+test('live collaboration seats disappear on explicit silence while historical tool output remains', async t => {
+  const instance = { instrumentInstanceId: 'quiet-instance', ownerSessionId: 'quiet', controlWorkspaceId: 'work-one' }
+  const display = { header: true, inputSummary: true, rightPanel: true, sessionList: true, timeline: true }
+  let enabled = true
+  const policy = () => ({ configurationRevision: enabled ? 1 : 2, controlWorkspaceId: 'work-one', workspaceVerified: true,
+    extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: enabled, display })
+  const caller = { kind: 'user', principalId: 'user:test', sessionId: null }
+  const scheduler = new client.SummaryScheduler(async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: (enabled ? 'a' : 'b').repeat(64),
+    summary: { sessionId, caller, instance, policy: policy(), records: enabled ? { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } } : null, health: [] } })) }))
+  const observer = new client.SessionObserver('quiet', async () => ok({ sessionId: 'quiet', caller, instance,
+    policyGrants: { schemaVersion: 1, revision: 0, grants: [] }, policy: { ...policy(), features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null } },
+    records: null, windows: null, resources: [], capabilities: [], health: [] }), 0)
+  t.after(() => { scheduler.dispose(); observer.dispose() })
+  const face = { sessionId: 'quiet', summary: scheduler.observe('quiet'), observe: () => observer, openDetails: () => assert.fail('must not auto-open') }
+  const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'retained historical tool output' }], isError: false }
+  function Seats() { return React.createElement(React.Fragment, null,
+    React.createElement(client.HeaderEntry, face), React.createElement(client.InputSummary, face),
+    React.createElement(client.Details, { ...face, observer, remote: { readSupervision: async () => ok(null) }, useTabInfo: () => ({ tab: { visible: true } }) }),
+    React.createElement(client.SourceCard, { ...face, phase: 'result', callId: 'c', toolName: 'mattpocock_record', block, useDisclosure: () => ({ expanded: true, toggle: () => {} }) })) }
+  const { container } = await mount(t, Seats, {})
+  const flush = async () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  await flush()
+  named(container, '协作进度摘要'); named(container, '协作详情'); button(container, '打开当前实例')
+  enabled = false; await React.act(async () => { scheduler.refresh(); await observer.refresh() }); await flush()
+  assert.equal(container.querySelector('[aria-label="协作进度摘要"]'), null)
+  assert.equal(container.querySelector('[aria-label="协作详情"]'), null)
+  assert.doesNotMatch(container.textContent, /协作 · 状态未知|打开当前实例|协作管理未生效/)
+  assert.match(container.textContent, /retained historical tool output/)
+})
+
+test('a restored native collaboration tab closes only after explicit silence is confirmed', async t => {
+  let enabled = true, available = true, closed = 0
+  const instance = { instrumentInstanceId: 'tab-i', ownerSessionId: 'tab', controlWorkspaceId: 'work-one' }
+  const controller = new AbortController()
+  const scheduler = new client.SummaryScheduler(async ({ sessions }) => ok({ rows: sessions.map(({ sessionId }) => available ? ({
+    sessionId, status: 'current', version: (enabled ? 'a' : 'b').repeat(64), summary: { sessionId, instance, caller: { kind: 'user', principalId: 'user:operator', sessionId: null },
+      policy: { configurationRevision: enabled ? 1 : 2, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: enabled,
+        display: { header: true, inputSummary: true, rightPanel: true, sessionList: true, timeline: true } },
+      records: enabled ? { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } } : null, health: [] }
+  }) : ({ sessionId, status: 'unavailable', reason: 'no-current-policy' })) }))
+  t.after(() => scheduler.dispose())
+  const props = { sessionId: 'tab', summary: scheduler.observe('tab'), useTabInfo: () => ({ tab: { signal: controller.signal, actions: { close: () => { closed++; controller.abort() } } } }) }
+  const { container } = await mount(t, client.CollaborationTabTitle, props)
+  const flush = () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  await flush(); assert.equal(container.textContent, '协作')
+  available = false; scheduler.refresh(); await flush()
+  assert.equal(container.textContent, ''); assert.equal(closed, 0, 'a read outage does not erase layout')
+  enabled = false; available = true; scheduler.refresh(); await flush()
+  assert.equal(container.textContent, ''); assert.equal(closed, 1)
+})
+
 test('hidden header input and source cards use summary policy without retaining a full snapshot', async t => {
   const display = { header: false, inputSummary: false, rightPanel: true, sessionList: false, timeline: false }
   const instance = { instrumentInstanceId: 'gate-instance', ownerSessionId: 'gate', controlWorkspaceId: 'work-one' }
   let fullReads = 0
   const scheduler = new client.SummaryScheduler(async request => ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'a'.repeat(64),
     summary: { sessionId, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, instance,
-      policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: false, workspaceEnabled: false, display: { ...display } },
+      policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, display: { ...display } },
       records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] } })) }))
   const cache = new client.SessionObserverCache(async sessionId => { fullReads++; return ok({ sessionId, instance, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: 'work-one', configurationRevision: 1, display: { ...display }, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null } }, records: null, windows: null, resources: [], capabilities: [], health: [] }) }, 0)
+    policy: { controlWorkspaceId: 'work-one', configurationRevision: 1, collaborationEnabled: true, display: { ...display }, features: {}, windows: { ticketWindowSize: null, runningSubagentLimit: null } }, records: null, windows: null, resources: [], capabilities: [], health: [] }) }, 0)
   t.after(() => { scheduler.dispose(); cache.dispose() })
   const face = { summary: scheduler.observe('gate'), observe: () => cache.observe('gate'), openDetails: () => assert.fail('must never auto-open') }
   const block = { kind: 'tool-result', time: 1, seq: 2, call: null, content: [{ type: 'text', text: 'historical source survives display hiding' }], isError: false }
@@ -830,7 +900,7 @@ test('hidden header input and source cards use summary policy without retaining 
 test('expanded source card uses readable code blocks, preserves raw details, and gates its action', async t => {
   const summary = { sessionId: 'source', caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     instance: { instrumentInstanceId: 'source-instance', ownerSessionId: 'source', controlWorkspaceId: 'work-one' },
-    policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true,
+    policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       display: { header: false, inputSummary: false, rightPanel: true, sessionList: false, timeline: true } },
     records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] }
   const observation = { status: 'ready', value: summary, error: null }
@@ -862,7 +932,7 @@ test('expanded source card uses readable code blocks, preserves raw details, and
 test('expanded source card distinguishes unknown input, empty output, plain text, and JSON', async t => {
   const summary = { sessionId: 'source', caller: { kind: 'user', principalId: 'user:test', sessionId: null },
     instance: { instrumentInstanceId: 'source-instance', ownerSessionId: 'source', controlWorkspaceId: 'work-one' },
-    policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true,
+    policy: { configurationRevision: 1, controlWorkspaceId: 'work-one', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
       display: { header: false, inputSummary: false, rightPanel: true, sessionList: false, timeline: false } },
     records: { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } }, health: [] }
   const observation = { status: 'ready', value: summary, error: null }
@@ -884,10 +954,10 @@ test('expanded source card distinguishes unknown input, empty output, plain text
 
 test('badge policy gate stays idle at the same committed revision and resumes on root policy revision', async t => {
   let revision = 1, reads = 0, fullReads = 0, enabled = false, unknown = false
-  const visibility = new client.PolicyObserver(async () => ok({ revision, extensionEnabled: false, defaults: { display: { sessionList: true } }, workspaceOverrides: {} }))
+  const visibility = new client.PolicyObserver(async () => ok({ revision, extensionEnabled: true, defaults: { workspace: { enabled: true }, display: { sessionList: true } }, workspaceOverrides: {} }))
   const scheduler = new client.SummaryScheduler(async request => { reads++; return ok({ rows: request.sessions.map(({ sessionId }) => ({ sessionId, status: 'current', version: 'b'.repeat(64),
     summary: { sessionId, caller: { kind: 'user', principalId: 'user:test', sessionId: null }, instance: { instrumentInstanceId: 'i', ownerSessionId: sessionId, controlWorkspaceId: 'W' },
-      policy: { configurationRevision: revision, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: false, workspaceEnabled: false,
+      policy: { configurationRevision: revision, controlWorkspaceId: 'W', workspaceVerified: true, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true,
         display: { header: false, inputSummary: false, rightPanel: false, sessionList: enabled, timeline: false } },
       records: unknown ? null : { businessRevision: 1, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 1 } },
       health: unknown ? [{ scope: 'records', status: 'unknown', reason: 'read failed' }] : [] } })) }) })

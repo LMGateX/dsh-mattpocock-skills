@@ -63,6 +63,25 @@ test('unknown workspace cannot activate controls and missing capacities are not 
   assert.equal(unset.windows.ticketWindowSize, null)
 })
 
+test('legacy conflicting leaves resolve to three effective states without rewriting intent', async () => {
+  const policy = { ...enabled({ W: { skills: { enabled: false } }, 'skills-only': { workspace: { enabled: false } } }), revision: 7 }
+  const f = fixture(new MemoryControlsStorage({ ...INITIAL_DOCUMENT, revision: 7, policy }))
+  const disabled = (await f.core.ensureSession('host', 'nested')).policy
+  assert.equal(disabled.skillsEnabled, false)
+  assert.equal(disabled.collaborationEnabled, false)
+  assert.equal(disabled.features.binding.reason, 'skills-disabled')
+  assert.equal(disabled.workspaceEnabled, true, 'the stored workspace preference remains inherited')
+  const skillsOnly = resolvePolicy(policy, 'skills-only', true)
+  assert.equal(skillsOnly.skillsEnabled, true)
+  assert.equal(skillsOnly.collaborationEnabled, false)
+  const active = (await f.core.ensureSession('host', 'C')).policy
+  assert.equal(active.skillsEnabled, true)
+  assert.equal(active.collaborationEnabled, true)
+  assert.equal(resolvePolicy({ ...policy, extensionEnabled: false }, 'other', true).collaborationEnabled, false)
+  assert.equal(resolvePolicy(policy, 'other', false).collaborationEnabled, false)
+  assert.deepEqual(await f.core.readPolicy('host'), policy)
+})
+
 test('strict config rejects invalid capacities, undeclared fields and inherited/class values', () => {
   for (const value of [0, -1, 1.5, NaN, Infinity, '2', null, undefined, Number.MAX_SAFE_INTEGER + 1]) {
     assert.throws(() => parsePolicyIntent(enabled({ W: { windows: { ticketWindowSize: value } } })), code('invalid-input'))
@@ -96,6 +115,41 @@ test('draft is detached; explicit save and removal restore inheritance; no-op ke
   assert.equal(resolvePolicy(inherited, 'W', true).features.binding.requested, true)
   assert.equal((await f.core.savePolicy('host', enabled(), 2)).revision, 2)
   await assert.rejects(f.core.savePolicy('host', enabled(), 1), code('revision-conflict'))
+})
+
+test('saving a Skills toggle cannot implicitly reopen collaboration through defaults or override removal', async () => {
+  const f = fixture()
+  const { instance } = await f.core.ensureSession('host', 'nested')
+  const original = await f.core.savePolicy('host', enabled({ W: { display: { header: false } } }), 0)
+  const closed = await f.core.savePolicy('host', { ...enabled({ W: { skills: { enabled: false }, display: { header: false } } }), extensionEnabled: false }, original.revision)
+  assert.equal(closed.workspaceOverrides.W.workspace.enabled, false)
+  const reopened = await f.core.savePolicy('host', enabled({ W: { display: { header: false } } }), closed.revision)
+  assert.deepEqual(reopened.workspaceOverrides.W, { workspace: { enabled: false }, display: { header: false } })
+  const view = await f.core.readSession('host', 'nested')
+  assert.deepEqual(view.instance, instance)
+  assert.equal(view.policy.skillsEnabled, true)
+  assert.equal(view.policy.collaborationEnabled, false)
+  assert.deepEqual(view.policy.windows, { ticketWindowSize: 3, runningSubagentLimit: 2 })
+  assert.equal(resolvePolicy(reopened, 'other', true).collaborationEnabled, true)
+  const explicit = await f.core.savePolicy('host', enabled({ W: { workspace: { enabled: true }, display: { header: false } } }), reopened.revision)
+  assert.equal(resolvePolicy(explicit, 'W', true).collaborationEnabled, true)
+})
+
+test('changing inherited Skills at the defaults cannot reopen dormant scopes or disable pinned Skills-on exceptions', async () => {
+  const old = { extensionEnabled: false, revision: 7, defaults: { skills: { enabled: false }, workspace: { enabled: true }, windows: { ticketWindowSize: 5 } },
+    workspaceOverrides: { W: { workspace: { enabled: true }, display: { header: false } }, other: { skills: { enabled: true } } } }
+  const f = fixture(new MemoryControlsStorage({ ...INITIAL_DOCUMENT, revision: 7, policy: old }))
+  const draft = { extensionEnabled: true, defaults: { workspace: { enabled: true }, windows: { ticketWindowSize: 5 } }, workspaceOverrides: old.workspaceOverrides }
+  await assert.rejects(f.core.savePolicy('A', draft, 7), denied)
+  await assert.rejects(f.core.savePolicy('host', draft, 6), code('revision-conflict'))
+  assert.deepEqual(await f.core.readPolicy('host'), old)
+  const saved = await f.core.savePolicy('host', draft, 7)
+  assert.equal(resolvePolicy(saved, 'unnamed-workspace', true).collaborationEnabled, false)
+  assert.equal(resolvePolicy(saved, 'W', true).collaborationEnabled, false)
+  assert.equal(resolvePolicy(saved, 'other', true).collaborationEnabled, true)
+  assert.deepEqual(saved.defaults, { workspace: { enabled: false }, windows: { ticketWindowSize: 5 } })
+  assert.deepEqual(saved.workspaceOverrides.W, { workspace: { enabled: false }, display: { header: false } })
+  assert.deepEqual(saved.workspaceOverrides.other, { workspace: { enabled: true }, skills: { enabled: true } })
 })
 
 test('concurrent saves with the same policy revision have one winner; no automatic overwrite', async () => {

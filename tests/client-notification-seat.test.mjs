@@ -16,9 +16,9 @@ const client = registration.factory(name => {
   if (name === PRIMITIVES_ID) return clientPrimitives(React)
   throw new Error('Unexpected runtime dependency ' + name)
 })
-async function activation(t, readSession, plugin = client) {
+async function activation(t, readSession, plugin = client, readSummaries) {
   const entries = [], cleanups = []
-  const remote = { readPolicy: async () => ({ ok: true, value: { revision: 1, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } }), readSession }
+  const remote = { readPolicy: async () => ({ ok: true, value: { revision: 1, extensionEnabled: false, defaults: {}, workspaceOverrides: {} } }), readSession, readSummaries }
   const ctx = { remote: { $mount: async () => {}, mattpocockControls: remote },
     inject: (_dependencies, callback) => callback(ctx),
     effect: callback => { const cleanup = callback(); cleanups.push(cleanup); return cleanup },
@@ -54,7 +54,7 @@ const author = { kind: 'user', principalId: 'operator', sessionId: null }
 function snapshot() {
   const instance = { instrumentInstanceId: 'notice-instance', ownerSessionId: 'notice-owner', controlWorkspaceId: 'notice-workspace' }
   return { sessionId: 'front-session', instance, caller: author, policyGrants: { schemaVersion: 1, revision: 0, grants: [] },
-    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, features: {},
+    policy: { controlWorkspaceId: instance.controlWorkspaceId, extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: true, features: {},
       windows: { ticketWindowSize: null, runningSubagentLimit: null }, display: { header: false, inputSummary: false, rightPanel: false, sessionList: false, timeline: false } },
     records: { instance, scope: { kind: 'coordinator' }, revision: 0, businessRevision: 0, viewerRevision: 0, workflows: [], tickets: [], decisions: [], decisionViews: [], changes: [],
       summary: { countingScope: 'instance', pendingDecisionCount: 0, pendingUserDecisionCount: 0, awaitingImplementationCount: 0 } },
@@ -89,7 +89,14 @@ test('notification opens persistent native-dock reading even with every display 
     }
     assert.deepEqual(warnings, [], 'real React integration must not warn')
   })
-  const entries = await activation(t, async id => { assert.equal(id, current.sessionId); if (unavailable) throw new Error('controlled read outage'); return { ok: true, value: structuredClone(current) } }, client)
+  const entries = await activation(t, async id => { assert.equal(id, current.sessionId); if (unavailable) throw new Error('controlled read outage'); return { ok: true, value: structuredClone(current) } }, client,
+    async ({ sessions }) => ({ ok: true, value: { rows: sessions.map(({ sessionId }) => {
+      const enabled = current.policy.collaborationEnabled
+      return { sessionId, status: 'current', version: (enabled ? 'a' : 'b').repeat(64), summary: { sessionId, caller: current.caller, instance: current.instance,
+        policy: { configurationRevision: enabled ? 1 : 2, controlWorkspaceId: current.instance.controlWorkspaceId, workspaceVerified: true,
+          extensionEnabled: true, workspaceEnabled: true, collaborationEnabled: enabled, display: current.policy.display },
+        records: enabled ? { businessRevision: 0, viewerRevision: 0, summary: { countingScope: 'instance', pendingUserDecisionCount: 0 } } : null, health: [] } }
+    }) } }))
   const seat = entries.find(row => row.component === client.DecisionNotificationSeat), reader = entries.find(row => row.component === client.DecisionNotificationReader)
   assert.ok(seat && reader, 'both contributions use native declared seats')
   const seatProps = { sessionId: current.sessionId, ...seat.options.inject(current.sessionId) }
@@ -97,6 +104,8 @@ test('notification opens persistent native-dock reading even with every display 
   const { createRoot } = await import('react-dom/client')
   const container = window.document.createElement('div'); window.document.body.append(container); root = createRoot(container)
   await React.act(async () => { root.render(React.createElement('div', null, React.createElement(seat.component, seatProps), React.createElement(reader.component, readerProps), React.createElement('textarea', { 'aria-label': 'native composer stand-in' }))); await new Promise(resolve => setImmediate(resolve)) })
+  const flush = () => React.act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  await flush()
   const refresh = async next => { current = next; await React.act(async () => { await seatProps.observer.refresh(); await new Promise(resolve => setImmediate(resolve)) }) }
   const click = async text => { const node = [...container.querySelectorAll('button')].find(row => row.textContent === text); assert.ok(node, 'missing button ' + text); await React.act(async () => node.click()) }
   const region = () => container.querySelector('[aria-label="通知裁决阅读"]')
@@ -127,4 +136,9 @@ test('notification opens persistent native-dock reading even with every display 
   assert.equal(region(), null, 'authorization change synchronously fences old content')
   const restored = structuredClone(current); restored.policyGrants.revision--; await refresh(restored)
   assert.equal(region(), null, 'recovery does not resurrect a discarded old selection')
+  current = put(current, 'after-silence'); current.policy.collaborationEnabled = false
+  await React.act(async () => seatProps.summary.refresh()); await flush()
+  assert.equal(container.querySelector('[aria-label="待用户裁决提醒"]'), null, 'no reminder seat or toast while silent')
+  assert.equal(region(), null)
+  assert.equal(composer.value, 'native answer draft')
 })

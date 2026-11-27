@@ -77,7 +77,7 @@ export interface SessionSummary {
   readonly sessionId: string
   readonly caller: HostCaller
   readonly instance: InstrumentInstance
-  readonly policy: Pick<EffectivePolicy, 'configurationRevision' | 'controlWorkspaceId' | 'workspaceVerified' | 'extensionEnabled' | 'workspaceEnabled' | 'display'>
+  readonly policy: Pick<EffectivePolicy, 'configurationRevision' | 'controlWorkspaceId' | 'workspaceVerified' | 'extensionEnabled' | 'workspaceEnabled' | 'collaborationEnabled' | 'display'>
   readonly records: null | {
     readonly businessRevision: number
     readonly viewerRevision: number
@@ -115,12 +115,13 @@ function parseSessionSummary(value: unknown): SessionSummary {
   const caller: HostCaller = { kind: c.kind, principalId: id(c.principalId, 'summary principal'), sessionId: c.kind === 'user' ? null : sessionId }
   const i = record(raw.instance, 'summary instance', ['instrumentInstanceId', 'ownerSessionId', 'controlWorkspaceId'])
   const instance = { instrumentInstanceId: id(i.instrumentInstanceId, 'summary instanceId'), ownerSessionId: id(i.ownerSessionId, 'summary owner'), controlWorkspaceId: id(i.controlWorkspaceId, 'summary workspace') }
-  const p = record(raw.policy, 'summary policy', ['configurationRevision', 'controlWorkspaceId', 'workspaceVerified', 'extensionEnabled', 'workspaceEnabled', 'display'])
+  const p = record(raw.policy, 'summary policy', ['configurationRevision', 'controlWorkspaceId', 'workspaceVerified', 'extensionEnabled', 'workspaceEnabled', 'collaborationEnabled', 'display'])
   if (p.controlWorkspaceId !== instance.controlWorkspaceId) invalid('summary policy and instance workspace disagree')
   const d = record(p.display, 'summary display', DISPLAY_NAMES)
   const display = Object.fromEntries(DISPLAY_NAMES.map(key => [key, boolean(d[key], 'summary display ' + key)])) as unknown as EffectivePolicy['display']
   const policy = { configurationRevision: revision(p.configurationRevision, 'summary policy revision'), controlWorkspaceId: instance.controlWorkspaceId,
-    workspaceVerified: boolean(p.workspaceVerified, 'summary workspace verified'), extensionEnabled: boolean(p.extensionEnabled, 'summary extension enabled'), workspaceEnabled: boolean(p.workspaceEnabled, 'summary workspace enabled'), display }
+    workspaceVerified: boolean(p.workspaceVerified, 'summary workspace verified'), extensionEnabled: boolean(p.extensionEnabled, 'summary extension enabled'), workspaceEnabled: boolean(p.workspaceEnabled, 'summary workspace enabled'), collaborationEnabled: boolean(p.collaborationEnabled, 'summary collaboration enabled'), display }
+  if (policy.collaborationEnabled && (!policy.workspaceVerified || !policy.extensionEnabled || !policy.workspaceEnabled)) invalid('summary collaboration and workspace policy disagree')
   let records: SessionSummary['records'] = null
   if (raw.records !== null) {
     const r = record(raw.records, 'summary records', ['businessRevision', 'viewerRevision', 'summary'])
@@ -134,7 +135,7 @@ function parseSessionSummary(value: unknown): SessionSummary {
     if (h.scope !== 'records' || h.status !== 'unknown') invalid('unsupported summary health scope')
     return { scope: 'records' as const, status: 'unknown' as const, reason: id(h.reason, 'summary health reason') }
   })
-  if (records === null ? health.length !== 1 : health.length !== 0) invalid('summary record coverage and health disagree')
+  if (!policy.collaborationEnabled ? records !== null || health.length !== 0 : records === null ? health.length !== 1 : health.length !== 0) invalid('summary record coverage and health disagree')
   return freeze({ sessionId, caller, instance, policy, records, health })
 }
 export function parseSessionSummaryBatch(value: unknown): SessionSummaryBatch {
