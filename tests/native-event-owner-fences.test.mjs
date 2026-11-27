@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { test } from 'node:test'
-import { mountedFixture, actualAgent, caller, signal } from './fixtures/runtime-host.mjs'
+import { mountedFixture, actualAgent, caller, deferred, operator, policy, signal } from './fixtures/runtime-host.mjs'
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)) }
 const running = (id, parent) => Object.assign(actualAgent(id, { parent, managed: true }), { status: 'running' })
@@ -25,32 +26,80 @@ test('a same-id other-tree replacement cannot send its new stop or notice to the
   await settle()
   assert.equal(f.mounted.ports.nativeSubagentStops('root').some(row => row.itemId.includes('new-other-run')), false)
   const document = await f.runtimeStorage.read()
-  assert(document, 'the actual mounted Runtime document is available')
-  assert.equal(document.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('new-other-run')), false)
+  assert.equal(document?.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('new-other-run')) ?? false, false, 'there is no foreign notification, including when the outbox was never written')
 })
 
-test('a genuine late old-run end follows the old owner without ending the replacement run', async t => {
+for (const otherEnabled of [true, false]) test(`a genuine late old-run end wakes its owner independently of the replacement workspace (${otherEnabled ? 'ON' : 'OFF'})`, async t => {
   const roots = new Map(); let other
   const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
-    agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
+    agents.delete('child'); other = actualAgent('other', { cwd: '/other' }); agents.set(other.id, other)
+    const original = { ...ctx.workspaceRegistry }
+    const otherWorkspace = { id: 'OTHER', path: '/other', status: async () => 'ok' }
+    Object.assign(ctx.workspaceRegistry, { get: id => id === otherWorkspace.id ? otherWorkspace : original.get(id), resolveByPath: async path => path === otherWorkspace.path ? otherWorkspace : original.resolveByPath(path) })
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
+  if (!otherEnabled) await f.runtime.savePolicy(operator, { ...policy(), workspaceOverrides: { OTHER: { workspace: { enabled: false } } } }, 1, signal())
+  const notices = []
+  f.mounted.ports.notifyOwner = async notice => { notices.push(notice); return { status: 'accepted', messageId: 'wake-' + notices.length } }
   const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
-  await f.mounted.ports.nativeSubagentActivity('root'); start(f, 'old-root-run'); await settle()
+  assert.equal((await f.runtime.readSession(caller('root'), 'root', signal())).windows.S.used, 1)
+  await assert.rejects(f.runtime.readSession(caller('leaf'), 'leaf', signal()), { code: 'feature-disabled' }, 'native membership is not child ACL')
+  f.ctx.emit('subagent/start', { id: old.id, parentSessionId: 'cold-b', runId: 'old-root-run', provider: 'controlled', local: true }); await settle()
   const replacement = running('leaf', 'other'); roots.set(replacement, other); f.agents.set(replacement.id, replacement)
   const events = replacement.session.ownEvents()
   replacement.session.ownEvents = () => [...events, { type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'replacement turn only' } } } }]
-  await f.mounted.ports.nativeSubagentActivity('other'); start(f, 'new-other-run'); await settle()
-  end(f, 'old-root-run'); await settle()
+  if (otherEnabled) {
+    await f.runtime.created(caller('other'), signal(), other)
+    assert.equal((await f.runtime.readSession(caller('other'), 'other', signal())).windows.S.used, 1)
+  } else assert.equal((await f.mounted.ports.nativeSubagentActivity('other')).known, false)
+  start(f, 'new-other-run'); await settle()
+  f.ctx.emit('subagent/end', { id: old.id, parentSessionId: 'another-creator', runId: 'old-root-run', provider: 'controlled', local: true, stopReason: 'refusal' }); await settle()
+  assert.deepEqual(f.mounted.ports.nativeSubagentStops('root'), [], 'an end contradicting the paired direct creator cannot consume an observed run')
+  assert.deepEqual(notices, [])
+  f.ctx.emit('subagent/end', { id: old.id, parentSessionId: 'cold-b', runId: 'old-root-run', provider: 'controlled', local: true, stopReason: 'refusal' }); await settle()
   assert.equal(f.mounted.ports.nativeSubagentStops('root').filter(row => row.itemId.includes('old-root-run')).length, 1)
   assert.equal(f.mounted.ports.nativeSubagentStops('other').some(row => row.itemId.includes('old-root-run')), false)
   assert.equal(f.mounted.ports.nativeSubagentStops('root').find(row => row.itemId.includes('old-root-run')).turn, null, 'the replacement turn tail is not evidence for an older run')
-  assert.equal((await f.mounted.ports.nativeSubagentActivity('other')).running, 1)
+  assert.equal(replacement.status, 'running', 'observing the old run does not stop the replacement')
   replacement.status = 'idle'; end(f, 'new-other-run'); await settle()
-  assert.equal(f.mounted.ports.nativeSubagentStops('other').filter(row => row.itemId.includes('new-other-run')).length, 1)
+  assert.deepEqual(f.mounted.ports.nativeSubagentStops('other').map(item => item.itemId), otherEnabled ? ['leaf:new-other-run:42'] : [])
   assert.equal(f.mounted.ports.nativeSubagentStops('root').some(row => row.itemId.includes('new-other-run')), false)
   const document = await f.runtimeStorage.read()
-  assert(document.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('old-root-run')), 'the true late old-run outcome still reaches its original owner notification journal')
+  assert(document?.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('old-root-run')), 'the true late old-run outcome still reaches its original owner notification journal')
+  assert.deepEqual(notices.map(row => [row.ownerSessionId, row.notificationId]), [
+    ['root', 'native-stop:leaf:old-root-run:unknown'],
+    ...(otherEnabled ? [['other', 'native-stop:leaf:new-other-run:42']] : []),
+  ])
+})
+
+test('a published old-run stop queued across OFF and ON cannot wake the owner', { timeout: 5000 }, async t => {
+  const roots = new Map(), entered = deferred(), release = deferred()
+  t.after(() => release.resolve())
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx }) {
+    ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
+  } })
+  const notices = []
+  const forward = f.runtime.observe.bind(f.runtime)
+  f.runtime.observe = async event => {
+    if (event.kind === 'native-stop' && event.item.itemId.includes('queued-old-run')) { entered.resolve(); await release.promise }
+    return forward(event)
+  }
+  f.mounted.ports.notifyOwner = async notice => { notices.push(notice); return { status: 'accepted', messageId: 'wake-' + notices.length } }
+  const old = running('leaf', 'root'); roots.set(old, f.root); f.agents.set(old.id, old)
+  await f.runtime.readSession(caller('root'), 'root', signal()); start(f, 'queued-old-run'); await settle()
+  f.agents.delete('leaf'); f.ctx.emit('agent/disposed', { agent: old }); end(f, 'queued-old-run')
+  await entered.promise
+  await f.runtime.savePolicy(operator, { ...policy(), workspaceOverrides: { W: { workspace: { enabled: false } } } }, 1, signal())
+  await f.runtime.savePolicy(operator, policy(), 2, signal())
+  const replacement = running('leaf', 'root'); roots.set(replacement, f.root); f.agents.set(replacement.id, replacement)
+  await f.runtime.readSession(caller('root'), 'root', signal()); start(f, 'fresh-run'); await settle()
+  release.resolve(); end(f, 'queued-old-run'); await settle()
+  const document = await f.runtimeStorage.read()
+  assert.equal(document?.notifications.some(row => row.notificationId.includes('queued-old-run')) ?? false, false)
+  assert.deepEqual(notices, [])
+  assert.equal((await f.mounted.ports.nativeSubagentActivity('root')).running, 1)
+  replacement.status = 'idle'; end(f, 'fresh-run'); await settle()
+  assert.deepEqual(notices.map(row => row.notificationId), ['native-stop:leaf:fresh-run:unknown'])
 })
 
 test('a displaced baseline cannot authorize an unobserved cold replacement start and end', async t => {
@@ -148,7 +197,7 @@ test('a rejected foreign start fences the old baseline before any await or count
   await settle()
   assert.equal(f.mounted.ports.nativeSubagentStops('root').some(row => row.itemId.includes('no-poll-foreign')), false)
   const document = await f.runtimeStorage.read()
-  assert.equal(document.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('no-poll-foreign')), false)
+  assert.equal(document?.notifications.some(row => row.ownerSessionId === 'root' && row.notificationId.includes('no-poll-foreign')) ?? false, false)
 })
 
 test('an agent-absent new start cannot use a null-run baseline between count reads', async t => {
@@ -216,11 +265,13 @@ test('a queued old end preserves its published outcome without borrowing the rep
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
   const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
-  await f.mounted.ports.nativeSubagentActivity('root'); start(f, 'old-deferred-tail'); await settle()
-  old.status = 'idle'; end(f, 'old-deferred-tail')
+  await f.runtime.readSession(caller('root'), 'root', signal())
+  f.ctx.emit('subagent/start', { id: old.id, parentSessionId: 'cold-b', runId: 'old-deferred-tail', provider: 'controlled', local: true }); await settle()
+  old.status = 'idle'
+  f.ctx.emit('subagent/end', { id: old.id, parentSessionId: 'cold-b', runId: 'old-deferred-tail', provider: 'controlled', local: true, stopReason: 'refusal' })
   const replacement = running('leaf', 'other'); roots.set(replacement, other); f.agents.set(replacement.id, replacement)
-  let newReads = 0; const events = replacement.session.ownEvents()
-  replacement.session.ownEvents = () => { newReads++; return [...events, { type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'replacement only' } } } }] }
+  const events = replacement.session.ownEvents()
+  replacement.session.ownEvents = () => [...events, { type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'replacement only' } } } }]
   await settle()
   const stop = f.mounted.ports.nativeSubagentStops('root').find(row => row.itemId.includes('old-deferred-tail'))
   assert(stop, 'the authentic old end must not disappear while its enrichment source changes')
@@ -232,22 +283,22 @@ test('a queued old end preserves its published outcome without borrowing the rep
   assert.equal(document.notifications.some(row => row.ownerSessionId === 'other' && row.notificationId.includes('old-deferred-tail')), false)
   assert.equal(f.mounted.ports.nativeSubagentStops('other').some(row => row.itemId.includes('old-deferred-tail')), false)
   assert.equal(document.nativeExecutions.some(row => row.runId === 'old-deferred-tail' && row.parentSessionId === 'other'), false)
-  // Independently reviewed: a separate current ACL/identity read may inspect ownEvents.
-  // Its global count is diagnostic, not authority to borrow that turn for this old outcome.
-  console.log('deferred read diagnostics', JSON.stringify({ newReads, stop, nativeExecutions: document.nativeExecutions }))
 })
 
 test('a cold turn observation rechecks incarnation before opening its deferred event suffix', { timeout: 5000 }, async t => {
   const roots = new Map(), entered = Promise.withResolvers(), reply = Promise.withResolvers(); let other
+  const runtimeObservation = new AsyncLocalStorage()
   const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     const query = ctx.sessionQuery, original = query.observeSession.bind(query)
     query.observeSession = (id, options) => {
-      if (String(id) === 'leaf' && options?.projectionMode === 'none') { entered.resolve(); return reply.promise }
+      if (!runtimeObservation.getStore() && String(id) === 'leaf' && options?.projectionMode === 'none') { entered.resolve(); return reply.promise }
       return original(id, options)
     }
   } })
+  const forward = f.runtime.observe.bind(f.runtime)
+  f.runtime.observe = event => runtimeObservation.run(true, () => forward(event))
   let eventReads = 0, disposals = 0
   const observation = { inheritedEventCount: 0, get events() { eventReads++; return [{ type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'new source after await' } } } }] }, [Symbol.dispose]() { disposals++ } }
   t.after(() => reply.resolve(observation))

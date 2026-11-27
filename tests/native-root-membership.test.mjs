@@ -23,7 +23,7 @@ test('root owner counts a runner below two cold creators on its first mounted re
   assert.equal(first.windows.S.used, 1)
   assert.equal(first.windows.S.countKnown, true)
   assert.deepEqual(first.windows.S.depth, { direct: 0, deeper: 0, unknown: 1, levels: {} })
-  await assert.rejects(f.runtime.readSession(caller('leaf'), 'leaf', signal()), /No cold session log/, 'runtime-root count facts cannot substitute for current business lineage authorization')
+  await assert.rejects(f.runtime.readSession(caller('leaf'), 'leaf', signal()), { code: 'feature-disabled' }, 'runtime-root count facts cannot substitute for current business lineage authorization')
   await settle(); await read()
   const baseline = calls
   for (let i = 0; i < 4; i++) assert.equal((await read()).windows.S.used, 1)
@@ -32,6 +32,25 @@ test('root owner counts a runner below two cold creators on its first mounted re
   const sourceReads = f.sessionReads.length
   await f.mounted.ports.nativeSubagentActivity('root')
   assert.equal(f.sessionReads.length, sourceReads, 'the public count port never observes cold creators; Runtime ACL remains separate')
+})
+
+test('a verified cold creator log does not manufacture missing workspace identity', async t => {
+  const intermediate = actualAgent('cold-child', { managed: true, parent: 'unverified-root' })
+  const unverified = actualAgent('unverified-root', { cwd: '/unverified' })
+  const cold = new Map([intermediate, unverified].map(agent => [agent.id, agent.session]))
+  const readers = [], disposals = []
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
+    agents.set('leaf', runner('leaf', intermediate.id))
+    ctx.set('sessionQuery', { async observeSession(id) {
+      const session = cold.get(id)
+      assert(session, 'only the two cold lineage records are available')
+      readers.push(id)
+      return { header: session.header, events: session.ownEvents(), inheritedEventCount: 0, [Symbol.dispose]() { disposals.push(id) } }
+    } })
+  } })
+  assert.equal(await f.mounted.ports.readSessionPolicy('leaf', signal()), undefined)
+  assert.deepEqual([...new Set(readers)], [intermediate.id, unverified.id]); assert.deepEqual(disposals, readers)
+  await assert.rejects(f.runtime.readSession(caller('leaf'), 'leaf', signal()), { code: 'feature-disabled' }, 'the live child and intermediate cwd cannot supply the missing root workspace')
 })
 
 test('a nonroot owner excludes siblings and marks an unclosed same-tree creator chain unknown', async t => {

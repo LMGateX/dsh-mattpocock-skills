@@ -1377,8 +1377,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const view=cachedSessions.get(event.ownerSessionId)
     if(view===undefined)return
     const stop=event.item
-    const observationStillAdmitted=()=>event.observationStillAdmitted?.()!==false
-    const eligible=async()=>observationStillAdmitted()&&await allowsView(view,event.ownerSessionId)&&observationStillAdmitted()&&await allowsView(view,stop.sessionId)&&observationStillAdmitted()
+    const observationStillAdmitted=()=>event.nativeAdmission?.stillCurrent()!==false
+    const formerRunWorkspace=event.nativeAdmission?.formerRunWorkspaceId??null
+    const eligible=async()=>{
+      if(!observationStillAdmitted()||!await allowsView(view,event.ownerSessionId)||!observationStillAdmitted())return false
+      // Native provenance is scoped to this exact effect. Do not ask a same-id replacement
+      // (or an unreadable cold log) to authorize the already observed former run.
+      return (formerRunWorkspace===null?await allowsView(view,stop.sessionId):formerRunWorkspace===view.instance.controlWorkspaceId)&&observationStillAdmitted()
+    }
     if(!await eligible())return
     const notificationId='native-stop:'+stop.itemId
     await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-outcome',state:'pending',messageId:null}]},eligible)

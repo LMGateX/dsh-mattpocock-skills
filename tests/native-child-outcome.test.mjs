@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { test } from 'node:test'
 import { fixture, mountedFixture, loadSDK, caller, policy, signal, actualAgent } from './fixtures/runtime-host.mjs'
 
@@ -28,22 +29,35 @@ const turnLog = (turn, reason, openOnly = false) => {
 const errorLog = (turn, code, message) => turnLog(turn, { kind: 'error', error: { code, message } })
 
 async function outcomeFixture(t, { logs = new Map(), catalog = ['worker'] } = {}) {
-  const notices = []
+  const notices = [], turnReads = []
+  const runtimeObservation = new AsyncLocalStorage()
   const f = await mountedFixture(t, { enabledNativeCounter: true, sessionLogs: logs, configureBeforeMount: ({ ctx, agents }) => {
-    agents.set('worker', child('worker', 'running'))
+    const worker = child('worker', 'running')
+    agents.set(worker.id, worker)
     ctx.provide('subagents', { async listDescendants() { return catalog.map(catalogRow) } })
+    const observeSession = ctx.sessionQuery.observeSession.bind(ctx.sessionQuery)
+    ctx.set('sessionQuery', { async observeSession(id, options) {
+      // Distinguish the counter's own turn lookup from independent Runtime lifecycle ACL reads.
+      if (!runtimeObservation.getStore()) turnReads.push(String(id))
+      const observation = await observeSession(id, options)
+      if (id !== worker.id) return observation
+      // A fixture log supplies events for its exact managed child, never a new independent root.
+      return { ...observation, header: worker.session.header, events: [...worker.session.ownEvents(), ...observation.events] }
+    } })
   } })
+  const forward = f.runtime.observe.bind(f.runtime)
+  f.runtime.observe = event => runtimeObservation.run(true, () => forward(event))
   f.mounted.ports.notifyOwner = async input => { notices.push(input); return { status: 'accepted', messageId: 'wake-' + notices.length } }
   const read = () => f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal((await read()).windows.S.used, 1, 'the counted run is part of the baseline')
-  return { f, notices, read }
+  return { f, notices, read, turnReads }
 }
 /** The counted child disappears with no subagent/end: the expected-delta reconciliation path. */
 const lose = f => { const worker = f.agents.get('worker'); f.agents.delete('worker'); f.ctx.emit('agent/disposed', { agent: worker }); return worker }
 
 test('an error turn/end on a lost counted child opens one item with the published LlmFailure facts and one wake', async t => {
   const logs = new Map([['worker', errorLog(3, 'PROVIDER_5XX', 'upstream failed')]])
-  const { f, notices, read } = await outcomeFixture(t, { logs })
+  const { f, notices, read, turnReads } = await outcomeFixture(t, { logs })
   lose(f)
   await waitFor(() => notices.length === 1, 'one wake')
   const snap = await read()
@@ -59,11 +73,11 @@ test('an error turn/end on a lost counted child opens one item with the publishe
   assert.equal(item.lane, null)
   assert.equal(item.observed, 'turn/end: error (PROVIDER_5XX: upstream failed)')
   assert.equal(notices[0].notificationId, 'native-stop:worker:3')
-  assert.deepEqual(f.sessionReads, ['worker'], 'only the suspect child log is read, exactly once')
+  assert.deepEqual(turnReads, ['worker'], 'only the suspect child log is read, exactly once')
   assert.equal(snap.health.some(row => row.scope === 'native-subagent-outcome' && row.reason.includes('turn failed') && row.reason.includes('worker turn 3')), true)
   // Ordinary reads never re-read a log.
   await read(); await read()
-  assert.deepEqual(f.sessionReads, ['worker'])
+  assert.deepEqual(turnReads, ['worker'])
 })
 
 test('an interrupted turn/end reports that the turn never ended normally', async t => {
@@ -104,11 +118,11 @@ test('a host refusal end reports that kind through the primary path', async t =>
 test('an aborted turn/end caused by our own cancellation opens no item', async t => {
   for (const cause of ['parent', 'disposed']) {
     const logs = new Map([['worker', turnLog(2, { kind: 'aborted', reason: { kind: cause } })]])
-    const { f, notices, read } = await outcomeFixture(t, { logs })
+    const { f, notices, read, turnReads } = await outcomeFixture(t, { logs })
     lose(f)
     const snap = await read()
     assert.deepEqual(snap.nativeStops, [], 'a cancellation this owner side caused is not an actionable outcome (' + cause + ')')
-    assert.deepEqual(f.sessionReads, ['worker'], 'the cause came from the child log, never from inference')
+    assert.deepEqual(turnReads, ['worker'], 'the cause came from the child log, never from inference')
     await sleep(20)
     assert.equal(notices.length, 0)
   }
@@ -128,7 +142,8 @@ test('an aborted turn/end with a foreign cause opens one item naming the cause',
 
 test('a host aborted end with an own-readable cause opens no item', async t => {
   const { f, notices, read } = await outcomeFixture(t)
-  f.agents.get('worker').session.ownEvents = () => turnLog(2, { kind: 'aborted', reason: { kind: 'disposed' } })
+  const session = f.agents.get('worker').session, descriptor = session.ownEvents()
+  session.ownEvents = () => [...descriptor, ...turnLog(2, { kind: 'aborted', reason: { kind: 'disposed' } })]
   f.ctx.emit('subagent/end', { id: 'worker', runId: 'run-aborted', provider: 'spawn', local: true, stopReason: 'aborted' })
   assert.deepEqual((await read()).nativeStops, [])
   await sleep(20)
@@ -137,7 +152,8 @@ test('a host aborted end with an own-readable cause opens no item', async t => {
 
 test('a host aborted end with a foreign cause reports the published cause', async t => {
   const { f, notices, read } = await outcomeFixture(t)
-  f.agents.get('worker').session.ownEvents = () => turnLog(2, { kind: 'aborted', reason: { kind: 'hook', reason: 'foreign hook' } })
+  const session = f.agents.get('worker').session, descriptor = session.ownEvents()
+  session.ownEvents = () => [...descriptor, ...turnLog(2, { kind: 'aborted', reason: { kind: 'hook', reason: 'foreign hook' } })]
   f.ctx.emit('subagent/end', { id: 'worker', runId: 'run-aborted', provider: 'spawn', local: true, stopReason: 'aborted' })
   await waitFor(() => notices.length === 1, 'one wake')
   const [item] = (await read()).nativeStops
@@ -157,7 +173,7 @@ test('a completed turn/end is a normal return with no item', async t => {
 
 test('the same failed turn across repeated nodes stays one item, one wake and one child-log read', async t => {
   const logs = new Map([['worker', errorLog(1, 'E1', 'first')]])
-  const { f, notices, read } = await outcomeFixture(t, { logs })
+  const { f, notices, read, turnReads } = await outcomeFixture(t, { logs })
   lose(f)
   await waitFor(() => notices.length === 1, 'one wake')
   assert.equal((await read()).nativeStops.length, 1)
@@ -169,7 +185,7 @@ test('the same failed turn across repeated nodes stays one item, one wake and on
   assert.equal(snap.nativeStops[0].itemId, itemId, 'the same failed turn keeps its durable identity')
   assert.equal(notices.length, 1, 'one open item is never re-notified')
   await read(); await read()
-  assert.deepEqual(f.sessionReads, ['worker'], 'no further child logs are read after classification')
+  assert.deepEqual(turnReads, ['worker'], 'no further child logs are read after classification')
 })
 
 test('a later turn failing again opens a new item and a new wake', async t => {
