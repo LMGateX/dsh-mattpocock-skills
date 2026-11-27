@@ -52,6 +52,8 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/silent-replay.d.ts',
   'lib/silent-ptc-sdk.js',
   'lib/types/silent-ptc-sdk.d.ts',
+  'lib/silent-compaction.js',
+  'lib/types/silent-compaction.d.ts',
   'lib/model-tools.js',
   'lib/model-tool-contract.js',
   'lib/types/model-tool-contract.d.ts',
@@ -151,6 +153,8 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/silent-replay.d.ts',
   'lib/silent-ptc-sdk.js',
   'lib/types/silent-ptc-sdk.d.ts',
+  'lib/silent-compaction.js',
+  'lib/types/silent-compaction.d.ts',
   'lib/model-tools.js',
   'lib/model-tool-contract.js',
   'lib/types/model-tool-contract.d.ts',
@@ -265,7 +269,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 94
+const EXPECTED_FIXED_PACKED_FILES = 96
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

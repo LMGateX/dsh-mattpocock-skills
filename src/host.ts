@@ -30,6 +30,7 @@ import { z } from 'zod'
 import { createModelTools, sourceKey } from './model-tools.js'
 import { modelToolDescription } from './model-tool-contract.js'
 import { isOwnedCollaborationReplayMessage, stripOwnedCollaborationReplay } from './silent-replay.js'
+import { projectSilentCompactionInput } from './silent-compaction.js'
 import { ModelOutputError, previewText } from './controls/model-output.js'
 import { createDomainControlsStorage } from './controls/storage.js'
 import type { ControlsStorage } from './controls/storage.js'
@@ -2468,6 +2469,20 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       else await commit()
     }
     disposers.push(() => { auditToolDispose?.(); auditToolDispose = undefined })
+    // Alpha.2 native compaction sends a mutable one-shot envelope, unlike the
+    // frozen AgentLoop request. Safely project only that exact auxiliary input
+    // and keep the native continuation (routing, downstream hooks and usage).
+    disposers.push(ctx.on('llm/stream', async function* (request, next) {
+      if (!closing && String(request.purpose) === 'compaction' && request.sessionId !== undefined && !Object.isFrozen(request)) {
+        const agent = liveScope(ctx.agents.get(SessionId(request.sessionId)))
+        if (agent !== undefined && !await collaborationForAgent(agent, request.signal) && !closing) {
+          request.signal?.throwIfAborted()
+          const projection = projectSilentCompactionInput(request)
+          if (projection !== null) Object.assign(request, projection)
+        }
+      }
+      yield* next()
+    }, true))
     disposers.push(ctx.on('session/event', (session, event) => {
       // A parent-owned subagent/catalog fact is a membership-change node.
       if (event.type === 'subagent/catalog') nativeCounter.catalog(String(session.id), event.data.childId === undefined ? undefined : String(event.data.childId))

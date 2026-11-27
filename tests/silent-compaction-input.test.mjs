@@ -90,6 +90,30 @@ async function startNativeCompactor(t, { send } = {}) {
   return { ctx, session, sdk, header, user, developer, compact, inputs, downstream, adapter }
 }
 
+test('mounted Host filters native compaction only for the actual silent Agent before downstream', options, async t => {
+  const { mountedFixture, operator, policy, signal } = await import('./fixtures/runtime-host.mjs')
+  const { LlmRuntime, LlmAdapter, createUserMessage } = await load('@deepseek-ai/dsh-llm')
+  const seen = [], passed = []
+  const f = await mountedFixture(t, { configureBeforeMount({ ctx }) { new LlmRuntime(ctx, {}) } })
+  f.ctx.llm.registerAdapter([config.provider], new class extends LlmAdapter {
+    async resolveModel(provider, id) { return { provider, id, name: id, toolUpdate: 'in-history' } }
+    async *stream(input) { seen.push(input); yield { type: 'finish', reason: { kind: 'stop' } } }
+  }())
+  f.ctx.on('llm/stream', (input, next) => { passed.push(input.tools.map(tool => tool.name)); return next() })
+  const make = (id, purpose = 'compaction') => ({ ...config, purpose, sessionId: id,
+    tools: ['bash', 'mattpocock_record'].map(schema),
+    messages: [createUserMessage({ content: [{ type: 'text', text: 'ordinary input' }], source: { kind: 'user' } })],
+  })
+  const send = async input => { for await (const _ of f.ctx.llm.stream(input)) { /* inert stream */ } }
+  await send(make(f.root.id))
+  await send(make('not-a-verified-session'))
+  await send(make(f.root.id, 'conversation'))
+  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await send(make(f.root.id))
+  assert.deepEqual(passed, [['bash'], ['bash', 'mattpocock_record'], ['bash', 'mattpocock_record'], ['bash', 'mattpocock_record']])
+  assert.deepEqual(seen.map(input => input.tools.map(tool => tool.name)), passed)
+})
+
 test('native compaction filters declarations and replayed updates before downstream middleware and the adapter', options, async t => {
   const { session, header, user, developer, compact, inputs, downstream, adapter } = await startNativeCompactor(t)
   header('initial', 'bash', 'mattpocock_record', 'mattpocock_other_extension')

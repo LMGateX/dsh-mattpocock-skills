@@ -70,6 +70,8 @@
     "lib/types/silent-replay.d.ts",
     "lib/silent-ptc-sdk.js",
     "lib/types/silent-ptc-sdk.d.ts",
+    "lib/silent-compaction.js",
+    "lib/types/silent-compaction.d.ts",
     "lib/model-tools.js",
     "lib/model-tool-contract.js",
     "lib/types/model-tool-contract.d.ts",
