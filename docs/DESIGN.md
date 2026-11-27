@@ -12,6 +12,10 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 工作区三态与模型静默（2026-11-27，所有者认可）
+
+[工作区三态契约](<WORKSPACE_SILENT_MODE.md>)固定 Skills 为协作前提，以及关闭协作不再对模型展示任何本包工具或 OFF 说明。保留用户设置、历史和数据；本批授权隔离开发／测试、GitHub 发布并安装同一验证制品，不授权共享 SDK 修改、生产数据迁移或现有服务重启。
+
 ## 0.24.0-alpha.1：DSH 0.2.3-alpha.2 适配（2026-11-26，发布前契约）
 
 按所有者请求，拉取上游固定标签 [dsh-v0.2.3-alpha.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2)，在独立检出和临时运行时检查、适配、验证并 push／GitHub Release。此为仅针对已验证新宿主的预发行，不替代旧宿主的 v0.23.0；声明精确 DSH 0.2.3-alpha.2 与上游 Node 门槛。适配只改公开 SDK、宿主生命周期／工作树观测接线、客户端接线和交付验证；无法证实的工作目录绑定必须明确不支持，不模拟原生权限或用 header 推断实际目录。既有授权、数据、通道、vendor 和 provider precedence 不变。不为本机 DSH／Profile 安装或启用、不重启、不改共享 SDK、不 npm publish。实际验证与发布另记。

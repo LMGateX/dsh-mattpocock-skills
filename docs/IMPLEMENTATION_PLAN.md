@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## 工作区三态与静默交付（2026-11-27）
+
+先冻结[工作区三态契约](<WORKSPACE_SILENT_MODE.md>)，再以策略／Web 设置、Skills 发现／加载和宿主模型／事件入口验证三态与切换。使用精确目标宿主复验既有会话、直接／PTC 调用、跨工作区、子代理和冷恢复；通过完整回归与精确制品门禁后，发布并用同一下载制品安装。运行态另核，不重启现有服务。
+
 ## 0.24.0-alpha.1：DSH alpha.2 发布门槛
 
 先读上游标签和实际 SDK，再按公开接口关闭 Host 与 Client 兼容差异，编译并生成产物；目标 DSH／Node 的真实插件装载、隔离 Host／Client 回归和精确归档通过后才 push、新 tag、GitHub prerelease、下载校验。不得把历史 0.2.2 夹具或仅通过 engines 检查说成新宿主验证。核对新旧工作树事件的证据边界并保留旧记录查询，不改现有 Profile 或服务。
