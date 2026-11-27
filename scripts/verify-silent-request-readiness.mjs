@@ -11,6 +11,7 @@ const packageJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const checks = new Map([
   [join(source, 'tests/workspace-silent-host.test.mjs'), 5],
   [join(source, 'tests/silent-compaction-input.test.mjs'), 6],
+  [join(source, 'tests/silent-compaction-final-handoff.test.mjs'), 1],
 ]) // Never run the unpatched compaction baseline as acceptance.
 
 export function verifyExactHost(input) {
