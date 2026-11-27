@@ -29,7 +29,7 @@ import { parseHostJson, parseResourceAction, parseSessionSummaryRequest, SUMMARY
 import type { HostCaller, HostJson, ResourceAction, RuntimeSnapshot, SessionSummary, SessionSummaryRequest, SessionSummaryResult, SessionSummaryBatch } from './controls/remote-contract.js'
 import type { InstrumentAuthor, InstrumentCommand, InstrumentCompactInput, InstrumentPurgeHistoryInput } from './controls/instrument-state.js'
 import type { TicketWindowCommand } from './controls/windows.js'
-import type { PolicyIntent } from './controls/policy.js'
+import type { EffectivePolicy, PolicyIntent } from './controls/policy.js'
 import { array, ControlsError, freeze, id, increment, isPreCommitRejection, record, revision , memoized } from './controls/validation.js'
 import { RefreshGate } from './controls/refresh-gate.js'
 import { resolvePolicy } from './controls/policy.js'
@@ -151,7 +151,9 @@ function scanObservedCreations(events:readonly {readonly type:string;readonly da
   return creations
 }
 export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number; readonly now?: () => number }
-export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
+type RuntimePorts = HostPorts & { readSessionPolicy?(sessionId:string,signal?:AbortSignal):Promise<EffectivePolicy|undefined> }
+const isCollaborating=(policy:EffectivePolicy):boolean=>policy.workspaceVerified&&policy.extensionEnabled&&policy.workspaceEnabled&&policy.skillsEnabled
+export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
   const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects(), now=options.now??Date.now
   // Only model read methods may re-enter an active read permit. Mutation/capture queues stay unchanged.
   const modelReadContext=new AsyncLocalStorage<{open:boolean}>()
@@ -238,7 +240,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     return {reusable,token}
   }
   const touchState=(instanceId?:string):void=>{refresh.touch(instanceId);project.touch(instanceId)}
-  const controls=new WorkspaceControls(ports.controlsStorage,ports.authority)
+  const associationAdmission=new AsyncLocalStorage<{readonly sessionId:string;readonly signal?:AbortSignal}>()
+  const controls=new WorkspaceControls({
+    read:()=>ports.controlsStorage.read(),
+    async compareAndSwap(expected,next){
+      const admission=associationAdmission.getStore()
+      if(admission!==undefined){
+        const association=next.associations.find(row=>row.sessionId===admission.sessionId)
+        const instance=next.instances.find(row=>row.instrumentInstanceId===association?.instrumentInstanceId)
+        if(!instance||!await allowsCollaboration(admission.sessionId,instance.controlWorkspaceId,admission.signal))throw new ControlsError('feature-disabled','collaboration is unavailable for this session')
+      }
+      return ports.controlsStorage.compareAndSwap(expected,next)
+    },
+  },ports.authority)
   const storage=await ports.openRuntimeStorage(parseRuntimeDocument)
   const nativeDispatch=new AsyncLocalStorage<Dispatch>()
   const cachedSessions=new Map<string,SessionControlsView>(), nativeWindows=new Map<string,boolean>()
@@ -287,7 +301,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const businessCaptureVersion=(records:NonNullable<ConsumptionSnapshot['records']>):string=>createHash('sha256').update(canonical([records.revision,records.businessRevision,records.scope])).digest('hex')
   const captureBusiness=async(view:SessionControlsView,records:RuntimeSnapshot['records'],signal?:AbortSignal) => {
     signal?.throwIfAborted()
-    if(!records)return
+    if(!records||!await allowsView(view,view.association.sessionId,signal))return
     const marks=marksFor(view.instance.instrumentInstanceId)
     const version=businessCaptureVersion(records),consumer=view.association.sessionId
     if(marks.business.get(consumer)===version)return
@@ -297,7 +311,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.policySelection===undefined?h.value:{...h.value,policySelection:h.policySelection,references:h.references}),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
       }
     }
-    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted();await history.capture(observations)}
+    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});if(!await allowsView(view,view.association.sessionId,signal))return;signal?.throwIfAborted();await history.capture(observations)}
     marks.business.delete(consumer);marks.business.set(consumer,version)
     while(marks.business.size>64)marks.business.delete(marks.business.keys().next().value as string)
   }
@@ -307,7 +321,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const captureSafely=async(view:SessionControlsView,effect:()=>Promise<void>,signal?:AbortSignal):Promise<{readonly status:'recorded'|'failed';readonly diagnostic:string|null}>=>{try{await effect();historyFailures.delete(view.instance.instrumentInstanceId);return {status:'recorded',diagnostic:null}}catch(error){if(signal?.aborted&&error===signal.reason)throw error;const diagnostic=String(error).slice(0,1024);historyFailures.set(view.instance.instrumentInstanceId,diagnostic);return {status:'failed',diagnostic}}}
   const captureCurrent=async(view:SessionControlsView,items:readonly {kind:string;recordId:string;version:number;snapshot:unknown;domain:string;author?:HostCaller}[],signal?:AbortSignal)=>{
     signal?.throwIfAborted()
-    if(items.length===0)return
+    if(items.length===0)return true
+    if(!await allowsView(view,view.association.sessionId,signal))return false
     const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted()
     const store=await historyStores.get(view.instance.instrumentInstanceId)!;signal?.throwIfAborted()
     const raw=await store.read().catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted()
@@ -323,23 +338,25 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       observations.push({kind:item.kind,recordId:item.recordId,recordKey:item.recordId,version:item.version,snapshot,source:{kind:last?'program':'snapshot',domain:item.domain,author:item.author?parseHostJson(item.author):null,recordedAt:null,coverage:last?'recorded-history':'snapshot-only'}})
     }
     signal?.throwIfAborted()
+    if(!await allowsView(view,view.association.sessionId,signal))return false
     await history.capture(observations)
+    return true
   }
   const captureRuntime=async(view:SessionControlsView,doc:RuntimeDocument,signal?:AbortSignal)=>{
     signal?.throwIfAborted()
     const owner=view.instance.instrumentInstanceId,marks=marksFor(owner)
     if(marks.runtime===doc.revision)return
-    await captureCurrent(view,[...doc.assignments.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'assignment',recordId:row.sessionId,version:doc.revision,snapshot:row,domain:'runtime'})),
+    const captured=await captureCurrent(view,[...doc.assignments.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'assignment',recordId:row.sessionId,version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.bindings.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'execution-binding',recordId:JSON.stringify([row.executionId,row.generation]),version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.notifications.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'notification',recordId:row.notificationId,version:doc.revision,snapshot:row,domain:'runtime'})),
       ...doc.nativeExecutions.filter(row=>row.instrumentInstanceId===owner).map(row=>({kind:'native-execution',recordId:row.executionId,version:doc.revision,snapshot:row,domain:'runtime'}))],signal)
-    marks.runtime=doc.revision
+    if(captured)marks.runtime=doc.revision
   }
   const windowCaptureRevisions=new Map<string,number>()
   const captureOthers=async(view:SessionControlsView,caller:HostCaller,signal?:AbortSignal)=>{
     signal?.throwIfAborted()
     // Raw operation journals are read only after the actual owner scope has been proved.
-    if((await scope(caller.principalId,view.association.sessionId,view,signal)).kind!=='coordinator')return
+    if(!await allowsView(view,view.association.sessionId,signal)||(await scope(caller.principalId,view.association.sessionId,view,signal)).kind!=='coordinator')return
     signal?.throwIfAborted()
     const key=view.instance.instrumentInstanceId,marks=marksFor(key),observations:HistoryObservation[]=[]
     let capturedThrough=windowCaptureRevisions.get(key)??0,windowRevision:number|null=null
@@ -365,7 +382,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const registry=await registryModule.query(view.instance).catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted()
     const worktreeRevision=registry.revision,worktreePending=marks.worktrees!==worktreeRevision
     if(worktreePending)for(const row of registry.rows){for(const h of row.history)observations.push({kind:'worktree',recordId:row.bindingId,recordKey:h.operationId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:h.source==='program'?'program':'authored',domain:'worktree-bindings',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},flags:{cleanedWorktree:h.value.business.state==='cleaned'}})}
-    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted();await history.capture(observations)}
+    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});if(!await allowsView(view,view.association.sessionId,signal))return;signal?.throwIfAborted();await history.capture(observations)}
     if(windowRevision!==null)marks.windows=windowRevision
     if(worktreePending)marks.worktrees=worktreeRevision
     windowCaptureRevisions.set(key,capturedThrough)
@@ -394,12 +411,30 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   let savedPolicy=await controls.readPolicy(ports.operatorPrincipal)
   let transitioning:PolicyIntent|null=null
   const mayRequireWindows=(policy:PolicyIntent):boolean=>policy.extensionEnabled&&(policy.defaults.windows?.enabled===true||Object.values(policy.workspaceOverrides).some(patch=>patch.windows?.enabled===true))
+  // Only the live Host may establish policy eligibility. Omitted ports are older core fixtures;
+  // a mounted port reporting missing, failed or misattributed policy must never use cached policy.
+  const readSessionPolicy=async(sessionId:string,signal?:AbortSignal):Promise<EffectivePolicy|undefined>=>{
+    signal?.throwIfAborted()
+    try{const policy=await ports.readSessionPolicy?.(sessionId,signal);signal?.throwIfAborted();return policy}
+    catch{signal?.throwIfAborted();return undefined}
+  }
+  const allowsCollaboration=async(sessionId:string,workspaceId?:string,signal?:AbortSignal):Promise<boolean>=>{
+    if(closing)return false
+    if(ports.readSessionPolicy===undefined)return true
+    const policy=await readSessionPolicy(sessionId,signal)
+    return !closing&&policy!==undefined&&(workspaceId===undefined||policy.controlWorkspaceId===workspaceId)&&isCollaborating(policy)
+  }
+  const allowsView=(view:SessionControlsView,sessionId=view.association.sessionId,signal?:AbortSignal)=>allowsCollaboration(sessionId,view.instance.controlWorkspaceId,signal)
+  const requireCollaboration=async(sessionId:string,signal?:AbortSignal):Promise<void>=>{
+    if(!await allowsCollaboration(sessionId,undefined,signal))throw new ControlsError('feature-disabled','collaboration is unavailable for this session')
+  }
   const load=async():Promise<RuntimeDocument>=>{const raw=await storage.read();return raw===undefined?INITIAL_RUNTIME_DOCUMENT:memoized(raw,parseRuntimeDocument)}
-  const update=async(change:(current:RuntimeDocument)=>RuntimeDocument|Promise<RuntimeDocument>):Promise<RuntimeDocument>=>{
+  const update=async(change:(current:RuntimeDocument)=>RuntimeDocument|Promise<RuntimeDocument>,eligible?:()=>Promise<boolean>):Promise<RuntimeDocument>=>{
     for(let attempt=0;attempt<32;attempt++){
       const old=await load(),candidate=await change(old)
       if(candidate===old)return old
       const next=parseRuntimeDocument({...candidate,revision:increment(old.revision)})
+      if(eligible!==undefined&&!await eligible())return old
       if(await storage.compareAndSwap(old.revision,next)){
         // change() retains immutable rows it did not alter. Diff row identity before parsing
         // (which detaches all rows) so owner-local notifications/assignments do not dirty
@@ -415,7 +450,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         let captureOutcome:{readonly status:'recorded'|'failed';readonly diagnostic:string|null}|null=null
         for(const owner of owners){
           const view=viewsByInstance.get(owner)
-          if(view){const outcome=await captureSafely(view,()=>captureRuntime(view,next));if(captureOutcome===null||outcome.status==='failed')captureOutcome=outcome}
+          if(view&&await allowsView(view,view.instance.ownerSessionId)){const outcome=await captureSafely(view,()=>captureRuntime(view,next));if(captureOutcome===null||outcome.status==='failed')captureOutcome=outcome}
         }
         if(captureOutcome!==null)modelMutationOutcomes.set(next,{historyCapture:captureOutcome})
         return next
@@ -423,17 +458,25 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }
     throw new ControlsError('concurrent-update','runtime association contention')
   }
-  const check=async(caller:HostCaller,sessionId?:string,signal?:AbortSignal)=>{
+  const check=async(caller:HostCaller,sessionId?:string,signal?:AbortSignal,sessionEffect=true)=>{
     if(closing)denied('instrument runtime is disposing')
     signal?.throwIfAborted();await ports.authorizeCaller(caller,sessionId,signal);signal?.throwIfAborted()
+    if(sessionEffect&&sessionId!==undefined&&ports.readSessionPolicy!==undefined)await requireCollaboration(sessionId,signal)
   }
+  const ensureSession=(principal:string,sessionId:string,signal?:AbortSignal)=>ports.readSessionPolicy===undefined?controls.ensureSession(principal,sessionId):associationAdmission.run({sessionId,...(signal===undefined?{}:{signal})},()=>controls.ensureSession(principal,sessionId))
   const policyView=(read:SessionControlsView):SessionControlsView=>read.policy.configurationRevision<savedPolicy.revision?{...read,policy:resolvePolicy(savedPolicy,read.instance.controlWorkspaceId,read.policy.workspaceVerified)}:read
   const identity=async(caller:HostCaller,sessionId:string,signal?:AbortSignal,register=true):Promise<SessionControlsView>=>{
-    await check(caller,sessionId,signal)
-    const read=register?await controls.ensureSession(caller.principalId,sessionId):await controls.readSession(caller.principalId,sessionId,signal)
-    const view=policyView(read)
-    cachedSessions.set(sessionId,view);nativeWindows.set(sessionId,view.policy.extensionEnabled&&view.policy.features.windows.requested)
-    signal?.throwIfAborted();return view
+    const readIdentity=async()=>{
+      await check(caller,sessionId,signal)
+      const read=register?await ensureSession(caller.principalId,sessionId,signal):await controls.readSession(caller.principalId,sessionId,signal)
+      const view=policyView(read)
+      if(ports.readSessionPolicy!==undefined&&(!isCollaborating(view.policy)||!await allowsView(view,sessionId,signal)))throw new ControlsError('feature-disabled','collaboration is unavailable for this session')
+      cachedSessions.set(sessionId,view);nativeWindows.set(sessionId,view.policy.extensionEnabled&&view.policy.features.windows.requested)
+      signal?.throwIfAborted();return view
+    }
+    // Association creation and policy saves share the controls CAS. Serialize their admission;
+    // read-only revalidation is also called by operations already holding the FIFO.
+    return register&&ports.readSessionPolicy!==undefined?queue.run(readIdentity):readIdentity()
   }
   /** Referenced admission requires a current local handle; native ticketless work stays unrestricted. */
   /** Registered (workflow, ticket) pairs; a ticket id is only meaningful inside its own workflow. */
@@ -581,8 +624,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const initialize=async(view:SessionControlsView):Promise<void>=>{
     const key=view.instance.instrumentInstanceId
-    if(initialized.has(key))return
+    if(initialized.has(key)||!await allowsView(view,view.instance.ownerSessionId))return
     const actual=await ports.nativeActivity(view.instance.ownerSessionId)
+    if(!await allowsView(view,view.instance.ownerSessionId))return
     // The host reports complete enumeration only when its catalog traversal had no
     // diagnostics; an unsupported or rejected listing stays explicitly unknown.
     await markKnowledge(view,actual.known,actual.reason)
@@ -596,7 +640,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
    */
   const readmitPersistedLanes=async(view:SessionControlsView):Promise<void>=>{
     try{
-      if(!(view.policy.extensionEnabled&&view.policy.features.windows.requested))return
+      if(!(view.policy.extensionEnabled&&view.policy.features.windows.requested)||!await allowsView(view,view.instance.ownerSessionId))return
       const owner=view.instance.ownerSessionId,document=await load()
       const rows=document.bindings.filter(row=>row.instrumentInstanceId===view.instance.instrumentInstanceId&&!row.released)
       if(rows.length===0)return
@@ -613,9 +657,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           const token={instrumentInstanceId:row.instrumentInstanceId,executionId:row.executionId,generation:row.generation,leaseId:row.leaseId}
           const dispatch:Dispatch={caller,exec:undefined as unknown as ToolRunContext,instance:view,workflowId:null,ticketIds:[],children:new Set(),live:new Set([agent]),token,released:false,accepting:false}
           await track(view.instance.instrumentInstanceId,async()=>{
+            const eligible=()=>allowsView(view,row.sessionId)
+            if(!await eligible())return
             await sendReceipt(token,'running')
+            if(!await eligible())return
             managedExecutions.set(agent.id,dispatch);reattached.set(agent,dispatch);exactExecutions.set(agent,dispatch)
-            await update(old=>({...old,bindings:[...old.bindings.filter(binding=>binding.sessionId!==agent.id),{...token,sessionId:agent.id,parentSessionId:row.parentSessionId,runtimeId,released:false}]}))
+            await update(old=>({...old,bindings:[...old.bindings.filter(binding=>binding.sessionId!==agent.id),{...token,sessionId:agent.id,parentSessionId:row.parentSessionId,runtimeId,released:false}]}),eligible)
           })
         }catch{/* One lane that cannot be re-admitted stays an unknown window fact; it never fails the mount. */}
       }
@@ -646,24 +693,34 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       let result:SessionSummaryResult
       try{
         result=await queue.run(async():Promise<SessionSummaryResult>=>{
-          await check(caller,selected.sessionId,signal)
-          // List navigation neither registers sessions nor retains them as native-runtime handles.
+          await check(caller,selected.sessionId,signal,false)
+          // List navigation authenticates an existing association without registering it.
           const view=policyView(await controls.readSession(caller.principalId,selected.sessionId,signal))
+          const currentPolicy=async()=>{
+            if(ports.readSessionPolicy===undefined)return view.policy
+            const latest=await readSessionPolicy(selected.sessionId,signal)
+            return latest?.controlWorkspaceId===view.instance.controlWorkspaceId?latest:undefined
+          }
+          let latest=await currentPolicy(),collaborationEnabled=latest!==undefined&&isCollaborating(latest)
           let records:SessionSummary['records']=null,sourceRevision:number|null=null,permission:InstrumentScope|null=null
           const health:SessionSummary['health'][number][]=[]
-          try{
-            const current=await instruments.readSummary(caller.principalId,selected.sessionId,signal)
-            sourceRevision=current.revision;permission=current.scope
-            records={businessRevision:current.businessRevision,viewerRevision:current.viewerRevision,summary:current.summary}
-          }catch(error){
-            signal.throwIfAborted()
-            if(error instanceof ControlsError&&['access-denied','unknown-session','unknown-workspace','association-conflict'].includes(error.code))throw error
-            health.push({scope:'records',status:'unknown',reason:'records-unavailable'})
+          if(collaborationEnabled){
+            try{
+              const current=await instruments.readSummary(caller.principalId,selected.sessionId,signal)
+              sourceRevision=current.revision;permission=current.scope
+              records={businessRevision:current.businessRevision,viewerRevision:current.viewerRevision,summary:current.summary}
+            }catch(error){
+              signal.throwIfAborted()
+              if(error instanceof ControlsError&&['access-denied','unknown-session','unknown-workspace','association-conflict'].includes(error.code))throw error
+              health.push({scope:'records',status:'unknown',reason:'records-unavailable'})
+            }
+            latest=await currentPolicy();collaborationEnabled=latest!==undefined&&isCollaborating(latest)
+            if(!collaborationEnabled){records=null;sourceRevision=null;permission=null;health.length=0}
           }
-          await check(caller,selected.sessionId,signal)
-          const p=view.policy
-          const summary:SessionSummary=freeze({sessionId:selected.sessionId,caller:{kind:caller.kind,principalId:caller.principalId,sessionId:caller.sessionId},instance:view.instance,
-            policy:{configurationRevision:p.configurationRevision,controlWorkspaceId:p.controlWorkspaceId,workspaceVerified:p.workspaceVerified,extensionEnabled:p.extensionEnabled,workspaceEnabled:p.workspaceEnabled,display:p.display},records,health})
+          await check(caller,selected.sessionId,signal,false)
+          const p=latest??view.policy
+          const policy={configurationRevision:p.configurationRevision,controlWorkspaceId:p.controlWorkspaceId,workspaceVerified:p.workspaceVerified,extensionEnabled:p.extensionEnabled,workspaceEnabled:p.workspaceEnabled,collaborationEnabled,display:p.display}
+          const summary:SessionSummary=freeze({sessionId:selected.sessionId,caller:{kind:caller.kind,principalId:caller.principalId,sessionId:caller.sessionId},instance:view.instance,policy,records,health})
           // A hint is never an authorization shortcut. This cut includes the actual scope and
           // mount/source/viewer identity even when its visible numeric count happens not to change.
           const version=createHash('sha256').update(canonical([runtimeId,view.documentRevision,sourceRevision,permission,summary])).digest('hex')
@@ -908,7 +965,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     }catch(error){signal.throwIfAborted();health.push({scope:'notifications',status:'unknown',reason:String(error).slice(0,1024)})}
     signal.throwIfAborted()
     // Once capture has accepted a persistent write, let that obligation settle.
-    await captureSafely(view,async()=>{
+    if(await allowsView(view,sessionId,signal))await captureSafely(view,async()=>{
       if(records!==null){
         // Only a new source/scope version or failed prior capture pays for retained histories.
         // The current path still performs every native/resource observation above.
@@ -1086,14 +1143,19 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const recordNativeExecution=async(view:SessionControlsView,event:NativeExecutionEvent):Promise<void>=>{
     // C writes follow the same optional-extension gate as worktree observations. Existing rows
     // remain readable; management-off adds or updates nothing and is not an observation failure.
-    if(!view.policy.extensionEnabled)return
+    if(ports.readSessionPolicy===undefined&&!view.policy.extensionEnabled)return
+    const eligible=()=>allowsView(view,event.sessionId)
+    if(!await eligible())return
     nativeExecutionOwners.set(event.sessionId,view.instance.instrumentInstanceId)
     try{
-      await update(old=>{
-        const current=old.nativeExecutions.find(row=>row.executionId===event.sessionId)
-        const next=applyNativeExecutionEvent(current,event,Date.now())
-        if(next===null)return old
-        return {...old,nativeExecutions:current===undefined?[...old.nativeExecutions,next]:old.nativeExecutions.map(row=>row.executionId===next.executionId?next:row)}
+      await track(view.instance.instrumentInstanceId,async()=>{
+        if(!await eligible())return
+        await update(old=>{
+          const current=old.nativeExecutions.find(row=>row.executionId===event.sessionId)
+          const next=applyNativeExecutionEvent(current,event,Date.now())
+          if(next===null)return old
+          return {...old,nativeExecutions:current===undefined?[...old.nativeExecutions,next]:old.nativeExecutions.map(row=>row.executionId===next.executionId?next:row)}
+        },eligible)
       })
       clearNativeExecutionFailure(event.sessionId)
     }catch(error){markNativeExecutionFailure(event.sessionId,error,view.instance.instrumentInstanceId)}
@@ -1112,9 +1174,9 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   const recordLateNativeExecutionEnd=async(event:Extract<HostEvent,{kind:'subagent-end'}>):Promise<void>=>{
     const sessionId=event.sessionId
     // Management off intentionally records nothing; it is not an observation failure.
-    if(!savedPolicy.extensionEnabled)return
+    if(!await allowsCollaboration(sessionId)||ports.readSessionPolicy===undefined&&!savedPolicy.extensionEnabled)return
     const retained=cachedSessions.get(sessionId)
-    if(retained!==undefined&&!retained.policy.extensionEnabled)return
+    if(retained!==undefined&&!await allowsView(retained,sessionId))return
     try{
       const document=await load()
       const row=document.nativeExecutions.find(execution=>execution.executionId===sessionId)
@@ -1131,14 +1193,13 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         markNativeExecutionFailure(sessionId,new ControlsError('unknown-session','native end owner view is unavailable; outcome coverage is unknown'),row.instrumentInstanceId)
         return
       }
-      // Management off intentionally records nothing and is not an observation failure.
-      if(!view.policy.extensionEnabled)return
       await recordNativeExecution(view,{kind:'end',sessionId:row.sessionId,parentSessionId:row.parentSessionId,
         instrumentInstanceId:row.instrumentInstanceId,headerCwd:row.headerCwd,outcome:event.stopReason,runId:event.runId??null})
     }catch(error){markNativeExecutionFailure(sessionId,error,cachedSessions.get(sessionId)?.instance.instrumentInstanceId??nativeExecutionOwners.get(sessionId)??null)}
   }
   const recordNativeExecutionEdge=async(agent:Agent,kind:'created'|'start'|'end'|'disposed',edge:NativeExecutionEdge={}):Promise<void>=>{
     const sessionId=String(agent.id)
+    if(!await allowsCollaboration(sessionId))return
     try{
       const view=await nativeExecutionViewFor(agent)
       if(view===undefined){markNativeExecutionFailure(sessionId,new ControlsError('unknown-session','native execution owner association is unavailable'));return}
@@ -1151,27 +1212,27 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const parts=stepKey.split(':'),turn=Number(parts[0]),step=Number(parts[1])
     return {turn:Number.isSafeInteger(turn)?turn:null,step:Number.isSafeInteger(step)?step:null}
   }
-  /** tracked=false is required on the snapshot read path: the queue must not re-enter itself. */
-  const applyObservationCheck=async(view:SessionControlsView,input:WorktreeObservationCheckInput,tracked=true):Promise<void>=>{
-    const registry=await openObservations(view)
-    // Replay verification finishes outside the read queue, possibly after a hot snapshot was
-    // cached. Its committed check is a mutation too; merely starting replay is not.
-    if(!tracked){await registry.check(view.instance,programAuthor,input);touchState(view.instance.instrumentInstanceId);return}
-    await track(view.instance.instrumentInstanceId,()=>registry.check(view.instance,programAuthor,input))
+  const applyObservationCheck=async(view:SessionControlsView,creator:string,input:WorktreeObservationCheckInput):Promise<void>=>{
+    await track(view.instance.instrumentInstanceId,async()=>{
+      if(!await allowsView(view,creator,observationLifetime.signal))return
+      const registry=await openObservations(view)
+      if(await allowsView(view,creator,observationLifetime.signal))await registry.check(view.instance,programAuthor,input)
+    })
   }
   /** E2: prove the checkout with the authorized Git runner anchored at the owner session. A
    * creator child may already be disposed; the owner is the live anchor, and inspect carries no
    * workspace-write containment. Unknown stays unknown: no failure is reported as success. */
-  const verifyWorktreeObservation=async(view:SessionControlsView,observationId:string,path:string,tracked=true):Promise<void>=>{
+  const verifyWorktreeObservation=async(view:SessionControlsView,creator:string,observationId:string,path:string):Promise<void>=>{
     if(observationLifetime.signal.aborted)return
     try{
+      if(!await allowsView(view,creator,observationLifetime.signal))return
       const probe=await probeWorktree(ports.gitRunnerForSession(view.instance.ownerSessionId,observationLifetime.signal),path)
-      if(!probe.exists){await applyObservationCheck(view,{observationId,kind:'absent'},tracked);return}
+      if(!probe.exists){await applyObservationCheck(view,creator,{observationId,kind:'absent'});return}
       if(probe.repositoryPath===null||probe.gitCommonDir===null||probe.gitDir===null||probe.pathIdentity===null||probe.headOid===null)throw new ControlsError('invalid-state','probe returned an incomplete identity')
-      await applyObservationCheck(view,{observationId,kind:'facts',facts:{repositoryPath:probe.repositoryPath,gitCommonDir:probe.gitCommonDir,gitDir:probe.gitDir,pathIdentity:probe.pathIdentity,branchRef:probe.branchRef,branchOid:probe.branchOid,headOid:probe.headOid}},tracked)
+      await applyObservationCheck(view,creator,{observationId,kind:'facts',facts:{repositoryPath:probe.repositoryPath,gitCommonDir:probe.gitCommonDir,gitDir:probe.gitDir,pathIdentity:probe.pathIdentity,branchRef:probe.branchRef,branchOid:probe.branchOid,headOid:probe.headOid}})
     }catch(error){
       if(observationLifetime.signal.aborted)return
-      try{await applyObservationCheck(view,{observationId,kind:'failed',diagnostic:String(error).slice(0,1024)},tracked)}
+      try{await applyObservationCheck(view,creator,{observationId,kind:'failed',diagnostic:String(error).slice(0,1024)})}
       catch(writeError){if(!observationLifetime.signal.aborted)markObservationFailure(view,writeError)}
     }
   }
@@ -1183,17 +1244,21 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const creation=worktreeCreationFromValue(exec.name,result.value)
     if(creation===null)return
     const creator=caller.sessionId,position=stepPosition(stepKey)
+    if(!await allowsCollaboration(creator))return
     const input:WorktreeObservationInput={creatorSessionId:creator,callId:String(exec.callId),rootCallId:String(exec.rootCallId),turn:position.turn,step:position.step,...creation}
     try{
       const view=await identity(caller,creator)
-      if(!view.policy.extensionEnabled)return
-      const registry=await openObservations(view)
-      const {recorded,row}=await track(view.instance.instrumentInstanceId,()=>registry.observe(view.instance,caller,input,'program'))
-      if(recorded)void verifyWorktreeObservation(view,row.observationId,row.value.path)
+      if(ports.readSessionPolicy===undefined&&!view.policy.extensionEnabled)return
+      const observation=await track(view.instance.instrumentInstanceId,async()=>{
+        if(!await allowsView(view,creator))return
+        const registry=await openObservations(view)
+        if(await allowsView(view,creator))return registry.observe(view.instance,caller,input,'program')
+      })
+      if(observation?.recorded)void verifyWorktreeObservation(view,creator,observation.row.observationId,observation.row.value.path)
     }catch(error){
       // A failed append must stay visible: attribute it to the creator's instrument instance when
       // one is already known, otherwise to the creator session so an owner read can report it.
-      if(!observationLifetime.signal.aborted){
+      if(!observationLifetime.signal.aborted&&await allowsCollaboration(creator)){
         const known=cachedSessions.get(creator)?.instance.instrumentInstanceId
         failedObservationSessions.add(creator)
         observationFailures.set(known===undefined?'session:'+creator:known,String(error).slice(0,1024))
@@ -1204,25 +1269,32 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
    * rendered result payload is lower evidence than the tool value, so those versions say 'replay'. */
   const replayWorktreeObservations=async(view:SessionControlsView):Promise<void>=>{
     const key=view.instance.instrumentInstanceId
-    if(observationReplays.has(key))return
+    if(observationReplays.has(key)||!await allowsView(view,view.instance.ownerSessionId)||observationReplays.has(key))return
     observationReplays.add(key)
+    const eligible=()=>allowsView(view,view.instance.ownerSessionId)
     try{
       for(const agent of ports.liveAgents()){
+        if(!await eligible()){observationReplays.delete(key);return}
         const creatorSessionId=String(agent.id)
         if(creatorSessionId===view.instance.ownerSessionId||agent.session.header.origin!=='subagent')continue
+        const canObserveCreator=()=>allowsView(view,creatorSessionId)
+        if(!await canObserveCreator())continue
         const child=await controls.readSession(ports.operatorPrincipal,creatorSessionId).catch(()=>undefined)
-        if(child===undefined||child.instance.instrumentInstanceId!==key)continue
+        if(child===undefined||child.instance.instrumentInstanceId!==key||!await canObserveCreator())continue
         const facts=await ports.sessionFacts(creatorSessionId)
         for(const input of scanObservedCreations(facts.events,creatorSessionId)){
-          const registry=await openObservations(view)
-          // Replay starts from a snapshot that holds the effect queue. Write directly without
-          // re-entering it, then invalidate only for a committed creation fact.
-          const {recorded,row}=await registry.observe(view.instance,programAuthor,input,'replay')
-          if(recorded){touchState(view.instance.instrumentInstanceId);void verifyWorktreeObservation(view,row.observationId,row.value.path,false)}
+          // The snapshot never awaits replay. Queue admission here so a policy save cannot
+          // slip between eligibility and starting the observation's durable append.
+          const observation=await queue.run(async()=>{
+            if(!await eligible()||!await canObserveCreator())return
+            const registry=await openObservations(view)
+            if(await canObserveCreator())return registry.observe(view.instance,programAuthor,input,'replay')
+          })
+          if(observation?.recorded){touchState(view.instance.instrumentInstanceId);void verifyWorktreeObservation(view,creatorSessionId,observation.row.observationId,observation.row.value.path)}
         }
       }
     }catch(error){
-      if(!observationLifetime.signal.aborted)markObservationFailure(view,error)
+      if(await eligible())markObservationFailure(view,error)
     }
   }
   const directParentMessage=(exec:ToolExecution):boolean=>{
@@ -1240,22 +1312,28 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const existing=notificationFlights.get(ownerSessionId);if(existing)return existing
     const flight=(async()=>{
       await ports.notificationObserverReady
-      if(closing||notificationLifetime.signal.aborted)return
+      const eligible=()=>allowsCollaboration(ownerSessionId,cachedSessions.get(ownerSessionId)?.instance.controlWorkspaceId,notificationLifetime.signal)
+      if(closing||notificationLifetime.signal.aborted||!await eligible())return
       const attempted=new Set<string>()
       while(!closing){
-      const rows=(await queue.run(load)).notifications.filter(n=>n.ownerSessionId===ownerSessionId&&!attempted.has(n.notificationId)&&(n.state==='pending'||retryAccepted&&n.state==='accepted'))
+      const current=await queue.run(async()=>await eligible()?load():undefined)
+      if(current===undefined)return
+      const rows=current.notifications.filter(n=>n.ownerSessionId===ownerSessionId&&!attempted.has(n.notificationId)&&(n.state==='pending'||retryAccepted&&n.state==='accepted'))
       if(rows.length===0)return
       for(const intent of rows){
+        if(!await eligible())return
         attempted.add(intent.notificationId)
         notificationAttempts.add(intent.notificationId)
-        if(closing)return
         let receipt:Awaited<ReturnType<HostPorts['notifyOwner']>>
         try{receipt=await ports.notifyOwner({notificationId:intent.notificationId,ownerSessionId:intent.ownerSessionId,instrumentInstanceId:intent.instrumentInstanceId,businessRevision:intent.businessRevision,authorPrincipalId:intent.authorPrincipalId},notificationLifetime.signal)}catch{notificationAttempts.delete(intent.notificationId);earlyNotificationCommits.delete(intent.notificationId);return}
         if(receipt.status!=='accepted'||receipt.messageId===null){notificationAttempts.delete(intent.notificationId);earlyNotificationCommits.delete(intent.notificationId);return}
-        try{await queue.run(()=>update(old=>{
-          const committed=earlyNotificationCommits.get(intent.notificationId)===receipt.messageId
-          return {...old,notifications:old.notifications.map(n=>n.notificationId===intent.notificationId&&n.state!=='consumed'?{...n,state:committed?'consumed':'accepted',messageId:receipt.messageId}:n)}
-        }))}finally{notificationAttempts.delete(intent.notificationId);earlyNotificationCommits.delete(intent.notificationId)}
+        try{await queue.run(async()=>{
+          if(!await eligible())return
+          await update(old=>{
+            const committed=earlyNotificationCommits.get(intent.notificationId)===receipt.messageId
+            return {...old,notifications:old.notifications.map(n=>n.notificationId===intent.notificationId&&n.state!=='consumed'?{...n,state:committed?'consumed':'accepted',messageId:receipt.messageId}:n)}
+          },eligible)
+        })}finally{notificationAttempts.delete(intent.notificationId);earlyNotificationCommits.delete(intent.notificationId)}
       }
       }
     })()
@@ -1274,8 +1352,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const view=cachedSessions.get(event.ownerSessionId)
     if(view===undefined)return
     const stop=event.item
+    const eligible=async()=>await allowsView(view,event.ownerSessionId)&&await allowsView(view,stop.sessionId)
+    if(!await eligible())return
     const notificationId='native-stop:'+stop.itemId
-    if(!(await load()).notifications.some(n=>n.notificationId===notificationId))await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-outcome',state:'pending',messageId:null}]})
+    await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-outcome',state:'pending',messageId:null}]},eligible)
     scheduleNotification(event.ownerSessionId)
   })
   // Keep only the latest scope baseline per caller identity, never one large body per grant.
@@ -1289,6 +1369,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // admitted step (its own instrument tool results still carry the state their call produced).
   let stepSerial=0,currentStepKey='serial:0'
   const deliveredInStep=new Map<string,{readonly step:string;readonly agent:Agent|undefined;readonly session:Agent['session']|undefined}>()
+  const discardSessionPresentation=(sessionId:string):void=>{
+    const suffix=','+JSON.stringify(sessionId)+']'
+    for(const key of baselines.keys())if(key.endsWith(suffix))baselines.delete(key)
+    for(const key of deliveredInStep.keys())if(key.endsWith(suffix))deliveredInStep.delete(key)
+    for(const [key,entry]of projectionCache)if(entry.value.sessionId===sessionId)projectionCache.delete(key)
+  }
   // A persistent association or policy-storage failure must not append the same notice at every
   // step and every tool result: the notice reuses the snapshot baseline and visibility rule.
   const failureReason=(error:unknown):string=>error instanceof ControlsError?error.code:error instanceof ResourceError?error.code:'internal-error'
@@ -1315,6 +1401,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     'unavailable|'+caller.principalId+'|'+caller.sessionId)
   const prepare=async(caller:HostCaller,signal:AbortSignal,acceptedMessages:readonly UserMessage[]=[])=>{
     if(caller.sessionId===null)return []
+    const eligible=()=>allowsCollaboration(caller.sessionId!,undefined,signal)
+    if(!await eligible()){discardSessionPresentation(caller.sessionId);return []}
     let view:SessionControlsView,permission:InstrumentScope
     try{const saved=await controls.readPolicy(caller.principalId)
       const retained=cachedSessions.get(caller.sessionId)
@@ -1322,7 +1410,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       view=await identity(caller,caller.sessionId,signal);permission=await scope(caller.principalId,caller.sessionId,view)}catch(error){
       signal.throwIfAborted()
       // No current identity/scope proof means no cached body, even as explicitly stale text.
-      return deliverFailure(caller,acceptedMessages,error)
+      return await eligible()?deliverFailure(caller,acceptedMessages,error):[]
     }
     const ownerDecisionPolicy=await queue.run(()=>readOwnerPolicy(view,signal))
     const key=consumptionIdentity(caller,view,permission,ownerDecisionPolicy)
@@ -1354,7 +1442,8 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     try{
       const current=(await modelIdentity(caller,caller.sessionId,signal)).identity
       if(canonical(current.instance)!==canonical(view.instance)||sourceVersion(current.scope)!==key.scopeFingerprint||key.sourceToken!==sourceVersion(await queue.run(()=>readOwnerPolicy(view,signal))))throw new ControlsError('revision-conflict','snapshot publication authorization or owner policy source changed')
-    }catch(error){signal.throwIfAborted();return deliverFailure(caller,acceptedMessages,error)}
+    }catch(error){signal.throwIfAborted();return await eligible()?deliverFailure(caller,acceptedMessages,error):[]}
+    if(!await allowsView(view,caller.sessionId,signal)){discardSessionPresentation(caller.sessionId);return []}
     const baselineKey=JSON.stringify([key.principalId,key.sessionId,key.instrumentInstanceId,key.ownerSessionId,sourceVersion(permission)])
     try{
       refresh.record(refreshKey,refreshEpoch,view.instance.instrumentInstanceId)
@@ -1369,15 +1458,27 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   }
   const facade:RuntimeFacade={
     async serializePolicyPermission(effect){touchState();return queue.run(async()=>{try{return await effect()}finally{touchState()}})},
-    async readPolicy(caller,signal){await check(caller,undefined,signal);return controls.readPolicy(caller.principalId)},
+    async readPolicy(caller,signal){await check(caller,caller.kind==='agent'?caller.sessionId??undefined:undefined,signal);return controls.readPolicy(caller.principalId)},
     async savePolicy(caller,intent:PolicyIntent,expectedRevision,signal){
       await check(caller,undefined,signal)
-      return queue.run(async()=>{signal.throwIfAborted();transitioning=intent
+      return queue.run(async()=>{
+        signal.throwIfAborted()
+        if(caller.kind==='agent'&&caller.sessionId!==null)await requireCollaboration(caller.sessionId,signal)
+        transitioning=intent
         try{const saved=await controls.savePolicy(caller.principalId,intent,expectedRevision);if(savedPolicy.revision!==saved.revision)touchState();savedPolicy=saved
           for(const [sid,view]of cachedSessions){let verified=false;try{verified=await ports.authority.verifyWorkspace(view.instance.controlWorkspaceId)}catch{/* Preserve committed policy while reporting unverified workspace. */}
-            const next={...view,policy:resolvePolicy(saved,view.instance.controlWorkspaceId,verified)};cachedSessions.set(sid,next);nativeWindows.set(sid,next.policy.extensionEnabled&&next.policy.features.windows.requested)}
-          let captureFailed=false
-          for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values()){const outcome=await captureSafely(view,async()=>{await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]);marksFor(view.instance.instrumentInstanceId).configuration=saved.revision});captureFailed ||= outcome.status==='failed'}
+             const next={...view,policy:resolvePolicy(saved,view.instance.controlWorkspaceId,verified)};cachedSessions.set(sid,next);nativeWindows.set(sid,next.policy.extensionEnabled&&next.policy.features.windows.requested)
+             if(ports.readSessionPolicy!==undefined&&!isCollaborating(next.policy)){
+               discardSessionPresentation(sid);observationReplays.delete(view.instance.instrumentInstanceId)
+             }
+           }
+           let captureFailed=false
+           for(const view of new Map([...cachedSessions.values()].map(view=>[view.instance.instrumentInstanceId,view])).values()){
+             if(!await allowsView(view,view.instance.ownerSessionId))continue
+             const outcome=await captureSafely(view,async()=>{
+               if(await captureCurrent(view,[{kind:'configuration',recordId:view.instance.controlWorkspaceId,version:saved.revision,snapshot:saved,domain:'controls',author:caller}]))marksFor(view.instance.instrumentInstanceId).configuration=saved.revision
+             });captureFailed ||= outcome.status==='failed'
+           }
           modelMutationOutcomes.set(saved,{historyCapture:{status:captureFailed?'failed':'recorded',diagnostic:captureFailed?'configuration history capture unavailable for one or more current instances':null}})
           return saved
         }finally{transitioning=null}})
@@ -1418,9 +1519,10 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         signal.throwIfAborted();await check(caller,sessionId,signal)
         const applied=await instruments.apply(caller.principalId,sessionId,command)
         let notificationFailure:string|null=null
-        if(command.action!=='set-decision-view'&&(caller.kind==='user'||sessionId!==view.instance.ownerSessionId)){
+        const canNotify=async()=>await allowsView(view,sessionId)&&await allowsView(view,view.instance.ownerSessionId)
+        if(command.action!=='set-decision-view'&&(caller.kind==='user'||sessionId!==view.instance.ownerSessionId)&&await canNotify()){
           const notificationId=createHash('sha256').update(JSON.stringify([view.instance.instrumentInstanceId,command.operationId])).digest('hex')
-          try{await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:applied.snapshot.businessRevision,authorPrincipalId:caller.principalId,state:'pending',messageId:null}]})}catch(error){notificationFailure=String(error).slice(0,1024)}
+          try{await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:applied.snapshot.businessRevision,authorPrincipalId:caller.principalId,state:'pending',messageId:null}]},canNotify)}catch(error){notificationFailure=String(error).slice(0,1024)}
         }
         const historyCapture=await captureSafely(view,()=>captureBusiness(view,applied.snapshot))
         const completed=notificationFailure===null?applied:{...applied,notificationRecording:'failed',diagnostic:notificationFailure}
@@ -1431,12 +1533,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       return result
     },
     async notificationCommitted(ownerSessionId,notificationId,messageId){
+      const eligible=()=>allowsCollaboration(ownerSessionId,cachedSessions.get(ownerSessionId)?.instance.controlWorkspaceId)
       const commit=queue.run(async()=>{
+        if(!await eligible())return
         const current=await load(),intent=current.notifications.find(n=>n.notificationId===notificationId&&n.ownerSessionId===ownerSessionId)
         if(!intent)return
         if(notificationAttempts.has(notificationId)&&intent.messageId!==messageId){earlyNotificationCommits.set(notificationId,messageId);return}
         if(intent.messageId!==messageId||intent.state==='consumed')return
-        await update(old=>({...old,notifications:old.notifications.map(n=>n.notificationId===notificationId&&n.ownerSessionId===ownerSessionId&&n.messageId===messageId?{...n,state:'consumed',messageId}:n)}))
+        await update(old=>({...old,notifications:old.notifications.map(n=>n.notificationId===notificationId&&n.ownerSessionId===ownerSessionId&&n.messageId===messageId?{...n,state:'consumed',messageId}:n)}),eligible)
       })
       const owner=cachedSessions.get(ownerSessionId);if(owner)consumptionProgram.trackCommit(owner.instance.instrumentInstanceId,commit)
       await commit
@@ -1452,20 +1556,23 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       })
     },
     async created(caller,signal,actualAgent){
+      if(caller.sessionId===null||!await allowsCollaboration(caller.sessionId,undefined,signal))return
       try{
+      const eligible=async(view:SessionControlsView)=>await allowsView(view,caller.sessionId!,signal)&&await allowsView(view,String(actualAgent.id),signal)
       const dispatch=nativeDispatch.getStore()
       if(dispatch?.accepting&&actualAgent.session.header.origin==='subagent'&&actualAgent.session.header.parentSession===dispatch.caller.sessionId&&ports.liveAgent(actualAgent.id)===actualAgent){
-        dispatch.children.add(actualAgent);dispatch.live.add(actualAgent);exactExecutions.set(actualAgent,dispatch)
-        managedExecutions.set(actualAgent.id,dispatch);reattached.set(actualAgent,dispatch)
         await track(dispatch.token.instrumentInstanceId,async()=>{
+          if(!await eligible(dispatch.instance))return
+          dispatch.children.add(actualAgent);dispatch.live.add(actualAgent);exactExecutions.set(actualAgent,dispatch)
+          managedExecutions.set(actualAgent.id,dispatch);reattached.set(actualAgent,dispatch)
           const task:TaskAssignment={sessionId:actualAgent.id,parentSessionId:dispatch.caller.sessionId!,instrumentInstanceId:dispatch.token.instrumentInstanceId,workflowId:dispatch.workflowId,ticketIds:dispatch.ticketIds}
           await update(async old=>{
             const parent=await effectiveScope(old,dispatch.caller.sessionId!,dispatch.instance),allowed=parent.kind==='coordinator'||((task.workflowId===null||parent.workflowId===task.workflowId)&&task.ticketIds.every(ticket=>parent.ticketIds.includes(ticket)))
             const granted=allowed?task:{...task,workflowId:null,ticketIds:[]}
             return {...old,assignments:[...old.assignments.filter(a=>a.sessionId!==task.sessionId),granted],bindings:[...old.bindings,{...dispatch.token,sessionId:actualAgent.id,parentSessionId:task.parentSessionId,runtimeId,released:false}]}
-          })
-          await sendReceipt(dispatch.token,'accepted')
-          if(dispatch.children.size>1)await markKnowledge(dispatch.instance,false,'unexpected-multiple-native-executions')
+          },()=>eligible(dispatch.instance))
+          if(await eligible(dispatch.instance))await sendReceipt(dispatch.token,'accepted')
+          if(dispatch.children.size>1&&await eligible(dispatch.instance))await markKnowledge(dispatch.instance,false,'unexpected-multiple-native-executions')
         })
       }
       if(!dispatch?.accepting&&actualAgent.session.header.origin==='subagent'){
@@ -1475,24 +1582,25 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
           // so the lane is re-admitted through a fresh generation. S counts subagents that are actually
           // running — that is what the sliding window is for — instead of the runs that once started.
           try{
-            const reservation=await track(managed.token.instrumentInstanceId,()=>windowsProgram.reserveExecution(managed.caller.principalId,managed.caller.sessionId!,{operationId:'readmit:'+randomUUID(),executionId:managed.token.executionId,workflowId:managed.workflowId,localTicketId:managed.ticketIds.length===1?managed.ticketIds[0]!:null}))
-            if(reservation.dispatchable){
+            const reservation=await track(managed.token.instrumentInstanceId,async()=>await eligible(managed.instance)?windowsProgram.reserveExecution(managed.caller.principalId,managed.caller.sessionId!,{operationId:'readmit:'+randomUUID(),executionId:managed.token.executionId,workflowId:managed.workflowId,localTicketId:managed.ticketIds.length===1?managed.ticketIds[0]!:null}):undefined)
+            if(reservation?.dispatchable&&await eligible(managed.instance)){
               managed.token=reservation.token;managed.released=false;managed.live.add(actualAgent)
               exactExecutions.set(actualAgent,managed);reattached.set(actualAgent,managed)
               await track(managed.token.instrumentInstanceId,async()=>{
-                await update(old=>({...old,bindings:[...old.bindings.filter(b=>b.sessionId!==actualAgent.id),{...managed.token,sessionId:actualAgent.id,parentSessionId:actualAgent.session.header.parentSession??managed.caller.sessionId!,runtimeId,released:false}]}))
-                await sendReceipt(managed.token,'running')
+                if(!await eligible(managed.instance))return
+                await update(old=>({...old,bindings:[...old.bindings.filter(b=>b.sessionId!==actualAgent.id),{...managed.token,sessionId:actualAgent.id,parentSessionId:actualAgent.session.header.parentSession??managed.caller.sessionId!,runtimeId,released:false}]}),()=>eligible(managed.instance))
+                if(await eligible(managed.instance))await sendReceipt(managed.token,'running')
               })
             }
           }catch(error){signal.throwIfAborted()/* A woken lane that cannot be re-admitted is reported below rather than failing the wake. */}
         }
-        if(managed&&!managed.released){
+        if(managed&&!managed.released&&await eligible(managed.instance)){
           // The same admitted lease is still current (a duplicate creation or a raced wake): re-attach.
           managed.live.add(actualAgent);exactExecutions.set(actualAgent,managed);reattached.set(actualAgent,managed)
-          await track(managed.token.instrumentInstanceId,()=>sendReceipt(managed.token,'running'))
+          await track(managed.token.instrumentInstanceId,async()=>{if(await eligible(managed.instance))await sendReceipt(managed.token,'running')})
         }else if(!managed){
           const parent=actualAgent.session.header.parentSession,view=parent&&cachedSessions.get(parent)
-          if(view&&!knowledgeIsCurrent(view,false,'unmanaged-or-late-native-creation'))await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-or-late-native-creation'))
+          if(view&&!knowledgeIsCurrent(view,false,'unmanaged-or-late-native-creation'))await track(view.instance.instrumentInstanceId,async()=>{if(await eligible(view))await markKnowledge(view,false,'unmanaged-or-late-native-creation')})
         }
       }
       try{const view=await identity(caller,caller.sessionId!,signal);const createdEvent=nativeExecutionEvent(actualAgent,view,'created');if(createdEvent!==null)await recordNativeExecution(view,createdEvent);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(view.instance.ownerSessionId===caller.sessionId)scheduleNotification(caller.sessionId,true)}
@@ -1501,7 +1609,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         signal.throwIfAborted()
         // Optional instrument observation must never become a serial native creation veto.
         const owner=cachedSessions.get(actualAgent.session.header.parentSession??caller.sessionId??'')
-        if(owner){nativeWindows.set(owner.instance.instrumentInstanceId,false);historyFailures.set(owner.instance.instrumentInstanceId,'native child created; instrument recording failed: '+String(error).slice(0,1024))}
+        if(owner&&await allowsView(owner,String(actualAgent.id),signal)){nativeWindows.set(owner.instance.instrumentInstanceId,false);historyFailures.set(owner.instance.instrumentInstanceId,'native child created; instrument recording failed: '+String(error).slice(0,1024))}
       }
     },
     async observe(event:HostEvent){
@@ -1515,13 +1623,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       // this is the old Agent's late disposal and must not clear the new run or its cached view.
       const disposedIsCurrent=event.kind!=='agent-disposed'||nativeAgent===undefined
         ||ports.liveAgent(nativeAgent.id)===undefined||ports.liveAgent(nativeAgent.id)===nativeAgent
-      if(event.kind==='agent-disposed'&&nativeAgent!==undefined&&!disposedIsCurrent)
+      const eligible=await allowsCollaboration(event.sessionId)
+      if(eligible&&event.kind==='agent-disposed'&&nativeAgent!==undefined&&!disposedIsCurrent)
         markNativeExecutionFailure(nativeAgent.id,new ControlsError('association-conflict','agent disposed event belongs to an earlier Agent; the current run remains live'))
       // A published local end survives Agent disposal; without a live Agent the durable row
       // identifies the same run, and anything less is reported instead of silently dropping the
       // outcome. Non-local ends were never this instrument's execution fact.
-      if(event.kind==='subagent-end'&&event.local&&nativeAgent===undefined){await recordLateNativeExecutionEnd(event);return}
-      if(nativeAgent!==undefined&&nativeAgent.session.header.origin==='subagent'&&typeof nativeAgent.session.header.parentSession==='string'){
+      if(event.kind==='subagent-end'&&event.local&&nativeAgent===undefined){if(eligible)await recordLateNativeExecutionEnd(event);return}
+      if(eligible&&nativeAgent!==undefined&&nativeAgent.session.header.origin==='subagent'&&typeof nativeAgent.session.header.parentSession==='string'){
         if(event.kind==='subagent-start')await recordNativeExecutionEdge(nativeAgent,'start',{provider:event.provider,runId:event.runId})
         else if(event.kind==='subagent-end')await recordNativeExecutionEdge(nativeAgent,'end',{provider:event.provider,runId:event.runId,stopReason:event.stopReason})
         else if(event.kind==='agent-disposed'&&disposedIsCurrent)await recordNativeExecutionEdge(nativeAgent,'disposed')
@@ -1532,31 +1641,45 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         // A disposed Session never prepares again: drop its cached view and per-session failure
         // index so a long-lived runtime does not retain every child it ever observed.
         const id=event.actualAgent.id
-        for(const key of baselines.keys())if(key.includes(id))baselines.delete(key)
-        for(const key of deliveredInStep.keys())if(key.includes(id))deliveredInStep.delete(key)
+        discardSessionPresentation(id)
         cachedSessions.delete(id);nativeWindows.delete(id)
         if(failedObservationSessions.delete(id))observationFailures.delete('session:'+id)
+        if(!eligible){nativeExecutionOwners.delete(id);clearNativeExecutionFailure(id)}
       }
       const actual=event.actualAgent,attached=actual&&(exactExecutions.get(actual)??reattached.get(actual))
       if(attached){
+        const canObserve=()=>allowsView(attached.instance,event.sessionId)
+        if(event.kind==='agent-disposed'&&(!eligible||!await canObserve())){
+          attached.live.delete(actual!);attached.children.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!)
+          if(disposedIsCurrent&&managedExecutions.get(actual!.id)===attached)managedExecutions.delete(actual!.id)
+          receiptStates.delete(attached.token.leaseId)
+          return
+        }
+        if(!eligible)return
         const commit=track(attached.token.instrumentInstanceId,async()=>{
+          const permitted=await canObserve()
           if(event.kind==='agent-disposed'){
-            // This run ended: the lane stops running, so its audit slot is released. A later wake
-            // re-admits it through a fresh generation, which keeps the dispatch audit aligned with
-            // the host's live run status (S itself never reads this ledger).
+            // Drop the exact Agent reference even if policy changed while queued. Only an
+            // eligible disposal may update the retained lease or write a release receipt.
             const managed=managedExecutions.get(actual!.id)
-            attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!);attached.released=true
+            attached.live.delete(actual!);exactExecutions.delete(actual!);reattached.delete(actual!)
+            if(!permitted){
+              attached.children.delete(actual!);receiptStates.delete(attached.token.leaseId)
+              if(disposedIsCurrent&&managed===attached)managedExecutions.delete(actual!.id)
+              return
+            }
+            attached.released=true
             if(managed)managed.released=true
-            await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===attached.token.leaseId?{...b,released:true}:b)}))
-            if(attached.live.size===0)await sendReceipt(attached.token,'released')
-          }else if(event.kind==='agent-status'&&event.status==='running'&&!attached.released)await sendReceipt(attached.token,'running')
+            await update(old=>({...old,bindings:old.bindings.map(b=>b.sessionId===actual!.id&&b.leaseId===attached.token.leaseId?{...b,released:true}:b)}),canObserve)
+            if(attached.live.size===0&&await canObserve())await sendReceipt(attached.token,'released')
+          }else if(permitted&&event.kind==='agent-status'&&event.status==='running'&&!attached.released)await sendReceipt(attached.token,'running')
           // Idle and subagent/end are deliberately NOT implementation-release proofs.
         })
         await commit;return
       }
-      if(actual?.session.header.origin==='subagent'){
+      if(eligible&&actual?.session.header.origin==='subagent'){
         const parent=actual.session.header.parentSession,view=parent&&cachedSessions.get(parent)
-        if(view&&!knowledgeIsCurrent(view,false,'unmanaged-native-execution-observed'))await track(view.instance.instrumentInstanceId,()=>markKnowledge(view,false,'unmanaged-native-execution-observed'))
+        if(view&&!knowledgeIsCurrent(view,false,'unmanaged-native-execution-observed'))await track(view.instance.instrumentInstanceId,async()=>{if(await allowsView(view,event.sessionId))await markKnowledge(view,false,'unmanaged-native-execution-observed')})
       }
     },
     async preStep(caller,signal,acceptedMessages,stepKey){currentStepKey=stepKey??('serial:'+(++stepSerial));return prepare(caller,signal,acceptedMessages)},
@@ -1704,6 +1827,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(typeof r.description!=='string'||!r.description.trim()||typeof r.prompt!=='string'||!r.prompt.trim())throw new ControlsError('invalid-input','description and prompt are required text')
       const provider=r.provider??'spawn';if(provider!=='spawn'&&provider!=='fork')throw new ControlsError('invalid-input','unsupported provider; accepted provider values: spawn, fork')
       const operationId=id(r.operationId??exec.callId,'operationId'),view=await identity(caller,caller.sessionId,exec.signal)
+      const requireDelegationPolicy=async()=>{if(!await allowsView(view,caller.sessionId!))throw new ControlsError('feature-disabled','collaboration is unavailable for this session')}
       const workflowId=r.workflowId===undefined?null:id(r.workflowId,'workflowId'),ticketIds=r.ticketIds===undefined?[]:array(r.ticketIds,'ticketIds').map(value=>id(value,'ticketId'))
       if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
       const checkGrant=async()=>{await check(caller,caller.sessionId!,exec.signal);const permission=await scope(caller.principalId,caller.sessionId!,await controls.readSession(caller.principalId,caller.sessionId!));if(permission.kind==='assigned'&&((workflowId!==null&&permission.workflowId!==workflowId)||ticketIds.some(ticket=>!permission.ticketIds.includes(ticket))))denied('delegation exceeds actual parent assignment scope');if(workflowId!==null)for(const ticket of ticketIds)await requireRegisteredTicket(caller,caller.sessionId!,workflowId,ticket)}
@@ -1727,7 +1851,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(!await journal.compareAndSwap(old.revision,{revision:increment(old.revision),rows:[...old.rows,row]}))throw new ControlsError('concurrent-update','delegation intent changed')
         return {row,replayed:false}
       })
-      const saveResult=async(result:HostJson)=>queue.run(async()=>{const old=parseDelegationJournal(await journal.read());if(!await journal.compareAndSwap(old.revision,{revision:increment(old.revision),rows:old.rows.map(row=>row.operationId===operationId?{...row,result}:row)}))throw new ControlsError('concurrent-update','delegation outcome changed')})
+      const saveResult=async(result:HostJson)=>queue.run(async()=>{const old=parseDelegationJournal(await journal.read());await requireDelegationPolicy();if(!await journal.compareAndSwap(old.revision,{revision:increment(old.revision),rows:old.rows.map(row=>row.operationId===operationId?{...row,result}:row)}))throw new ControlsError('concurrent-update','delegation outcome changed')})
       // Current verifiable state is reported separately from the original result. Replay only reads;
       // it never creates, grants or rewrites history. An unreadable recovery is null, not a failure.
       const recoveryFor=async(childId:string):Promise<DelegationRecovery|null>=>{
@@ -1752,21 +1876,21 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       }
       await checkGrant()
       const registry=await openWorktrees(view)
-      if(registry){const registered=await queue.run(()=>registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd??null,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})}));if(!registered.dispatch)return parseHostJson({accepted:registered.row.value.acceptance==='accepted'?true:null,childId:intent.row.childId,replayed:true,recording:'unknown',...(registered.row.value.acceptance==='accepted'?{creation:'accepted'}:{}),binding:delegationBinding(registered.row),assignment:'unknown',recovery:await recoveryFor(intent.row.childId)})}
+      if(registry){const registered=await queue.run(async()=>{await requireDelegationPolicy();return registry.registerIntent(view.instance,caller,{operationId,parentSessionId:caller.sessionId!,plannedChildSessionId:intent.row.childId,requestedCwd:cwd??null,task:r.description as string,...(ticketIds.length===0?{}:{ticketIds})})});if(!registered.dispatch)return parseHostJson({accepted:registered.row.value.acceptance==='accepted'?true:null,childId:intent.row.childId,replayed:true,recording:'unknown',...(registered.row.value.acceptance==='accepted'?{creation:'accepted'}:{}),binding:delegationBinding(registered.row),assignment:'unknown',recovery:await recoveryFor(intent.row.childId)})}
       await checkGrant()
       let dispatch:Dispatch|null=null
       if(view.policy.extensionEnabled&&view.policy.features.windows.requested){
         try{
-          const reservation=await track(view.instance.instrumentInstanceId,()=>windowsProgram.reserveExecution(caller.principalId,caller.sessionId!,{operationId:'delegate-reserve:'+operationId,executionId:operationId,workflowId,localTicketId:ticketIds.length===1?ticketIds[0]!:null}))
+          const reservation=await track(view.instance.instrumentInstanceId,async()=>{await requireDelegationPolicy();return windowsProgram.reserveExecution(caller.principalId,caller.sessionId!,{operationId:'delegate-reserve:'+operationId,executionId:operationId,workflowId,localTicketId:ticketIds.length===1?ticketIds[0]!:null})})
           if(reservation.replayed||!reservation.dispatchable)throw new ControlsError('operation-conflict','delegation reservation replay is not permission to redispatch')
           dispatch={caller,exec,instance:view,token:reservation.token,workflowId,ticketIds,children:new Set(),live:new Set(),released:false,accepting:true}
-        }catch(error){exec.signal.throwIfAborted();if(error instanceof ControlsError&&['access-denied','invalid-input','operation-conflict'].includes(error.code)){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:'failed',diagnostic:String(error)},caller))}catch{/* A refused reservation still reports its failed intent. */}throw error}}
+        }catch(error){exec.signal.throwIfAborted();if(error instanceof ControlsError&&['access-denied','invalid-input','operation-conflict','feature-disabled'].includes(error.code)){if(registry)try{await queue.run(async()=>{if(await allowsView(view,caller.sessionId!))await registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:'failed',diagnostic:String(error)},caller)})}catch{/* A refused reservation still reports its failed intent. */}throw error}}
       }
       let receipt:Awaited<ReturnType<NonNullable<HostPorts['createContinuable']>>>
-      try{const create=()=>ports.createContinuable!(exec,{provider,label:r.description as string,prompt:r.prompt as string,childId:intent.row.childId,...(cwd===undefined?{}:{cwd})});receipt=await (dispatch?nativeDispatch.run(dispatch,create):create())}
-      catch(error){if(registry)try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:exec.signal.aborted?'cancelled':'failed',diagnostic:String(error)},caller))}catch{/* Preserve native failure and no replay dispatch. */}if(dispatch)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(dispatch!.token,'unknown'))}catch{}throw error}
+      try{exec.signal.throwIfAborted();await requireDelegationPolicy();const create=()=>ports.createContinuable!(exec,{provider,label:r.description as string,prompt:r.prompt as string,childId:intent.row.childId,...(cwd===undefined?{}:{cwd})});receipt=await (dispatch?nativeDispatch.run(dispatch,create):create())}
+      catch(error){if(registry)try{await queue.run(async()=>{if(await allowsView(view,caller.sessionId!))await registry.recordOutcome(view.instance,operationId,{acceptance:'unknown',outcome:exec.signal.aborted?'cancelled':'failed',diagnostic:String(error)},caller)})}catch{/* Preserve native failure and no replay dispatch. */}if(dispatch)try{await track(view.instance.instrumentInstanceId,async()=>{if(await allowsView(view,caller.sessionId!))await sendReceipt(dispatch!.token,'unknown')})}catch{}throw error}
       finally{if(dispatch)dispatch.accepting=false}
-      if(dispatch&&dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,()=>sendReceipt(dispatch!.token,'unknown'))}catch{}
+      if(dispatch&&dispatch.children.size===0)try{await track(view.instance.instrumentInstanceId,async()=>{if(await allowsView(view,caller.sessionId!))await sendReceipt(dispatch!.token,'unknown')})}catch{}
       // The receipt already proved native acceptance: every later metadata failure keeps the
       // child identity and reports which effect actually happened. No post-acceptance path creates
       // again or grants implicitly.
@@ -1779,7 +1903,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(facts.header.origin!=='subagent'||facts.header.parentSession!==caller.sessionId){binding='unconfirmed';throw new ControlsError('association-conflict','native parent differs from actual caller')}
         if(registry&&typeof facts.header.cwd!=='string'){binding='unconfirmed';throw new ControlsError('association-conflict','native child cwd is unavailable')}
         if(registry){
-          try{await queue.run(()=>registry.confirm(view.instance,operationId,{sessionId:facts.header.id,parentSessionId:facts.header.parentSession!,cwd:facts.header.cwd!},caller))}
+          try{await queue.run(async()=>{await requireDelegationPolicy();return registry.confirm(view.instance,operationId,{sessionId:facts.header.id,parentSessionId:facts.header.parentSession!,cwd:facts.header.cwd!},caller)})}
           catch(error){binding=storageUncertain(error)?'unknown':'unconfirmed';throw error}
         }
         binding='confirmed'
@@ -1789,7 +1913,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         catch(error){assignment=storageUncertain(error)?'unknown':'failed';throw error}
         assignment='granted'
       }catch(error){
-        if(registry&&binding!=='confirmed')try{await queue.run(()=>registry.recordOutcome(view.instance,operationId,{acceptance:'accepted',outcome:'accepted-unknown',diagnostic:String(error)},caller))}catch{/* Preserve the accepted child identity and the failed effect. */}
+        if(registry&&binding!=='confirmed')try{await queue.run(async()=>{if(await allowsView(view,caller.sessionId!))await registry.recordOutcome(view.instance,operationId,{acceptance:'accepted',outcome:'accepted-unknown',diagnostic:String(error)},caller)})}catch{/* Preserve the accepted child identity and the failed effect. */}
         const failed=parseHostJson({accepted:true,childId:receipt.childId,messageId:receipt.messageId,replayed:false,recording:'failed',creation:'accepted',binding,assignment,diagnostic:String(error)})
         try{await saveResult(failed)}
         catch{return parseHostJson({...record(failed,'delegation result'),persistence:'failed'})}
@@ -1806,7 +1930,7 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
       if(new Set(ticketIds).size!==ticketIds.length||workflowId===null&&ticketIds.length>0)throw new ControlsError('invalid-input','invalid assignment set: ticketIds must be unique and require an explicit workflowId')
       const parent=await identity(caller,caller.sessionId!,signal),facts=await ports.sessionFacts(target,signal)
       if(facts.header.origin!=='subagent'||facts.header.parentSession!==caller.sessionId)denied('task grant requires actual direct managed child')
-      const child=await controls.ensureSession(ports.operatorPrincipal,target)
+      const child=await queue.run(async()=>{await requireCollaboration(target,signal);return ensureSession(ports.operatorPrincipal,target,signal)})
       if(child.instance.instrumentInstanceId!==parent.instance.instrumentInstanceId)denied('cannot grant another owner instance')
       return track(parent.instance.instrumentInstanceId,async()=>{
         await check(caller,caller.sessionId!,signal);signal.throwIfAborted()
@@ -1827,7 +1951,13 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // Reconstruct only metadata/known host objects. Never resume a cold session for a dashboard.
   for(const agent of ports.liveAgents()){
     const caller:HostCaller={kind:'agent',principalId:'agent:'+agent.id,sessionId:agent.id}
-    try{const view=await identity(caller,agent.id);await track(view.instance.instrumentInstanceId,()=>initialize(view));if(!readmitted.has(view.instance.instrumentInstanceId)){readmitted.add(view.instance.instrumentInstanceId);await readmitPersistedLanes(view)}if(view.instance.ownerSessionId===agent.id)scheduleNotification(agent.id,true)}catch(error){if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace'].includes(error.code))throw error}
+    if(!await allowsCollaboration(agent.id))continue
+    try{
+      const view=await identity(caller,agent.id)
+      await track(view.instance.instrumentInstanceId,()=>initialize(view))
+      if(!readmitted.has(view.instance.instrumentInstanceId)&&await allowsView(view,agent.id)){readmitted.add(view.instance.instrumentInstanceId);await readmitPersistedLanes(view)}
+      if(view.instance.ownerSessionId===agent.id)scheduleNotification(agent.id,true)
+    }catch(error){if(!(error instanceof ControlsError)||!['unknown-session','unknown-workspace','feature-disabled'].includes(error.code))throw error}
   }
   return facade
 }
