@@ -1,4 +1,5 @@
-import type { Context } from '@deepseek-ai/cordis'
+import { addAbortListener } from 'node:events'
+import type { Context, Fiber } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 
 import { CATALOG } from './catalog.js'
@@ -35,10 +36,23 @@ export const Config: Schema<Config> = Schema.object({
   delegate: Schema.boolean().default(false).description('注册绑定式 mattpocock_delegate（默认关闭；普通派发用宿主原生 subagent）'),
 }).description('选择 Matt Pocock 技能分发渠道')
 
+/** Settle only this bundle's policy Host activation, not the surrounding loader or profile. */
+async function settleHostMount(fiber: Fiber, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+  if (signal === undefined) { await fiber.await(); return }
+  let subscription: Disposable | undefined
+  const cancelled = new Promise<never>((_, reject) => {
+    subscription = addAbortListener(signal, () => reject(signal.reason))
+  })
+  try { await Promise.race([fiber.await(), cancelled]) }
+  finally { subscription?.[Symbol.dispose]() }
+}
+
 /** Register one immutable bundled Skill provider for the selected channel. */
 export function apply(ctx: Context, config: Config = { channel: DEFAULT_CHANNEL }): void {
   const logger = ctx.logger(name)
   let resolveScope: NonNullable<import('./provider.js').ProviderOptions['scopeAllowed']> | undefined
+  let hostMount: Fiber | undefined
   let invalidateSkills: (() => void) | undefined
   let revision = 0
   const catalogChanged = () => {
@@ -51,13 +65,17 @@ export function apply(ctx: Context, config: Config = { channel: DEFAULT_CHANNEL 
       lifecycleSignal: control.signal,
       diagnostic: (message) => logger.warn(message),
       async scopeAllowed(agent, signal) {
+        // Profile recomposition can publish this row before its injected Host fiber has settled.
+        // Pending dependencies settle without a resolver; only the actual Host can grant access.
+        if (resolveScope === undefined && hostMount !== undefined) await settleHostMount(hostMount, signal)
+        signal?.throwIfAborted()
         const checked = revision
         // Never turn an unavailable policy reader into permission to distribute.
         return resolveScope !== undefined && await resolveScope(agent, signal) && checked === revision
       },
     })
   })
-  if (typeof ctx.inject === 'function') ctx.inject(['storageDomain', 'tools', 'agents', 'workspaceRegistry', 'sessionQuery', 'systemPrompt', 'typert', 'connection'], async (scope) => {
+  if (typeof ctx.inject === 'function') hostMount = ctx.inject(['storageDomain', 'tools', 'agents', 'workspaceRegistry', 'sessionQuery', 'systemPrompt', 'typert', 'connection'], async (scope) => {
     let active = true
     scope.effect(() => () => {
       active = false

@@ -162,19 +162,52 @@ async function worker(scenario, tarball) {
     await ctx.workspaceRegistry.create(workspaceDir, 'Manager proof')
     const { agent } = await ctx.agents.create({ sessionId: 'manager-proof-' + scenario, meta: { cwd: workspaceDir }, agentOptions: {} })
     assert.equal(ctx.agents.get(agent.id), agent, 'lookup is an actual factory-registered Agent')
+    const unrelated = { name: 'manager-unrelated', provider: 'manager-unrelated', source: 'runtime', description: 'Unrelated host skill', content: 'Unrelated body' }
+    ctx.skills.register(unrelated)
     const skillMounted = async () => {
-      await ctx.fiber.await()
       const lookup = { cwd: workspaceDir, scope: agent }
-      const bundled = (await ctx.skills.list(lookup)).find(skill => skill.name === 'tdd' && skill.provider === 'dsh-mattpocock-skills')
+      const listed = await ctx.skills.list(lookup)
+      assert(listed.some(skill => skill.name === unrelated.name), 'independent Skills remain available')
+      const bundled = listed.find(skill => skill.name === 'tdd' && skill.provider === 'dsh-mattpocock-skills')
       if (!bundled) return false
       assert.equal((await ctx.skills.get('tdd', lookup))?.provider, bundled.provider)
-      assert.equal((await ctx.skills.list({ cwd: workspaceDir })).some(skill => skill.provider === bundled.provider), false,
-        'the same cwd without its actual Agent never grants bundled Skills')
+      for (const otherScope of [{ cwd: workspaceDir }, { cwd: workspaceDir, scope: { id: agent.id } }]) {
+        const otherSkills = await ctx.skills.list(otherScope)
+        assert(otherSkills.some(skill => skill.name === unrelated.name))
+        assert.equal(otherSkills.some(skill => skill.provider === bundled.provider), false,
+          'neither caller cwd nor a copied Agent id grants bundled Skills')
+        assert.equal(await ctx.skills.get('tdd', otherScope), undefined)
+      }
       return true
+    }
+    const watchStartupLookup = () => {
+      let observation, hostWasReady
+      const stop = ctx.on('skills/change', () => {
+        if (observation !== undefined) return
+        hostWasReady = ctx.get('mattpocockControls') !== undefined
+        const global = ctx.skills.list({ cwd: workspaceDir })
+        // Run after provider registration to exercise cancellation during the nested Host startup.
+        const aborted = Promise.resolve().then(async () => {
+          const controller = new AbortController(), reason = new Error('cancel startup skill lookup')
+          const pending = ctx.skills.list({ cwd: workspaceDir, scope: agent, signal: controller.signal })
+          controller.abort(reason)
+          await assert.rejects(pending, error => error === reason)
+        })
+        observation = Promise.allSettled([global, aborted])
+      })
+      return async () => {
+        stop()
+        assert.equal(hostWasReady, false, 'first catalog change occurs before the policy Host is ready')
+        const [global, aborted] = await observation
+        if (global.status === 'rejected') throw global.reason
+        if (aborted.status === 'rejected') throw aborted.reason
+        assert.deepEqual(global.value.map(skill => skill.name), [unrelated.name], 'startup lookup without an Agent preserves only unrelated Skills')
+      }
     }
     if (scenario === 'install') {
       assert.equal((await pluginRow()), undefined)
       assert.equal(await skillMounted(), false)
+      const startupLookup = watchStartupLookup()
       const result = await ctx.pluginManager.installBundle(tarball, { requestId: 'normal-install' })
       assert.equal(result.packageResult?.exitCode, 0, JSON.stringify(result))
       assert.equal(result.application, 'applied', JSON.stringify(result))
@@ -187,6 +220,7 @@ async function worker(scenario, tarball) {
       await packageMetadata(ctx, true)
       assert.equal((await pluginRow()).patchId, 'dsh-mattpocock-skills')
       assert.equal(await skillMounted(), true)
+      await startupLookup()
       assert.equal(entry('webserver')?.disabled, true, 'manager recomposition must retain the no-listen overlay')
       assert.equal(token(ctx.subagents), initial, 'manager install must not replace the stock provider')
       assert.equal(entry('subagent').fiber.uid, uid)
@@ -207,9 +241,11 @@ async function worker(scenario, tarball) {
     }
     if (scenario === 'stock-next') {
       assert.equal(await skillMounted(), false)
+      const startupLookup = watchStartupLookup()
       const enabled = await ctx.pluginManager.setBundleEnabled(pluginName, true)
       assert.equal(enabled.application, 'applied', JSON.stringify(enabled))
       assert.equal(await skillMounted(), true)
+      await startupLookup()
       assert.equal(token(ctx.subagents), initial, 'live reenable must not replace the already active stock provider')
       assert.equal(entry('subagent').fiber.uid, uid)
       await packageMetadata(ctx, true)
