@@ -114,7 +114,7 @@ test('model read and query recover every terminal held slot as pending release w
   assert.deepEqual((await pages(f, 'window-ticket')).map(row => row.recordId).sort(), rows.map(row => row.recordId).sort())
 })
 
-test('hidden matters survive management OFF and querying a new workflow without losing pending or implementation obligations', async t => {
+test('hidden matters survive management OFF, and a later focused query does not clear them', async t => {
   const f = await mountedFixture(t)
   await f.runtime.savePolicy(operator, policy(), 0, signal())
   await apply(f, 'put-workflow', { value: workflow })
@@ -125,12 +125,17 @@ test('hidden matters survive management OFF and querying a new workflow without 
   }
   await apply(f, 'put-workflow', { workflowId: 'new-focus', value: workflow })
   const policyState = await f.runtime.readPolicy(operator, signal())
-  await f.runtime.savePolicy(operator, { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, policyState.revision, signal())
-  const current = await modelRead(f)
-  assert.equal(current.policy.extensionEnabled, false)
-  assert.equal(current.records.summary.pendingDecisionCount, 3)
-  assert.equal(current.records.summary.pendingUserDecisionCount, 3)
-  assert.equal(current.records.summary.awaitingImplementationCount, 3)
+  const off = await f.runtime.savePolicy(operator, { extensionEnabled: false, defaults: {}, workspaceOverrides: {} }, policyState.revision, signal())
+  const denied = await f.execute('mattpocock_record', { request: { action: 'read' } })
+  assert.equal(denied.isError, true)
+  assert.equal(denied.error.info.code, 'UNKNOWN_TOOL')
+  const retained = await f.runtime.readSession(operator, 'root', signal())
+  assert.equal(retained.policy.extensionEnabled, false)
+  assert.equal(retained.records.summary.pendingDecisionCount, 3)
+  assert.equal(retained.records.summary.pendingUserDecisionCount, 3)
+  assert.equal(retained.records.summary.awaitingImplementationCount, 3)
+
+  await f.runtime.savePolicy(operator, policy(), off.revision, signal())
   const focused = await pages(f, 'decision', { workflowId: 'new-focus' })
   assert.deepEqual(focused, [], 'a new workflow query narrows rows but does not resolve old matters')
   const rows = await pages(f, 'decision')

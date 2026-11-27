@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mountedFixture, loadSDK, signal, actualAgent } from './fixtures/runtime-host.mjs'
+import { mountedFixture, loadSDK, signal, actualAgent, operator } from './fixtures/runtime-host.mjs'
 
 // Real Cordis, Typert registry/gateway and mounted Host/Runtime; no profile or model.
 test('optional recommendation namespace preserves base Remote and rejects unregistered owner without ensuring it', async t => {
@@ -81,6 +81,7 @@ test('optional namespace registration failure does not abort base services tools
     const { recommendationHostRemoteContribution } = await import('../src/host.ts')
     ctx.typert.register(recommendationHostRemoteContribution())
   } })
+  await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }, 0, signal())
   const { TypertGatewayService } = await loadSDK('@deepseek-ai/dsh-api-gateway')
   const gateway = new TypertGatewayService(f.ctx, {})
   const { client } = await mountedClient(t, f.ctx, gateway, f.peer)

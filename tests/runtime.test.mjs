@@ -619,9 +619,9 @@ test('native windows-off send_message keeps original Host semantics without clai
   assert.equal(sent, 3)
 })
 
-test('actual mounted SDK storage-uncertain preparation preserves native enter/messages and settled tool context/conclusion', async t => {
+test('uncertain policy stays silent without altering native messages or settled tool results', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }, 0, signal())
   const native = sdk.createUserMessage({ content: [{ type: 'text', text: 'accepted native business input remains original' }], source: { kind: 'user' } })
   const storage = f.mounted.ports.controlsStorage, realRead = storage.read
   storage.read = async () => { throw new core.ControlsError('storage-uncertain', 'controlled uncertain policy storage') }
@@ -633,11 +633,11 @@ test('actual mounted SDK storage-uncertain preparation preserves native enter/me
   assert.equal(decision.messages[0], native)
   assert.equal(decision.messages[0].id, native.id)
   assert.equal(decision.messages[0].source, native.source)
-  assert.equal(original.messages.length, 1)
-  assert.equal(decision.messages.length, 2)
-  assert.equal(decision.messages[1].source.kind, 'mattpocock-controls')
-  assert.match(decision.messages[1].content[0].text, /Instrument context unavailable/)
-  assert.match(decision.messages[1].content[0].text, /Accepted business input is retained/)
+  assert.equal(decision, original, 'without policy proof the plugin does not append even an unavailable notice')
+  assert.equal(decision.messages.length, 1)
+  const hidden = await f.execute('mattpocock_record', { request: { action: 'read' } })
+  assert.equal(hidden.isError, true)
+  assert.equal(hidden.error.info.code, 'UNKNOWN_TOOL')
   f.ctx.tools.register(sdk.defineTool({ name: 'fault_native', description: 'settled ordinary native result', parameters: {},
     output: { schema: { type: 'json' }, render: () => [{ type: 'text', text: 'unchanged ordinary native output' }] },
     async execute(_, exec) { exec.deferContext(native); exec.concludeTurn(); return { business: 'original settled value' } } }))
@@ -648,26 +648,43 @@ test('actual mounted SDK storage-uncertain preparation preserves native enter/me
   assert(result.content.some(block => block.text === 'unchanged ordinary native output'))
   assert.deepEqual(result.additionalContexts[0], native)
   assert.equal(result.additionalContexts[0].id, native.id)
-  // The same unavailable notice was already queued by this step's pre-step decision, so the tool
-  // result adds nothing: an identical notice is installed once per step.
+  // Fail-closed collaboration leaves only the ordinary tool's own context.
   assert.equal(result.additionalContexts.length, 1)
   assert.equal(result.additionalContexts.some(context => context.source.kind === 'mattpocock-controls'), false)
 })
 
-test('actual mounted SDK caller abort during uncertain policy preparation preserves the exact reason, not an unknown fallback', async t => {
+test('caller cancellation during an uncertain policy read retains the exact SDK admission reason', async t => {
   const f = await mountedFixture(t)
+  await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }, 0, signal())
   const storage = f.mounted.ports.controlsStorage, realRead = storage.read
-  storage.read = async () => { throw new core.ControlsError('storage-uncertain', 'controlled uncertain policy storage') }
+  const entered = deferred(), release = deferred()
+  storage.read = async () => {
+    entered.resolve()
+    await release.promise
+    throw new core.ControlsError('storage-uncertain', 'controlled uncertain policy storage')
+  }
   t.after(() => { storage.read = realRead })
-  const native = sdk.createUserMessage({ content: [{ type: 'text', text: 'accepted ordinary input' }], source: { kind: 'user' } })
   const controller = new AbortController(), reason = new Error('exact caller cancellation reason')
-  controller.abort(reason)
-  await assert.rejects(f.ctx.waterfall('agent/pre-step', { agent: f.root, messages: [native], turn: 1, step: 1, signal: controller.signal },
-    async () => ({ kind: 'enter', messages: [native], startsRequestSeries: true })), error => error === reason)
-  const settled = Object.freeze({ isError: false, value: null, content: [], concludesTurn: true })
-  await assert.rejects(f.ctx.waterfall('tools/post-execute', { agent: f.root, signal: controller.signal, name: 'ordinary', arguments: {} }, settled,
-    async () => ({ kind: 'accept', additionalContexts: [native] })), error => error === reason)
-  assert.equal(settled.concludesTurn, true)
+  const resolving = f.ctx.tools.resolve({ agent: f.root, modelSelection: { provider: 'fixture', model: 'fixture' }, signal: controller.signal })
+  try {
+    await Promise.race([entered.promise, resolving.then(toolSet => { toolSet.dispose(); assert.fail('tool resolution did not read policy') })])
+    controller.abort(reason)
+  } finally { release.resolve() }
+  await assert.rejects(resolving, error => error === reason)
+})
+
+test('uncertain window evidence remains explicitly unknown when collaboration policy verifies', async t => {
+  const f = await mountedFixture(t)
+  await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true }, windows: { enabled: true, ticketWindowSize: 2, runningSubagentLimit: 2 } } } }, 0, signal())
+  const storage = f.mounted.ports.windowStorage, read = storage.read
+  storage.read = async () => { throw new core.ControlsError('storage-uncertain', 'controlled uncertain window storage') }
+  t.after(() => { storage.read = read })
+  const current = await f.execute('mattpocock_record', { request: { action: 'read' } })
+  assert.equal(current.isError, false, current.error?.message)
+  assert.equal(current.value.windows, null, 'an admitted workspace does not turn missing facts into empty counts')
+  const health = await f.execute('mattpocock_record', { request: { action: 'read', query: { kind: 'health' } } })
+  assert.equal(health.isError, false, health.error?.message)
+  assert(health.value.rows.some(row => row.scope === 'windows' && row.status === 'unknown' && /controlled uncertain window storage/.test(row.reason)))
 })
 
 async function notificationFence(f) {

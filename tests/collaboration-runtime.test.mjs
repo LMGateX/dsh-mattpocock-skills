@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
-import {core,fixture,mountedFixture,caller,signal,actualAgent,policy,workflow,ticket} from './fixtures/runtime-host.mjs'
+import {core,fixture,mountedFixture,caller,operator,signal,actualAgent,policy,workflow,ticket} from './fixtures/runtime-host.mjs'
 
 function installCreation(f,{supported=true}={}) {
  const calls=[]
@@ -237,18 +237,17 @@ test('mounted native public history and worktree tools use the RuntimeFacade wit
 
 test('the mounted worktree tool lets every advertised action through its host gate',async t=>{
  const f=await mountedFixture(t)
+ await f.runtime.savePolicy(operator,{extensionEnabled:true,defaults:{},workspaceOverrides:{W:{workspace:{enabled:true}}}},0,signal())
  const cases=[
-  ['read',{action:'read'}],
-  ['update',{action:'update',command:{operationId:'gate-update',bindingId:'missing-binding',expectedRevision:0,state:'cleaned'}}],
-  ['update-observation',{action:'update-observation',command:{operationId:'gate-observation',observationId:'missing-observation',expectedRevision:0,state:'cleaned'}}],
-  ['reconcile',{action:'reconcile',operationId:'gate-reconcile'}],
+  [{action:'read'},null],
+  [{action:'update',command:{operationId:'gate-update',bindingId:'missing-binding',expectedRevision:0,state:'cleaned'}},/binding does not belong to this owner/],
+  [{action:'update-observation',command:{operationId:'gate-observation',observationId:'missing-observation',expectedRevision:0,state:'cleaned'}},/observation does not belong to this owner/],
+  [{action:'reconcile',operationId:'gate-reconcile'},/unknown binding operation/],
  ]
- for(const [action,request] of cases){
+ for(const [request,expectedError] of cases){
   const result=await f.execute('mattpocock_worktree',{request})
-  // The host wrapper must hand each advertised action to the runtime; a rejection here is the
-  // wrapper's own action check, not a business answer from the instrument.
-  assert.doesNotMatch(JSON.stringify(result),/worktree action required:/,action+' must reach the runtime')
-  assert.equal(result.isError,action!=='read')
+  assert.equal(result.isError,expectedError!==null,request.action)
+  if(expectedError!==null)assert.match(result.error.message,expectedError,request.action+' must reach the runtime')
  }
 })
 
