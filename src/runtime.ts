@@ -1357,12 +1357,12 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const view=cachedSessions.get(event.ownerSessionId)
     if(view===undefined)return
     const stop=event.item
-    const currentOwner=()=>event.currentOwner?.()!==false
-    const eligible=async()=>currentOwner()&&await allowsView(view,event.ownerSessionId)&&currentOwner()&&await allowsView(view,stop.sessionId)&&currentOwner()
+    const observationStillAdmitted=()=>event.observationStillAdmitted?.()!==false
+    const eligible=async()=>observationStillAdmitted()&&await allowsView(view,event.ownerSessionId)&&observationStillAdmitted()&&await allowsView(view,stop.sessionId)&&observationStillAdmitted()
     if(!await eligible())return
     const notificationId='native-stop:'+stop.itemId
     await update(old=>old.notifications.some(n=>n.notificationId===notificationId)?old:{...old,notifications:[...old.notifications,{notificationId,instrumentInstanceId:view.instance.instrumentInstanceId,ownerSessionId:view.instance.ownerSessionId,businessRevision:view.documentRevision,authorPrincipalId:'program:native-outcome',state:'pending',messageId:null}]},eligible)
-    if(currentOwner())scheduleNotification(event.ownerSessionId)
+    if(observationStillAdmitted())scheduleNotification(event.ownerSessionId)
   })
   // Keep only the latest scope baseline per caller identity, never one large body per grant.
   const baselines=new Map<string,{readonly scopeKey:string;readonly agent:Agent;readonly session:Agent['session'];readonly message:UserMessage;readonly text:string}>()
