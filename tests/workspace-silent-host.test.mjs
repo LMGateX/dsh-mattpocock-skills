@@ -3,9 +3,10 @@ import { test } from 'node:test'
 import { actualAgent, createRuntime, host, loadSDK, mountedFixture, operator, policy, sdk, signal } from './fixtures/runtime-host.mjs'
 import { operatorPeer } from './fixtures/peer.mjs'
 import { executeRegistryTool } from './fixtures/nested-tool.mjs'
+import { verifyExactHost } from '../scripts/verify-silent-request-readiness.mjs'
 
 const strictSilence = process.env.MATTPOCOCK_STRICT_SILENCE_REQUIRED === '1'
-if (strictSilence) assert(process.env.DSH_CONTROLS_HOST_ROOT, 'strict silence requires the exact installed Host')
+if (strictSilence) verifyExactHost(process.env.DSH_CONTROLS_HOST_ROOT)
 const installedHost = { skip: !process.env.DSH_CONTROLS_HOST_ROOT && 'set DSH_CONTROLS_HOST_ROOT for installed-host probes' }
 const resolve = (ctx, agent) => ctx.tools.resolve({ agent, modelSelection: { provider: 'fixture', model: 'fixture' }, signal: signal() })
 const owned = (ctx, agent, toolSet) => ctx.tools.schemas(agent, toolSet).map(t => t.name).filter(name => name.startsWith('mattpocock_'))
@@ -45,17 +46,19 @@ test('settings turn off collaboration in existing owner and child tool sets with
   finally { other.dispose() }
 })
 
-// Capture the actual AgentLoop request at a local inert model adapter; no service, profile, or network.
+// Capture the real AgentLoop and LlmRuntime output at an inert adapter; no Profile or network.
 const requestProbes = ['native', 'ptc'].flatMap(executor => [false, true].map(held => ({ executor, held })))
 for (const { executor, held } of requestProbes) test(
-  `${executor}: ${held ? 'known limitation of alpha.2: an already assembled request can arrive after OFF' : 'existing session drops owned replay on its next model request without erasing history'}`,
+  `${executor}: ${held
+    ? strictSilence ? 'already-saved OFF must apply before adapter handoff' : 'alpha.2 diagnostic: assembled input still reaches the adapter after OFF'
+    : 'existing session drops owned replay on its next model request without erasing history'}`,
   { ...installedHost, timeout: 10000 }, async t => {
   const [{ AgentRegistry }, { AgentLoop }, { SessionStore }] = await Promise.all([
     loadSDK('@deepseek-ai/dsh-agent'), loadSDK('@deepseek-ai/dsh-agent-loop'), loadSDK('@deepseek-ai/dsh-session'),
   ])
   const ctx = new sdk.Context(), requests = []
-  const prepareEntered = Promise.withResolvers(), prepareReleased = Promise.withResolvers()
-  let heldPreparation = false
+  const handoffEntered = Promise.withResolvers(), handoffReleased = Promise.withResolvers()
+  let heldHandoff = false
   await ctx.plugin(sdk.TypertRegistry)
   await ctx.plugin(SessionStore)
   await ctx.plugin(sdk.SessionProjectionRegistry)
@@ -65,17 +68,14 @@ for (const { executor, held } of requestProbes) test(
   if (executor === 'ptc') ctx.provide('ptcRuntime', { language: 'typescript', programFormat: 'function-body' })
   await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-executor-' + executor))
   ctx.tools.register(sdk.defineTool({ name: 'unrelated_host_tool', description: 'Other tool remains available.', parameters: {}, output: { schema: { type: 'string' }, render: (_, text) => [{ type: 'text', text }] }, execute() { throw new Error('not exercised') } }))
-  ctx.provide('llm', { async prepareCall(config) {
-    if (held && !heldPreparation) {
-      heldPreparation = true
-      prepareEntered.resolve()
-      await prepareReleased.promise
-    }
-    return { config, async *stream(request) {
+  await ctx.plugin(sdk.LlmRuntime)
+  ctx.llm.registerAdapter(['fixture'], new class extends sdk.LlmAdapter {
+    async resolveModel(provider, id) { return { provider, id, name: id, toolUpdate: 'in-history' } }
+    async *stream(request) {
       requests.push(request)
       yield { type: 'finish', reason: { kind: 'stop' } }
-    } }
-  } })
+    }
+  }())
   await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 10 })
   const peer = operatorPeer(ctx)
   ctx.provide('connection', { operator: peer, rpc: { intercept() { return async () => {} } } })
@@ -97,7 +97,17 @@ for (const { executor, held } of requestProbes) test(
   const { agent } = agentHandle
   let runtime
   const mounted = await host.mountHost(ctx, { async createRuntime(ports) { runtime = await createRuntime(ports); return runtime } })
-  t.after(async () => { prepareReleased.resolve(); await mounted.dispose(); await agentHandle.dispose(); await domain.closeAll(); await ctx.fiber.dispose() })
+  t.after(async () => { handoffReleased.resolve(); await mounted.dispose(); await agentHandle.dispose(); await domain.closeAll(); await ctx.fiber.dispose() })
+  ctx.on('llm/stream', async function* (request, next) {
+    // The second real AgentLoop request is already assembled, but the native
+    // continuation has not handed it to the adapter. Suspend without changing it.
+    if (held && requests.length === 1 && !heldHandoff) {
+      heldHandoff = true
+      handoffEntered.resolve(request)
+      await handoffReleased.promise
+    }
+    yield* next()
+  })
   ctx.systemPrompt.context({ name: 'other-plugin-fixture', order: 126, text: 'unrelated context stays' })
   const follow = async text => {
     agent.followup(sdk.createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
@@ -106,43 +116,62 @@ for (const { executor, held } of requestProbes) test(
   const enabled = policy()
   const disable = () => runtime.savePolicy(operator, { ...enabled, workspaceOverrides: { W: { workspace: { enabled: false } } } }, 1, signal())
   await runtime.savePolicy(operator, enabled, 0, signal())
-  const first = follow('ordinary first input')
-  if (held) {
-    // Actual AgentLoop has assembled and run pre-step but has not sent the
-    // request at all. Commit OFF while native adapter preparation is held.
-    try {
-      await prepareEntered.promise
-      assert.equal(requests.length, 0)
-      await disable()
-      assert.equal((await mounted.ports.readSessionPolicy(agent.id)).collaborationEnabled, false)
-    } finally { prepareReleased.resolve() }
+  const ownedNames = tools => [...new Set((tools ?? []).map(tool => tool.name).filter(name => name.startsWith('mattpocock_')))].sort()
+  const ownedContent = request => ({
+    nativeTools: ownedNames(request.tools),
+    historyTools: ownedNames([...(request.toolHistory?.tools ?? []), ...(request.toolHistory?.updates ?? []).flatMap(update => update.additions)]),
+    ptcDeclaration: request.messages.some(message => message.role === 'system' && /mattpocock_\w+:/.test(JSON.stringify(message.content))),
+    snapshot: request.messages.some(message => message.source?.kind === 'mattpocock-controls'),
+  })
+  const assertEnabled = request => {
+    const { nativeTools, ptcDeclaration, snapshot } = ownedContent(request)
+    assert(executor === 'native' ? nativeTools.includes('mattpocock_controls') : ptcDeclaration, 'ON must expose owned tool declarations')
+    assert(snapshot, 'ON must expose the owned snapshot')
   }
-  await first
+  const assertUnrelated = (request, text) => {
+    const serialized = JSON.stringify(request.messages)
+    if (executor === 'native') assert(request.tools?.some(tool => tool.name === 'unrelated_host_tool'))
+    else {
+      assert(request.tools?.some(tool => tool.name === 'run_code'), 'PTC transport remains available')
+      assert(serialized.includes('unrelated_host_tool:'))
+    }
+    for (const expected of ['ordinary first input', text, 'unrelated context stays']) assert(serialized.includes(expected), expected)
+  }
+  const silent = { nativeTools: [], historyTools: [], ptcDeclaration: false, snapshot: false }
+  await follow('ordinary first input')
   assert.equal(requests.length, 1)
-  const initial = requests[0]
-  const declaration = executor === 'native'
-    ? initial.tools?.some(tool => tool.name === 'mattpocock_controls') === true || initial.toolHistory.tools.some(tool => tool.name === 'mattpocock_controls')
-    : initial.messages.some(message => message.role === 'system' && JSON.stringify(message.content).includes('mattpocock_controls:'))
-  const snapshot = initial.messages.some(message => message.source?.kind === 'mattpocock-controls')
-  // By default the held probe detects drift of the installed alpha.2 limitation;
-  // release mode flips it into the actual OFF acceptance assertion.
-  const expectEnabled = !(held && strictSilence)
-  assert.equal(declaration, expectEnabled, 'model declaration must follow the current release-mode policy expectation')
-  assert.equal(snapshot, expectEnabled, 'plugin snapshot must follow the current release-mode policy expectation')
+  assertEnabled(requests[0])
+  const original = structuredClone(agent.session.ownEvents())
+  assert(original.some(event => event.type === 'user/message' && event.data.source.kind === 'mattpocock-controls'))
+  let heldRequest
+  if (held) {
+    const pending = follow('ordinary held input')
+    try {
+      const assembled = await Promise.race([handoffEntered.promise, pending.then(() => { throw new Error('AgentLoop never entered the handoff barrier') })])
+      assertEnabled(assembled)
+      assert.equal(requests.length, 1, 'only the earlier ON request has reached the adapter')
+      await disable()
+      assert.equal((await mounted.ports.readSessionPolicy(agent.id)).collaborationEnabled, false, 'OFF already saved and effective before release')
+    } finally { handoffReleased.resolve() }
+    await pending
+    assert.equal(requests.length, 2, 'the held turn must complete through the normal adapter')
+    heldRequest = requests[1]
+    assertUnrelated(heldRequest, 'ordinary held input')
+  } else await disable()
   agent.inject(host.makeSnapshotMessage('fixture-not-yet-admitted-plugin-snapshot'))
-  if (!held) await disable()
   await follow('ordinary second input')
-  assert.equal(requests.length, 2)
-  const request = requests[1], projected = sdk.projectToolUpdates(request.messages, request.tools, 'in-history', request.toolHistory)
-  const serialized = JSON.stringify(projected.messages)
-  assert(!request.tools?.some(tool => tool.name.startsWith('mattpocock_')))
-  assert(!request.toolHistory.tools.some(tool => tool.name.startsWith('mattpocock_')))
-  assert(!projected.tools?.some(tool => tool.name.startsWith('mattpocock_')))
+  assert.equal(requests.length, held ? 3 : 2)
+  const request = requests.at(-1)
+  assert.deepEqual(ownedContent(request), silent, 'fresh OFF request contains no owned material')
+  const serialized = JSON.stringify(request.messages)
   assert(!serialized.includes('mattpocock_controls'))
-  if (executor === 'native') assert(projected.tools?.some(tool => tool.name === 'unrelated_host_tool'))
-  else assert(serialized.includes('unrelated_host_tool:'))
-  assert(!request.messages.some(message => message.source?.kind === 'mattpocock-controls'))
   assert(!serialized.includes('fixture-not-yet-admitted-plugin-snapshot'))
-  for (const expected of ['ordinary first input', 'ordinary second input', 'unrelated context stays']) assert(serialized.includes(expected), expected)
-  assert(agent.session.ownEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'mattpocock-controls'), 'raw transcript log preserved')
+  assertUnrelated(request, 'ordinary second input')
+  assert.deepEqual(agent.session.ownEvents().slice(0, original.length), original, 'earlier raw transcript and request records are unchanged')
+  if (held) {
+    // Normal source tests retain the alpha.2 diagnostic; strict acceptance
+    // requires that the actual adapter receives no owned material after OFF.
+    if (strictSilence) assert.deepEqual(ownedContent(heldRequest), silent, 'adapter handoff after saved OFF still contains owned material')
+    else assertEnabled(heldRequest)
+  }
 })
