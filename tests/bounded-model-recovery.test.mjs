@@ -155,11 +155,18 @@ for (const outcome of ['error', 'unobservable']) {
   test('record recovery discovers native-stop ' + outcome + ' and its health without an injected snapshot', { timeout: 10000 }, async t => {
     let acceptNotice
     const noticed = new Promise(resolve => { acceptNotice = resolve })
+    const deniedIdentityReads = []
     const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
       const worker = actualAgent('worker', { parent: 'root', managed: true })
       worker.status = 'running'
       agents.set(worker.id, worker)
       ctx.provide('subagents', { async listDescendants() { return [catalog('worker')] } })
+      if (outcome === 'unobservable') ctx.provide('sessionPersistence', { async stat(id) {
+        if (id !== worker.id) return undefined
+        // Disposal rechecks the cold identity independently of the former-run log lookup.
+        deniedIdentityReads.push(id)
+        throw new Error('cold worker identity unavailable')
+      } })
     } })
     f.mounted.ports.notifyOwner = async input => { acceptNotice(input); return { status: 'accepted', messageId: 'recovery-wake' } }
     await f.saveEnabledFixturePolicy(policy())
@@ -186,7 +193,8 @@ for (const outcome of ['error', 'unobservable']) {
       assert.equal(rows[0].cancelCause, null)
       assert.match(JSON.stringify(rows[0].evidence), /worker/)
       assert.equal(rows[0].observed, 'child log could not be read')
-      assert.deepEqual(f.sessionReads, ['worker'])
+      assert.deepEqual(deniedIdentityReads, ['worker'], 'disposal still checks current cold identity and fails closed')
+      assert.deepEqual(f.sessionReads, ['worker'], 'outcome recovery only reads the witnessed worker log, once')
     }
     const health = await modelRead(f, { kind: 'health', limit: 100 })
     assert(health.rows.some(row => row.scope === 'native-subagent-outcome' && row.status === 'unsupported'))

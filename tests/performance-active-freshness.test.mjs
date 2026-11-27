@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fixture, mountedFixture, core, actualAgent, deferred, policy, caller, operator, signal } from './fixtures/runtime-host.mjs'
+import { fixture, mountedFixture, core, actualAgent, deferred, policy, caller, signal } from './fixtures/runtime-host.mjs'
 
 function fullReads(t) {
   let count = 0
@@ -68,16 +68,17 @@ test('the mounted host copies current lister availability without catalog IO or 
   let ports, walks = 0
   const native = { async listDescendants() { walks++; return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }
   const f = await mountedFixture(t, {
+    enabledNativeCounter: true,
     configureBeforeMount({ ctx }) { ctx.provide('subagents', native) },
     runtimeCreated(_runtime, value) { ports = value },
   })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
-  await new Promise(resolve => setImmediate(resolve))
   const read = () => f.runtime.readSession(caller('root'), 'root', signal())
   await read()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal((await read()).windows.S.countKnown, true)
   const before = ports.nativeSubagentCountState('root'), calls = walks
+  assert.equal(before.available, true)
+  assert.equal(calls, 1, 'the admitted baseline performed one catalog walk')
   native.listDescendants = undefined // public service capability disappears, with no lifecycle event
   const after = ports.nativeSubagentCountState('root')
   assert.equal(after.revision, before.revision)
@@ -251,10 +252,10 @@ test('hot projection reuse still checks current caller and source authorization'
 test('stored native members remain live dependencies after their parent moves outside the owner chain', async t => {
   let ports
   const f = await mountedFixture(t, {
+    enabledNativeCounter: true,
     configureBeforeMount({ ctx }) { ctx.provide('subagents', { async listDescendants() { return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }) },
     runtimeCreated(_runtime, value) { ports = value },
   })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
   const read = () => f.runtime.readSession(caller('root'), 'root', signal())
   await read(); await new Promise(resolve => setImmediate(resolve)); await read()
   assert.deepEqual((await f.runtimeStorage.read())?.nativeExecutions ?? [], [], 'no persisted native execution may accidentally supply this dependency')
@@ -311,10 +312,10 @@ test('a legacy count-state seam without membership proof remains readable but ca
 test('unrecorded live descendants of an external stored member enter the next snapshot', async t => {
   let ports
   const f = await mountedFixture(t, {
+    enabledNativeCounter: true,
     configureBeforeMount({ ctx }) { ctx.provide('subagents', { async listDescendants() { return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }) },
     runtimeCreated(_runtime, value) { ports = value },
   })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
   const read = () => f.runtime.readSession(caller('root'), 'root', signal())
   await read(); await new Promise(resolve => setImmediate(resolve)); await read()
   f.agents.set('other', actualAgent('other'))
@@ -361,10 +362,10 @@ test('unrecorded live descendants of an external stored member enter the next sn
 test('prospective native closure does not turn ordinary forks into membership bridges', async t => {
   let ports
   const f = await mountedFixture(t, {
+    enabledNativeCounter: true,
     configureBeforeMount({ ctx }) { ctx.provide('subagents', { async listDescendants() { return [{ kind: 'child', id: 'child', mode: 'continuable', activity: 'running', hasChildren: false }] } }) },
     runtimeCreated(_runtime, value) { ports = value },
   })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
   const read = () => f.runtime.readSession(caller('root'), 'root', signal())
   await read(); await new Promise(resolve => setImmediate(resolve)); await read()
   f.agents.set('other', actualAgent('other'))

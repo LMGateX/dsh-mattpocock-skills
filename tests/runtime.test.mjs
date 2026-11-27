@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { setImmediate as nextImmediate } from 'node:timers/promises'
 import { test } from 'node:test'
 import { fixture, mountedFixture, loadSDK, host, sdk, core, caller, operator, actualAgent, signal, deferred, policy, workflow, ticket } from './fixtures/runtime-host.mjs'
 import { executeRegistryTool } from './fixtures/nested-tool.mjs'
@@ -137,6 +138,10 @@ test('unmanaged exact native object observations make knowledge unknown while na
 
 test('actual installed host runs the native subagent directly; no execute wrapper reserves or duplicates it', async t => {
   const f = await mountedFixture(t)
+  assert.deepEqual(await f.mounted.ports.nativeActivity('root'), {
+    known: false, reason: 'native-subagent-collaboration-unavailable', liveAgents: [],
+  }, 'OFF exposes no collaboration observation even when native Agents are resident')
+  await f.saveEnabledFixturePolicy(policy())
   const actual = await f.mounted.ports.nativeActivity('root')
   assert.equal(actual.known, false)
   assert.equal(actual.reason, 'native-subagent-service-unavailable')
@@ -145,7 +150,6 @@ test('actual installed host runs the native subagent directly; no execute wrappe
   assert.equal(activity.known, false)
   assert.equal(activity.reason, 'native-subagent-service-unavailable')
   assert.equal(activity.running, 0); assert.equal(activity.total, 0)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'installed-wf', expectedRevision: 0, action: 'put-workflow', workflowId: 'flow', value: workflow }, signal())
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'installed-tk-A', expectedRevision: 1, action: 'put-ticket', workflowId: 'flow', localTicketId: 'A', value: ticket() }, signal())
   const T = await f.execute('mattpocock_window', { request: { action: 'reserve', operationId: 'installed-T', workflowId: 'flow', localTicketId: 'A' } })
@@ -204,10 +208,13 @@ test('the native running count reads live Agent status, never catalog residency'
     agents.set(running.id, running); agents.set(idle.id, idle)
     ctx.provide('subagents', { listDescendants: async () => rows })
   } })
-  assert.equal(f.mounted.ports.capabilities.allNativeWakeAdmission, 'supported')
-  // The idle row has catalog activity 'running' (resident) but Agent.status 'idle': not counted.
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 1, total: 2, reason: null, depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
   await f.saveEnabledFixturePolicy(policy())
+  assert.equal(f.mounted.ports.capabilities.allNativeWakeAdmission, 'supported')
+  const activity = () => f.mounted.ports.nativeSubagentActivity('root')
+  await activity()
+  await nextImmediate()
+  // The idle row has catalog activity 'running' (resident) but Agent.status 'idle': not counted.
+  assert.deepEqual(await activity(), { known: true, running: 1, total: 2, reason: null, depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.used, 1); assert.equal(snap.windows.S.countKnown, true); assert.equal(snap.windows.S.countReason, null)
   assert.equal(snap.health.find(row => row.scope === 'execution-admission').status, 'current')
@@ -225,13 +232,11 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
     agents.set(readable.id, readable)
     ctx.provide('subagents', { listDescendants: async () => await listing() })
   } })
-  // The catalog read is background enrichment: poll until it lands, then the diagnostic stands.
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    if ((await f.mounted.ports.nativeSubagentActivity('root')).known === false) break
-    await new Promise(resolve => setTimeout(resolve, 5))
-  }
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
   await f.saveEnabledFixturePolicy(policy())
+  const activity = () => f.mounted.ports.nativeSubagentActivity('root')
+  await activity() // Admit the owner and schedule the initial background catalog read.
+  await nextImmediate() // The in-memory catalog and authorization fixture can now settle.
+  assert.deepEqual(await activity(), { known: false, running: 1, total: 1, reason: 'native-subagent-diagnostic-corrupt', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(snap.windows.S.used, 1, 'the readable running row is a stated lower bound')
   assert.equal(snap.windows.S.countKnown, false)
@@ -243,11 +248,8 @@ test('a diagnostic row or a rejected listing is a stated lower bound, never a kn
   // A membership-change node retries the walk; a failed walk keeps the retained readable row as
   // a stated lower bound and never certifies a known total.
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'readable-running' } })
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    if ((await f.mounted.ports.nativeSubagentActivity('root')).reason === 'native-subagent-listing-rejected') break
-    await new Promise(resolve => setTimeout(resolve, 5))
-  }
-  assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
+  await nextImmediate()
+  assert.deepEqual(await activity(), { known: false, running: 1, total: 1, reason: 'native-subagent-listing-rejected', depth: { direct: 1, deeper: 0, unknown: 0, levels: { '1': 1 } } })
 })
 
 test('a host exposing only direct children resolves the resident subtree without recursing', async t => {
@@ -256,10 +258,9 @@ test('a host exposing only direct children resolves the resident subtree without
     'branch-a': [{ id: 'leaf-b', createdAt: 0, mode: 'one-shot' }],
     'leaf-b': [],
   }
-  const calls = [], retried = deferred()
+  const calls = []
   const listing = async id => {
     calls.push(String(id))
-    if (calls.length === 2) retried.resolve()
     const rows = children[id]
     if (rows === undefined) throw new Error('unreadable child catalog')
     return rows
@@ -271,18 +272,21 @@ test('a host exposing only direct children resolves the resident subtree without
     }
     ctx.provide('subagents', { listChildren: listing })
   } })
+  await f.saveEnabledFixturePolicy(policy())
   // One catalog read for the owner; the deeper resident members come from the live index, whose
   // parent chains already describe them. Reading every descendant's own session log is what made
   // a baseline walk unbounded on a large workspace, so no deeper catalog is consulted.
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } } })
+  await nextImmediate()
   assert.deepEqual(calls, ['root'], 'only the owner catalog is read, never a deeper branch')
   // A branch whose own catalog is unreadable can no longer hide a running member: the live index
   // still reports it, and the stated total stays the known resident subtree.
   children['branch-a'] = undefined
   f.ctx.emit('session/event', { id: 'root' }, { type: 'subagent/catalog', data: { childId: 'branch-a' } })
+  await nextImmediate()
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: true, running: 2, total: 2, reason: null, depth: { direct: 1, deeper: 1, unknown: 0, levels: { '1': 1, '2': 1 } } })
-  await retried.promise
   assert.deepEqual(calls, ['root', 'root'], 'the retry reads the owner catalog again, never the unreadable branch')
+  assert.deepEqual(f.sessionReads, [], 'neither catalog walk reads descendant logs')
 })
 
 test('fresh preStep/postExecute snapshots retain source authors; disabled/hide does not erase obligations', async t => {
