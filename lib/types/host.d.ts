@@ -159,7 +159,7 @@ export type HostEvent = ({
     readonly kind: 'native-stop';
     readonly ownerSessionId: string;
     readonly item: NativeSubagentStop;
-    readonly currentOwner?: () => boolean;
+    readonly observationStillAdmitted?: () => boolean;
 }) & {
     readonly actualAgent?: Agent;
 };
