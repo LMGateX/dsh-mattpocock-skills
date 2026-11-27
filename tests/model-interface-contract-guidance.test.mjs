@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
 import ts from 'typescript'
-import { mountedFixture, operator, policy, signal } from './fixtures/runtime-host.mjs'
+import { mountedFixture, policy } from './fixtures/runtime-host.mjs'
 
 test('record publishes typed action values and result replacement semantics without changing authority', async t => {
   const f = await mountedFixture(t)
@@ -63,7 +63,7 @@ test('all mounted tools expose only their own action contract and share truthful
 
 test('published read examples execute through typed and rendered mounted tools', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   for (const name of ['mattpocock_controls', 'mattpocock_record', 'mattpocock_worktree']) {
     const result = await f.execute(name, { request: { action: 'read' } })
     assert.notEqual(result.isError, true, JSON.stringify(result))
@@ -87,7 +87,7 @@ test('standalone audit shares output guidance and distinguishes current memory s
   for (const expected of ['representationVersion:2', 'next:{tool,request}', 'mattpocock_record {action:"detail"', 'durable source', 'unknown and not-recorded']) {
     assert.ok(description.includes(expected), expected)
   }
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const result = await f.execute('mattpocock_audit', { request: { action: 'read' } })
   assert.notEqual(result.isError, true)
   assert.equal(result.value.coverage.persistence, 'mixed')
@@ -106,7 +106,7 @@ test('audit retains durable episode provenance and reports unreadable storage as
       ['mattpocock_supervision_config', new Map([['state', supervisionConfig]])],
       [episodeStore, new Map([['state', source]])],
     ]) })
-    await f.runtime.savePolicy(operator, policy(), 0, signal())
+    await f.saveEnabledFixturePolicy(policy())
     const result = await f.execute('mattpocock_audit', { request: { action: 'read' } })
     assert.notEqual(result.isError, true, 'failed durable episodes do not hide available live memory observations')
     assert.deepEqual(result.value.coverage.episodes, expected)

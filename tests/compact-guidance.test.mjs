@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createHash } from 'node:crypto'
-import { actualAgent, mountedFixture, operator, policy, signal } from './fixtures/runtime-host.mjs'
+import { actualAgent, mountedFixture, policy } from './fixtures/runtime-host.mjs'
 
 const fixed = ['controls', 'record', 'window', 'resource', 'assign', 'history', 'worktree']
 // Frozen 4dbff5d mounted baseline: 26,556 UTF-8 bytes / 26,548 UTF-16 chars (seven complete descriptions).
@@ -78,7 +78,7 @@ test('published examples for all nine tools execute through real mounted tools w
   const f = await mountedFixture(t, { delegate: true, seedUnits: new Map([
     ['mattpocock_supervision_config', new Map([['state', supervisionConfig]])],
   ]) })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const published = suffix => examples(f.ctx.tools.get('mattpocock_' + suffix).description)
   const apply = command => execute(f, 'record', { action: 'apply', command })
   await apply({ operationId: 'example-flow', expectedRevision: 0, workflowId: 'flow', action: 'put-workflow', value: { title: 'Reply task', axes: [] } })

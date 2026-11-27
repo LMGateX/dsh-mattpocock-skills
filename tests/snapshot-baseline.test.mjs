@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fixture, mountedFixture, loadSDK, caller, operator, signal, policy, workflow, ticket } from './fixtures/runtime-host.mjs'
+import { fixture, mountedFixture, loadSDK, caller, signal, policy, workflow, ticket } from './fixtures/runtime-host.mjs'
 
 const { Session } = await loadSDK('@deepseek-ai/dsh-session')
 const { createUserMessage } = await loadSDK('@deepseek-ai/dsh-llm')
@@ -11,7 +11,7 @@ async function ready(t, configure = () => {}) {
       configure(state)
     },
   })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   return f
 }
 const propose = (f, control = signal(), messages = [], step = 1) => f.ctx.waterfall('agent/pre-step', {
@@ -19,17 +19,23 @@ const propose = (f, control = signal(), messages = [], step = 1) => f.ctx.waterf
 }, async () => ({ kind: 'enter', messages }))
 const snapshots = decision => decision.messages.filter(message => message.source.kind === 'mattpocock-controls')
 const body = message => message.content[0].text
+// Deliberately wrap the Host's own prepended listener so we can observe a
+// prepared snapshot before rejecting, rewriting or cancelling the native step.
+function outerPreStep(t, f, listener) {
+  t.after(f.ctx.on('agent/pre-step', listener, { prepend: true }))
+}
 
 // Public Cordis Host/Runtime seam plus the actual installed native Session surface.
 // No private loop calls, native reflection, SDK writes, provider/model requests, or profile boot.
 test('an outer pre-step rejection does not consume unchanged instrument state on retry', async t => {
   let reject = true, prepared
-  const f = await ready(t, ({ ctx }) => ctx.on('agent/pre-step', async (_payload, next) => {
+  const f = await ready(t)
+  outerPreStep(t, f, async (_payload, next) => {
     const decision = await next()
     if (!reject) return decision
     prepared = snapshots(decision)[0]
     return { kind: 'reject' }
-  }))
+  })
   assert.equal((await propose(f)).kind, 'reject')
   assert.ok(prepared, 'the inner Host prepared a real snapshot before outer rejection')
   assert.deepEqual(f.root.session.deriveMessages(), [])
@@ -65,12 +71,13 @@ test('a tool snapshot entering the accepted batch retains its identity without a
 
 test('a rejected accepted tool batch does not become delivered state on the next unchanged attempt', async t => {
   let reject = true, prepared
-  const f = await ready(t, ({ ctx }) => ctx.on('agent/pre-step', async (_payload, next) => {
+  const f = await ready(t)
+  outerPreStep(t, f, async (_payload, next) => {
     const decision = await next()
     if (!reject) return decision
     prepared = snapshots(decision)
     return { kind: 'reject' }
-  }))
+  })
   const result = await f.execute('mattpocock_controls', { action: 'read' })
   const contexts = result.additionalContexts.filter(message => message.source.kind === 'mattpocock-controls')
   assert.equal((await propose(f, signal(), contexts)).kind, 'reject')
@@ -87,13 +94,14 @@ test('a rejected accepted tool batch does not become delivered state on the next
 
 test('an outer rewrite with the prepared id but a different body cannot consume the exact baseline', async t => {
   let rewrite = true, prepared
-  const f = await ready(t, ({ ctx }) => ctx.on('agent/pre-step', async (_payload, next) => {
+  const f = await ready(t)
+  outerPreStep(t, f, async (_payload, next) => {
     const decision = await next()
     if (!rewrite) return decision
     prepared = snapshots(decision)[0]
     return { ...decision, messages: decision.messages.map(message => message === prepared
       ? { ...message, content: [{ type: 'text', text: 'synthetic rewritten unrelated body' }] } : message) }
-  }))
+  })
   const altered = await propose(f)
   for (const message of altered.messages) f.root.session.append('user/message', message, { surfaceOp: 'append' })
   assert.equal(f.root.session.deriveMessages()[0].id, prepared.id)
@@ -138,12 +146,13 @@ test('Agent replacement and native Session replacement reinstall even when copie
 
 test('a successfully acquired degraded snapshot retries honest unknown facts after preparation is discarded', async t => {
   let reject = true, prepared
-  const f = await ready(t, ({ ctx }) => ctx.on('agent/pre-step', async (_payload, next) => {
+  const f = await ready(t)
+  outerPreStep(t, f, async (_payload, next) => {
     const decision = await next()
     if (!reject) return decision
     prepared = snapshots(decision)[0]
     return { kind: 'reject' }
-  }))
+  })
   f.mounted.ports.instrumentStorage.read = async () => { throw new Error('synthetic records temporarily unavailable') }
   assert.equal((await propose(f)).kind, 'reject')
   assert.match(body(prepared), /"records":null/)
@@ -226,11 +235,12 @@ test('a committed native message projection keeping the id but changing content 
 test('late Host abort after snapshot preparation retains unchanged state for a new attempt', async t => {
   const stop = new AbortController(), reason = new Error('synthetic late cancellation')
   let abort = true, prepared
-  const f = await ready(t, ({ ctx }) => ctx.on('agent/pre-step', async (_payload, next) => {
+  const f = await ready(t)
+  outerPreStep(t, f, async (_payload, next) => {
     const decision = await next()
     if (abort) { prepared = snapshots(decision)[0]; stop.abort(reason); _payload.signal.throwIfAborted() }
     return decision
-  }))
+  })
   await assert.rejects(propose(f, stop.signal), error => error === reason)
   assert.ok(prepared)
   assert.deepEqual(f.root.session.deriveMessages(), [])

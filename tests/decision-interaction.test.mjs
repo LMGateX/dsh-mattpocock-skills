@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { fixture, mountedFixture, core, caller, operator, signal, policy, workflow, loadSDK } from './fixtures/runtime-host.mjs'
 
+const { createUserMessage } = await loadSDK('@deepseek-ai/dsh-llm')
 const factsFrom = text => JSON.parse(text.split('Current runtime facts (null means unavailable/unknown, not zero):\n')[1])
 const textFrom = messages => {
   assert.equal(messages.length, 1)
@@ -70,7 +71,7 @@ test('reply guidance keeps the original decision, actual agent author and existi
   assert.equal(facts.records.decisions.rows[0].decisionId, 'reply', 'await retains actual consumption after the answer')
 })
 
-test('legacy marker review remains in real OFF consumption without becoming an unfinished-task total', async t => {
+test('legacy marker review remains when only pending decisions are OFF, without becoming an unfinished-task total', async t => {
   const f = await fixture(t, { initialPolicy: policy(), known: true })
   await f.apply('put-workflow', { value: workflow })
   const rows = [
@@ -79,7 +80,7 @@ test('legacy marker review remains in real OFF consumption without becoming an u
     { decisionId: 'omitted', value: { question: 'Legacy await-only matter', status: 'legacy', pending: false, awaitingImplementation: true, result: 'Original answer', context: 'Original source: native-message:old' } },
   ]
   for (const row of rows) await f.apply('put-decision', row)
-  await f.save({ ...policy(), extensionEnabled: false })
+  await f.save(policy(undefined, { pendingDecisions: { enabled: false } }))
   const text = textFrom(await f.runtime.preStep(caller('root'), signal()))
   assert.match(text, /awaitingImplementationCount: raw compatibility markers, not unfinished tasks; review task evidence/)
   assert.match(text, /Handoff is not completion/)
@@ -90,13 +91,13 @@ test('legacy marker review remains in real OFF consumption without becoming an u
   assert.equal(facts.records.summary.pendingDecisionCount, 2)
   assert.equal(facts.records.summary.pendingUserDecisionCount, 0)
   assert.equal(facts.records.summary.awaitingImplementationCount, 2)
-  // Pending legacy questions precede await-only compatibility markers, even while OFF; no flags or obligations are cleared.
+  // Pending legacy questions precede await-only compatibility markers; disabling new decisions clears no obligations.
   assert.deepEqual(facts.records.decisions.rows.map(row => row.decisionId), ['agent', 'unspecified', 'omitted'])
   for (const row of rows) {
     await f.apply('put-decision', { decisionId: row.decisionId, value: { question: row.value.question, status: 'explicitly reviewed' } })
   }
   const records = (await f.read()).records
-  assert.deepEqual(records.decisions.map(row => row.value.awaitingImplementation), [false, true, true], 'omitted fields preserve old flags even while OFF')
+  assert.deepEqual(records.decisions.map(row => row.value.awaitingImplementation), [false, true, true], 'omitted fields preserve old flags with pending decisions disabled')
   assert.equal(records.decisions.find(row => row.decisionId === 'omitted').value.result, 'Original answer')
   await assert.rejects(f.apply('put-decision', { decisionId: 'new', value: { question: 'Not allowed while OFF', status: 'open', pending: true, addressee: { kind: 'user' } } }), { code: 'feature-disabled' })
 })
@@ -219,25 +220,43 @@ test('hot native-to-async preference reaches the admitted Host request without r
   assert.match(asyncText, /Never claim registration after a failed write/)
 })
 
-test('OFF supersedes both interaction protocols while retaining old pending obligations, and re-enable restores preference', async t => {
-  const f = await fixture(t, { initialPolicy: modePolicy('async-decision'), known: true })
-  await f.apply('put-workflow', { value: workflow })
-  await f.apply('put-decision', { decisionId: 'old', value: { question: 'Keep unresolved obligation', status: 'open', pending: true, addressee: { kind: 'user', principalId: operator.principalId } } })
-  for (const intent of [
-    { ...modePolicy('async-decision'), extensionEnabled: false },
-    policy(undefined, { pendingDecisions: { enabled: false, interactionMode: 'async-decision' } }),
-    policy(undefined, { workspace: { enabled: false }, pendingDecisions: { enabled: true, interactionMode: 'async-decision' } }),
+test('decision-feature OFF retains guidance; global and workspace OFF are silent and preserve pending obligations', async t => {
+  const f = await mountedFixture(t)
+  const enabled = modePolicy('async-decision')
+  await f.saveEnabledFixturePolicy(enabled)
+  const who = caller('root')
+  const value = { question: 'Keep unresolved obligation', status: 'open', pending: true, addressee: { kind: 'user', principalId: operator.principalId } }
+  await f.runtime.applyInstrument(who, 'root', { operationId: 'flow', expectedRevision: 0, workflowId: 'flow', action: 'put-workflow', value: workflow }, signal())
+  await f.runtime.applyInstrument(who, 'root', { operationId: 'old', expectedRevision: 1, workflowId: 'flow', action: 'put-decision', decisionId: 'old', value }, signal())
+  const native = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'ordinary user input' }] })
+  const assemble = (step, messages = [native]) => f.ctx.waterfall('agent/pre-step', { agent: f.root, messages, turn: 1, step, signal: signal() }, async () => ({ kind: 'enter', messages }))
+  const before = await f.runtime.readSession(who, 'root', signal())
+  await f.runtime.savePolicy(operator, policy(undefined, { pendingDecisions: { enabled: false, interactionMode: 'async-decision' } }), 1, signal())
+  const inactive = await assemble(1)
+  const text = textFrom(inactive.messages.slice(1))
+  assert.match(text, /Decision interaction preference: async-decision \(inactive\)/)
+  assert.match(text, /Preserve existing records, unresolved obligations and necessary closeout/)
+  assert.doesNotMatch(text, /New decisions:|prefer an available native user-question tool|continue independent work/)
+  assert.match(text, /Keep unresolved obligation/)
+  assert.equal(factsFrom(text).records.summary.pendingUserDecisionCount, 1)
+  for (const [revision, intent] of [
+    [2, { ...enabled, extensionEnabled: false }],
+    [3, { ...enabled, defaults: { ...enabled.defaults, workspace: { enabled: false } } }],
   ]) {
-    await f.save(intent)
-    const text = textFrom(await f.runtime.preStep(caller('root'), signal()))
-    assert.ok(text.includes('Decision interaction preference: async-decision (inactive)'))
-    assert.match(text, /Preserve existing records, unresolved obligations and necessary closeout/)
-    assert.doesNotMatch(text, /When a user decision is needed|Register pending decisions|prefer the decision instrument|prefer an available native user-question tool|continue independent work/)
-    assert.match(text, /Keep unresolved obligation/)
-    assert.equal(factsFrom(text).records.summary.pendingUserDecisionCount, 1)
+    await f.runtime.savePolicy(operator, intent, revision, signal())
+    const silent = await assemble(revision, inactive.messages)
+    assert.deepEqual(silent.messages, [native], 'no new notice or replay of the old owned decision context')
+    assert.equal(silent.messages[0], native)
+    await assert.rejects(f.runtime.readSession(who, 'root', signal()), { code: 'feature-disabled' })
   }
-  await f.save(modePolicy('async-decision'))
-  assert.ok(textFrom(await f.runtime.preStep(caller('root'), signal())).includes('Decision interaction preference: async-decision (active)'))
+  await f.runtime.savePolicy(operator, enabled, 4, signal())
+  const restored = textFrom((await assemble(4)).messages.slice(1))
+  assert.match(restored, /Decision interaction preference: async-decision \(active\)/)
+  assert.equal(factsFrom(restored).records.summary.pendingUserDecisionCount, 1)
+  const after = await f.runtime.readSession(who, 'root', signal())
+  assert.deepEqual(after.instance, before.instance)
+  assert.equal(after.records.businessRevision, before.records.businessRevision)
+  assert.deepEqual(after.records.decisions[0], before.records.decisions[0])
 })
 
 test('owned child receives the shared template without being directed to a forbidden user-question tool', async t => {
@@ -263,7 +282,7 @@ test('actual model tool description, controls save and bounded current DTO expos
     assert.ok(Buffer.byteLength(JSON.stringify(parsed)) <= (parsed.kind === 'receipt' ? 8192 : 65536))
     return parsed
   }
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const grant = await f.mounted.ports.readPolicyGrants()
   const { TypertGatewayService } = await loadSDK('@deepseek-ai/dsh-api-gateway')
   const gateway = new TypertGatewayService(f.ctx, {})

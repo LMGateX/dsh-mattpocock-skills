@@ -117,7 +117,7 @@ function dto(result) {
 }
 test('mounted reference receipts query the reference kind and locators/cursors fence a narrowed effective grant', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   let revision = 0
   const apply = async command => dto(await f.execute('mattpocock_record', { request: { action: 'apply', command: { operationId: 'reference-' + revision, expectedRevision: revision++, workflowId: 'flow', ...command } } }))
   await apply({ action: 'put-workflow', value: { title: 'References', axes: [] } })
@@ -266,7 +266,7 @@ test('delegate revalidates referenced admission after preparation rather than re
 test('one admitted step installs at most one view across scope changes and identity failures in source and mounted runtimes', async t => {
   for (const mounted of [false, true]) await t.test(mounted ? 'mounted' : 'source', async t => {
     const f = mounted ? await mountedFixture(t) : await fixture(t, { initialPolicy: policy(), known: true })
-    if (mounted) await f.runtime.savePolicy(operator, policy(), 0, signal())
+    if (mounted) await f.saveEnabledFixturePolicy(policy())
     const childId = mounted ? 'child' : 'old-child', who = caller(childId)
     let revision = 0
     const apply = command => f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'same-step-' + revision, expectedRevision: revision++, workflowId: 'flow', ...command }, signal())
@@ -285,16 +285,23 @@ test('one admitted step installs at most one view across scope changes and ident
     assert.equal(JSON.stringify(first[0]), original, 'already admitted native history is never rewritten')
     const ports = mounted ? f.mounted.ports : f.ports, resolve = ports.authority.resolveSession
     ports.authority.resolveSession = async () => { throw new Error('identity unavailable') }
-    assert.equal((await f.runtime.preStep(who, signal(), narrowed, '2:1')).length, 0, 'an unavailable diagnostic shares the same per-step installation slot')
+    assert.deepEqual(await f.runtime.preStep(who, signal(), narrowed, '2:1'), [], 'no second message in the narrowed step')
     const failed = await f.runtime.preStep(who, signal(), narrowed, '3:1')
-    assert.equal(failed.length, 1)
-    assert.match(JSON.stringify(failed), /Instrument context unavailable/)
-    assert.doesNotMatch(JSON.stringify(failed), /PRIVATE-old-scope-B|Allowed-A/)
+    if (mounted) {
+      assert.deepEqual(failed, [], 'unknown Host authorization cannot inject even a diagnostic')
+    } else {
+      assert.equal(failed.length, 1, 'without a Host policy port, the core still reports degraded consumption')
+      assert.match(JSON.stringify(failed), /Instrument context unavailable/)
+      assert.doesNotMatch(JSON.stringify(failed), /PRIVATE-old-scope-B|Allowed-A/)
+    }
     ports.authority.resolveSession = resolve
-    assert.equal((await f.runtime.preStep(who, signal(), failed, '3:1')).length, 0, 'recovery also waits for the next admitted step')
-    const recovered = await f.runtime.preStep(who, signal(), failed, '4:1')
-    assert.equal(recovered.length, 1)
+    if (!mounted) assert.equal((await f.runtime.preStep(who, signal(), failed, '3:1')).length, 0, 'a diagnostic occupies the same step slot')
+    const recoveryStep = mounted ? '3:1' : '4:1'
+    const recovered = await f.runtime.preStep(who, signal(), failed, recoveryStep)
+    assert.equal(recovered.length, 1, 'a silent attempt did not occupy the snapshot slot')
+    assert.match(JSON.stringify(recovered), /Allowed-A/)
     assert.doesNotMatch(JSON.stringify(recovered), /PRIVATE-old-scope-B/)
+    assert.deepEqual(await f.runtime.preStep(who, signal(), recovered, recoveryStep), [], 'one installation after recovery')
   })
 })
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createHash } from 'node:crypto'
-import { caller, mountedFixture, operator, policy, signal, workflow } from './fixtures/runtime-host.mjs'
+import { caller, mountedFixture, policy, signal, workflow } from './fixtures/runtime-host.mjs'
 
 // Approved seam: real mountHost SDK registry execute, typed output and rendered JSON.
 async function execute(f, tool, request, agent = f.root) {
@@ -17,7 +17,7 @@ async function execute(f, tool, request, agent = f.root) {
 }
 async function setup(t) {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'flow', expectedRevision: 0, action: 'put-workflow', workflowId: 'flow', value: workflow }, signal())
   return f
 }
@@ -146,7 +146,7 @@ test('mounted audit preserves unknown and not-recorded episode coverage without 
     const seedUnits = new Map([['mattpocock_supervision_config', new Map([['state', config]])]])
     if (status === 'unknown') seedUnits.set(name, new Map([['state', { schemaVersion: 999, corrupt: true }]]))
     const f = await mountedFixture(t, { seedUnits })
-    await f.runtime.savePolicy(operator, policy(), 0, signal())
+    await f.saveEnabledFixturePolicy(policy())
     const overview = await execute(f, 'mattpocock_audit', { action: 'read' })
     assert.equal(overview.coverage.episodes.status, status)
     assert.equal(overview.collections.episode.coverage, status)
@@ -224,7 +224,7 @@ test('mounted target supports reference and held-terminal selectors without gran
 
 test('mounted oversized structured fields are omitted with previews and authorized detail retains the exact object', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const keys = Array.from({ length: 32 }, (_, index) => 'status-' + index)
   const workflowValue = { title: 'Many statuses', axes: [{ axisKey: 'checks', label: 'Checks', counting: 'overlapping', statuses: keys.map(key => ({ statusKey: key, label: key })) }] }
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'flow', expectedRevision: 0, workflowId: 'flow', action: 'put-workflow', value: workflowValue }, signal())

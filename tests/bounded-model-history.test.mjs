@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
-import { caller, mountedFixture, operator, policy, signal, workflow } from './fixtures/runtime-host.mjs'
+import { caller, mountedFixture, policy, signal, workflow } from './fixtures/runtime-host.mjs'
 
 // Approved public seam: mounted SDK execution/render plus RuntimeFacade's authorized full detail.
 // No production profile, private projector, monkey-patched serializer, or live session evidence.
@@ -41,7 +41,7 @@ async function body(f, locator) {
 
 test('large history pages advance from the emitted row; detail distinguishes missing, deferred and purged bodies', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   // Tracer fails on the old model contract before creating the large fixture.
   await read(f, 'mattpocock_record', { action: 'read' })
   await f.runtime.applyInstrument(caller('root'), 'root', { operationId: 'history-flow', expectedRevision: 0,

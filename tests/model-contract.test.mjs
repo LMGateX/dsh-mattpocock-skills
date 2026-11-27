@@ -13,7 +13,7 @@ const OPT_IN_TOOLS = ['mattpocock_delegate']
 
 async function readyMounted(t, options) {
   const f = await mountedFixture(t, options)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   f.ctx.tools.register(sdk.defineTool({ name: 'send_message', description: 'mechanical native fixture',
     parameters: { agent_id: { type: 'string', required: true }, message: { type: 'string', required: true } },
     output: { schema: { type: 'null' }, render: () => [] },
@@ -23,7 +23,14 @@ async function readyMounted(t, options) {
 
 const text = result => JSON.stringify([result.error?.message ?? null, result.content ?? null])
 
-test('the default model surface registers seven fixed instruments; delegate is opt-in and audit stays conditional', async t => {
+async function modelSchemas(f) {
+  const toolSet = await f.ctx.tools.resolve({ agent: f.root, signal: signal(), modelSelection: { provider: 'fixture', model: 'fixture' } })
+  try { return f.ctx.tools.schemas(f.root, toolSet) }
+  finally { toolSet.dispose() }
+}
+const collaborationNames = schemas => schemas.map(row => row.name).filter(name => name.startsWith('mattpocock_')).sort()
+
+test('only active collaboration advertises the seven fixed tools; delegate and audit remain conditional', async t => {
   const f = await mountedFixture(t)
   for (const name of FIXED_TOOLS) assert.ok(f.ctx.tools.get(name), name + ' must be registered')
   assert.equal(FIXED_TOOLS.length, 7)
@@ -31,14 +38,15 @@ test('the default model surface registers seven fixed instruments; delegate is o
   assert.equal(f.ctx.tools.get('mattpocock_execute'), undefined, 'execute is retired and must not be a model tool')
   assert.equal(f.ctx.tools.get('mattpocock_audit'), undefined, 'audit is conditional and stays off by default')
   assert.equal(f.ctx.tools.get('mattpocock_execute', f.root), undefined)
-  const visible = f.ctx.tools.schemas(f.root).map(row => row.name)
-  assert.equal(visible.includes('mattpocock_execute'), false)
-  assert.deepEqual(visible.filter(name => name.startsWith('mattpocock_')).sort(), [...FIXED_TOOLS].sort())
+  assert.deepEqual(collaborationNames(await modelSchemas(f)), [], 'registry definitions are not model exposure while collaboration is OFF')
+  await f.saveEnabledFixturePolicy(policy())
+  assert.deepEqual(collaborationNames(await modelSchemas(f)), [...FIXED_TOOLS].sort())
 
   const opted = await mountedFixture(t, { delegate: true })
   for (const name of OPT_IN_TOOLS) assert.ok(opted.ctx.tools.get(name), name + ' must be registered when opted in')
-  const optedVisible = opted.ctx.tools.schemas(opted.root).map(row => row.name)
-  assert.deepEqual(optedVisible.filter(name => name.startsWith('mattpocock_')).sort(), [...FIXED_TOOLS, ...OPT_IN_TOOLS].sort())
+  assert.deepEqual(collaborationNames(await modelSchemas(opted)), [], 'delegate opt-in is not workspace collaboration permission')
+  await opted.saveEnabledFixturePolicy(policy())
+  assert.deepEqual(collaborationNames(await modelSchemas(opted)), [...FIXED_TOOLS, ...OPT_IN_TOOLS].sort())
 })
 
 test('delegate config is opt-in and defaults off', async () => {
@@ -67,11 +75,11 @@ test('delegate documents explicit binding refusal and ordinary native dispatch',
 })
 
 test('the runtime snapshot reports trusted delegate registration instead of inferring it from cwd capability', async t => {
-  const off = await mountedFixture(t)
-  assert.equal(off.ctx.tools.get('mattpocock_delegate'), undefined)
-  const offSnapshot = await off.runtime.readSession(caller('root'), 'root', signal())
-  assert.equal(offSnapshot.delegateRegistered, false)
-  const opted = await mountedFixture(t, { delegate: true })
+  const withoutDelegate = await readyMounted(t)
+  assert.equal(withoutDelegate.ctx.tools.get('mattpocock_delegate'), undefined)
+  const defaultSnapshot = await withoutDelegate.runtime.readSession(caller('root'), 'root', signal())
+  assert.equal(defaultSnapshot.delegateRegistered, false)
+  const opted = await readyMounted(t, { delegate: true })
   assert.ok(opted.ctx.tools.get('mattpocock_delegate'))
   const optedSnapshot = await opted.runtime.readSession(caller('root'), 'root', signal())
   assert.equal(optedSnapshot.delegateRegistered, true, 'registration comes from the trusted Host option')
@@ -80,9 +88,11 @@ test('the runtime snapshot reports trusted delegate registration instead of infe
 })
 
 test('recommendation guidance and schema stay fixed across active and withdrawn owner policy', async t => {
-  const f = await mountedFixture(t)
-  const surface = () => f.ctx.tools.schemas(f.root).find(row => row.name === 'mattpocock_record')
-  const before = JSON.stringify(surface())
+  const f = await readyMounted(t)
+  const surface = async () => (await modelSchemas(f)).find(row => row.name === 'mattpocock_record')
+  const baseline = await surface()
+  assert.ok(baseline, 'an enabled workspace advertises the record schema')
+  const before = JSON.stringify(baseline)
   const description = f.ctx.tools.get('mattpocock_record').description
   assert.match(description, /capabilities.decisionRecommendationAdoption=true and current active owner authorization/)
   assert.match(description, /recommendation exactly equal to a unique options.key/)
@@ -90,14 +100,13 @@ test('recommendation guidance and schema stay fixed across active and withdrawn 
   assert.match(description, /On conflict, expiry, withdrawal or an earlier human answer, reread current state/)
   assert.match(description, /Never self-enable or renew the owner policy/)
   assert.match(description, /preserve result, references, await flags and task constraints/)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
   const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
   const enabled = await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'enable', expectedRevision: 0, expectedScope: initial.instance, action: 'enable', durationMs: null }, signal())
   assert.equal(enabled.snapshot.effective.status, 'active')
-  assert.equal(JSON.stringify(surface()), before, 'authorization affects outcomes, never tool schema or fixed guidance')
+  assert.equal(JSON.stringify(await surface()), before, 'authorization affects outcomes, never tool schema or fixed guidance')
   const disabled = await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'disable', expectedRevision: 1, expectedScope: initial.instance, action: 'disable' }, signal())
   assert.equal(disabled.snapshot.effective.status, 'disabled')
-  assert.equal(JSON.stringify(surface()), before)
+  assert.equal(JSON.stringify(await surface()), before)
   assert.equal(f.ctx.tools.get('mattpocock_record').description, description)
 })
 
