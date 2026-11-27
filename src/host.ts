@@ -29,6 +29,7 @@ import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry'
 import { z } from 'zod'
 import { createModelTools, sourceKey } from './model-tools.js'
 import { modelToolDescription } from './model-tool-contract.js'
+import { isOwnedCollaborationReplayMessage, stripOwnedCollaborationReplay } from './silent-replay.js'
 import { ModelOutputError, previewText } from './controls/model-output.js'
 import { createDomainControlsStorage } from './controls/storage.js'
 import type { ControlsStorage } from './controls/storage.js'
@@ -1312,8 +1313,6 @@ export interface HostOptions {
 export interface HostMount {
   /** Workspace Skill delivery follows the trusted session scope, not the current checkout. */
   readonly skillsEnabledForScope: (scope: object | undefined, signal?: AbortSignal) => Promise<boolean>
-  /** Temporary legacy adapter until the Skill registry passes trusted session scope. */
-  readonly skillsEnabledForCwd: (cwd: string | undefined) => Promise<boolean>
   readonly service: MattPocockControlsService; readonly ports: HostPorts; dispose(): Promise<void> }
 
 function deny(message: string): never { throw new ControlsError('access-denied', message) }
@@ -1927,8 +1926,6 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       } catch { /* Optional collaboration/Skill delivery must fail closed without failing native work. */ }
       return undefined
     }
-    const isCollaborationEnabled = (policy: EffectivePolicy | undefined): boolean =>
-      policy !== undefined && policy.workspaceVerified && policy.extensionEnabled && policy.workspaceEnabled && policy.skillsEnabled
     const liveScope = (scope: object | undefined): Agent | undefined => {
       if (scope === undefined || closing || !('id' in scope) || typeof scope.id !== 'string') return undefined
       const agent = ctx.agents.get(SessionId(scope.id))
@@ -1937,7 +1934,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     const collaborationForAgent = async (agent: Agent | undefined, signal?: AbortSignal): Promise<boolean> => {
       if (liveScope(agent) === undefined || agent === undefined) return false
       const policy = await readSessionPolicy(agent.id, signal)
-      return liveScope(agent) !== undefined && isCollaborationEnabled(policy)
+      return liveScope(agent) !== undefined && policy?.collaborationEnabled === true
     }
     // DSH shares one context object across a step's registrations. Use one coherent
     // decision for the whole plugin tool surface; each execute rechecks independently.
@@ -2394,17 +2391,47 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     // The host may assemble one model request several times (and a PTC step may complete several
     // nested dispatches); all of them share the same turn:step identity, which is the delivery step.
     const admittedSteps = new WeakMap<Agent, string>()
+    const warnedReplay = new WeakMap<Session, Set<string>>()
+    const reconcileSilentReplay = (agent: Agent, turn: number, step: number): boolean => {
+      if (!(agent.session instanceof Session)) return false
+      const warn = (reason: string) => {
+        let warned = warnedReplay.get(agent.session)
+        if (warned === undefined) { warned = new Set(); warnedReplay.set(agent.session, warned) }
+        if (!warned.has(reason)) { warned.add(reason); ctx.logger('mattpocock-controls').warn('Historical model-surface replay could not be reconciled: %s', reason) }
+      }
+      try {
+        const result = stripOwnedCollaborationReplay(agent.session, { turn, step })
+        for (const gap of result.unsupported) warn(gap)
+        return result.startsRequestSeries
+      } catch {
+        warn('surface-reconciliation-failed')
+        return false
+      }
+    }
     disposers.push(ctx.on('agent/pre-step', async ({ agent, signal, turn, step }, next): Promise<PreStepDecision> => {
+      const allowedBefore = await collaborationForAgent(agent, signal)
+      signal.throwIfAborted()
+      // Run before downstream pressure compaction can borrow the previous model surface.
+      const startsSeries = !allowedBefore && reconcileSilentReplay(agent, turn, step)
       const decision = await next()
       if (decision.kind === 'reject') return decision
       const admittedStep = turn + ':' + step
       admittedSteps.set(agent, admittedStep)
-      if (!await collaborationForAgent(agent, signal)) { pointerAdmission.delete(agent); return decision }
-      const messages = await track(() => active.preStep(agentCaller(ctx, agent), signal, decision.messages, admittedStep)); signal.throwIfAborted()
-      const enabled = await collaborationForAgent(agent, signal)
-      pointerAdmission.set(agent, enabled)
-      return messages.length === 0 || !enabled ? decision : { ...decision, messages: [...decision.messages, ...messages] }
-    }))
+      const silentDecision = (): PreStepDecision => {
+        signal.throwIfAborted()
+        pointerAdmission.delete(agent)
+        const rebased = reconcileSilentReplay(agent, turn, step) || startsSeries
+        const messages = decision.messages.filter(message => !isOwnedCollaborationReplayMessage(message))
+        return !rebased && messages.length === decision.messages.length ? decision
+          : { ...decision, messages, ...(rebased ? { startsRequestSeries: true as const } : {}) }
+      }
+      if (!await collaborationForAgent(agent, signal)) return silentDecision()
+      const messages = await track(() => active.preStep(agentCaller(ctx, agent), signal, decision.messages, admittedStep))
+      signal.throwIfAborted()
+      if (!await collaborationForAgent(agent, signal)) return silentDecision()
+      pointerAdmission.set(agent, true)
+      return messages.length === 0 ? decision : { ...decision, messages: [...decision.messages, ...messages] }
+    }, { prepend: true }))
     if (active.postExecute) disposers.push(ctx.on('tools/post-execute', async (exec, result, next) => {
       const decision = await next()
       if (!exec.agent) return decision
@@ -2484,15 +2511,6 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (agent === undefined) return false
       const policy = await readSessionPolicy(agent.id, signal)
       return liveScope(scope) === agent && policy?.skillsEnabled === true
-    }, skillsEnabledForCwd: async (cwd?: string) => {
-    try {
-      if (typeof cwd !== 'string' || cwd === '') return true
-      const workspace = await ctx.workspaceRegistry.resolveByPath(cwd)
-      if (!workspace) return true
-      const { resolvePolicy } = await import('./controls/policy.js')
-      const policy = await service.readPolicy()
-      return resolvePolicy(policy, workspace.id, true).skillsEnabled
-    } catch { return true }
-  } }
+    } }
   } catch (error) { await dispose(); throw error }
 }
