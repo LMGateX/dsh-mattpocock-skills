@@ -77,11 +77,13 @@ test('skill delivery follows its own workspace switch, independently of the coll
   assert.equal(resolvePolicy(policy, 'work-one', true).sources['skills.enabled'], 'workspace')
 })
 
-test('skill delivery is filtered per workspace and stays on when no gate is supplied', async () => {
+test('skill delivery requires a verified scope when a gate is supplied', async () => {
   const channel = Object.keys(CATALOG.channels)[0]
-  const delivered = createMattPocockSkillProvider(channel, {})
-  assert.ok((await delivered.list({ cwd: '/work/open' })).length > 0)
-  const gated = createMattPocockSkillProvider(channel, { workspaceAllowed: async cwd => cwd !== '/work/blocked' })
-  assert.deepEqual(await gated.list({ cwd: '/work/blocked' }), [])
-  assert.ok((await gated.list({ cwd: '/work/open' })).length > 0)
+  const open = {}
+  const delivered = createMattPocockSkillProvider(channel)
+  assert.ok((await delivered.list({})).length > 0, 'bare corpus provider has no policy')
+  const gated = createMattPocockSkillProvider(channel, { scopeAllowed: async scope => scope === open })
+  assert.deepEqual(await gated.list({ cwd: '/work/open' }), [])
+  assert.deepEqual(await gated.list({ scope: {}, cwd: '/work/open' }), [])
+  assert.ok((await gated.list({ scope: open, cwd: '/other/worktree' })).length > 0)
 })

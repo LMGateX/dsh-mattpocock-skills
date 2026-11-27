@@ -29,14 +29,26 @@ const plugin = await import('../lib/index.js')
 
 // Agreed seams: public provider -> real Registry; native loader execution is
 // added through an explicit isolated host below, never a mocked invocation gate.
-async function mount(channel) {
+async function mount(channel, { withPolicy = false } = {}) {
   const ctx = new Context()
   const registry = ctx.plugin(SkillRegistry)
   await registry
-  const delivery = ctx.plugin(plugin, { channel })
+  const delivery = withPolicy ? ctx.plugin(plugin, { channel }) : ctx.plugin({ inject: ['skills'], apply(scope) {
+    scope.skills.registerProvider(control => plugin.createMattPocockSkillProvider(channel, { lifecycleSignal: control.signal }))
+  } })
   await delivery
   return { ctx, async dispose() { await delivery.dispose(); await registry.dispose() } }
 }
+
+test('default plugin mount cannot serve unverified lookups before its optional policy host is ready', async () => {
+  const mounted = await mount('stable', { withPolicy: true })
+  try {
+    const fake = { scope: { id: 'untrusted' }, cwd: '/claims/to/be/a/workspace' }
+    assert.equal((await mounted.ctx.skills.list(fake)).length, 0)
+    assert.equal(Boolean(await mounted.ctx.skills.get('tdd', fake)), false)
+    assert.equal((await mounted.ctx.skills.list()).length, 0)
+  } finally { await mounted.dispose() }
+})
 
 for (const channel of ['stable', 'beta']) {
   test(channel + ': real Registry makes all 27 source Skills model-readable, preserving 11/16 source policy', async () => {
@@ -87,7 +99,8 @@ if (hostRoot) {
   const { ToolsService } = await load('@deepseek-ai/dsh-tools')
   const { default: SystemPrompt } = await load('@deepseek-ai/dsh-system-prompt')
   const { SessionProjectionRegistry } = await load('@deepseek-ai/dsh-session-projection')
-  const { AgentRegistry } = await load('@deepseek-ai/dsh-agent')
+  const { AgentRegistry, agentCarrier } = await load('@deepseek-ai/dsh-agent')
+  const { createUserMessage } = await load('@deepseek-ai/dsh-llm')
   const nativeSkill = await load('@deepseek-ai/dsh-tool-skill')
   const { createScope } = await load('@deepseek-ai/dsh-scope')
 
@@ -192,9 +205,79 @@ if (hostRoot) {
     } finally { await f.dispose() }
   })
 
+  test('native loader gates the actual scope, not the working directory or a cached candidate', async () => {
+    const allowed = new Set()
+    const f = await nativeMount('stable', { scopeAllowed: async scope => allowed.has(scope) })
+    const childLookup = { scope: f.child, cwd: f.parent.cwd }
+    const ownerLookup = { scope: f.parent, cwd: f.parent.cwd }
+    try {
+      allowed.add(f.parent); allowed.add(f.child)
+      assert.equal((await f.ctx.skills.list(ownerLookup)).length, 27)
+      assert.equal((await f.ctx.skills.list(childLookup)).length, 27)
+      assert.equal((await f.ctx.tools.get('skill', f.child).execute({ name: 'tdd' }, { agent: f.child })).name, 'tdd')
+
+      allowed.delete(f.child)
+      assert.equal(await f.ctx.skills.get('tdd', childLookup), undefined, 'a retained registry candidate cannot authorize a load')
+      f.invalidate()
+      assert.deepEqual(await f.ctx.skills.list(childLookup), [])
+      assert.equal((await f.ctx.skills.list(ownerLookup)).length, 27, 'same cwd in another scope keeps its own decision')
+      await assert.rejects(f.ctx.tools.get('skill', f.child).execute({ name: 'tdd' }, { agent: f.child }), /unknown|available/)
+    } finally { await f.dispose() }
+  })
+
+  test('revoking the workspace gate during a held body read discards the result', async () => {
+    let enabled = true
+    const started = Promise.withResolvers()
+    const release = Promise.withResolvers()
+    const f = await nativeMount('stable', {
+      scopeAllowed: async () => enabled,
+      async readSkillFile(handle, signal) {
+        started.resolve()
+        await release.promise
+        return handle.readFile({ signal })
+      },
+    })
+    try {
+      const lookup = { scope: f.child, cwd: f.child.cwd }
+      assert.equal((await f.ctx.skills.list(lookup)).length, 27)
+      const loading = f.ctx.skills.get('tdd', lookup)
+      await started.promise
+      enabled = false
+      f.invalidate()
+      release.resolve()
+      assert.equal(Boolean(await loading), false, 'no body from an open accepted candidate may survive revocation')
+    } finally { release.resolve(); await f.dispose() }
+  })
+
+  test('native model catalog and slash loading exclude only the disabled provider', async () => {
+    let enabled = true
+    const f = await nativeMount('stable', { scopeAllowed: async () => enabled })
+    const remove = f.ctx.skills.register({ name: 'other-skill', description: 'Other provider', content: 'elsewhere', source: 'runtime' })
+    // The real catalog listener reads prior publications from the session. This
+    // use case models a first pending request before the user message is committed.
+    f.child.session = { seq: 0, surface: { nodes: [] } }
+    const propose = async () => {
+      const messages = [createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '/tdd' }] })]
+      const signal = new AbortController().signal
+      return f.ctx.waterfall(agentCarrier(f.child), 'agent/pre-step', { agent: f.child, messages, signal },
+        async () => ({ kind: 'enter', messages }))
+    }
+    const currentCatalog = decision => decision.messages.find(message => message.source.kind === 'skill-catalog')?.source.entries.map(entry => entry.name)
+    try {
+      const open = await propose()
+      assert(currentCatalog(open).includes('tdd'))
+      assert(open.messages.some(message => message.source.kind === 'skill-invocation' && message.source.name === 'tdd'))
+      enabled = false
+      f.invalidate()
+      const shut = await propose()
+      assert.deepEqual(currentCatalog(shut), ['other-skill'])
+      assert.equal(shut.messages.some(message => message.source.kind === 'skill-invocation'), false)
+    } finally { remove(); await f.dispose() }
+  })
+
   test('native loader observes delivery closure and re-opening in both inherited scopes', async () => {
     let enabled = true
-    const f = await nativeMount('stable', { workspaceAllowed: async () => enabled })
+    const f = await nativeMount('stable', { scopeAllowed: async () => enabled })
     try {
       for (const agent of [f.parent, f.child]) {
         const tool = f.ctx.tools.get('skill', agent)

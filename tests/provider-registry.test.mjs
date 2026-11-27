@@ -26,7 +26,9 @@ async function mount(channel) {
   const ctx = new Context()
   const registryFiber = ctx.plugin(SkillRegistry)
   await registryFiber
-  const packageFiber = ctx.plugin(plugin, { channel })
+  const packageFiber = ctx.plugin({ inject: ['skills'], apply(scope) {
+    scope.skills.registerProvider(control => plugin.createMattPocockSkillProvider(channel, { lifecycleSignal: control.signal }))
+  } })
   await packageFiber
   return { ctx, registryFiber, packageFiber }
 }

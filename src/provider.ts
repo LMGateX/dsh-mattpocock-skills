@@ -5,7 +5,7 @@ import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { BUNDLED_SKILL_RANK } from '@deepseek-ai/dsh-skill'
-import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProvider } from '@deepseek-ai/dsh-skill'
+import type { SkillCandidate, SkillDefinition, SkillLookupOptions, SkillProvider, SkillViewOptions } from '@deepseek-ai/dsh-skill'
 
 import { CATALOG } from './catalog.js'
 import type { CatalogSkill, SkillCatalog } from './catalog.js'
@@ -18,8 +18,8 @@ export type ProviderDiagnostic = (message: string) => void
 export type SkillFileReader = (handle: FileHandle, signal: AbortSignal | undefined) => Promise<Buffer>
 
 export interface ProviderOptions {
-  /** Workspace-scoped distribution gate; absent keeps delivery on. */
-  readonly workspaceAllowed?: (cwd: string | undefined) => Promise<boolean>
+  /** Mounted delivery gate. A bare provider has no workspace policy. */
+  readonly scopeAllowed?: (scope: SkillViewOptions['scope'], signal?: AbortSignal) => Promise<boolean>
   readonly packageRoot?: string
   readonly catalog?: SkillCatalog
   readonly lifecycleSignal?: AbortSignal
@@ -228,13 +228,29 @@ export function createMattPocockSkillProvider(channel: Channel, options: Provide
     })
   Object.freeze(candidates)
 
+  async function allows(lookup: SkillLookupOptions, signal: AbortSignal | undefined): Promise<boolean> {
+    if (options.scopeAllowed === undefined) return true
+    // DSH 0.2.3-alpha.2 passes the original SkillViewOptions to both callbacks.
+    // Native model discovery, slash invocation and the skill tool select the actual Agent.
+    const { scope } = lookup as SkillViewOptions
+    if (scope === undefined) return false
+    try {
+      const allowed = await options.scopeAllowed(scope, signal)
+      throwIfAborted(signal)
+      return allowed === true
+    } catch {
+      throwIfAborted(signal)
+      return false
+    }
+  }
+
   return Object.freeze({
     name: PROVIDER_NAME,
     async list(lookup: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
       const signal = lookupSignal(options.lifecycleSignal, lookup.signal)
       throwIfAborted(signal)
-      // Workspace-scoped distribution: an unavailable policy store keeps delivery on.
-      if (options.workspaceAllowed && !await options.workspaceAllowed(lookup.cwd)) return []
+      if (!await allows(lookup, signal)) return []
+      throwIfAborted(signal)
       return candidates
     },
     async get(candidate: SkillCandidate, lookup: SkillLookupOptions): Promise<SkillDefinition | undefined> {
@@ -245,6 +261,7 @@ export function createMattPocockSkillProvider(channel: Channel, options: Provide
         diagnostic('refused an unrecognized Skill candidate')
         return undefined
       }
+      if (!await allows(lookup, signal)) return undefined
       try {
         const bytes = await readTrustedSkill(record, packageRoot, vendorRoot, signal, readSkillFile)
         throwIfAborted(signal)
@@ -276,6 +293,8 @@ export function createMattPocockSkillProvider(channel: Channel, options: Provide
           ...(record.candidate.whenToUse === undefined ? {} : { whenToUse: record.candidate.whenToUse }),
           ...(record.candidate.metadata === undefined ? {} : { metadata: record.candidate.metadata }),
         }
+        // Policy may have changed during the asynchronous file/identity checks.
+        if (options.scopeAllowed !== undefined && !await allows(lookup, signal)) return undefined
         return Object.freeze(definition)
       } catch (error) {
         if (signal?.aborted) throw signal.reason
