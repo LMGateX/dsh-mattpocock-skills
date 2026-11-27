@@ -116,6 +116,11 @@ export interface NativeSubagentStop {
 export interface NativeSubagentStopEvent extends NativeSubagentStop {
     readonly ownerSessionId: string;
 }
+interface NativeStopAdmission {
+    readonly stillCurrent: () => boolean;
+    /** Existing exact native run in this workspace's uninterrupted observation epoch; never child ACL. */
+    readonly formerRunWorkspaceId: string | null;
+}
 /**
  * Read a child's own event suffix into the published turn-end vocabulary. Nothing is synthesized:
  * a reason kind this build does not recognize stays `unknown`, an aborted cause is the published
@@ -159,7 +164,7 @@ export type HostEvent = ({
     readonly kind: 'native-stop';
     readonly ownerSessionId: string;
     readonly item: NativeSubagentStop;
-    readonly observationStillAdmitted?: () => boolean;
+    readonly nativeAdmission?: NativeStopAdmission;
 }) & {
     readonly actualAgent?: Agent;
 };
@@ -368,3 +373,4 @@ export declare function hostRemoteContribution(): TypertContribution;
 export declare function createAuthorizedGitRunner(ctx: Context, rawSessionId: string, outerSignal: AbortSignal): AuthorizedGitRunner;
 /** Mount actual SDK registrations over independently owned single-table domains. */
 export declare function mountHost(ctx: Context, options: HostOptions): Promise<HostMount>;
+export {};
