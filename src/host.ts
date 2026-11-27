@@ -2011,7 +2011,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         // No replacement provider is loaded: an explicit cwd requires the native
         // activation contract, and an unsupported host creates no child at all.
         if (cwd !== undefined && !hasNativeInitialChildCwd(ctx)) throw new ResourceError('unsupported', 'nativeInitialChildCwd unsupported; no child was requested')
-        const verifyCwd = cwd === undefined ? undefined : await authorizeInitialChildCwd(ctx, exec.agent!, cwd, AbortSignal.any([exec.signal, lifetime.signal]))
+        const control = AbortSignal.any([exec.signal, lifetime.signal])
+        const verifyCwd = cwd === undefined ? undefined : await authorizeInitialChildCwd(ctx, exec.agent!, cwd, control)
+        if (!await collaborationForAgent(exec.agent, control)) deny('collaboration is unavailable for this session')
         const maxDepth = native.resolveMaxDepth()
         lifetime.signal.throwIfAborted(); exec.signal.throwIfAborted(); agentCaller(ctx, exec.agent)
         verifyCwd?.()
@@ -2360,10 +2362,15 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const ownerAgent = ctx.agents.get(SessionId(ownerSessionId))
       const delivery = settings.dryRun ? 'none' : review.severity === 'alert' && gate && ownerAgent ? 'card+agent' : review.severity === 'info' ? 'none' : 'card'
       const episode = makeSupervisionEpisode({ document, trigger, review, summary, now, delivery, ticketId: ticketContext.id, research: ticketContext.research })
-      if (!await store.compareAndSwap(document.revision, withSupervisionEpisode(document, episode, settings, now, reviewed.tokens))) return
-      if (delivery === 'card+agent' && ownerAgent && await collaborationForAgent(ownerAgent, signal)) {
-        try { ownerAgent.inject(makeSupervisionNotice(episode)) } catch (error) { ctx.logger('mattpocock-controls').warn('supervision notice injection failed', error) }
+      const commit = async () => {
+        if (!await collaborationForAgent(agent, signal)) return
+        if (!await store.compareAndSwap(document.revision, withSupervisionEpisode(document, episode, settings, now, reviewed.tokens))) return
+        if (delivery === 'card+agent' && ownerAgent && await collaborationForAgent(ownerAgent, signal)) {
+          try { ownerAgent.inject(makeSupervisionNotice(episode)) } catch (error) { ctx.logger('mattpocock-controls').warn('supervision notice injection failed', error) }
+        }
       }
+      if (active.serializePolicyPermission) await active.serializePolicyPermission(commit)
+      else await commit()
     }
     disposers.push(() => { auditToolDispose?.(); auditToolDispose = undefined })
     disposers.push(ctx.on('session/event', (session, event) => {

@@ -9,7 +9,7 @@ import type { ControlsStorage } from './controls/storage.js';
 import type { ControlsAuthority, TrustedSession } from './controls/index.js';
 import type { InstrumentStorage } from './controls/instrument-storage.js';
 import type { InstrumentCommand } from './controls/instrument-state.js';
-import type { PolicyIntent, PolicySnapshot } from './controls/policy.js';
+import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './controls/policy.js';
 import type { SupervisionConfigSnapshot } from './controls/supervision-config.js';
 import type { SupervisionEpisode } from './controls/supervision-audit.js';
 import type { NativeSubagentActivity, WindowStorage, TicketWindowCommand } from './controls/windows.js';
@@ -226,6 +226,8 @@ export interface HostPorts {
     readonly windowStorage: WindowStorage;
     readonly resourceStorage: ResourceStorage;
     readonly authority: ControlsAuthority;
+    /** Resolve the trusted root policy without opening or creating an instrument instance. */
+    readSessionPolicy?(sessionId: string, signal?: AbortSignal): Promise<EffectivePolicy | undefined>;
     readonly operatorPrincipal: string;
     readonly capabilities: HostCapabilities;
     readonly resourceLifecycle: ResourceLifecycle;
@@ -290,8 +292,8 @@ export interface HostOptions {
     readonly onPolicyChanged?: () => void;
 }
 export interface HostMount {
-    /** Workspace-scoped Skill delivery gate; unavailable policy keeps skills on. */
-    readonly skillsEnabledForCwd: (cwd: string | undefined) => Promise<boolean>;
+    /** Workspace Skill delivery follows the trusted session scope, not the current checkout. */
+    readonly skillsEnabledForScope: (scope: object | undefined, signal?: AbortSignal) => Promise<boolean>;
     readonly service: MattPocockControlsService;
     readonly ports: HostPorts;
     dispose(): Promise<void>;

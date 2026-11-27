@@ -151,9 +151,8 @@ function scanObservedCreations(events:readonly {readonly type:string;readonly da
   return creations
 }
 export interface RuntimeOptions { readonly runtimeId?: string; readonly consumptionTimeoutMs?: number; readonly now?: () => number }
-type RuntimePorts = HostPorts & { readSessionPolicy?(sessionId:string,signal?:AbortSignal):Promise<EffectivePolicy|undefined> }
-const isCollaborating=(policy:EffectivePolicy):boolean=>policy.workspaceVerified&&policy.extensionEnabled&&policy.workspaceEnabled&&policy.skillsEnabled
-export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
+const isCollaborating=(policy:EffectivePolicy):boolean=>policy.collaborationEnabled
+export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):Promise<RuntimeFacade> {
   const runtimeId=id(options.runtimeId??randomUUID(),'runtimeId'), queue=new OrderedEffects(), now=options.now??Date.now
   // Only model read methods may re-enter an active read permit. Mutation/capture queues stay unchanged.
   const modelReadContext=new AsyncLocalStorage<{open:boolean}>()
@@ -301,7 +300,8 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
   const businessCaptureVersion=(records:NonNullable<ConsumptionSnapshot['records']>):string=>createHash('sha256').update(canonical([records.revision,records.businessRevision,records.scope])).digest('hex')
   const captureBusiness=async(view:SessionControlsView,records:RuntimeSnapshot['records'],signal?:AbortSignal) => {
     signal?.throwIfAborted()
-    if(!records||!await allowsView(view,view.association.sessionId,signal))return
+    if(!records)return
+    await requireCapturePolicy(view,signal)
     const marks=marksFor(view.instance.instrumentInstanceId)
     const version=businessCaptureVersion(records),consumer=view.association.sessionId
     if(marks.business.get(consumer)===version)return
@@ -311,7 +311,7 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
         for(const h of row.history)observations.push({kind,recordId,recordKey:recordId,version:h.revision,snapshot:parseHostJson(h.policySelection===undefined?h.value:{...h.value,policySelection:h.policySelection,references:h.references}),source:{kind:'authored',domain:'instruments',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},...(kind==='decision'?{flags:{done:!('pending' in h.value&&h.value.pending===true)&&!('awaitingImplementation' in h.value&&h.value.awaitingImplementation===true)}}:{})})
       }
     }
-    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});if(!await allowsView(view,view.association.sessionId,signal))return;signal?.throwIfAborted();await history.capture(observations)}
+    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});await requireCapturePolicy(view,signal);await history.capture(observations)}
     marks.business.delete(consumer);marks.business.set(consumer,version)
     while(marks.business.size>64)marks.business.delete(marks.business.keys().next().value as string)
   }
@@ -322,7 +322,7 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
   const captureCurrent=async(view:SessionControlsView,items:readonly {kind:string;recordId:string;version:number;snapshot:unknown;domain:string;author?:HostCaller}[],signal?:AbortSignal)=>{
     signal?.throwIfAborted()
     if(items.length===0)return true
-    if(!await allowsView(view,view.association.sessionId,signal))return false
+    await requireCapturePolicy(view,signal)
     const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted()
     const store=await historyStores.get(view.instance.instrumentInstanceId)!;signal?.throwIfAborted()
     const raw=await store.read().catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted()
@@ -338,7 +338,7 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
       observations.push({kind:item.kind,recordId:item.recordId,recordKey:item.recordId,version:item.version,snapshot,source:{kind:last?'program':'snapshot',domain:item.domain,author:item.author?parseHostJson(item.author):null,recordedAt:null,coverage:last?'recorded-history':'snapshot-only'}})
     }
     signal?.throwIfAborted()
-    if(!await allowsView(view,view.association.sessionId,signal))return false
+    await requireCapturePolicy(view,signal)
     await history.capture(observations)
     return true
   }
@@ -356,7 +356,8 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
   const captureOthers=async(view:SessionControlsView,caller:HostCaller,signal?:AbortSignal)=>{
     signal?.throwIfAborted()
     // Raw operation journals are read only after the actual owner scope has been proved.
-    if(!await allowsView(view,view.association.sessionId,signal)||(await scope(caller.principalId,view.association.sessionId,view,signal)).kind!=='coordinator')return
+    await requireCapturePolicy(view,signal)
+    if((await scope(caller.principalId,view.association.sessionId,view,signal)).kind!=='coordinator')return
     signal?.throwIfAborted()
     const key=view.instance.instrumentInstanceId,marks=marksFor(key),observations:HistoryObservation[]=[]
     let capturedThrough=windowCaptureRevisions.get(key)??0,windowRevision:number|null=null
@@ -382,7 +383,7 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
     const registry=await registryModule.query(view.instance).catch(error=>{signal?.throwIfAborted();throw error});signal?.throwIfAborted()
     const worktreeRevision=registry.revision,worktreePending=marks.worktrees!==worktreeRevision
     if(worktreePending)for(const row of registry.rows){for(const h of row.history)observations.push({kind:'worktree',recordId:row.bindingId,recordKey:h.operationId,version:h.revision,snapshot:parseHostJson(h.value),source:{kind:h.source==='program'?'program':'authored',domain:'worktree-bindings',author:parseHostJson(h.author),recordedAt:h.recordedAt,coverage:'recorded-history'},flags:{cleanedWorktree:h.value.business.state==='cleaned'}})}
-    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});if(!await allowsView(view,view.association.sessionId,signal))return;signal?.throwIfAborted();await history.capture(observations)}
+    if(observations.length>0){const history=await historyFor(view).catch(error=>{signal?.throwIfAborted();throw error});await requireCapturePolicy(view,signal);await history.capture(observations)}
     if(windowRevision!==null)marks.windows=windowRevision
     if(worktreePending)marks.worktrees=worktreeRevision
     windowCaptureRevisions.set(key,capturedThrough)
@@ -425,6 +426,10 @@ export async function createRuntime(ports:RuntimePorts,options:RuntimeOptions={}
     return !closing&&policy!==undefined&&(workspaceId===undefined||policy.controlWorkspaceId===workspaceId)&&isCollaborating(policy)
   }
   const allowsView=(view:SessionControlsView,sessionId=view.association.sessionId,signal?:AbortSignal)=>allowsCollaboration(sessionId,view.instance.controlWorkspaceId,signal)
+  const requireCapturePolicy=async(view:SessionControlsView,signal?:AbortSignal):Promise<void>=>{
+    if(!await allowsView(view,view.association.sessionId,signal))throw new ControlsError('feature-disabled','History capture not performed: collaboration policy is unavailable')
+    signal?.throwIfAborted()
+  }
   const requireCollaboration=async(sessionId:string,signal?:AbortSignal):Promise<void>=>{
     if(!await allowsCollaboration(sessionId,undefined,signal))throw new ControlsError('feature-disabled','collaboration is unavailable for this session')
   }

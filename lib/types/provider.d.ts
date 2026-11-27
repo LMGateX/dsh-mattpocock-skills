@@ -1,5 +1,5 @@
 import { type FileHandle } from 'node:fs/promises';
-import type { SkillProvider } from '@deepseek-ai/dsh-skill';
+import type { SkillProvider, SkillViewOptions } from '@deepseek-ai/dsh-skill';
 import type { SkillCatalog } from './catalog.js';
 import type { Channel } from './index.js';
 export declare const PROVIDER_NAME = "dsh-mattpocock-skills";
@@ -7,8 +7,8 @@ export declare const PACKAGE_ROOT: string;
 export type ProviderDiagnostic = (message: string) => void;
 export type SkillFileReader = (handle: FileHandle, signal: AbortSignal | undefined) => Promise<Buffer>;
 export interface ProviderOptions {
-    /** Workspace-scoped distribution gate; absent keeps delivery on. */
-    readonly workspaceAllowed?: (cwd: string | undefined) => Promise<boolean>;
+    /** Mounted delivery gate. A bare provider has no workspace policy. */
+    readonly scopeAllowed?: (scope: SkillViewOptions['scope'], signal?: AbortSignal) => Promise<boolean>;
     readonly packageRoot?: string;
     readonly catalog?: SkillCatalog;
     readonly lifecycleSignal?: AbortSignal;

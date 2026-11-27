@@ -48,13 +48,15 @@ export interface EffectivePolicy {
     readonly extensionEnabled: boolean;
     /** Per-workspace gate, resolved; the safe initial is closed. */
     readonly workspaceEnabled: boolean;
-    /** Skill distribution for this workspace, resolved; the safe initial is open. */
+    /** Skill distribution preference for this workspace, resolved; the safe initial is open. */
     readonly skillsEnabled: boolean;
+    /** Positive, verified eligibility for collaboration; raw gate preferences are not sufficient. */
+    readonly collaborationEnabled: boolean;
     readonly features: Readonly<Record<FeatureName, {
         readonly requested: boolean;
         /** configured is policy intent, NOT a claim of installed/enforced host capability. */
         readonly status: 'disabled' | 'configured' | 'unsupported';
-        readonly reason: 'extension-disabled' | 'workspace-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null;
+        readonly reason: 'extension-disabled' | 'workspace-disabled' | 'skills-disabled' | 'feature-disabled' | 'workspace-unverified' | 'window-capacity-unset' | null;
     }>>;
     readonly windows: {
         readonly ticketWindowSize: number | null;
@@ -71,5 +73,9 @@ export declare const INITIAL_POLICY: PolicySnapshot;
 /** A save replaces a complete sparse intent; removing a field restores inheritance. */
 export declare function parsePolicyIntent(value: unknown): PolicyIntent;
 export declare function parsePolicySnapshot(value: unknown): PolicySnapshot;
+/** Apply the save-time master-gate transition to complete, parsed sparse intents.
+ * Keep the other leaves untouched, including inactive feature and display settings.
+ */
+export declare function protectSkillsTransition(previous: PolicyIntent, draft: PolicyIntent): PolicyIntent;
 /** Pure server-side resolution; display preferences never control functional eligibility. */
 export declare function resolvePolicy(policy: PolicySnapshot, controlWorkspaceId: string, workspaceVerified: boolean): EffectivePolicy;

@@ -31,17 +31,22 @@ test('a workspace gate left unset stays closed while skills stay delivered', () 
   assert.equal(effective.sources['skills.enabled'], 'safe-initial')
 })
 
-test('both gates open lets the workspace feature switches resolve, and each gate reports its own source', () => {
-  const effective = resolvePolicy(snapshot({ extensionEnabled: true, defaults: {
+test('collaboration requires Skills; sources still identify stored switch intent', () => {
+  const saved = snapshot({ extensionEnabled: true, defaults: {
     workspace: { enabled: true }, skills: { enabled: false }, ticketProgress: { enabled: true },
-  }, workspaceOverrides: {} }), 'work-one', true)
-  assert.equal(effective.workspaceEnabled, true)
-  assert.equal(effective.skillsEnabled, false)
-  assert.equal(effective.features.ticketProgress.reason, null)
-  assert.equal(effective.features.ticketProgress.status, 'configured')
-  assert.equal(effective.features.lifecycle.reason, 'feature-disabled')
-  assert.equal(effective.sources['workspace.enabled'], 'global')
-  assert.equal(effective.sources['skills.enabled'], 'global')
+  }, workspaceOverrides: { 'work-two': { skills: { enabled: true } } } })
+  const silent = resolvePolicy(saved, 'work-one', true)
+  const enabled = resolvePolicy(saved, 'work-two', true)
+  assert.equal(silent.workspaceEnabled, true)
+  assert.equal(silent.skillsEnabled, false)
+  assert.equal(silent.collaborationEnabled, false)
+  assert.equal(silent.features.ticketProgress.reason, 'skills-disabled')
+  assert.equal(silent.sources['workspace.enabled'], 'global')
+  assert.equal(silent.sources['skills.enabled'], 'global')
+  assert.equal(enabled.collaborationEnabled, true)
+  assert.equal(enabled.features.ticketProgress.status, 'configured')
+  assert.equal(enabled.features.lifecycle.reason, 'feature-disabled')
+  assert.equal(enabled.sources['skills.enabled'], 'workspace')
 })
 
 test('a workspace override closes only its own workspace and outranks the global gate', () => {

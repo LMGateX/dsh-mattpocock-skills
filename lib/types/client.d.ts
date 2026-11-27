@@ -67,7 +67,7 @@ export declare class SessionObserver {
     getSnapshot: () => Observation<ClientSessionSnapshot>;
     subscribe: (listener: () => void) => (() => void);
     retain: () => (() => void);
-    refresh: () => Promise<void>;
+    refresh: (invalidate?: boolean) => Promise<void>;
     dispose(): void;
     private clearTimer;
     private publish;
@@ -87,7 +87,7 @@ export declare class SessionObserverCache {
     constructor(read: (sessionId: string, signal?: AbortSignal) => Promise<RemoteResult<unknown>>, intervalMs?: number, idleTtlMs?: number, maxIdle?: number);
     get size(): number;
     observe(sessionId: string): SessionObservation;
-    refreshAll(): void;
+    refreshAll(invalidate?: boolean): void;
     dispose(): void;
     private prune;
 }
@@ -132,7 +132,7 @@ export declare class SummaryScheduler {
     configurationRevision(sessionId: string): number | undefined;
     subscribe(sessionId: string, listener: () => void): () => void;
     retain(sessionId: string): () => void;
-    refresh(sessionId?: string): void;
+    refresh(sessionId?: string, invalidate?: boolean): void;
     dispose(): void;
     private entry;
     private prune;
@@ -232,15 +232,15 @@ interface NotificationReading {
     readonly select: (view: ClientSessionSnapshot | null, key: string | null) => void;
 }
 /** Independent native header lifetime; no policy display gate or automatic navigation. */
-export declare function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & {
+interface NotificationFace {
+    readonly summary: SummaryObserver;
     readonly observer: SessionObservation;
     readonly reading: NotificationReading;
-}): ReactElement;
+}
+export declare function DecisionNotificationSeat(props: PropsRuntime<'conversation.session.header.utilities'> & NotificationFace): ReactElement | null;
 /** Reuse the native input dock, not a custom overlay or a second composer. */
-export declare function DecisionNotificationReader(props: PropsRuntime<'conversation.input.dock'> & {
-    readonly observer: SessionObservation;
-    readonly reading: NotificationReading;
-}): ReactElement | null;
+type NotificationReaderProps = PropsRuntime<'conversation.input.dock'> & NotificationFace;
+export declare function DecisionNotificationReader(props: NotificationReaderProps): ReactElement | null;
 export declare function ObservedInputSummary(props: PropsRuntime<'conversation.input.dock'> & SessionFace & {
     readonly summaryAvailable?: boolean;
     readonly summaryIdentity?: string;
@@ -248,9 +248,16 @@ export declare function ObservedInputSummary(props: PropsRuntime<'conversation.i
 }): ReactElement | null;
 /** Explicit user answer; the Host RPC derives the real author, never the command. */
 export declare function decisionAnswerCommand(records: InstrumentSnapshot, decision: DecisionRecord, answer: string, status: string, pending: boolean, awaitingImplementation: boolean, operationId: string): InstrumentCommand;
-export declare function Details(props: PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & {
+type DetailsProps = PropsRuntime<'sidebar.right.pane.tab'> & SessionFace & {
     readonly remote: ControlsRemote;
-}): ReactElement;
+};
+export declare function Details(props: DetailsProps & {
+    readonly summaryIdentity?: string;
+}): ReactElement | null;
+/** The host owns layout; retire only our own tab occurrence after confirmed silence. */
+export declare function CollaborationTabTitle(props: PropsRuntime<'sidebar.right.pane.tab.title'> & {
+    readonly summary: SummaryObserver;
+}): ReactElement | null;
 export declare function bindingSummary(view: ClientSessionSnapshot): string;
 export declare function WorktreeBindingsPanel(props: {
     readonly view: ClientSessionSnapshot;

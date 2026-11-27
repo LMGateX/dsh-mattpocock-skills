@@ -21,6 +21,10 @@ test('settings turn off collaboration in existing owner and child tool sets with
   const a = agents.get('a'), b = agents.get('b'), child = agents.get('a-child')
   const enabled = policy()
   await runtime.savePolicy(operator, enabled, 0, signal())
+  // Production starts the instrument in the first admitted step; drive that
+  // public boundary before this fixture dispatches a tool directly.
+  await runtime.preStep({ kind: 'agent', principalId: 'agent:a', sessionId: 'a' }, signal())
+  await runtime.preStep({ kind: 'agent', principalId: 'agent:b', sessionId: 'b' }, signal())
   const oldSet = await resolve(ctx, a)
   t.after(() => oldSet.dispose())
   assert(owned(ctx, a, oldSet).includes('mattpocock_controls'))

@@ -113,7 +113,7 @@ export interface SessionSummary {
     readonly sessionId: string;
     readonly caller: HostCaller;
     readonly instance: InstrumentInstance;
-    readonly policy: Pick<EffectivePolicy, 'configurationRevision' | 'controlWorkspaceId' | 'workspaceVerified' | 'extensionEnabled' | 'workspaceEnabled' | 'display'>;
+    readonly policy: Pick<EffectivePolicy, 'configurationRevision' | 'controlWorkspaceId' | 'workspaceVerified' | 'extensionEnabled' | 'workspaceEnabled' | 'collaborationEnabled' | 'display'>;
     readonly records: null | {
         readonly businessRevision: number;
         readonly viewerRevision: number;

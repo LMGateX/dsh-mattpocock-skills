@@ -80,7 +80,7 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
     .map(entry => join(entry.parentPath, entry.name).slice(join(root, 'src').length + 1).split('\\').join('/')).sort()
   const privateBrowserSources = ['client-notifications.ts', 'client-notification-sounds.ts', 'client-notification-sound-data.ts', 'client-subagents.ts', 'client-recommendation-policy.ts']
   assert.deepEqual(sources.filter(path => path.startsWith('client-')), [...privateBrowserSources].sort())
-  assert.equal(sources.filter(path => !path.includes('/')).length, 8 + privateBrowserSources.length)
+  assert.equal(sources.filter(path => !path.includes('/')).length, 10 + privateBrowserSources.length)
   assert.equal(sources.filter(path => path.startsWith('controls/')).length, 27)
   for (const file of ['recommendation-contract', 'owner-decision-policy']) {
     for (const path of ['lib/controls/' + file + '.js', 'lib/types/controls/' + file + '.d.ts']) {
