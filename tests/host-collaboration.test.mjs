@@ -34,17 +34,17 @@ if (hostRoot) {
   sdk = { ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-api-gateway'), ...await load('@deepseek-ai/dsh-storage-domain'), ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-session'), ...await load('@deepseek-ai/dsh-util-values'), ...await load('@deepseek-ai/dsh-system-prompt'), ...await load('@deepseek-ai/dsh-llm'), LocalFs: (await load('@deepseek-ai/dsh-fs-local')).default }
 }
 const signal = () => new AbortController().signal
-function agent(id = 'owner', origin, parentSession) {
+function agent(id, cwd, origin, parentSession) {
   const descriptor = { type: 'subagent/descriptor', data: { version: 3, mode: 'continuable', provider: 'spawn', label: 'fixture' } }
-  const header = { id, version: 4, createdAt: 0, cwd: '/fixture', isSeeded: false, ...(origin ? { origin } : {}), ...(parentSession ? { parentSession } : {}) }
+  const header = { id, version: 4, createdAt: 0, cwd, isSeeded: false, ...(origin ? { origin } : {}), ...(parentSession ? { parentSession } : {}) }
   return { id, session: { header, ownEvents: () => origin ? [descriptor] : [] } }
 }
-function authorityFixture() {
-  const owner = agent(), child = agent('child', 'subagent', owner.id), fork = agent('fork', undefined, owner.id)
+function authorityFixture(workspacePath) {
+  const owner = agent('owner', workspacePath), child = agent('child', workspacePath, 'subagent', owner.id), fork = agent('fork', workspacePath, undefined, owner.id)
   const agents = new Map([[owner.id, owner], [child.id, child], [fork.id, fork]])
-  const workspace = { id: 'W', path: '/fixture', title: 'fixture', status: async () => 'ok' }
+  const workspace = { id: 'W', path: workspacePath, title: 'fixture', status: async () => 'ok' }
   let saved, grant, observed = 0, released = 0
-  const ctx = { agents: { get: id => agents.get(id) }, connection: { operator: { id: 'operator' } }, workspaceRegistry: { get: id => id === 'W' ? workspace : undefined, resolveByPath: async path => path === '/fixture' ? workspace : undefined },
+  const ctx = { agents: { get: id => agents.get(id) }, connection: { operator: { id: 'operator' } }, workspaceRegistry: { get: id => id === 'W' ? workspace : undefined, resolveByPath: async path => path === workspacePath ? workspace : undefined },
     sessionQuery: { async observeSession(id) { observed++; assert.equal(id, 'cold'); return { header: { ...child.session.header, id: 'cold' }, inheritedEventCount: 1, events: [{ type: 'subagent/descriptor', data: { version: 99 } }, ...child.session.ownEvents()], [Symbol.dispose]() { released++ } } } } }
   const storage = { async read() { return saved } }
   const grants = { async read() { return grant }, async compareAndSwap(expected, next) { if ((grant?.revision ?? 0) !== expected) return false; grant = next; return true } }
@@ -53,13 +53,13 @@ function authorityFixture() {
 const modelIdentity = (caller, sessionId) => ({ caller, sessionId, instance: { instrumentInstanceId: 'I', ownerSessionId: 'owner', controlWorkspaceId: 'W' }, scope: { kind: 'coordinator' } })
 const modelCurrent = (caller, sessionId) => ({ ...modelIdentity(caller, sessionId), policy: {}, revisions: {}, records: null, windows: null, nativeCount: null, collections: { 'worktree-binding': { rows: [], version: '0', coverage: 'current' }, 'worktree-observation': { rows: [], version: '0', coverage: 'current' } } })
 const collaborationPolicy = { revision: 0, extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }
-const enabledUnits = (seedUnits = new Map()) => new Map([...seedUnits, ['mattpocock_controls', new Map([['state', { schemaVersion: 1, revision: 0, policy: collaborationPolicy, instances: [], associations: [] }]])]])
-async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map(), { workingDirectory = true } = {}) {
-  const ctx = new sdk.Context(), f = authorityFixture()
+const policyUnits = policy => new Map([['mattpocock_controls', new Map([['state', { schemaVersion: 1, revision: 0, policy, instances: [], associations: [] }]])]])
+async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map(), { workingDirectory = true, workspacePath = '/fixture' } = {}) {
+  const ctx = new sdk.Context(), f = authorityFixture(workspacePath)
   const operator = operatorPeer(ctx)
   ctx.provide('connection', { operator, rpc: { intercept() { return async () => {} } } })
   ctx.provide('agents', { get: id => f.agents.get(id), list: () => [...f.agents.values()] })
-  ctx.provide('workspaceRegistry', { ...f.ctx.workspaceRegistry, list: () => [{ id: 'W', path: '/fixture', title: 'Fixture', status: async () => 'ok', sessionIds: ['owner', 'fork', 'cold'] }] })
+  ctx.provide('workspaceRegistry', { ...f.ctx.workspaceRegistry, list: () => [{ id: 'W', path: workspacePath, title: 'Fixture', status: async () => 'ok', sessionIds: ['owner', 'fork', 'cold'] }] })
   ctx.provide('sessionQuery', f.ctx.sessionQuery)
   if (workingDirectory) ctx.provide('workingDirectory', { async ensure() { return f.owner.session.header.cwd } })
   new sdk.TypertRegistry(ctx)
@@ -98,7 +98,8 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   return { ctx, mounted, gateway, invoke, calls, events, owner: f.owner, owned, units, runtime }
 }
 
-const collaborationAssembly = (t, runtimeExtras) => assembly(t, runtimeExtras, undefined, enabledUnits())
+// Native creation has a collaboration effect gate in addition to its technical checks.
+const collaborationAssembly = (t, runtimeExtras, factorySetup, environment) => assembly(t, runtimeExtras, factorySetup, policyUnits(collaborationPolicy), environment)
 
 // Controlled peers implement public FsTarget/process mapping semantics; no native cwd claim.
 function filesystemBoundary(ctx, parent, { mode = 'danger-full-access', root = '/fixture', targets = {} } = {}) {
@@ -118,7 +119,7 @@ function filesystemBoundary(ctx, parent, { mode = 'danger-full-access', root = '
 test('explicit child cwd outside parent workspace-write boundary is denied before native start', options, async t => {
   let starts = 0, boundary
   const native = { resolveMaxDepth: () => 2, async startActivation() { starts++; return { childId: 'would-escape', messageId: 'would-escape' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
   await assert.rejects(f.mounted.ports.createContinuable({ agent: f.owner, signal: signal() }, { provider: 'spawn', label: 'Outside', prompt: 'Task', childId: 'outside', cwd: '/outside/tree' }), { code: 'access-denied' })
   assert(boundary.resolves.includes('/fixture'))
   assert(boundary.resolves.includes('/outside/tree'))
@@ -127,7 +128,7 @@ test('explicit child cwd outside parent workspace-write boundary is denied befor
 
 test('explicit cwd uses canonical provider containment, not lexical roots or opaque keys', options, async t => {
   const calls = [], native = { resolveMaxDepth: () => 2, async startActivation(spec) { calls.push(spec); return { childId: spec.childId, messageId: 'accepted' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner, { mode: 'workspace-write', targets: { '/fixture/escape': '/outside/tree', '/fixture/alias': '/fixture/inside' } }) })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner, { mode: 'workspace-write', targets: { '/fixture/escape': '/outside/tree', '/fixture/alias': '/fixture/inside' } }) })
   const request = { provider: 'spawn', childId: 'inside', label: 'Inside', prompt: 'Task' }, exec = { agent: f.owner, signal: signal() }
   await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: '/fixture-sibling' }), { code: 'access-denied' })
   await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: '/fixture/escape' }), { code: 'access-denied' })
@@ -137,10 +138,10 @@ test('explicit cwd uses canonical provider containment, not lexical roots or opa
   assert.equal(calls[0].request.cwd, '/fixture/inside')
 })
 
-test('initial cwd fails closed without filesystem/policy peers and unmappable host paths; omission adds no gate', options, async t => {
+test('explicit cwd needs filesystem/policy peers and a canonical host map; omitted cwd inherits natively', options, async t => {
   let starts = 0
   const native = { resolveMaxDepth: () => 2, async startActivation(spec) { starts++; return { childId: spec.childId, messageId: 'accepted' } } }
-  const f = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
+  const f = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
   const request = { provider: 'spawn', childId: 'normal', label: 'Normal', prompt: 'Task' }, exec = { agent: f.owner, signal: signal() }
   await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: '/fixture/tree' }), { code: 'unsupported' })
   assert.equal(starts, 0)
@@ -154,7 +155,7 @@ test('initial cwd fails closed without filesystem/policy peers and unmappable ho
 test('existing read-only and danger-full policies retain their native permission state for explicit cwd', options, async t => {
   for (const mode of ['read-only', 'danger-full-access']) {
     const calls = [], native = { resolveMaxDepth: () => 2, async startActivation(spec) { calls.push(spec); return { childId: spec.childId, messageId: 'accepted' } } }
-    const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner, { mode }) })
+    const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner, { mode }) })
     await f.mounted.ports.createContinuable({ agent: f.owner, signal: signal() }, { provider: 'fork', label: 'Read', prompt: 'Task', childId: 'readonly', cwd: '/outside/existing-tree' })
     assert.equal(f.ctx.sandboxPolicy.resolve({ session: calls[0].request.parent.session }).mode, mode)
     assert.deepEqual(Object.keys(calls[0].request).sort(), ['cwd', 'maxDepth', 'parent', 'prompt'])
@@ -173,7 +174,7 @@ test('upstream activation seam carries the explicit cwd and keeps upstream owner
       return { childId: spec.childId, messageId: 'activation-message', result: Promise.reject(new Error('capture failed')) }
     },
   }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => {
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => {
     ctx.provide('subagents', native)
     filesystemBoundary(ctx, owner, { mode: 'workspace-write' })
   })
@@ -195,7 +196,7 @@ test('upstream activation seam carries the explicit cwd and keeps upstream owner
 test('activation seam still authorizes the directory before any child exists, and needs the directory owner', options, async t => {
   const activations = []
   const native = { resolveMaxDepth: () => 2, async startActivation(spec) { activations.push(spec); return { childId: spec.childId, messageId: 'activation-message' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => {
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => {
     ctx.provide('subagents', native)
     filesystemBoundary(ctx, owner, { mode: 'workspace-write' })
   })
@@ -204,7 +205,7 @@ test('activation seam still authorizes the directory before any child exists, an
   assert.equal(activations.length, 0)
   // A structural activation method without the session directory owner cannot honor a
   // value, so the capability stays unsupported rather than transmitting it optimistically.
-  const absent = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', { resolveMaxDepth: () => 2, async startActivation() { throw new Error('must not start') } }), new Map(), { workingDirectory: false })
+  const absent = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', { resolveMaxDepth: () => 2, async startActivation() { throw new Error('must not start') } }), { workingDirectory: false })
   assert.equal(absent.mounted.ports.capabilities.nativeInitialChildCwd, 'unsupported')
   await assert.rejects(absent.mounted.ports.createContinuable({ agent: absent.owner, signal: signal() }, { ...request, cwd: '/fixture/tree' }), { code: 'unsupported' })
 })
@@ -216,12 +217,11 @@ test('installed public LocalFs resolves real symlink escapes before native creat
   const inside = await realpath(await mkdir(join(root, 'tree'), { recursive: true })), escape = join(root, 'escape'), alias = join(root, 'alias'), file = join(root, 'file')
   await symlink(outside, escape); await symlink(inside, alias); await writeFile(file, 'not a directory')
   const calls = [], native = { resolveMaxDepth: () => 2, async startActivation(spec) { calls.push(spec); return { childId: spec.childId, messageId: 'accepted' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => {
-    owner.session.header.cwd = root
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => {
     ctx.provide('subagents', native)
     new sdk.LocalFs(ctx, { cwd: root, diffBasisMaxBytes: 10485760 })
-    ctx.provide('sandboxPolicy', { resolve(request) { assert.equal(request.session, owner.session); assert.deepEqual(Object.keys(request), ['session']); return { mode: 'workspace-write', workspaceRoot: owner.session.header.cwd } } })
-  })
+    ctx.provide('sandboxPolicy', { resolve(request) { assert.equal(request.session, owner.session); assert.deepEqual(Object.keys(request), ['session']); return { mode: 'workspace-write', workspaceRoot: root } } })
+  }, { workspacePath: root })
   const exec = { agent: f.owner, signal: signal() }, request = { provider: 'spawn', childId: 'realpath', label: 'Actual directory', prompt: 'Task' }
   await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: escape }), { code: 'access-denied' })
   await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: alias }), { code: 'unsupported' })
@@ -236,8 +236,8 @@ test('installed public LocalFs resolves real symlink escapes before native creat
 test('parent file policy is revalidated at native creation effect boundary, not only before awaits', options, async t => {
   let starts = 0, boundary
   const native = { resolveMaxDepth() { boundary.policy.resolve = () => ({ mode: 'read-only', workspaceRoot: '/fixture' }); return 2 }, async startActivation() { starts++; return { childId: 'stale', messageId: 'stale' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
-  await assert.rejects(f.mounted.ports.createContinuable({ agent: f.owner, signal: signal() }, { provider: 'spawn', label: 'Stale', prompt: 'Task', childId: 'stale', cwd: '/fixture/tree' }), { code: 'access-denied' })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
+  await assert.rejects(f.mounted.ports.createContinuable({ agent: f.owner, signal: signal() }, { provider: 'spawn', label: 'Stale', prompt: 'Task', childId: 'stale', cwd: '/fixture/tree' }), { code: 'access-denied', message: 'parent file policy changed during initial child cwd authorization' })
   assert.equal(starts, 0)
 })
 
@@ -245,7 +245,7 @@ test('initial cwd authorization never dispatches after cancellation or exact-par
   for (const race of ['cancelled', 'parent-replaced', 'session-replaced', 'policy-changed']) {
     let starts = 0, boundary
     const control = new AbortController(), native = { resolveMaxDepth: () => 2, async startActivation() { starts++; return { childId: 'race', messageId: 'race' } } }
-    const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
+    const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
     const original = boundary.fs.resolve
     boundary.fs.resolve = async (path, options) => {
       const target = await original(path, options)
@@ -266,7 +266,7 @@ test('initial cwd authorization never dispatches after cancellation or exact-par
 test('native filesystem denial is not swallowed and mapping changes cannot authorize a child', options, async t => {
   let starts = 0, boundary
   const native = { resolveMaxDepth: () => 2, async startActivation() { starts++; return { childId: 'denied', messageId: 'denied' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); boundary = filesystemBoundary(ctx, owner, { mode: 'workspace-write' }) })
   const exec = { agent: f.owner, signal: signal() }, request = { provider: 'spawn', label: 'Denied', prompt: 'Task', childId: 'denied', cwd: '/fixture/tree' }, original = boundary.fs.resolve
   boundary.fs.resolve = async () => { throw Object.assign(new Error('DENY_OUTSIDE'), { code: 'FS_SANDBOX_DENIED' }) }
   await assert.rejects(f.mounted.ports.createContinuable(exec, request), { code: 'FS_SANDBOX_DENIED' })
@@ -279,7 +279,7 @@ test('native filesystem denial is not swallowed and mapping changes cannot autho
 test('trusted cwd preflight authorizes scope without native creation or durable intent effects', options, async t => {
   let starts = 0
   const native = { resolveMaxDepth: () => 2, async startActivation() { starts++; throw new Error('preflight must not create a child') } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner, { mode: 'workspace-write', targets: { '/fixture/escape': '/outside/tree' } }) })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner, { mode: 'workspace-write', targets: { '/fixture/escape': '/outside/tree' } }) })
   const exec = { agent: f.owner, signal: signal() }, before = [...f.units].map(([name, rows]) => [name, [...rows]])
   assert.equal(await f.mounted.ports.authorizeInitialChildCwd(exec, '/fixture/tree'), undefined)
   await assert.rejects(f.mounted.ports.authorizeInitialChildCwd(exec, '/outside/tree'), { code: 'access-denied' })
@@ -294,18 +294,20 @@ test('trusted cwd preflight authorizes scope without native creation or durable 
 })
 
 test('cwd preflight fails closed on unsupported native capability or absent technical peers', options, async t => {
-  const unsupported = await assembly(t)
+  const unsupported = await collaborationAssembly(t)
   await assert.rejects(unsupported.mounted.ports.authorizeInitialChildCwd({ agent: unsupported.owner, signal: signal() }, '/fixture/tree'), { code: 'unsupported' })
-  const absentPeers = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', { resolveMaxDepth: () => 2 }))
-  await assert.rejects(absentPeers.mounted.ports.authorizeInitialChildCwd({ agent: absentPeers.owner, signal: signal() }, '/fixture/tree'), { code: 'unsupported' })
+  const native = { resolveMaxDepth: () => 2, async startActivation() { assert.fail('preflight must not create a child') } }
+  const absentPeers = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
+  assert.equal(absentPeers.mounted.ports.capabilities.nativeInitialChildCwd, 'supported')
+  await assert.rejects(absentPeers.mounted.ports.authorizeInitialChildCwd({ agent: absentPeers.owner, signal: signal() }, '/fixture/tree'), { code: 'unsupported', message: 'initial child cwd requires native filesystem and sandboxPolicy peers' })
 })
 
 // Public host seams only: service, registered tool, native creation port. No model.
 // Explicit SDK service fixture; no model, Profile or GUI.
 test('mounted creation sends one compatible task consumed by RC3 top-level and legacy request contracts', options, async t => {
   const calls = []
-  // Contract fixtures intentionally consume the two documented public shapes, not
-  // adapter internals. Only RC3 is exercised as an actual SDK below.
+  // This activation double consumes both documented public shapes; the installed
+  // SDK is used for the Host assembly, not to launch an RC3 or legacy child.
   const native = { resolveMaxDepth: () => 7, async startActivation(spec) {
     calls.push(spec)
     const { parent, prompt, cwd, maxDepth } = spec
@@ -316,7 +318,7 @@ test('mounted creation sends one compatible task consumed by RC3 top-level and l
     assert.equal(maxDepth, spec.request.maxDepth)
     return { childId: spec.childId, messageId: 'dual-accepted' }
   } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner) })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner) })
   const control = signal()
   const receipt = await f.mounted.ports.createContinuable({ agent: f.owner, signal: control }, { provider: 'spawn', childId: 'dual-child', label: 'Dual worker', prompt: 'One native task', cwd: '/prepared/tree-A' })
   assert.deepEqual(receipt, { childId: 'dual-child', messageId: 'dual-accepted' })
@@ -343,7 +345,7 @@ test('legacy request contract inherits omitted cwd and depth without inventing e
     }
     return { childId, messageId: 'legacy-inbox' }
   } }
-  const f = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', legacy))
+  const f = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', legacy))
   const control = signal()
   const receipt = await f.mounted.ports.createContinuable({ agent: f.owner, signal: control }, { provider: 'fork', childId: 'legacy-contract', label: 'Inherited', prompt: 'No invented defaults' })
   assert.deepEqual(receipt, { childId: 'legacy-contract', messageId: 'legacy-inbox' })
@@ -360,7 +362,7 @@ test('legacy request contract inherits omitted cwd and depth without inventing e
 test('continuable creation port uses only public native start, exact parent and host depth', options, async t => {
   const calls = []
   const native = { resolveMaxDepth: () => 7, async startActivation(spec) { calls.push(spec); return { childId: spec.childId, messageId: 'native-accepted' } } }
-  const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner) })
+  const f = await collaborationAssembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner) })
   assert.equal(f.mounted.ports.capabilities.nativeInitialChildCwd, 'supported')
   const control = signal(), exec = { agent: f.owner, signal: control }
   const accepted = await f.mounted.ports.createContinuable(exec, { provider: 'spawn', childId: 'planned-child', label: 'Worker', prompt: 'Implement the task', cwd: '/prepared/tree-A' })
@@ -389,14 +391,14 @@ test('worktree registered tool routes the actual session and cannot fabricate pr
 })
 
 test('host without a native activation seam fails closed and creates no child, with or without cwd', options, async t => {
-  let starts = 0
-  const native = { resolveMaxDepth: () => undefined }
-  const f = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
+  let depthReads = 0
+  const native = { resolveMaxDepth() { depthReads++; return undefined } }
+  const f = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
   assert.equal(f.mounted.ports.capabilities.nativeInitialChildCwd, 'unsupported')
   const exec = { agent: f.owner, signal: signal() }, request = { provider: 'fork', label: 'Legacy', prompt: 'Research', childId: 'legacy-child' }
   await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: '/prepared/tree' }), { code: 'unsupported' })
   await assert.rejects(f.mounted.ports.createContinuable(exec, request), { code: 'unsupported' })
-  assert.equal(starts, 0)
+  assert.equal(depthReads, 0)
 })
 
 test('deprecated resource tool and old UI service are read-only before reaching runtime', options, async t => {
@@ -469,7 +471,7 @@ test('history registered tool exposes all retained-history actions without calle
 test('native creation port rejects opaque options, invalid paths, impostors and cancellation before dispatch', options, async t => {
   let starts = 0
   const native = { resolveMaxDepth: () => 2, async startActivation(spec) { starts++; return { childId: spec.childId, messageId: 'accepted' } } }
-  const f = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
+  const f = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', native))
   const request = { provider: 'spawn', label: 'Worker', prompt: 'Task', childId: 'reserved' }, exec = { agent: f.owner, signal: signal() }
   for (const extra of [{ agentOptions: { model: 'forged' } }, { maxDepth: 999 }, { cwd: 'relative' }, { cwd: '/tree/../other' }, { prompt: () => 'opaque' }, { provider: 'external' }, { parent: f.owner }]) {
     await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, ...extra }), { code: 'invalid-input' })
@@ -477,16 +479,31 @@ test('native creation port rejects opaque options, invalid paths, impostors and 
   await assert.rejects(f.mounted.ports.createContinuable({ ...exec, agent: { ...f.owner } }, request), { code: 'access-denied' })
   const cancelled = new AbortController(); cancelled.abort(new Error('cancelled before native request'))
   await assert.rejects(f.mounted.ports.createContinuable({ ...exec, signal: cancelled.signal }, request), /cancelled before native request/)
-  const absentDirectoryOwner = await assembly(t, {}, (_, __, ctx) => ctx.provide('subagents', { resolveMaxDepth: () => 2, async startActivation() { throw new Error('must not start') } }), new Map(), { workingDirectory: false })
+  const absentDirectoryOwner = await collaborationAssembly(t, {}, (_, __, ctx) => ctx.provide('subagents', { resolveMaxDepth: () => 2, async startActivation() { throw new Error('must not start') } }), { workingDirectory: false })
   assert.equal(absentDirectoryOwner.mounted.ports.capabilities.nativeInitialChildCwd, 'unsupported')
   await assert.rejects(absentDirectoryOwner.mounted.ports.createContinuable({ agent: absentDirectoryOwner.owner, signal: signal() }, { ...request, cwd: '/tree' }), { code: 'unsupported' })
   assert.equal(starts, 0)
 })
 
+test('plugin continuable creation stays blocked without saved policy or in a Skills-only workspace', options, async t => {
+  const skillsOnly = { ...collaborationPolicy, workspaceOverrides: { W: { workspace: { enabled: false } } } }
+  for (const seed of [new Map(), policyUnits(skillsOnly)]) {
+    let depthReads = 0, starts = 0
+    const native = { resolveMaxDepth() { depthReads++; return 2 }, async startActivation(spec) { starts++; return { childId: spec.childId, messageId: 'unexpected' } } }
+    const f = await assembly(t, {}, (_, __, ctx, owner) => { ctx.provide('subagents', native); filesystemBoundary(ctx, owner) }, seed)
+    assert.equal(f.mounted.ports.capabilities.nativeInitialChildCwd, 'supported')
+    const exec = { agent: f.owner, signal: signal() }, request = { provider: 'spawn', childId: 'silent-child', label: 'Silent', prompt: 'Task' }
+    await assert.rejects(f.mounted.ports.createContinuable(exec, { ...request, cwd: '/fixture/tree' }), { code: 'access-denied', message: 'collaboration is unavailable for this session' })
+    await assert.rejects(f.mounted.ports.createContinuable(exec, request), { code: 'access-denied', message: 'collaboration is unavailable for this session' })
+    assert.equal(depthReads, 0)
+    assert.equal(starts, 0)
+  }
+})
+
 test('native inbox acceptance is not converted into a metadata checkpoint or post-acceptance failure', options, async t => {
   const controller = new AbortController()
   const native = { resolveMaxDepth: () => 2, async startActivation(spec) { controller.abort(); return { childId: spec.childId, messageId: 'inbox-only' } } }
-  const f = await assembly(t, {}, (_, __, ctx) => {
+  const f = await collaborationAssembly(t, {}, (_, __, ctx) => {
     ctx.provide('subagents', native)
     ctx.provide('sessions', { async flush() { throw new Error('creation port must not claim durability') } })
   })
