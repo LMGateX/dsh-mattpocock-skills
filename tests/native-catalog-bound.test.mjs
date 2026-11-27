@@ -9,7 +9,7 @@ import { mountedFixture, actualAgent } from './fixtures/runtime-host.mjs'
 
 test('activity resolves through direct children and never walks the whole subtree', async t => {
   let children = 0, walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx }) => {
     ctx.provide('subagents', {
       async listChildren() { children += 1; return [{ id: 'child', createdAt: 0, mode: 'continuable', label: 'child' }] },
       async listDescendants() { walks += 1; return [] },
@@ -24,7 +24,7 @@ test('activity resolves through direct children and never walks the whole subtre
 })
 
 test('a catalog that never answers cannot hold a read', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     // No live member: the state under test is the catalog's absence, not a live-derived count.
     agents.delete('child')
     ctx.provide('subagents', {
@@ -45,7 +45,7 @@ test('a catalog that never answers cannot hold a read', async t => {
 test('a large resident subtree is counted in sub-millisecond reads with no catalog call', async t => {
   const residents = 2_000
   let catalogCalls = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.delete('child')
     for (let index = 0; index < residents; index += 1) {
       const agent = actualAgent('child-' + index, { parent: 'root', managed: true })

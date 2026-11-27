@@ -43,7 +43,7 @@ test('window reads never re-walk the native catalog while membership is fresh', 
   // 'child' is the mounted fixture's pre-existing managed child; listing it keeps the baseline
   // free of an unknown-live-member refresh.
   const catalog = ['child', 'resident-idle']
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.set('resident-idle', child('resident-idle', 'idle'))
     ctx.provide('subagents', { async listDescendants() {
       walks += 1
@@ -80,7 +80,7 @@ test('window reads never re-walk the native catalog while membership is fresh', 
 test('only live running descendants count, and a natively started child counts once known', async t => {
   let walks = 0
   const catalog = ['child', 'resident-idle', 'turn-running']
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.set('resident-idle', child('resident-idle', 'idle'))
     agents.set('turn-running', child('turn-running', 'running'))
     // Both rows claim catalog activity 'running' (resident); only Agent.status decides.
@@ -100,7 +100,7 @@ test('only live running descendants count, and a natively started child counts o
 test('a counted run lost with no end opens one main-agent item and one wake, then clears', async t => {
   const catalog = ['worker']
   const notices = []
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.set('worker', child('worker', 'running'))
     ctx.provide('subagents', { async listDescendants() { return catalog.map(id => catalogRow(id)) } })
   } })
@@ -149,7 +149,7 @@ test('a counted run lost with no end opens one main-agent item and one wake, the
 
 test('baseline and runtime restart re-establish the count with no item and no wake', async t => {
   const notices = []
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.set('pre', child('pre', 'running'))
     ctx.provide('subagents', { async listDescendants() { return [catalogRow('pre')] } })
   } })
@@ -174,7 +174,7 @@ test('baseline and runtime restart re-establish the count with no item and no wa
 test('an unreadable catalog stays a stated lower bound and never claims a silent stop', async t => {
   let failing = false
   const notices = []
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.set('worker', child('worker', 'running'))
     ctx.provide('subagents', { async listDescendants() {
       if (failing) throw new Error('catalog unreachable')
@@ -196,7 +196,7 @@ test('an unreadable catalog stays a stated lower bound and never claims a silent
 })
 
 test('a host without the native subagent service states a lower bound, never a silent stop', async t => {
-  const f = await mountedFixture(t)
+  const f = await mountedFixture(t, { enabledNativeCounter: true })
   assert.deepEqual(await f.mounted.ports.nativeSubagentActivity('root'), { known: false, running: 0, total: 0, reason: 'native-subagent-service-unavailable',
     depth: { direct: 0, deeper: 0, unknown: 0, levels: {} } })
   const snap = await f.runtime.readSession(caller('root'), 'root', signal())
@@ -206,7 +206,7 @@ test('a host without the native subagent service states a lower bound, never a s
 })
 
 test('S.depth structures the running count by edge distance from live parent chains', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents, child: directChild }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents, child: directChild }) => {
     directChild.status = 'running'
     // A three-level lineage: the owner's direct child, its child and its grandchild.
     for (const [id, parent] of [['grand', 'child'], ['great', 'grand']]) agents.set(id, child(id, 'running', parent))
@@ -231,7 +231,7 @@ test('S.depth structures the running count by edge distance from live parent cha
 
 test('a burst of membership-change events shares catalog walks instead of queueing one per event', async t => {
   let walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     for (let i = 0; i < 5; i += 1) { const a = actualAgent('c' + i, { parent: 'root', managed: true }); a.status = 'idle'; agents.set(a.id, a) }
     ctx.provide('subagents', { async listChildren() { walks += 1; await new Promise(resolve => setTimeout(resolve, 10)); return [] } })
   } })

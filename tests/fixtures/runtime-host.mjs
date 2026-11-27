@@ -191,7 +191,7 @@ export async function fixture(t, { known = false, initialPolicy, consumptionTime
 }
 
 // Installed SDK registries + actual mountHost/RuntimeFacade composition. No GUI/profile boot.
-export async function mountedFixture(t, { futureNativeActivityKnown = false, delegate = false, seedUnits = new Map(), sessionLogs = new Map(), configureBeforeMount, runtimeCreated } = {}) {
+export async function mountedFixture(t, { futureNativeActivityKnown = false, delegate = false, seedUnits = new Map(), sessionLogs = new Map(), configureBeforeMount, runtimeCreated, enabledNativeCounter = false } = {}) {
   const ctx = new sdk.Context(), agents = new Map(), nativeLive = new Set()
   const root = actualAgent('root'), child = actualAgent('child', { parent: 'root', managed: true })
   agents.set(root.id, root); agents.set(child.id, child)
@@ -267,6 +267,9 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, del
     }
     return saved
   }
+  // Counter-specific fixtures start with collaboration admitted; ordinary fixture
+  // mounts intentionally remain OFF until an individual test enables them.
+  if (enabledNativeCounter) await saveEnabledFixturePolicy(policy())
   return { ctx, root, child, agents, nativeLive, peer, runtime, mounted, sessionLogs, sessionReads, saveEnabledFixturePolicy, get runtimeStorage() { return runtimeStorage },
     // This fixture stands in for a normal model dispatch; raw/stale calls use executeRegistryTool directly.
     execute(name, args = {}, agent = root) { return executeModelTool(ctx, { name, arguments: args, callId: 'registry-' + ++serial, agent, signal: signal() }, load) },

@@ -15,7 +15,7 @@ const running = (id, parent = 'root') => { const agent = actualAgent(id, { paren
 // Public SubagentCatalogEntry rows (RC3 SessionQuery projection or legacy direct service) have no kind/activity.
 test('mounted readSession accepts ordinary direct-child catalog rows without a kind discriminator', async t => {
   let walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
     ctx.provide('subagents', {
       async listChildren() { return [{ id: 'child', createdAt: 0, mode: 'continuable', label: 'public-shape' }] },
@@ -34,7 +34,7 @@ test('mounted readSession accepts ordinary direct-child catalog rows without a k
 })
 
 test('mounted named continuable and external catalog rows retain complete coverage', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
     ctx.provide('subagents', { async listChildren() { return [
       { id: 'child', createdAt: 0, mode: 'continuable', label: 'native-label', name: 'worker' },
@@ -49,7 +49,7 @@ test('mounted named continuable and external catalog rows retain complete covera
 })
 
 test('an unknown direct-child mode states an unsupported lower bound beside readable running children', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
     ctx.provide('subagents', { async listChildren() { return [
       { id: 'child', createdAt: 0, mode: 'continuable', label: 'readable' },
@@ -79,7 +79,7 @@ test('malformed direct rows and recursive-shaped rows never certify a known dire
     { kind: 'child', id: 'bad', createdAt: 0, mode: 'one-shot', activity: 'running', hasChildren: false },
   ]
   for (const row of malformed) {
-    const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
       child.status = 'running'
       ctx.provide('subagents', { async listChildren() { return [
         { id: 'child', createdAt: 0, mode: 'continuable', label: 'readable' }, row,
@@ -97,7 +97,7 @@ test('malformed direct rows and recursive-shaped rows never certify a known dire
 
 test('direct one-shot and continuable membership still counts only live running status at every depth', async t => {
   let calls = 0, walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child, agents }) => {
     child.status = 'idle'
     agents.set('worker', running('worker'))
     agents.set('grandchild', running('grandchild', 'worker'))
@@ -122,7 +122,7 @@ test('direct one-shot and continuable membership still counts only live running 
 })
 
 test('an empty direct catalog is a known zero when no live descendants exist', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, agents }) => {
     agents.delete('child')
     ctx.provide('subagents', { async listChildren() { return [] } })
   } })
@@ -136,7 +136,7 @@ test('an empty direct catalog is a known zero when no live descendants exist', a
 
 test('recursive-only diagnostics retain the existing fallback and published reason vocabulary', async t => {
   for (const reason of ['corrupt', 'unsupported', 'unavailable']) {
-    const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
       child.status = 'running'
       ctx.provide('subagents', { async listDescendants() { return [
         { kind: 'child', id: 'child', parentId: 'root', depth: 1, mode: 'continuable', label: 'readable', activity: 'running', hasChildren: false },
@@ -154,7 +154,7 @@ test('recursive-only diagnostics retain the existing fallback and published reas
 
 test('malformed direct envelopes degrade instead of certifying an empty catalog', async t => {
   for (const value of [null, {}, 'bad-catalog', [undefined]]) {
-    const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
       child.status = 'running'
       ctx.provide('subagents', { async listChildren() { return value } })
     } })
@@ -168,7 +168,7 @@ test('malformed direct envelopes degrade instead of certifying an empty catalog'
 
 test('a rejected direct query preserves the running lower bound and never falls back to a whole-tree walk', async t => {
   let walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
     ctx.provide('subagents', {
       async listChildren() { throw new Error('query rejected') },
@@ -187,7 +187,7 @@ test('a rejected direct query preserves the running lower bound and never falls 
 
 test('a timed-out direct query stays off the read path and its late public rows restore coverage', async t => {
   let finish, querySignal, calls = 0, walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
     ctx.provide('subagents', {
       listChildren(_owner, signal) { calls += 1; querySignal = signal; return new Promise(resolve => { finish = resolve }) },
@@ -220,7 +220,7 @@ test('a timed-out direct query stays off the read path and its late public rows 
 
 test('an older late direct result cannot replace a newer published diagnostic', async t => {
   let finish, calls = 0
-  const f = await mountedFixture(t, { configureBeforeMount: ({ ctx, child }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount: ({ ctx, child }) => {
     child.status = 'running'
     ctx.provide('subagents', { listChildren() {
       calls += 1

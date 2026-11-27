@@ -29,7 +29,7 @@ const errorLog = (turn, code, message) => turnLog(turn, { kind: 'error', error: 
 
 async function outcomeFixture(t, { logs = new Map(), catalog = ['worker'] } = {}) {
   const notices = []
-  const f = await mountedFixture(t, { sessionLogs: logs, configureBeforeMount: ({ ctx, agents }) => {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, sessionLogs: logs, configureBeforeMount: ({ ctx, agents }) => {
     agents.set('worker', child('worker', 'running'))
     ctx.provide('subagents', { async listDescendants() { return catalog.map(catalogRow) } })
   } })

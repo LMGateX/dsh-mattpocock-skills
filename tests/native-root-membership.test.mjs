@@ -9,7 +9,7 @@ const direct = id => ({ id, createdAt: 0, mode: 'continuable', label: id, name: 
 // These providers are controlled public rootOf/catalog seams, not SDK Agents or a copied manager.
 test('root owner counts a runner below two cold creators on its first mounted read', async t => {
   let calls = 0, walks = 0
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root }) {
     agents.delete('child')
     ctx.provide('subagents', {
       rootOf(agent) { assert.equal(agents.get(agent.id), agent); return root },
@@ -35,7 +35,7 @@ test('root owner counts a runner below two cold creators on its first mounted re
 })
 
 test('a nonroot owner excludes siblings and marks an unclosed same-tree creator chain unknown', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root }) {
     ctx.provide('subagents', { rootOf(agent) { assert.equal(agents.get(agent.id), agent); return root }, async listChildren() { return [] } })
   } })
   f.agents.set('direct', runner('direct', 'child'))
@@ -53,7 +53,7 @@ test('a nonroot owner excludes siblings and marks an unclosed same-tree creator 
 
 test('runtime full and model current reads revalidate root ownership without lifecycle events', async t => {
   let childRoot
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root, child }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root, child }) {
     const other = actualAgent('other'); agents.set(other.id, other)
     child.status = 'running'; childRoot = root
     ctx.provide('subagents', {
@@ -72,7 +72,7 @@ test('runtime full and model current reads revalidate root ownership without lif
 
 test('root proof refusal remains unknown after a late clean catalog and preserves current authorization', async t => {
   const listing = deferred(); let refused = false
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, root, child }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, root, child }) {
     child.status = 'running'
     ctx.provide('subagents', {
       rootOf() { if (refused) throw new Error('root access denied'); return root },
@@ -93,7 +93,7 @@ test('root proof refusal remains unknown after a late clean catalog and preserve
 
 test('different roots, ordinary forks and external catalog rows stay outside local S', async t => {
   const roots = new Map()
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root, child }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root, child }) {
     child.status = 'running'; roots.set(child, root)
     ctx.provide('subagents', {
       rootOf(agent) { assert.equal(agents.get(agent.id), agent); return roots.get(agent) ?? agent },
@@ -120,7 +120,7 @@ test('different roots, ordinary forks and external catalog rows stay outside loc
 
 test('same-id root and service replacement cannot certify stale runtime membership', async t => {
   let oldRoot, provider
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, root, child }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, root, child }) {
     oldRoot = root; child.status = 'running'
     provider = { rootOf() { return root }, async listChildren() { return [direct('child')] } }
     ctx.provide('subagents', provider)
@@ -140,7 +140,7 @@ test('same-id root and service replacement cannot certify stale runtime membersh
 })
 
 test('legacy service cannot turn an unclosed cold chain into known zero', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); ctx.provide('subagents', { async listChildren() { return [direct('cold-a')] } })
   } })
   f.agents.set('leaf', runner('leaf', 'cold-b'))
@@ -157,7 +157,7 @@ test('legacy service cannot turn an unclosed cold chain into known zero', async 
 test('cancellation raised during synchronous root verification preserves the exact reason', async t => {
   const control = new AbortController(), reason = new Error('caller cancelled root check')
   let cancel = false
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, root }) {
     ctx.provide('subagents', { rootOf() { if (cancel) control.abort(reason); return root }, async listChildren() { return [] } })
   } })
   cancel = true
@@ -165,7 +165,7 @@ test('cancellation raised during synchronous root verification preserves the exa
 })
 
 test('runtime-root-only members retain stop event routing across cold creators and deduplicate run edges', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root }) {
     agents.delete('child')
     ctx.provide('subagents', { rootOf() { return root }, async listChildren() { return [direct('cold-a')] } })
   } })
@@ -184,7 +184,7 @@ test('runtime-root-only members retain stop event routing across cold creators a
 test('public catalog projection validates named rows and releases every observation on failure', async t => {
   for (const variant of ['named', 'absent', 'throws', 'denied']) {
     let reads = 0, releases = 0, walks = 0
-    const f = await mountedFixture(t, { configureBeforeMount({ ctx, root, child }) {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, root, child }) {
       child.status = 'running'
       ctx.provide('subagents', { rootOf() { return root }, async listDescendants() { walks++; throw new Error('whole-tree forbidden') } })
       ctx.set('sessionQuery', { async observeSession(_id, options) {
@@ -213,7 +213,7 @@ test('public catalog projection validates named rows and releases every observat
 
 test('disposing a Host cancels a pending public catalog and releases its late lease', async t => {
   const pending = deferred(); let querySignal, reads = 0, releases = 0
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, root }) {
     ctx.provide('subagents', { rootOf() { return root }, async listDescendants() { assert.fail('whole-tree forbidden') } })
     ctx.set('sessionQuery', { async observeSession(_id, options) {
       reads++; querySignal = options.signal; return pending.promise
@@ -231,7 +231,7 @@ test('disposing a Host cancels a pending public catalog and releases its late le
 
 test('the A to B live cut rebuilds when runtime ownership changes after the count body', async t => {
   let selectedRoot, otherRoot, change = false, ports
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root, child }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root, child }) {
     otherRoot = actualAgent('other'); agents.set(otherRoot.id, otherRoot)
     selectedRoot = root; child.status = 'running'
     ctx.provide('subagents', { rootOf(agent) { return agent === child ? selectedRoot : agent }, async listChildren() { return [direct('child')] } })
@@ -250,7 +250,7 @@ test('the A to B live cut rebuilds when runtime ownership changes after the coun
 
 test('runtime-root event attribution does not rebuild the live index for every status edge', async t => {
   let lists = 0
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root }) {
     ctx.set('agents', { get: id => agents.get(id), list() { lists++; return [...agents.values()] } })
     ctx.provide('subagents', { rootOf() { return root }, async listChildren() { return [direct('child')] } })
   } })
@@ -262,7 +262,7 @@ test('runtime-root event attribution does not rebuild the live index for every s
 
 test('verified other-root runtime members do not rebuild an owner full projection', async t => {
   const ownership = new Map()
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, root, child }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, root, child }) {
     ownership.set(child, root)
     ctx.provide('subagents', { rootOf(agent) { return ownership.get(agent) ?? agent }, async listChildren() { return [direct('child')] } })
   } })

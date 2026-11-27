@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { host, createRuntime, loadSDK, caller, signal, sdk as baseSDK } from './fixtures/runtime-host.mjs'
+import { host, createRuntime, loadSDK, caller, operator, policy, signal, sdk as baseSDK } from './fixtures/runtime-host.mjs'
 import { operatorPeer } from './fixtures/peer.mjs'
 
 const options = { skip: !process.env.DSH_CONTROLS_HOST_ROOT && 'set DSH_CONTROLS_HOST_ROOT for native subagent lifecycle probes' }
@@ -123,6 +123,10 @@ test('native cold creators, cold wake and Host remount keep the exact runtime-ro
     mounts.push(owned); return owned
   }
   let mounted = await mount()
+  await runtime.savePolicy(operator, policy(), 0, signal())
+  // Host mounted after these live fixture Agents and does not create records
+  // when previously OFF. Exercise the admitted pre-step before probing reads.
+  await runtime.preStep(caller('root'), signal())
   const read = () => runtime.readSession(caller('root'), 'root', signal())
   const first = await read()
   assert.equal(first.windows.S.used, 1, 'fork child is excluded and the two cold creator edges cannot lose c')

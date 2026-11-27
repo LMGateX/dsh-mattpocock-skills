@@ -11,7 +11,7 @@ const end = (f, runId, stopReason = 'refusal') => f.ctx.emit('subagent/end', { i
 // must agree about replacement incarnations, while old run receipts remain attributable.
 test('a same-id other-tree replacement cannot send its new stop or notice to the old owner', async t => {
   const roots = new Map(); let other
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { assert.equal(agents.get(agent.id), agent); return roots.get(agent) ?? agent },
       async listChildren() { return [{ id: 'cold-a', createdAt: 0, mode: 'continuable', label: 'cold' }] } })
@@ -31,7 +31,7 @@ test('a same-id other-tree replacement cannot send its new stop or notice to the
 
 test('a genuine late old-run end follows the old owner without ending the replacement run', async t => {
   const roots = new Map(); let other
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
@@ -55,7 +55,7 @@ test('a genuine late old-run end follows the old owner without ending the replac
 
 test('a displaced baseline cannot authorize an unobserved cold replacement start and end', async t => {
   const roots = new Map(); let other
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
@@ -69,7 +69,7 @@ test('a displaced baseline cannot authorize an unobserved cold replacement start
 })
 
 test('legacy creator evidence does not adopt a different same-id live creator chain', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); agents.set('other', actualAgent('other'))
     ctx.provide('subagents', { async listChildren() { return [{ id: 'leaf', createdAt: 0, mode: 'continuable', label: 'legacy' }] } })
   } })
@@ -84,7 +84,7 @@ test('legacy creator evidence does not adopt a different same-id live creator ch
 })
 
 test('an older same-owner end cannot clear a newer run terminal receipt', async t => {
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents, root }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents, root }) {
     agents.delete('child'); ctx.provide('subagents', { rootOf() { return root }, async listChildren() { return [] } })
   } })
   const leaf = running('leaf', 'cold-b'); f.agents.set(leaf.id, leaf)
@@ -99,7 +99,7 @@ test('an older same-owner end cannot clear a newer run terminal receipt', async 
 test('service and root replacement fence new edges while retaining an authenticated prior run end', async t => {
   for (const variant of ['other-root-service', 'denied-service', 'legacy-service', 'same-id-root', 'selective-denial']) {
     const roots = new Map(); let other
-    const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
       agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
       ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     } })
@@ -123,7 +123,7 @@ test('service and root replacement fence new edges while retaining an authentica
 
 test('a proved start before the next count read retains its genuine cold old-run route', async t => {
   const roots = new Map()
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
   await f.mounted.ports.nativeSubagentActivity('root')
@@ -135,7 +135,7 @@ test('a proved start before the next count read retains its genuine cold old-run
 
 test('a rejected foreign start fences the old baseline before any await or count poll', async t => {
   const roots = new Map(); let other
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
@@ -153,7 +153,7 @@ test('a rejected foreign start fences the old baseline before any await or count
 
 test('an agent-absent new start cannot use a null-run baseline between count reads', async t => {
   const roots = new Map()
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); ctx.provide('subagents', { rootOf(agent) { assert.equal(agents.get(agent.id), agent); return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
   const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
@@ -169,7 +169,7 @@ test('an agent-absent new start cannot use a null-run baseline between count rea
 test('an absent terminal needs an observed matching run or exact old-incarnation disposal, not a null baseline ID', async t => {
   for (const proof of ['none', 'exact-disposal', 'different-disposal']) {
     const roots = new Map()
-    const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
       agents.delete('child'); ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     } })
     const old = running('leaf', 'cold-b'); roots.set(old, f.root); f.agents.set(old.id, old)
@@ -185,7 +185,7 @@ test('an absent terminal needs an observed matching run or exact old-incarnation
 test('idle reconciliation preserves a delayed native end only for the exact disposed incarnation', async t => {
   for (const proof of ['exact-disposal', 'different-disposal', 'new-foreign-start', 'same-id-root-replacement']) {
     const roots = new Map()
-    const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+    const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
       agents.delete('child'); agents.set('other', actualAgent('other'))
       ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     } })
@@ -211,7 +211,7 @@ test('idle reconciliation preserves a delayed native end only for the exact disp
 
 test('a queued old end preserves its published outcome without borrowing the replacement turn', async t => {
   const roots = new Map(); let other
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
   } })
@@ -239,7 +239,7 @@ test('a queued old end preserves its published outcome without borrowing the rep
 
 test('a cold turn observation rechecks incarnation before opening its deferred event suffix', { timeout: 5000 }, async t => {
   const roots = new Map(), entered = Promise.withResolvers(), reply = Promise.withResolvers(); let other
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); other = actualAgent('other'); agents.set(other.id, other)
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     const query = ctx.sessionQuery, original = query.observeSession.bind(query)
@@ -269,7 +269,7 @@ test('an observed lost root-only run cannot classify a replacement suffix throug
   let eventReads = 0, disposals = 0
   const observation = { inheritedEventCount: 0, get events() { eventReads++; return [{ type: 'turn/end', seq: 42, data: { turn: 42, reason: { kind: 'error', error: { code: 'NEW', message: 'replacement only' } } } }] }, [Symbol.dispose]() { disposals++ } }
   t.after(() => reply.resolve(observation))
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child'); agents.set('other', actualAgent('other'))
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     ctx.set('sessionQuery', { async observeSession(id, options) {
@@ -303,7 +303,7 @@ test('a stable observed root-only lost run still classifies its own cold suffix'
   let eventReads = 0, disposals = 0
   const observation = { inheritedEventCount: 0, get events() { eventReads++; return [{ type: 'turn/end', seq: 7, data: { turn: 7, reason: { kind: 'error', error: { code: 'OLD', message: 'same old source' } } } }] }, [Symbol.dispose]() { disposals++ } }
   t.after(() => reply.resolve(observation))
-  const f = await mountedFixture(t, { configureBeforeMount({ ctx, agents }) {
+  const f = await mountedFixture(t, { enabledNativeCounter: true, configureBeforeMount({ ctx, agents }) {
     agents.delete('child')
     ctx.provide('subagents', { rootOf(agent) { return roots.get(agent) ?? agent }, async listChildren() { return [] } })
     ctx.set('sessionQuery', { async observeSession(id, options) {
