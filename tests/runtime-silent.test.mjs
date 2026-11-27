@@ -5,6 +5,13 @@ import { fixture, createRuntime, core, host, caller, operator, actualAgent, sign
 const onlyB = () => ({ ...policy(), workspaceOverrides: { A: { workspace: { enabled: false } } } })
 const worktree = { created: true, path: '/native-created', branch: 'native-created', baseCommit: 'a'.repeat(40), repositoryRoot: '/fixture' }
 const stopItem = (sessionId, itemId) => ({ sessionId, itemId, status: 'unsupported', reason: 'failed', turn: 1 })
+async function readAObservations(f) {
+  // The direct model collection query does not start a new background replay.
+  const { collections } = await f.runtime.readModelCurrent(caller('a'), 'a', signal())
+  const observations = collections['worktree-observation']
+  assert.equal(observations.coverage, 'current')
+  return observations.rows.map(row => row.preview)
+}
 
 async function runtimeWithPolicy(t, settings = onlyB()) {
   const f = await fixture(t)
@@ -145,6 +152,93 @@ test('detached worktree replay rechecks after reading native events and does not
   await f.runtime.serializePolicyPermission(async () => {})
   for (const [name, unit] of f.units) if (name.startsWith('worktree_observations_')) assert.equal(await unit.read(), undefined)
   assert.deepEqual(f.gitCalls, [])
+})
+
+test('a detached worktree replay cannot regain its old read permit after disable and re-enable', async t => {
+  const f = await runtimeWithPolicy(t, policy())
+  const factsStarted = deferred(), releaseFacts = deferred()
+  t.after(() => releaseFacts.resolve())
+  const sessionFacts = f.ports.sessionFacts
+  let replaySignal
+  f.ports.sessionFacts = async (id, control) => {
+    const facts = await sessionFacts(id, control)
+    if (id !== 'a-child') return facts
+    replaySignal = control
+    factsStarted.resolve()
+    // Simulate a host operation that returns a captured result despite cancellation.
+    await releaseFacts.promise
+    return { ...facts, events: [
+      { type: 'tool/call', data: { name: 'enter_worktree', callId: 'old-replay-permit' } },
+      { type: 'tool/result', data: { message: { toolCallId: 'old-replay-permit', content: [{ type: 'text', text: JSON.stringify(worktree) }] } } },
+    ] }
+  }
+  assert.deepEqual((await f.runtime.readSession(caller('a'), 'a', signal())).worktreeObservations, [])
+  await factsStarted.promise
+  await f.save(onlyB())
+  await f.save(policy())
+  // No new read elected a new replay: only the pre-OFF operation may have written.
+  releaseFacts.resolve()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(await readAObservations(f), [])
+  assert.deepEqual(f.gitCalls, [])
+  assert.equal(replaySignal?.aborted, true, 'the OFF commit revokes the host read itself')
+})
+
+test('worktree replay verification cannot resume under a new permit, but its committed row remains', async t => {
+  const f = await runtimeWithPolicy(t, policy())
+  const child = f.agents.get('a-child'), ownEvents = child.session.ownEvents()
+  child.session.ownEvents = () => [...ownEvents,
+    { type: 'tool/call', data: { name: 'enter_worktree', callId: 'committed-replay' } },
+    { type: 'tool/result', data: { message: { toolCallId: 'committed-replay', content: [{ type: 'text', text: JSON.stringify(worktree) }] } } },
+  ]
+  const started = deferred(), release = deferred()
+  t.after(() => release.resolve())
+  let verifySignal
+  f.ports.gitRunnerForSession = (_owner, control) => {
+    verifySignal = control
+    return { async lstat() {
+      started.resolve()
+      await release.promise
+      throw new Error('a late Git failure must not be recorded')
+    } }
+  }
+  await f.runtime.readSession(caller('a'), 'a', signal())
+  await started.promise
+  const committed = await readAObservations(f)
+  assert.deepEqual(committed.map(row => [row.source, row.checkState]), [['replay', 'unverified']])
+  await f.save(onlyB())
+  await f.save(policy())
+  release.resolve()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(await readAObservations(f), committed, 'revocation keeps the append but must not journal a late check')
+  assert.equal(verifySignal.aborted, true)
+})
+
+test('a worktree replay append already inside its CAS settles before disable commits', async t => {
+  const f = await runtimeWithPolicy(t, policy())
+  const child = f.agents.get('a-child'), ownEvents = child.session.ownEvents()
+  child.session.ownEvents = () => [...ownEvents,
+    { type: 'tool/call', data: { name: 'enter_worktree', callId: 'replay-cas' } },
+    { type: 'tool/result', data: { message: { toolCallId: 'replay-cas', content: [{ type: 'text', text: JSON.stringify(worktree) }] } } },
+  ]
+  assert.deepEqual(await readAObservations(f), [])
+  const store = [...f.units].find(([name]) => name.startsWith('worktree_observations_'))[1]
+  const cas = store.compareAndSwap.bind(store), started = deferred(), release = deferred()
+  t.after(() => release.resolve())
+  store.compareAndSwap = async (...args) => {
+    started.resolve()
+    await release.promise
+    return cas(...args)
+  }
+  await f.runtime.readSession(caller('a'), 'a', signal())
+  await started.promise
+  const switching = f.save(onlyB())
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal((await f.runtime.readPolicy(operator, signal())).revision, 1, 'OFF cannot commit while the earlier append is in its CAS')
+  release.resolve()
+  await switching
+  await f.save(policy())
+  assert.deepEqual((await readAObservations(f)).map(row => row.source), ['replay'])
 })
 
 test('a native runtime CAS already in flight settles before disable; later edges do not change it', async t => {

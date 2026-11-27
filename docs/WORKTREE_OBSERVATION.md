@@ -9,6 +9,12 @@
 
 [事实边界与恢复](<INSTRUMENT_FACT_BOUNDARIES.md>) 是目录声明/来源标签的最新契约。0.9.0 已实施：header cwd 不是实际初始目录；execution lane 与 worktree-observation lane 都标 `inferred`，cleaned/notes 是 `authored`；`created-tree` 只依赖创建者事实、不依赖 cwd 证明，header 为 null 也保留；不再由 header 路径相等生成 `initial-cwd` 关联。0.7.1 的 initial-cwd/worktree 路径投影属于下方历史实现，不能继续当作实际初始目录证明。0.9.0 不改历史记录、不新增工具/Remote/domain，尚未安装。
 
+## 2026-11-27 工作区静默：在途回放已撤销，历史区间仍不可证明
+
+- E4 的后台会话事实读取、记录追加及该记录派发的异步 Git 核验共享一个只在本 runtime 有效的回放许可。提交关闭后撤销对应工作区的许可；重开不会恢复旧许可，即使旧读取忽略取消后返回也不记账、不写核验结果。已完成的记录追加不撤回；此许可不控制原生工具执行。覆盖见 [runtime 静默回归](<../tests/runtime-silent.test.mjs>)。
+- **新发起的 E4 对关闭区间没有可靠的判别依据。** 隔离 fixture 先提交工作区 A 的 OFF，在仍存活的子会话日志保留成功 `enter_worktree` 的 `tool/call` 与 `tool/result`：关闭时 `postExecute` 不写观察记录；提交 ON 后的新 owner 读取仍能把该调用补成 `source: replay`。在同一 runtime 和在 OFF 时重新创建 runtime 后复测，结果相同，原生事件保持不变。后者是 runtime 冷恢复、子会话仍存活，不代表扫描已归档子会话。
+- 当前配置 revision 只标识配置快照；配置历史是协作已启用且捕获成功时的投影，不是完整或与宿主事件同序的许可日志。E4 的 `callId`、turn/step 和 PTC 派发说明原生调用，未携带当时的许可或与策略提交对应的会话日志序位。`recordedAt` 是补登记时间，cwd 与 Git 当前身份也不能证明当时策略。不能区分关闭期间的调用与启用期间遗漏的同类证据；不猜测、不回填 epoch、不删除历史或改变既有 E4 恢复。严格保证需要可信的原生事件许可来源，或与策略提交可靠相关的持久日志边界。
+
 ## 0. 目标与非目标
 
 **目标**：把“某会话用宿主原生 `create_worktree` 建出的树”登记为可核验、可去重、可提示处置的记录，防止废弃工作树堆积（Rust 等语言的 target／依赖目录尤其昂贵）。

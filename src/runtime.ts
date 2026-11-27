@@ -1081,7 +1081,14 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
   // An observation failure never replaces the native tool result.
   const observationLifetime=new AbortController()
   const observationFailures=new Map<string,string>(),failedObservationSessions=new Set<string>()
-  const observationReplays=new Set<string>()
+  // A replay permit is retained for deduplication and revoked on collaboration loss. A
+  // later enable may start a fresh replay, but cannot revive this permit or its Git check.
+  const observationReplays=new Map<string,{workspaceId:string;controller:AbortController}>()
+  const revokeObservationReplay=(key:string)=>{
+    const permit=observationReplays.get(key)
+    observationReplays.delete(key)
+    permit?.controller.abort()
+  }
   // Durable owner index for a session whose retained view is gone (for example after disposal).
   // It is not policy evidence; it only attributes a coverage gap to the right coordinator.
   const nativeExecutionOwners=new Map<string,string>()
@@ -1217,28 +1224,29 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
     const parts=stepKey.split(':'),turn=Number(parts[0]),step=Number(parts[1])
     return {turn:Number.isSafeInteger(turn)?turn:null,step:Number.isSafeInteger(step)?step:null}
   }
-  const applyObservationCheck=async(view:SessionControlsView,creator:string,input:WorktreeObservationCheckInput):Promise<void>=>{
+  const applyObservationCheck=async(view:SessionControlsView,creator:string,input:WorktreeObservationCheckInput,signal:AbortSignal):Promise<void>=>{
+    if(signal.aborted)return
     await track(view.instance.instrumentInstanceId,async()=>{
-      if(!await allowsView(view,creator,observationLifetime.signal))return
+      if(signal.aborted||!await allowsView(view,creator,signal))return
       const registry=await openObservations(view)
-      if(await allowsView(view,creator,observationLifetime.signal))await registry.check(view.instance,programAuthor,input)
+      if(!signal.aborted&&await allowsView(view,creator,signal))await registry.check(view.instance,programAuthor,input)
     })
   }
   /** E2: prove the checkout with the authorized Git runner anchored at the owner session. A
    * creator child may already be disposed; the owner is the live anchor, and inspect carries no
    * workspace-write containment. Unknown stays unknown: no failure is reported as success. */
-  const verifyWorktreeObservation=async(view:SessionControlsView,creator:string,observationId:string,path:string):Promise<void>=>{
-    if(observationLifetime.signal.aborted)return
+  const verifyWorktreeObservation=async(view:SessionControlsView,creator:string,observationId:string,path:string,signal=observationLifetime.signal):Promise<void>=>{
+    if(signal.aborted)return
     try{
-      if(!await allowsView(view,creator,observationLifetime.signal))return
-      const probe=await probeWorktree(ports.gitRunnerForSession(view.instance.ownerSessionId,observationLifetime.signal),path)
-      if(!probe.exists){await applyObservationCheck(view,creator,{observationId,kind:'absent'});return}
+      if(!await allowsView(view,creator,signal)||signal.aborted)return
+      const probe=await probeWorktree(ports.gitRunnerForSession(view.instance.ownerSessionId,signal),path,signal)
+      if(!probe.exists){await applyObservationCheck(view,creator,{observationId,kind:'absent'},signal);return}
       if(probe.repositoryPath===null||probe.gitCommonDir===null||probe.gitDir===null||probe.pathIdentity===null||probe.headOid===null)throw new ControlsError('invalid-state','probe returned an incomplete identity')
-      await applyObservationCheck(view,creator,{observationId,kind:'facts',facts:{repositoryPath:probe.repositoryPath,gitCommonDir:probe.gitCommonDir,gitDir:probe.gitDir,pathIdentity:probe.pathIdentity,branchRef:probe.branchRef,branchOid:probe.branchOid,headOid:probe.headOid}})
+      await applyObservationCheck(view,creator,{observationId,kind:'facts',facts:{repositoryPath:probe.repositoryPath,gitCommonDir:probe.gitCommonDir,gitDir:probe.gitDir,pathIdentity:probe.pathIdentity,branchRef:probe.branchRef,branchOid:probe.branchOid,headOid:probe.headOid}},signal)
     }catch(error){
-      if(observationLifetime.signal.aborted)return
-      try{await applyObservationCheck(view,creator,{observationId,kind:'failed',diagnostic:String(error).slice(0,1024)})}
-      catch(writeError){if(!observationLifetime.signal.aborted)markObservationFailure(view,writeError)}
+      if(signal.aborted)return
+      try{await applyObservationCheck(view,creator,{observationId,kind:'failed',diagnostic:String(error).slice(0,1024)},signal)}
+      catch(writeError){if(!signal.aborted)markObservationFailure(view,writeError)}
     }
   }
   /** E1: append the creation fact with the tool result, then verify asynchronously. The append is
@@ -1274,20 +1282,32 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
    * rendered result payload is lower evidence than the tool value, so those versions say 'replay'. */
   const replayWorktreeObservations=async(view:SessionControlsView):Promise<void>=>{
     const key=view.instance.instrumentInstanceId
-    if(observationReplays.has(key)||!await allowsView(view,view.instance.ownerSessionId)||observationReplays.has(key))return
-    observationReplays.add(key)
-    const eligible=()=>allowsView(view,view.instance.ownerSessionId)
+    if(closing||observationReplays.has(key))return
+    const controller=new AbortController()
+    const permit={workspaceId:view.instance.controlWorkspaceId,controller}
+    observationReplays.set(key,permit)
+    const signal=AbortSignal.any([observationLifetime.signal,controller.signal])
+    const allowed=(sessionId:string)=>!signal.aborted&&allowsView(view,sessionId,signal)
+    const eligible=async()=>{
+      if(await allowed(view.instance.ownerSessionId))return true
+      // A stale flight cannot evict a fresh permit started after re-enable.
+      if(observationReplays.get(key)===permit)revokeObservationReplay(key)
+      return false
+    }
     try{
+      if(!await eligible())return
       for(const agent of ports.liveAgents()){
-        if(!await eligible()){observationReplays.delete(key);return}
+        if(!await eligible())return
         const creatorSessionId=String(agent.id)
         if(creatorSessionId===view.instance.ownerSessionId||agent.session.header.origin!=='subagent')continue
-        const canObserveCreator=()=>allowsView(view,creatorSessionId)
+        const canObserveCreator=()=>allowed(creatorSessionId)
         if(!await canObserveCreator())continue
-        const child=await controls.readSession(ports.operatorPrincipal,creatorSessionId).catch(()=>undefined)
-        if(child===undefined||child.instance.instrumentInstanceId!==key||!await canObserveCreator())continue
-        const facts=await ports.sessionFacts(creatorSessionId)
+        const child=await controls.readSession(ports.operatorPrincipal,creatorSessionId,signal).catch(()=>undefined)
+        if(child===undefined||child.instance.instrumentInstanceId!==key||!await canObserveCreator()||signal.aborted)continue
+        const facts=await ports.sessionFacts(creatorSessionId,signal)
+        if(!await eligible()||!await canObserveCreator())continue
         for(const input of scanObservedCreations(facts.events,creatorSessionId)){
+          if(signal.aborted)return
           // The snapshot never awaits replay. Queue admission here so a policy save cannot
           // slip between eligibility and starting the observation's durable append.
           const observation=await queue.run(async()=>{
@@ -1295,11 +1315,11 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
             const registry=await openObservations(view)
             if(await canObserveCreator())return registry.observe(view.instance,programAuthor,input,'replay')
           })
-          if(observation?.recorded){touchState(view.instance.instrumentInstanceId);void verifyWorktreeObservation(view,creatorSessionId,observation.row.observationId,observation.row.value.path)}
+          if(observation?.recorded){touchState(key);void verifyWorktreeObservation(view,creatorSessionId,observation.row.observationId,observation.row.value.path,signal)}
         }
       }
     }catch(error){
-      if(await eligible())markObservationFailure(view,error)
+      if(!signal.aborted&&await eligible()&&!signal.aborted)markObservationFailure(view,error)
     }
   }
   const directParentMessage=(exec:ToolExecution):boolean=>{
@@ -1472,10 +1492,13 @@ export async function createRuntime(ports:HostPorts,options:RuntimeOptions={}):P
         if(caller.kind==='agent'&&caller.sessionId!==null)await requireCollaboration(caller.sessionId,signal)
         transitioning=intent
         try{const saved=await controls.savePolicy(caller.principalId,intent,expectedRevision);if(savedPolicy.revision!==saved.revision)touchState();savedPolicy=saved
+          // Revocation does not require a live/cached owner or a workspace lookup. Only the
+          // negative result is used; actual reads still require verified workspace permission.
+          for(const [key,{workspaceId}]of observationReplays)if(!isCollaborating(resolvePolicy(saved,workspaceId,true)))revokeObservationReplay(key)
           for(const [sid,view]of cachedSessions){let verified=false;try{verified=await ports.authority.verifyWorkspace(view.instance.controlWorkspaceId)}catch{/* Preserve committed policy while reporting unverified workspace. */}
              const next={...view,policy:resolvePolicy(saved,view.instance.controlWorkspaceId,verified)};cachedSessions.set(sid,next);nativeWindows.set(sid,next.policy.extensionEnabled&&next.policy.features.windows.requested)
              if(ports.readSessionPolicy!==undefined&&!isCollaborating(next.policy)){
-               discardSessionPresentation(sid);observationReplays.delete(view.instance.instrumentInstanceId)
+               discardSessionPresentation(sid);revokeObservationReplay(view.instance.instrumentInstanceId)
              }
            }
            let captureFailed=false
