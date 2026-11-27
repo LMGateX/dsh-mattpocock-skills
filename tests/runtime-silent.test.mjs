@@ -146,3 +146,21 @@ test('detached worktree replay rechecks after reading native events and does not
   for (const [name, unit] of f.units) if (name.startsWith('worktree_observations_')) assert.equal(await unit.read(), undefined)
   assert.deepEqual(f.gitCalls, [])
 })
+
+test('a native runtime CAS already in flight settles before disable; later edges do not change it', async t => {
+  const f = await runtimeWithPolicy(t, policy())
+  const child = actualAgent('a-new', { parent: 'a', managed: true })
+  await f.created(child)
+  const started = deferred(), release = deferred()
+  const runtimeStorage = f.units.get('runtime_bindings'), cas = runtimeStorage.compareAndSwap.bind(runtimeStorage)
+  runtimeStorage.compareAndSwap = async (revision, next) => { started.resolve(); await release.promise; return cas(revision, next) }
+  const start = f.runtime.observe({ kind: 'subagent-start', local: true, sessionId: child.id, runId: 'a-run', provider: 'spawn', actualAgent: child })
+  await started.promise
+  const switching = f.save(onlyB())
+  release.resolve()
+  await Promise.all([start, switching])
+  const committed = await f.runtimeDoc()
+  assert.equal(committed.nativeExecutions.find(row => row.sessionId === child.id).runId, 'a-run')
+  await f.runtime.observe({ kind: 'subagent-end', local: true, sessionId: child.id, runId: 'a-run', provider: 'spawn', stopReason: 'error', actualAgent: child })
+  assert.deepEqual(await f.runtimeDoc(), committed)
+})
