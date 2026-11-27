@@ -40,7 +40,7 @@ test('settings turn off collaboration in existing owner and child tool sets with
 })
 
 // Capture the actual AgentLoop request at a local inert model adapter; no service, profile, or network.
-test('existing session drops owned replay on its next real model request without erasing native history', installedHost, async t => {
+for (const executor of ['native', 'ptc']) test(`${executor}: existing session drops owned replay on its next model request without erasing history`, installedHost, async t => {
   const [{ AgentRegistry }, { AgentLoop }, { SessionStore }] = await Promise.all([
     loadSDK('@deepseek-ai/dsh-agent'), loadSDK('@deepseek-ai/dsh-agent-loop'), loadSDK('@deepseek-ai/dsh-session'),
   ])
@@ -51,7 +51,9 @@ test('existing session drops owned replay on its next real model request without
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(sdk.SystemPrompt, {})
   await ctx.plugin(sdk.ToolRuntime, {})
-  await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-executor-native'))
+  if (executor === 'ptc') ctx.provide('ptcRuntime', { language: 'typescript', programFormat: 'function-body' })
+  await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-executor-' + executor))
+  ctx.tools.register(sdk.defineTool({ name: 'unrelated_host_tool', description: 'Other tool remains available.', parameters: {}, output: { schema: { type: 'string' }, render: (_, text) => [{ type: 'text', text }] }, execute() { throw new Error('not exercised') } }))
   ctx.provide('llm', { async prepareCall(config) { return { config, async *stream(request) {
     requests.push(request)
     yield { type: 'finish', reason: { kind: 'stop' } }
@@ -87,15 +89,21 @@ test('existing session drops owned replay on its next real model request without
   await runtime.savePolicy(operator, enabled, 0, signal())
   await follow('ordinary first input')
   assert.equal(requests.length, 1)
-  assert(requests[0].tools.some(tool => tool.name === 'mattpocock_controls'))
+  if (executor === 'native') assert(requests[0].tools.some(tool => tool.name === 'mattpocock_controls'))
+  else assert(requests[0].messages.some(message => message.role === 'system' && JSON.stringify(message.content).includes('mattpocock_controls:')))
   assert(requests[0].messages.some(message => message.source?.kind === 'mattpocock-controls'))
   agent.inject(host.makeSnapshotMessage('fixture-not-yet-admitted-plugin-snapshot'))
   await runtime.savePolicy(operator, { ...enabled, workspaceOverrides: { W: { workspace: { enabled: false } } } }, 1, signal())
   await follow('ordinary second input')
   assert.equal(requests.length, 2)
-  const request = requests[1], serialized = JSON.stringify(request.messages)
+  const request = requests[1], projected = sdk.projectToolUpdates(request.messages, request.tools, 'in-history', request.toolHistory)
+  const serialized = JSON.stringify(projected.messages)
   assert(!request.tools?.some(tool => tool.name.startsWith('mattpocock_')))
   assert(!request.toolHistory.tools.some(tool => tool.name.startsWith('mattpocock_')))
+  assert(!projected.tools?.some(tool => tool.name.startsWith('mattpocock_')))
+  assert(!serialized.includes('mattpocock_controls'))
+  if (executor === 'native') assert(projected.tools?.some(tool => tool.name === 'unrelated_host_tool'))
+  else assert(serialized.includes('unrelated_host_tool:'))
   assert(!request.messages.some(message => message.source?.kind === 'mattpocock-controls'))
   assert(!serialized.includes('fixture-not-yet-admitted-plugin-snapshot'))
   for (const expected of ['ordinary first input', 'ordinary second input', 'unrelated context stays']) assert(serialized.includes(expected), expected)
