@@ -23,6 +23,8 @@ Use the directory containing the **installed CLI package manifest**, not the exe
 
 [Compaction acceptance](../tests/silent-compaction-input.test.mjs) passes on alpha.2 with this bundle's narrow projection. It covers the mounted Host's verified-session/purpose check, and independently the real native `compactRegion`→`llm/stream`→adapter path with the same projector: attributed replay and tool changes are removed, unrelated inputs and old records survive, and downstream middleware, usage, cancellation and native recovery still work. The [unfiltered compaction baseline](../tests/silent-compaction-known-limitation.test.mjs) is deliberately **not** part of the gate. These passing compaction cases start with the projection already applicable; they do not test OFF saved in the middle of downstream compaction middleware or promise final compaction admission.
 
+The standalone [compaction handoff diagnostic](../tests/silent-compaction-final-handoff.test.mjs) stays outside the gate: alpha.2's real `LlmRuntime` hands the inert adapter the old tool declaration, history and snapshot when OFF is verified during a downstream pause, whereas a fresh OFF request strips them.
+
 ## Why the public hooks are insufficient
 
 Pinned DSH source on `dsh-v0.2.3-alpha.2` (paths and symbols also present in the installed packages):
