@@ -48,6 +48,10 @@ export const PACKAGE_FILES_ALLOWLIST = Object.freeze([
   'lib/types/controls/versioned-storage.d.ts',
   'lib/host.js',
   'lib/runtime.js',
+  'lib/silent-replay.js',
+  'lib/types/silent-replay.d.ts',
+  'lib/silent-ptc-sdk.js',
+  'lib/types/silent-ptc-sdk.d.ts',
   'lib/model-tools.js',
   'lib/model-tool-contract.js',
   'lib/types/model-tool-contract.d.ts',
@@ -143,6 +147,10 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'lib/types/controls/versioned-storage.d.ts',
   'lib/host.js',
   'lib/runtime.js',
+  'lib/silent-replay.js',
+  'lib/types/silent-replay.d.ts',
+  'lib/silent-ptc-sdk.js',
+  'lib/types/silent-ptc-sdk.d.ts',
   'lib/model-tools.js',
   'lib/model-tool-contract.js',
   'lib/types/model-tool-contract.d.ts',
@@ -197,7 +205,7 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'assets/notification-sounds/toast.mp3',
 ])
 
-const EXPECTED_VERSION = '0.24.0-alpha.1'
+const EXPECTED_VERSION = '0.24.0-alpha.2'
 // Only the exact target has passed the alpha release gate. Keep prerelease matching narrow.
 export const EXPECTED_ENGINES = Object.freeze({ node: '^24.22.3 || >=26.13.1', dsh: '0.2.3-alpha.2' })
 
@@ -257,7 +265,7 @@ const FORBIDDEN_PACKED_PATHS = Object.freeze([
   'dsh.plugin.json',
 ])
 
-const EXPECTED_FIXED_PACKED_FILES = 90
+const EXPECTED_FIXED_PACKED_FILES = 94
 const EXPECTED_VENDOR_PACKED_FILES = 85
 export const EXPECTED_PACKED_FILES = EXPECTED_FIXED_PACKED_FILES + EXPECTED_VENDOR_PACKED_FILES
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024

@@ -23,7 +23,7 @@ import type { DomainSpec, Domain } from '@deepseek-ai/dsh-storage-domain'
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import type { SubagentCatalogEntry, SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolExecution, ToolExecutionResult, ToolRunContext, ToolGuard } from '@deepseek-ai/dsh-tools'
+import type { ToolActivationContext, ToolExecution, ToolExecutionResult, ToolRunContext, ToolGuard } from '@deepseek-ai/dsh-tools'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry'
 import { z } from 'zod'
@@ -38,8 +38,8 @@ import { createDomainInstrumentStorage } from './controls/instrument-storage.js'
 import type { InstrumentStorage } from './controls/instrument-storage.js'
 import { parseInstrumentCommand, parseInstrumentDocument } from './controls/instrument-state.js'
 import type { InstrumentCommand } from './controls/instrument-state.js'
-import { parsePolicyIntent, parsePolicySnapshot } from './controls/policy.js'
-import type { PolicyIntent, PolicySnapshot } from './controls/policy.js'
+import { INITIAL_POLICY, parsePolicyIntent, parsePolicySnapshot, resolvePolicy } from './controls/policy.js'
+import type { EffectivePolicy, PolicyIntent, PolicySnapshot } from './controls/policy.js'
 import { INITIAL_SUPERVISION_CONFIG, parseSupervisionConfigDocument, parseSupervisionConfigIntent, parseSupervisionConfigSnapshot, resolveSupervisionSettings } from './controls/supervision-config.js'
 import type { SupervisionConfigIntent, SupervisionConfigSnapshot } from './controls/supervision-config.js'
 import { SupervisionLedger } from './controls/supervision-ledger.js'
@@ -1262,6 +1262,8 @@ export interface HostPorts {
   readonly windowStorage: WindowStorage
   readonly resourceStorage: ResourceStorage
   readonly authority: ControlsAuthority
+  /** Resolve the trusted root policy without opening or creating an instrument instance. */
+  readSessionPolicy?(sessionId: string, signal?: AbortSignal): Promise<EffectivePolicy | undefined>
   readonly operatorPrincipal: string
   readonly capabilities: HostCapabilities
   readonly resourceLifecycle: ResourceLifecycle
@@ -1308,7 +1310,9 @@ export interface HostOptions {
   readonly onPolicyChanged?: () => void
 }
 export interface HostMount {
-  /** Workspace-scoped Skill delivery gate; unavailable policy keeps skills on. */
+  /** Workspace Skill delivery follows the trusted session scope, not the current checkout. */
+  readonly skillsEnabledForScope: (scope: object | undefined, signal?: AbortSignal) => Promise<boolean>
+  /** Temporary legacy adapter until the Skill registry passes trusted session scope. */
   readonly skillsEnabledForCwd: (cwd: string | undefined) => Promise<boolean>
   readonly service: MattPocockControlsService; readonly ports: HostPorts; dispose(): Promise<void> }
 
@@ -1903,8 +1907,51 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       control.throwIfAborted()
       return activity
     }
+    const readSessionPolicy = async (sessionId: string, signal?: AbortSignal): Promise<EffectivePolicy | undefined> => {
+      const control = signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal])
+      try {
+        let cursor = sessionId
+        const seen = new Set<string>()
+        for (let depth = 0; depth < 32; depth += 1) {
+          control.throwIfAborted()
+          if (seen.has(cursor)) return undefined
+          seen.add(cursor)
+          const resolved = await identity.authority.resolveSession(cursor, control)
+          if (resolved === undefined) return undefined
+          if (resolved.kind === 'managed-child') { cursor = resolved.parentSessionId; continue }
+          if (!await identity.authority.verifyWorkspace(resolved.controlWorkspaceId, control)) return undefined
+          const saved = await controlsStorage.read()
+          control.throwIfAborted()
+          return resolvePolicy(saved === undefined ? INITIAL_POLICY : memoized(saved, parseControlsDocument).policy, resolved.controlWorkspaceId, true)
+        }
+      } catch { /* Optional collaboration/Skill delivery must fail closed without failing native work. */ }
+      return undefined
+    }
+    const isCollaborationEnabled = (policy: EffectivePolicy | undefined): boolean =>
+      policy !== undefined && policy.workspaceVerified && policy.extensionEnabled && policy.workspaceEnabled && policy.skillsEnabled
+    const liveScope = (scope: object | undefined): Agent | undefined => {
+      if (scope === undefined || closing || !('id' in scope) || typeof scope.id !== 'string') return undefined
+      const agent = ctx.agents.get(SessionId(scope.id))
+      return agent === scope ? agent : undefined
+    }
+    const collaborationForAgent = async (agent: Agent | undefined, signal?: AbortSignal): Promise<boolean> => {
+      if (liveScope(agent) === undefined || agent === undefined) return false
+      const policy = await readSessionPolicy(agent.id, signal)
+      return liveScope(agent) !== undefined && isCollaborationEnabled(policy)
+    }
+    // DSH shares one context object across a step's registrations. Use one coherent
+    // decision for the whole plugin tool surface; each execute rechecks independently.
+    const stepActivation = new WeakMap<ToolActivationContext, Promise<boolean>>()
+    const activation = { when(context: ToolActivationContext) {
+      let result = stepActivation.get(context)
+      if (result === undefined) {
+        result = collaborationForAgent(context.agent, context.signal)
+        stepActivation.set(context, result)
+      }
+      return result
+    } }
     const ports: HostPorts = {
-      controlsStorage, instrumentStorage, windowStorage, resourceStorage, ...identity,
+      controlsStorage, instrumentStorage, windowStorage, resourceStorage, ...identity, readSessionPolicy,
       capabilities: freeze({ ...HOST_CAPABILITIES,
         get nativeInitialChildCwd(): HostCapabilities['nativeInitialChildCwd'] { return hasNativeInitialChildCwd(ctx) ? 'supported' : 'unsupported' },
         get allNativeWakeAdmission(): HostCapabilities['allNativeWakeAdmission'] { return nativeSubagentLister(ctx) === undefined ? 'unsupported' : 'supported' } }),
@@ -1926,7 +1973,8 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         const notice: OwnerNotificationInput = freeze({ notificationId: id(raw.notificationId, 'notificationId'), ownerSessionId: id(raw.ownerSessionId, 'ownerSessionId'), instrumentInstanceId: id(raw.instrumentInstanceId, 'instrumentInstanceId'), businessRevision: revision(raw.businessRevision, 'businessRevision'), authorPrincipalId: id(raw.authorPrincipalId, 'authorPrincipalId') })
         const owner = ctx.agents.get(SessionId(notice.ownerSessionId))
         if (!owner) return { status: 'offline', messageId: null }
-        if (owner.session.header.id !== owner.id || owner.session.header.origin === 'subagent' || typeof owner.steer !== 'function') return { status: 'unavailable', messageId: null }
+        if (owner.session.header.id !== owner.id || owner.session.header.origin === 'subagent' || typeof owner.steer !== 'function'
+          || !await collaborationForAgent(owner, control)) return { status: 'unavailable', messageId: null }
         const summary = ('Collaboration instruments updated at revision ' + notice.businessRevision + '. Review the saved snapshot; no task outcome is inferred.').slice(0, 120)
         const message = createUserMessage({ content: [{ type: 'text', text: summary }], source: { kind: 'mattpocock-controls-notification', form: 'notice', summary, ...notice } })
         noticeAttempts.set(message.id, { input: notice, actualAgent: owner, message })
@@ -2062,7 +2110,12 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       return undefined
     }
     let syncAuditTool: (snapshot: SupervisionConfigSnapshot) => void = () => {}
-    const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, { signal: lifetime.signal, track, ...(options.onPolicyChanged === undefined ? {} : { onPolicyChanged: options.onPolicyChanged }), onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
+    let pointerAdmission = new WeakMap<Agent, boolean>()
+    const onPolicyChanged = () => {
+      pointerAdmission = new WeakMap()
+      options.onPolicyChanged?.()
+    }
+    const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, { signal: lifetime.signal, track, onPolicyChanged, onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
     disposers.push(ctx.typert.register(hostRemoteContribution()))
     // Optional enhancement failure never removes the established base namespace or tools.
     try {
@@ -2086,21 +2139,23 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
             exec.signal.throwIfAborted(); const caller = agentCaller(ctx, exec.agent), envelope = record(args, 'tool arguments', ['request']), raw = record(envelope.request, 'request')
             const controlled: ToolRunContext = { ...exec, signal: AbortSignal.any([exec.signal, lifetime.signal]), concludeTurn: exec.concludeTurn.bind(exec), deferContext: exec.deferContext.bind(exec) }
             return parseHostJson(JSON.parse(JSON.stringify(await track(async () => {
+              if (!await collaborationForAgent(controlled.agent, controlled.signal)) deny('collaboration is unavailable for this session')
               const who = await model.identity(caller, controlled.signal)
+              if (!await collaborationForAgent(controlled.agent, controlled.signal)) deny('collaboration is unavailable for this session')
               const result = await action(raw, caller, controlled)
               try { return model.finish(await model.project(name, who, raw, result, controlled.signal), name, raw) }
               catch (error) { controlled.signal.throwIfAborted(); return model.finish(model.projectionFailure(name, who, raw, result, error), name, raw) }
             }))))
           } catch (error) { exec.signal.throwIfAborted(); throw boundedError(error) }
         },
-      })))
+      }), activation))
     }
     tool('mattpocock_controls', 'Read saved workspace controls or save an explicitly delegated policy change. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       if (raw.action === 'read') { record(raw, 'policy read', ['action', 'query']); await ports.authority.authorizePolicy(caller.principalId, 'read'); return active.readPolicy(caller, exec.signal) }
       record(raw, 'policy save', ['action', 'intent', 'expectedRevision']); if (raw.action !== 'save') throw new ControlsError('invalid-input', 'read/save action required')
       await ports.authority.authorizePolicy(caller.principalId, 'write')
       const saved = await active.savePolicy(caller, parsePolicyIntent(raw.intent), revision(raw.expectedRevision, 'expectedRevision'), exec.signal)
-      options.onPolicyChanged?.(); return saved
+      onPolicyChanged(); return saved
     })
     tool('mattpocock_record', "Read the session instrument; write authored task references or genuine user decisions. Business facts stay in the agreed tracker/document, not duplicate tickets. local-current certifies only local state; references are unverified author reports, with no source fetch. Require capabilities.taskReferences=true (absent means unsupported); prefer references for T/assignment/decision links, never fake tickets. Legacy tickets remain readable. New decisions: genuine unresolved user questions only, pending=true and addressee.kind=user; implementation/research/completion belong in existing spec/ADR/task records, not self-question/answer entries. Record a real reply and source on the same decisionId; authenticated author stays agent. Partial/skipped/cancelled/silent replies are not approval; pending=false requires explicit real resolution. Preserve existing awaitingImplementation=true on answers; never default new await=true. Await counts are raw compatibility markers, not unfinished-task totals: review task evidence, append notes to context, preserve answer/task/source pointers; handoff is not completion, never auto-clear flags. Legacy agent/unspecified/missing-addressee updates remain legal; OFF allows old-record closeout, no new records. Recommendation support requires capabilities.decisionRecommendationAdoption=true and current active owner authorization. First put a genuine pending user question with recommendation exactly equal to a unique options.key. Candidate is not adopted: explicitly adopt on the SAME decisionId using exact returned candidate fields and current businessRevision (not decisionRevision) as expectedRevision. Only successful adopted receipt records selection; do not reconfirm the same authorized path. Path selection grants no operation permissions or external inputs: a maintainer-provided read-only runtime still requires qualified input, not installation/download/SDK changes. Higher-priority personal-confirmation requirements prevail. If support is missing, unknown or not eligible, use the ordinary user-question flow. On conflict, expiry, withdrawal or an earlier human answer, reread current state; never blindly replay authorization. Prior authorization is not a fresh user reply or completion proof; preserve result, references, await flags and task constraints. Never self-enable or renew the owner policy.", async (raw, caller, exec) => {
       await ports.authorizeCaller(caller, caller.sessionId!)
@@ -2174,8 +2229,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (assignmentCache.has(session) || assignmentAttempts.has(session)) return
       assignmentAttempts.add(session)
       void track(async () => {
+        if (!await collaborationForAgent(agent, signal)) return
         const view = await active.readSession(agentCaller(ctx, agent), session, signal) as RuntimeSnapshot
-        rememberAssignment(owner, session, view.assignment)
+        if (await collaborationForAgent(agent, signal)) rememberAssignment(owner, session, view.assignment)
       }).catch(error => { assignmentAttempts.delete(session); ctx.logger('mattpocock-controls').warn('supervision assignment read skipped', error) })
     }
     const openSupervisionState = (owner: string): Promise<VersionedStorage<SupervisionDocument>> => {
@@ -2227,9 +2283,10 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
               if (raw.action !== 'read') throw new ControlsError('invalid-input', 'audit action required: {action:"read"}')
               const controlled: ToolRunContext = { ...exec, signal: AbortSignal.any([exec.signal, lifetime.signal]), concludeTurn: exec.concludeTurn.bind(exec), deferContext: exec.deferContext.bind(exec) }
               await ports.authorizeCaller(caller, caller.sessionId!)
+              if (!await collaborationForAgent(controlled.agent, controlled.signal)) deny('collaboration is unavailable for this session')
               return parseHostJson(JSON.parse(JSON.stringify(await track(async () => model.finish(await model.audit(caller, raw.query, await audit(caller, controlled), controlled.signal), 'mattpocock_audit', raw)))))
             } catch (error) { exec.signal.throwIfAborted(); throw boundedError(error) }
-          } }))
+          } }), activation)
       } catch (error) {
         auditToolDispose = undefined
         ctx.logger('mattpocock-controls').warn('audit tool registration failed; supervision observations remain off', error)
@@ -2272,7 +2329,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       } catch { return null }
     }
     const maybeSupervise = async (ownerSessionId: string, agent: Agent, signal: AbortSignal): Promise<void> => {
-      if (!ledgerActive) return
+      if (!ledgerActive || !await collaborationForAgent(agent, signal)) return
       const now = Date.now()
       if ((nextSupervisionCheck.get(ownerSessionId) ?? 0) > now) return
       const identity = await ports.authority.resolveSession(ownerSessionId)
@@ -2283,6 +2340,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const store = await openSupervisionState(ownerSessionId)
       let raw = await store.read()
       if (raw === undefined) {
+        if (!await collaborationForAgent(agent, signal)) return
         try { await store.compareAndSwap(0, initialSupervisionDocument(ownerSessionId, identity.controlWorkspaceId, now)) } catch { /* another observer may have initialized it */ }
         raw = await store.read()
       }
@@ -2299,14 +2357,14 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const trigger = decideSupervisionTrigger(document, settings, summary, now, ticketSuspicionMode)
       if (trigger === null) return
       const reviewed = settings.dryRun ? { review: deterministicReview(trigger, summary), tokens: 0 } : await llmReview(ownerSessionId, settings, trigger, summary, ticketContext, signal)
-      if (reviewed === null) return
+      if (reviewed === null || !await collaborationForAgent(agent, signal)) return
       const review = reviewed.review
       const gate = (summary.noProductHours ?? 0) >= settings.delivery.alertMinNoProductHours && summary.supportFiles.length >= settings.delivery.alertMinSupportFiles
       const ownerAgent = ctx.agents.get(SessionId(ownerSessionId))
       const delivery = settings.dryRun ? 'none' : review.severity === 'alert' && gate && ownerAgent ? 'card+agent' : review.severity === 'info' ? 'none' : 'card'
       const episode = makeSupervisionEpisode({ document, trigger, review, summary, now, delivery, ticketId: ticketContext.id, research: ticketContext.research })
       if (!await store.compareAndSwap(document.revision, withSupervisionEpisode(document, episode, settings, now, reviewed.tokens))) return
-      if (delivery === 'card+agent' && ownerAgent) {
+      if (delivery === 'card+agent' && ownerAgent && await collaborationForAgent(ownerAgent, signal)) {
         try { ownerAgent.inject(makeSupervisionNotice(episode)) } catch (error) { ctx.logger('mattpocock-controls').warn('supervision notice injection failed', error) }
       }
     }
@@ -2335,13 +2393,17 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     }))
     // The host may assemble one model request several times (and a PTC step may complete several
     // nested dispatches); all of them share the same turn:step identity, which is the delivery step.
-    let admittedStep = '0:0'
+    const admittedSteps = new WeakMap<Agent, string>()
     disposers.push(ctx.on('agent/pre-step', async ({ agent, signal, turn, step }, next): Promise<PreStepDecision> => {
       const decision = await next()
       if (decision.kind === 'reject') return decision
-      admittedStep = turn + ':' + step
+      const admittedStep = turn + ':' + step
+      admittedSteps.set(agent, admittedStep)
+      if (!await collaborationForAgent(agent, signal)) { pointerAdmission.delete(agent); return decision }
       const messages = await track(() => active.preStep(agentCaller(ctx, agent), signal, decision.messages, admittedStep)); signal.throwIfAborted()
-      return messages.length === 0 ? decision : { ...decision, messages: [...decision.messages, ...messages] }
+      const enabled = await collaborationForAgent(agent, signal)
+      pointerAdmission.set(agent, enabled)
+      return messages.length === 0 || !enabled ? decision : { ...decision, messages: [...decision.messages, ...messages] }
     }))
     if (active.postExecute) disposers.push(ctx.on('tools/post-execute', async (exec, result, next) => {
       const decision = await next()
@@ -2351,8 +2413,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       // call. Aborts (including the post-program drain after a PTC run aborts) pass the
       // decision through unchanged.
       try {
-        const contexts = await track(() => active.postExecute!(agentCaller(ctx, exec.agent), exec, result, admittedStep))
-        return contexts.length === 0 ? decision : { ...decision, additionalContexts: [...decision.additionalContexts ?? [], ...contexts] }
+        if (!await collaborationForAgent(exec.agent, exec.signal)) return decision
+        const contexts = await track(() => active.postExecute!(agentCaller(ctx, exec.agent), exec, result, admittedSteps.get(exec.agent!)))
+        return contexts.length === 0 || !await collaborationForAgent(exec.agent, exec.signal) ? decision : { ...decision, additionalContexts: [...decision.additionalContexts ?? [], ...contexts] }
       } catch (error) {
         // Cancellation keeps the exact caller reason: swallowing an abort would misreport the
         // caller's own cancellation. Any other observer failure must not replace the native
@@ -2366,7 +2429,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const decision = await next()
       if (!ledgerActive || !exec.agent) return decision
       try {
-        const agent = exec.agent, owner = await ownerOf(agent.id)
+        const agent = exec.agent
+        if (!await collaborationForAgent(agent, exec.signal)) return decision
+        const owner = await ownerOf(agent.id)
         if (owner !== undefined) {
           const assigned = exec.name === 'mattpocock_assign' ? assignmentFromArguments(exec.arguments) : undefined
           if (assigned !== undefined) { assignmentCache.set(assigned.sessionId, assigned.refs); supervisionLedger.tagSession(owner, assigned.sessionId, assigned.refs) }
@@ -2382,7 +2447,11 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       return decision
     }))
     if (active.context) disposers.push(ctx.systemPrompt.context({ name: 'mattpocock-controls', order: 130,
-      text: assembly => assembly.agent ? active.context!(agentCaller(ctx, assembly.agent)) : '' }))
+      // The current host refreshes dynamic context without a tool set, after the pre-step
+      // listener has independently checked policy. Diagnostics never inherit the step proof.
+      text: ({ agent, modelSelection, toolSet }) => agent !== undefined && modelSelection !== undefined
+        && (toolSet !== undefined ? ctx.tools.get('mattpocock_controls', agent, toolSet) !== undefined : pointerAdmission.get(agent) === true)
+        ? active.context!(agentCaller(ctx, agent)) : '' }))
     const observe = (event: HostEvent) => { void track(() => active.observe(Object.freeze(event))).catch(error => ctx.logger('mattpocock-controls').warn(error)) }
     // One wake event per new terminal-outcome item; the item stays in the counter until the
     // child runs again, its start edge arrives, or a late end arrives.
@@ -2410,7 +2479,12 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     }))
     ctx.effect(() => dispose)
     resolveNotificationObserverReady()
-    return { service, ports, dispose, skillsEnabledForCwd: async (cwd?: string) => {
+    return { service, ports, dispose, skillsEnabledForScope: async (scope, signal) => {
+      const agent = liveScope(scope)
+      if (agent === undefined) return false
+      const policy = await readSessionPolicy(agent.id, signal)
+      return liveScope(scope) === agent && policy?.skillsEnabled === true
+    }, skillsEnabledForCwd: async (cwd?: string) => {
     try {
       if (typeof cwd !== 'string' || cwd === '') return true
       const workspace = await ctx.workspaceRegistry.resolveByPath(cwd)

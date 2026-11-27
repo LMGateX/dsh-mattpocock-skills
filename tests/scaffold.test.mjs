@@ -21,7 +21,7 @@ async function pathExists(path) {
 
 test('declares one private installable DSH bundle', async () => {
   assert.equal(packageJson.name, '@lmgatex/dsh-mattpocock-skills')
-  assert.equal(packageJson.version, '0.24.0-alpha.1')
+  assert.equal(packageJson.version, '0.24.0-alpha.2')
   assert.equal(packageJson.private, true)
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.deepEqual(packageJson.dsh?.client, EXPECTED_CLIENT)
@@ -95,13 +95,13 @@ test('prebuilt allowlist covers actual root and controls TypeScript modules exac
     'lib/types/' + path.replace(/\.ts$/, '.d.ts'),
   ]).sort()
   const actual = PACKAGE_FILES_ALLOWLIST.filter(path => path.startsWith('lib/')).sort()
-  assert.equal(actual.length, 70)
+  assert.equal(actual.length, 74)
   assert.deepEqual(actual, expected)
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('lib/')).sort(), expected)
   const inventory = JSON.parse(await readFile(join(root, 'vendor-files.json'), 'utf8'))
   assert.deepEqual(FIXED_PACKED_FILES.filter(path => path.startsWith('locale/')).sort(), ['locale/en.json', 'locale/zh.json'])
-  assert.equal(FIXED_PACKED_FILES.length, 90)
+  assert.equal(FIXED_PACKED_FILES.length, 94)
   assert.equal(inventory.entries.length, 85)
   assert.equal(EXPECTED_PACKED_FILES, FIXED_PACKED_FILES.length + inventory.entries.length)
-  assert.equal(EXPECTED_PACKED_FILES, 175)
+  assert.equal(EXPECTED_PACKED_FILES, 179)
 })
