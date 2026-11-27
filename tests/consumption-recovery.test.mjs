@@ -30,7 +30,7 @@ for (const [storage, category] of [['instrumentStorage', 'records'], ['windowSto
 // that a live model adopts or that the production GUI/SDK has changed.
 test('assigned consumption recovers a real candidate ahead of old awaits through its authorized current locator', async t => {
   const f = await mountedFixture(t, { futureNativeActivityKnown: true })
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const initial = await f.runtime.readOwnerDecisionPolicy(operator, 'root', signal())
   await f.runtime.saveOwnerDecisionPolicy(operator, 'root', { operationId: 'enable-recovery', expectedRevision: 0,
     expectedScope: initial.instance, action: 'enable', durationMs: null }, signal())

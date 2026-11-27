@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
-import { mountedFixture, operator, policy, signal } from './fixtures/runtime-host.mjs'
+import { mountedFixture, policy } from './fixtures/runtime-host.mjs'
 
 // Cross-lane regression: real registry writes, V5 persistence, current target and exact next requests.
 // This does not assert production-session repair or authenticate result.source as a user event.
 test('mounted structured writes retain scoped results through bounded current and UTF-8 body continuations', async t => {
   const f = await mountedFixture(t)
-  await f.runtime.savePolicy(operator, policy(), 0, signal())
+  await f.saveEnabledFixturePolicy(policy())
   const execute = async (tool, request) => {
     const output = await f.execute(tool, { request })
     assert.notEqual(output.isError, true, output.error?.message)
