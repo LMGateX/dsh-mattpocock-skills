@@ -2,6 +2,13 @@
 
 本页记录合成数据、隔离 SDK/存储和公开接口上的机械验证，不公开原始用户/会话或本机环境记录。源码修复不等于部署、发布或绝对无缺陷保证。
 
+## 0.24.0-alpha.3：DSH 0.2.3-alpha.3 兼容预发布（2026-11-28）
+
+- [上游固定标签](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.3)源码 `841f76d3c51966375ebed9b25512ebce4ac02079`；使用实际发布的精确 SDK、Node 24.22.3、pnpm 11.8.0。Host 原生／PTC 根注册与按 Agent 准入、Web React 19 与动态模块的验证边界见[兼容性说明](<HOST_COMPATIBILITY.md>)。
+- 冻结源 `19fead043445f9b8d525e04c0b333231adf4abf8`：完整源码 **1446/1446**、静默准入 **11/11**、同包 Client／PluginManager **345/345**，最终均无失败、取消或跳过；Host／Client 严格类型和四个归档类型入口通过。首次 20 秒调度预算使合成归档夹具超时；完整矩阵以 90 秒预算重跑，未放宽断言。
+- 唯一归档 **606218 B**、181 个常规文件、76 个 JS／声明产物，SHA-256 `e1982a94367e538fb9732bf0e7d69e0523e5afcbb33969fe7776a41baa4c673b`；85 个 vendor 文件保持原字节。官方隔离 Headless 验证 checkout 与同包的 stable／beta 各 27 项，报告逐字节一致；下载后重跑通过，不调用真实模型、不启动 Web。
+- `main` 和新 annotated tag 无强制原子推送；[GitHub 预发布](https://github.com/LMGateX/dsh-mattpocock-skills/releases/tag/v0.24.0-alpha.3) 的五项资产与下载件长度／SHA-256／字节一致，稳定 latest 仍为 `v0.23.0`。本记录在冻结标签之后追加，不改标签或归档。依所有者要求未为本机安装或激活，不改现有 Web Profile／DSH 或其他 bundle；未做生产 GUI 验收。
+
 ## 工作区三态隔离候选：历史验证与现行验收边界（2026-11-27）
 
 - 在原隔离工作树上完成三态策略、设置页、可信会话技能门控、模型工具准入与已识别历史回放。使用 DSH 0.2.3-alpha.2、Node 24.22.3、pnpm 11.8.0，Host／Client 严格类型与闭合构建通过；候选提交 `bb5c9a529ed316b8b82948ba16de7212d1ef7cf0` 的定向合集 **430/430**，无失败、取消或跳过，不是完整发版测试。随后在相同宿主执行完整源码套件（每测试 20 秒预算）仍非绿色：审计、原生计数、管理器夹具与摘要等存在失败或超时；没有把这些结果归为已验收，也没有数据迁移。
