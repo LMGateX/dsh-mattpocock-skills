@@ -10,13 +10,13 @@ const options = { skip: !root && 'set DSH_CONTROLS_HOST_ROOT for the exact-host 
 // This records a host limitation, not silent-mode acceptance. The actual native
 // compactor runs on a disposable, in-memory Session. A fake LLM captures the
 // request and stops at the LLM boundary; no Profile, external service or network is used.
-test('DSH alpha.2 diagnostic: observe native compactRegion declarations after shadowing the owned body', options, async t => {
+test('DSH alpha.3 diagnostic: observe native compactRegion declarations after shadowing the owned body', options, async t => {
   assert(isAbsolute(root))
   const require = createRequire(join(root, 'package.json'))
   const load = name => import(pathToFileURL(require.resolve(name)).href)
-  assert.equal(require('./package.json').version, '0.2.3-alpha.2')
+  assert.equal(require('./package.json').version, '0.2.3-alpha.3')
   for (const name of ['@deepseek-ai/dsh-compaction-basic', '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-session-projection', '@deepseek-ai/dsh-llm']) {
-    assert.equal(require(name + '/package.json').version, '0.2.3-alpha.2')
+    assert.equal(require(name + '/package.json').version, '0.2.3-alpha.3')
   }
   const source = new URL('../src/', import.meta.url).href
   const hook = registerHooks({ resolve(specifier, context, next) {

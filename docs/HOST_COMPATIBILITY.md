@@ -1,6 +1,15 @@
 # DSH 宿主版本兼容性核对
 
-## 0.24.0-alpha.1：精确适配 DSH 0.2.3-alpha.2
+## 0.24.0-alpha.3：精确适配 DSH 0.2.3-alpha.3
+
+[上游发布](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.3)，固定源码 `841f76d3c51966375ebed9b25512ebce4ac02079`。要求精确 `engines.dsh: 0.2.3-alpha.3`，Node 门槛仍是 `^24.22.3 || >=26.13.1`；实测以 Node 24.22.3 为准，不放宽到其他 DSH 预发行。
+
+- [工具根注册表](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.3-alpha.3/docs/upgrade-guide/v0.2.3-alpha.2/tool-registry-roots/guide.zh.md)：根工具列表、PTC bindings 与 Agent 专属工具注册分开。工作区策略按可信 Agent 生效；保存 OFF 后撤回后续步骤的本包工具，已有步骤不被取消。撤回的旧绑定可由宿主报 `UNKNOWN_TOOL`，若仍抵达插件也要重新核验当前策略才可产生效果。
+- [React 19](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.3-alpha.3/docs/upgrade-guide/v0.2.3-alpha.2/react-19-client-runtime/guide.zh.md)与[动态 Client 模块](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.3-alpha.3/docs/upgrade-guide/v0.2.3-alpha.2/client-packages-dynamic-plugins/guide.zh.md)：依赖宿主共享 React 19.3，不捆绑 React。浏览器的既有根包别名仍有效；Node 夹具改读 `/client`，并按原始注册表加载随入口内联的同步 chunks。此验证使用隔离 DOM，不是生产浏览器验收。
+- 固定组合复核 [bundle 行包选择](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.3-alpha.3/docs/upgrade-guide/v0.2.3-alpha.2/bundle-row-package-selection/guide.zh.md)与 [headless preset](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.3-alpha.3/docs/upgrade-guide/v0.2.3-alpha.2/headless-session-preset/guide.zh.md)：本包保留宿主 SDK peer，隔离验证使用官方模板，不自行替换组合。
+- [SQLite 行迁移](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.3-alpha.3/docs/upgrade-guide/v0.2.3-alpha.2/sqlite-event-rows/guide.zh.md)不是本包迁移：不打开既有生产存储。没有使用被更名的文档工具、Forge API 或平台 CUA，不为这些升级项改代码。历史强绑定限制与工作树观测规则不变。
+
+## 历史 0.24.0-alpha.1：精确适配 DSH 0.2.3-alpha.2
 
 [上游发布](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.2)对应源码 `4b399c39a6d1479cd84ca591b4d7c88e24d38a96`。插件要求精确 `engines.dsh: 0.2.3-alpha.2`，Node `^24.22.3 || >=26.13.1`。验收仅针对 Node 24.22.3，不声称测试 Node 26 或其他宿主。
 

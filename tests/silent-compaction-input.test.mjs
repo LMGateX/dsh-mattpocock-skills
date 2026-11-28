@@ -11,9 +11,9 @@ if (root) {
   assert(isAbsolute(root))
   const require = createRequire(join(root, 'package.json'))
   load = name => import(pathToFileURL(require.resolve(name)).href)
-  assert.equal(require('./package.json').version, '0.2.3-alpha.2')
-  for (const name of ['dsh-compaction-basic', 'dsh-session', 'dsh-session-projection', 'dsh-llm', 'dsh-tool-executor-ptc']) {
-    assert.equal(require(`@deepseek-ai/${name}/package.json`).version, '0.2.3-alpha.2')
+  assert.equal(require('./package.json').version, '0.2.3-alpha.3')
+  for (const name of ['dsh-compaction-basic', 'dsh-session', 'dsh-session-projection', 'dsh-llm', 'dsh-tool-registry-ptc']) {
+    assert.equal(require(`@deepseek-ai/${name}/package.json`).version, '0.2.3-alpha.3')
   }
   const source = new URL('../src/', import.meta.url).href
   const hook = registerHooks({ resolve(specifier, context, next) {
@@ -155,7 +155,7 @@ test('native compaction filters declarations and replayed updates before downstr
 
 test('compaction removes only attributed collaboration content and keeps unrelated prompt sections, chat and source identities', options, async t => {
   const { session, sdk, header, user, compact, downstream, adapter } = await startNativeCompactor(t)
-  const { renderToolsSdk } = await load('@deepseek-ai/dsh-tool-executor-ptc')
+  const { renderToolsSdk } = await load('@deepseek-ai/dsh-tool-registry-ptc')
   const nativeTool = { ...schema('read'), output: { type: 'string' } }
   const ownedTool = { ...schema('mattpocock_record'), output: { type: 'string' } }
   const oldSdk = renderToolsSdk([nativeTool, ownedTool], 'function-body')

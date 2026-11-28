@@ -22,7 +22,8 @@ test('unknown S storage cannot make serial observation reject an ordinary native
   new sdk.SessionStore(ctx)
   new sdk.SessionProjectionRegistry(ctx)
   new sdk.SystemPrompt(ctx, {})
-  new sdk.ToolRuntime(ctx, {})
+  new sdk.ToolsService(ctx)
+  await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-registry-native'))
   ctx.provide('llm', {
     prepareCall() { modelCalls++; throw new Error('model prohibited') },
     stream() { modelCalls++; throw new Error('model prohibited') },

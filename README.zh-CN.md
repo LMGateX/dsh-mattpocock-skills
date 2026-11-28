@@ -4,7 +4,9 @@
 
 **当前状态：核心插件与历史 Phase 4 制品验证已完成；Phase 5 行为评估已关闭，但未通过。** 三次试验为 2 次通过、1 次硬失败，总体失败。当前协作实现与复审修复已通过机械源码／构建／测试验收；结果及单独保存的 clean-source 制品门禁见[公开验证摘要](<docs/VERIFICATION.md>)。源码公开不授权安装、启用、部署或 npm 发布。
 
-**0.23.0 — 模型上下文精简：** 已认可范围减少工具说明重复与自动注入的明细转述，采用紧凑当前摘要＋显式受权详情／审计恢复；保留精确类型、既有义务、未知覆盖、权限和baseline／持久消费机制，不改工具envelope与V5存储契约。见[精简契约](<docs/CONTEXT_COMPACTION_CONTRACT.md>)和[实测门禁](<docs/VERIFICATION.md>)。授权隔离开发、push和新Release，**不为现有本机DSH/Profile安装、激活或重启服务**。
+**0.24.0-alpha.3 — DSH 预发行适配：** 要求精确 **DSH 0.2.3-alpha.3**、Node.js **^24.22.3 或 >=26.13.1**。沿用工作区三态及其静默边界，适配宿主工具根注册表与 Web React 19。原生子代理继续使用宿主目录机制；显式 `mattpocock_delegate.worktree` 强绑定仍不支持。此预发行不替代稳定版，详见[宿主兼容性说明](<docs/HOST_COMPATIBILITY.md>)。
+
+**历史 0.23.0 — 模型上下文精简：** 已认可范围减少工具说明重复与自动注入的明细转述，采用紧凑当前摘要＋显式受权详情／审计恢复；保留精确类型、既有义务、未知覆盖、权限和baseline／持久消费机制，不改工具envelope与V5存储契约。见[精简契约](<docs/CONTEXT_COMPACTION_CONTRACT.md>)和[实测门禁](<docs/VERIFICATION.md>)。授权隔离开发、push和新Release，**不为现有本机DSH/Profile安装、激活或重启服务**。
 
 **历史 0.22.0 — 模型接口类型与续读：** 旧文本结果继续可用，另支持有界结构化result（answer／选项报告／来源／适用和排除条件）；首次对象写入原子升级V5，旧版不能安全降读，先看[回退边界](<MIGRATION.md>)。模型小字段保持精确JSON类型，大字段使用独立previews；提供结构化当前target与可执行next。audit未知覆盖不当0，assigned续读不绕历史ACL。集中工具指导明确类型、清除／替换，不放宽校验、不自动采用或清账。详见[本批契约](<docs/MODEL_INTERFACE_CONTRACT.md>)和[实测门禁](<docs/VERIFICATION.md>)。本批授权隔离开发、push和新Release，**不为现有本机DSH/Profile安装、激活或重启服务**。
 

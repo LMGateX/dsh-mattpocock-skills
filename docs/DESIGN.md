@@ -12,6 +12,12 @@
 
 This document is the authoritative implementation contract. A later implementation choice may refine mechanics, but it must not contradict a locked decision below. Changing a locked decision requires explicit owner approval and an update to this document in the same commit.
 
+## 0.24.0-alpha.3：DSH 0.2.3-alpha.3 适配（2026-11-28）
+
+按所有者请求拉取[精确上游标签](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.3-alpha.3)，在干净的独立工作树适配后推送、发布。限定为宿主公开注册机制及客户端 SDK 接线更新；保留[工作区三态与新步骤静默](<WORKSPACE_SILENT_MODE.md>)，包括旧调用即时效果复核。现有授权、记录、vendor、channel 与 provider 优先级不变。精确宿主版本、验证门槛及不受影响的升级项见[兼容性说明](<HOST_COMPATIBILITY.md>)。
+
+按所有者后续要求，本轮不为本机安装、不处理其他 bundle、不修改正在运行的旧宿主／Profile、不迁移生产数据、不重启现有 Web、不使用版本豁免、不 npm publish。
+
 ## 工作区三态与模型静默（2026-11-27，所有者认可）
 
 [工作区三态契约](<WORKSPACE_SILENT_MODE.md>)固定 Skills 为协作前提。所有者选择按现有宿主边界收口：保存关闭后，新准入的 DSH 步骤不携带本包协作工具、状态、通知、归属本包的回放或 OFF 说明；插件在实际效果边界重查最新策略，旧调用也不能绕过。已组装或已准入的步骤（含同一步内重试）按宿主原流程完成，不撤回、不取消。

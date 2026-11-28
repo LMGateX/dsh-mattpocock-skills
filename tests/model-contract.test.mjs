@@ -24,9 +24,8 @@ async function readyMounted(t, options) {
 const text = result => JSON.stringify([result.error?.message ?? null, result.content ?? null])
 
 async function modelSchemas(f) {
-  const toolSet = await f.ctx.tools.resolve({ agent: f.root, signal: signal(), modelSelection: { provider: 'fixture', model: 'fixture' } })
-  try { return f.ctx.tools.schemas(f.root, toolSet) }
-  finally { toolSet.dispose() }
+  const toolStep = sdk.ToolStep.capture(f.ctx.tools, f.root)
+  return (await f.ctx.systemPrompt.assemble({ scope: f.root, toolStep })).tools
 }
 const collaborationNames = schemas => schemas.map(row => row.name).filter(name => name.startsWith('mattpocock_')).sort()
 

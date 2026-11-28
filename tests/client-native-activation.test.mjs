@@ -7,7 +7,7 @@ import vm from 'node:vm'
 import React from 'react'
 import { Window } from 'happy-dom'
 import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
-import { clientSdk, clientRegistration, readShellModules, staticModules } from './fixtures/client-sdk.mjs'
+import { clientSdk, clientRegistration, loadClientModule, readShellModules, staticModules } from './fixtures/client-sdk.mjs'
 import { buildClient } from '../scripts/build-client.mjs'
 
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
@@ -58,8 +58,8 @@ async function assembly(t) {
     react: React, 'react/jsx-runtime': local('react/jsx-runtime'), '@deepseek-ai/cordis': cordis,
     'react-dom': local('react-dom'), 'react-dom/client': local('react-dom/client'),
   })
-  const rendererPath = hostRequire.resolve('@deepseek-ai/dsh-client-ui-renderer/client')
-  const renderer = clientRegistration(await readFile(rendererPath, 'utf8'), rendererPath).factory(modules.get)
+  await loadClientModule(hostRequire, modules, '@deepseek-ai/dsh-client-ui-slots')
+  const renderer = await loadClientModule(hostRequire, modules, '@deepseek-ai/dsh-client-ui-renderer')
   new renderer.SlotRegistry(ctx)
   const kinds = {
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' }, 'plugins.row.config': { kind: 'keyed', scope: 'root' },
@@ -137,7 +137,7 @@ async function browserBoot(f) {
     batches: [{ phase: 'application', url: '/synthetic-client.js', rev: 'synthetic-client', entries: [id] }] }
   const modules = moduleExports.createClientModuleSystem(target, { id: bootstrap.id, exports: moduleExports }, {
     boot: graph, staticModules: Array.isArray(f.baseline)
-      ? f.baseline.map(row => row.id === 'react' ? { id: row.id, factory: () => React } : row.id === PRIMITIVES_ID ? { id: row.id, factory: () => f.primitives } : row)
+      ? [...f.baseline.filter(row => !['react', PRIMITIVES_ID].includes(row.id)), { id: 'react', factory: () => React }, { id: PRIMITIVES_ID, factory: () => f.primitives }]
       : { react: React, [PRIMITIVES_ID]: f.primitives }, loadBundle: async url => {
       assert.equal(url, '/synthetic-client.js')
       vm.runInThisContext('(function(window){' + f.source + '\n})')({ __ModuleLoader__: target })

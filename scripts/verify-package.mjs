@@ -209,30 +209,31 @@ export const FIXED_PACKED_FILES = Object.freeze([
   'assets/notification-sounds/toast.mp3',
 ])
 
-const EXPECTED_VERSION = '0.24.0-alpha.2'
+const EXPECTED_VERSION = '0.24.0-alpha.3'
 // Only the exact target has passed the alpha release gate. Keep prerelease matching narrow.
-export const EXPECTED_ENGINES = Object.freeze({ node: '^24.22.3 || >=26.13.1', dsh: '0.2.3-alpha.2' })
+export const EXPECTED_ENGINES = Object.freeze({ node: '^24.22.3 || >=26.13.1', dsh: '0.2.3-alpha.3' })
 
 export const EXPECTED_PEERS = Object.freeze({
-  '@deepseek-ai/cordis': '4.2.0-alpha.1',
-  '@deepseek-ai/dsh-skill': '0.2.3-alpha.2',
-  '@deepseek-ai/schemastery': '3.20.0-alpha.1',
-  '@deepseek-ai/dsh-session': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-workspace': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-storage-domain': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-subagent': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-tools': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-llm': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-typert-protocol': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-sandbox': '0.2.3-alpha.2',
-  '@deepseek-ai/cordis-plugin-loader': '1.2.0-alpha.1',
-  '@deepseek-ai/dsh-agent': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-attachment': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-brand': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-chunked-list': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-util-time': '0.2.3-alpha.2',
-  '@deepseek-ai/dsh-util-values': '0.2.3-alpha.2',
-  'react': '^18.2.0',
+  '@deepseek-ai/cordis': '4.2.0-alpha.2',
+  '@deepseek-ai/dsh-skill': '0.2.3-alpha.3',
+  '@deepseek-ai/schemastery': '3.20.0-alpha.2',
+  '@deepseek-ai/dsh-session': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-workspace': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-storage-domain': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-subagent': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-tools': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-llm': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-typert-protocol': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-sandbox': '0.2.3-alpha.3',
+  '@deepseek-ai/cordis-plugin-loader': '1.2.0-alpha.2',
+  '@deepseek-ai/dsh-agent': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-attachment': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-brand': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-chunked-list': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-util-time': '0.2.3-alpha.3',
+  '@deepseek-ai/dsh-util-values': '0.2.3-alpha.3',
+  'react': '^19.3.1',
+  'react-dom': '^19.3.1',
   'zod': '^4.6.5',
 })
 

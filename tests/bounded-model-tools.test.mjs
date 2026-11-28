@@ -52,7 +52,7 @@ test('actual mounted decision receipts retain exact candidate and historical ado
   let nestedParent
   f.ctx.on('tools/post-execute', async (exec, result, next) => { if (exec.name === 'mattpocock_record' && exec.parent !== undefined) nestedParent = exec.parent; return next() })
   f.ctx.tools.register(sdk.defineTool({ name: 'recommendation_nested', description: 'mechanical actual nested recommendation receipt probe', parameters: {}, output: { schema: { type: 'json' }, render: () => [] }, async execute(_, exec) {
-    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolSet: exec.toolSet }, loadSDK))
+    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolStep: exec.toolStep }, loadSDK))
   } }))
   const nested = await f.execute('recommendation_nested')
   assert.notEqual(nested.isError, true); assert.ok(nestedParent)
@@ -375,7 +375,7 @@ test('all seven tools plus optional delegate and standalone audit bound direct a
     outerToken=exec.token;rootCall=exec.rootCallId
     const results=[]
     for(const [name,request] of requests){
-      const result=await executeRegistryTool(f.ctx,{name,arguments:{request},callId:'nested-'+name,rootCallId:exec.rootCallId,parent:exec.token,agent:exec.agent,signal:exec.signal,toolSet:exec.toolSet},loadSDK)
+      const result=await executeRegistryTool(f.ctx,{name,arguments:{request},callId:'nested-'+name,rootCallId:exec.rootCallId,parent:exec.token,agent:exec.agent,signal:exec.signal,toolStep:exec.toolStep},loadSDK)
       results.push({name,value:value(result)})
     }
     return results

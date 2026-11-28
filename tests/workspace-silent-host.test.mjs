@@ -5,9 +5,9 @@ import { operatorPeer } from './fixtures/peer.mjs'
 import { executeRegistryTool } from './fixtures/nested-tool.mjs'
 
 const installedHost = { skip: !process.env.DSH_CONTROLS_HOST_ROOT && 'set DSH_CONTROLS_HOST_ROOT for installed-host probes' }
-const resolve = (ctx, agent) => ctx.tools.resolve({ agent, modelSelection: { provider: 'fixture', model: 'fixture' }, signal: signal() })
-const owned = (ctx, agent, toolSet) => ctx.tools.schemas(agent, toolSet).map(t => t.name).filter(name => name.startsWith('mattpocock_'))
-const execute = (ctx, agent, toolSet) => executeRegistryTool(ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'silent-controls', agent, signal: signal(), toolSet }, loadSDK)
+const capture = (ctx, agent) => sdk.ToolStep.capture(ctx.tools, agent)
+const owned = step => step.declarations.map(t => t.name).filter(name => name.startsWith('mattpocock_'))
+const execute = (ctx, agent, toolStep) => executeRegistryTool(ctx, { name: 'mattpocock_controls', arguments: { request: { action: 'read' } }, callId: 'silent-controls', agent, signal: signal(), toolStep }, loadSDK)
 
 test('settings turn off collaboration in existing owner and child tool sets without changing another workspace', installedHost, async t => {
   const wA = { id: 'A', path: '/a', status: async () => 'ok' }
@@ -25,22 +25,21 @@ test('settings turn off collaboration in existing owner and child tool sets with
   // public boundary before this fixture dispatches a tool directly.
   await runtime.preStep({ kind: 'agent', principalId: 'agent:a', sessionId: 'a' }, signal())
   await runtime.preStep({ kind: 'agent', principalId: 'agent:b', sessionId: 'b' }, signal())
-  const oldSet = await resolve(ctx, a)
-  t.after(() => oldSet.dispose())
-  assert(owned(ctx, a, oldSet).includes('mattpocock_controls'))
-  assert.equal((await execute(ctx, a, oldSet)).isError, false)
+  const oldStep = capture(ctx, a)
+  assert(owned(oldStep).includes('mattpocock_controls'))
+  assert.equal((await execute(ctx, a, oldStep)).isError, false)
   await runtime.savePolicy(operator, { ...enabled, workspaceOverrides: { A: { workspace: { enabled: false } } } }, 1, signal())
   for (const agent of [a, child]) {
-    const set = await resolve(ctx, agent)
-    try {
-      assert.deepEqual(owned(ctx, agent, set), [])
-      assert.equal((await execute(ctx, agent, set)).isError, true)
-    } finally { set.dispose() }
+    const step = capture(ctx, agent)
+    assert.deepEqual(owned(step), [])
+    assert.equal((await execute(ctx, agent, step)).isError, true)
   }
-  assert.equal((await execute(ctx, a, oldSet)).isError, true, 'stale admitted sets cannot enter plugin effects')
-  const other = await resolve(ctx, b)
-  try { assert(owned(ctx, b, other).includes('mattpocock_delegate')); assert.equal((await execute(ctx, b, other)).isError, false) }
-  finally { other.dispose() }
+  assert.equal((await execute(ctx, a, oldStep)).isError, true, 'stale admitted steps cannot enter plugin effects')
+  const other = capture(ctx, b)
+  assert(owned(other).includes('mattpocock_delegate'))
+  assert.equal((await execute(ctx, b, other)).isError, false)
+  await runtime.savePolicy(operator, enabled, 2, signal())
+  for (const agent of [a, child, b]) assert(owned(capture(ctx, agent)).includes('mattpocock_controls'), 're-enabled trusted Agents see the tool on their next capture')
 })
 
 // Capture the real AgentLoop and LlmRuntime output at an inert adapter; no Profile or network.
@@ -62,9 +61,21 @@ for (const { executor, held } of requestProbes) test(
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(sdk.SystemPrompt, {})
   await ctx.plugin(sdk.ToolRuntime, {})
-  if (executor === 'ptc') ctx.provide('ptcRuntime', { language: 'typescript', programFormat: 'function-body' })
-  await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-executor-' + executor))
-  ctx.tools.register(sdk.defineTool({ name: 'unrelated_host_tool', description: 'Other tool remains available.', parameters: {}, output: { schema: { type: 'string' }, render: (_, text) => [{ type: 'text', text }] }, execute() { throw new Error('not exercised') } }))
+  // The genuine PTC root builds the SDK, pins bindings and runs its dispatch
+  // pipeline; this inert interpreter invokes only two explicit fixture bindings.
+  let invokeProgramBindings
+  if (executor === 'ptc') {
+    ctx.provide('workingDirectory', { async ensure(_agent, control) { control?.throwIfAborted(); return '/fixture' } })
+    ctx.provide('ptcRuntime', {
+      language: 'typescript', programFormat: 'function-body',
+      resolve: request => ({ ...request, timeoutMs: 60000 }),
+      async run(request) { await invokeProgramBindings(request.bindings[0].functions); return { output: [] } },
+      async release() {},
+    })
+  }
+  await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-registry-' + executor))
+  let nativeCalls = 0
+  ctx.tools.register(sdk.defineTool({ name: 'unrelated_host_tool', description: 'Other tool remains available.', parameters: {}, output: { schema: { type: 'string' }, render: (_, text) => [{ type: 'text', text }] }, async execute() { nativeCalls++; return 'unrelated execution' } }))
   await ctx.plugin(sdk.LlmRuntime)
   ctx.llm.registerAdapter(['fixture'], new class extends sdk.LlmAdapter {
     async resolveModel(provider, id) { return { provider, id, name: id, toolUpdate: 'in-history' } }
@@ -104,6 +115,19 @@ for (const { executor, held } of requestProbes) test(
       await handoffReleased.promise
     }
     yield* next()
+  })
+  let capturedStep, heldAssembly
+  ctx.on('system-prompt/assemble', async (_presentation, context, next) => {
+    if (context.agent === agent) {
+      capturedStep = context.toolStep
+      if (heldAssembly !== undefined) {
+        const barrier = heldAssembly
+        heldAssembly = undefined
+        barrier.entered.resolve()
+        await barrier.release.promise
+      }
+    }
+    return next()
   })
   ctx.systemPrompt.context({ name: 'other-plugin-fixture', order: 126, text: 'unrelated context stays' })
   const follow = async text => {
@@ -151,6 +175,24 @@ for (const { executor, held } of requestProbes) test(
       assert.equal(current.configurationRevision, savedOff.revision)
       assert.equal(current.workspaceVerified, true)
       assert.equal(current.collaborationEnabled, false, 'OFF already saved and effective before release')
+      if (executor === 'ptc') {
+        const settings = { request: { action: 'read' } }
+        assert(capturedStep?.declarations.some(tool => tool.name === 'run_code'))
+        let attempted = false, rejected = false, otherRan = false
+        invokeProgramBindings = async functions => {
+          attempted = true
+          // Old declarations still reach the interpreter; the current policy
+          // withdraws the actual execution without breaking unrelated bindings.
+          assert.equal(typeof functions.mattpocock_controls, 'function')
+          await assert.rejects(functions.mattpocock_controls(settings), /unknown tool|collaboration is unavailable/i)
+          rejected = true
+          await functions.unrelated_host_tool({})
+          otherRan = true
+        }
+        const result = await executeRegistryTool(ctx, { name: 'run_code', arguments: { code: '/* inert fixture */', description: 'Run stale program bindings' }, callId: 'stale-ptc', agent, signal: signal(), toolStep: capturedStep }, loadSDK)
+        assert.equal(result.isError, false, JSON.stringify(result))
+        assert.deepEqual({ attempted, rejected, otherRan, nativeCalls }, { attempted: true, rejected: true, otherRan: true, nativeCalls: 1 })
+      }
     } finally { handoffReleased.resolve() }
     await pending
     assert.equal(requests.length, 2, 'the held turn must complete through the normal adapter')
@@ -168,4 +210,26 @@ for (const { executor, held } of requestProbes) test(
   assert(!serialized.includes('fixture-not-yet-admitted-plugin-snapshot'))
   assertUnrelated(request, 'ordinary second input')
   assert.deepEqual(agent.session.ownEvents().slice(0, original.length), original, 'earlier raw transcript and request records are unchanged')
+  await runtime.savePolicy(operator, enabled, 2, signal())
+  await follow('ordinary re-enabled input')
+  assertEnabled(requests.at(-1))
+  if (held) {
+    // Also cross the earlier boundary: the root and system prompt have already
+    // captured the ON declarations, while native agent/pre-step has not begun.
+    const barrier = { entered: Promise.withResolvers(), release: Promise.withResolvers() }
+    heldAssembly = barrier
+    const count = requests.length
+    const pending = follow('ordinary assembled input')
+    try {
+      await Promise.race([barrier.entered.promise, pending.then(() => { throw new Error('AgentLoop never entered the assembly barrier') })])
+      await runtime.savePolicy(operator, { ...enabled, workspaceOverrides: { W: { workspace: { enabled: false } } } }, 3, signal())
+      assert.equal((await mounted.ports.readSessionPolicy(agent.id)).collaborationEnabled, false)
+    } finally { barrier.release.resolve() }
+    await pending
+    assert.equal(requests.length, count + 1, 'already captured assembly completes normally')
+    const { nativeTools, ptcDeclaration } = ownedContent(requests.at(-1))
+    assert(executor === 'native' ? nativeTools.includes('mattpocock_controls') : ptcDeclaration, 'already captured declarations remain pinned')
+    await follow('ordinary fresh input after assembly barrier')
+    assert.deepEqual(ownedContent(requests.at(-1)), silent)
+  }
 })

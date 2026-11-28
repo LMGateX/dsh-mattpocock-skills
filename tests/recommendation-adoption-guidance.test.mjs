@@ -80,7 +80,7 @@ test('mounted guidance adopts the same path explicitly without re-confirmation o
     return next()
   })
   f.ctx.tools.register(sdk.defineTool({ name: 'fixture_adopt_path', description: 'explicit nested adoption probe', parameters: {}, output: { schema: { type: 'json' }, render: (_, result) => [{ type: 'text', text: JSON.stringify(result) }] }, async execute(_, exec) {
-    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-path-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolSet: exec.toolSet }, loadSDK))
+    return value(await executeRegistryTool(f.ctx, { name: 'mattpocock_record', arguments: { request: { action: 'apply', command } }, callId: 'nested-path-adopt', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolStep: exec.toolStep }, loadSDK))
   } }))
   const adopted = value(await f.execute('fixture_adopt_path'))
   assert.ok(nestedParent)

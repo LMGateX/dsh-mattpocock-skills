@@ -400,7 +400,8 @@ test('management off leaves a late end unwritten and does not report a false obs
 
 test('C adds no model tool and no Remote method', async t => {
   const f = await mountedFixture(t)
-  const visible = f.ctx.tools.schemas(f.root).map(row => row.name).filter(name => name.startsWith('mattpocock_')).sort()
+  await f.saveEnabledFixturePolicy(policy())
+  const visible = f.ctx.tools.getAll(f.root).map(row => row.name).filter(name => name.startsWith('mattpocock_')).sort()
   assert.deepEqual(visible, ['mattpocock_assign', 'mattpocock_controls', 'mattpocock_history',
     'mattpocock_record', 'mattpocock_resource', 'mattpocock_window', 'mattpocock_worktree'])
   assert.equal(visible.length, 7)

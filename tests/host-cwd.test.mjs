@@ -56,10 +56,9 @@ async function fixture(t, { prepare = async () => ({}), mounted = false } = {}) 
   const ctx = new sdk.Context()
   let modelCalls = 0
   const activations = [], prepared = [], starts = [], cleanups = []
-  let release = Promise.withResolvers()
-  const releases = [release]
+  const release = Promise.withResolvers()
   t.after(async () => {
-    for (const item of releases) item.resolve({ kind: 'reject' })
+    release.resolve({ kind: 'reject' })
     for (const activation of activations.reverse()) { try { await activation.dispose() } catch {} }
     for (const cleanup of cleanups.reverse()) await cleanup()
     await parentHandle.dispose()
@@ -75,16 +74,26 @@ async function fixture(t, { prepare = async () => ({}), mounted = false } = {}) 
   await ctx.plugin(sdk.SessionProjectionRegistry)
   await ctx.plugin(sdk.SystemPrompt, {})
   await ctx.plugin(sdk.ToolRuntime, {})
-  // Only split-executor registries need this package; older hosts execute directly.
-  if (typeof ctx.tools.setExecutor === 'function') await ctx.plugin(await load('@deepseek-ai/dsh-tool-executor-native'))
+  await ctx.plugin(await load('@deepseek-ai/dsh-tool-registry-native'))
   await sdk.jsonl.apply(ctx, { root: join(temp, 'sessions'), compression: 'none' })
   await ctx.plugin(sdk.Query, { path: join(temp, 'query.sqlite'), openAt: 'never' })
-  ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model prohibited') }, stream() { modelCalls++; throw new Error('model prohibited') } })
+  ctx.provide('llm', {
+    async resolveCallConfig(selection, control) { control.throwIfAborted(); assert.equal(selection.provider, 'fixture'); assert.equal(selection.model, 'fixture'); return selection },
+    prepareCall() { modelCalls++; throw new Error('model prohibited') },
+    stream() { modelCalls++; throw new Error('model prohibited') },
+  })
   await ctx.plugin(sdk.LocalFs, { cwd: pathA, diffBasisMaxBytes: 10485760 })
   await ctx.plugin(sdk.fsTools, { readLimit: 2000, readMaxLineLength: 10000, readMaxBytes: 100000, readStreamMinSize: 10000000 })
   await ctx.plugin(sdk.WorkingDirectory, { defaultDirectory: pathA })
   await ctx.plugin(sdk.AgentLoop, { agents: [], maxParallelToolCalls: 10 })
   await ctx.plugin(sdk.Subagents, { maxDepth: 5, maxActiveSubagents: 20 })
+  ctx.on('agent/pre-step', async ({ signal: control }) => {
+    const aborted = new Promise(resolve => {
+      if (control.aborted) resolve({ kind: 'reject' })
+      else control.addEventListener('abort', () => resolve({ kind: 'reject' }), { once: true })
+    })
+    return Promise.race([release.promise, aborted])
+  })
   const provider = {
     capabilities: { agentOptions: false, agentPreset: false, outputSchema: false, depthLimit: true },
     inheritsParentContext: false, async prepareContinuable(request) { prepared.push(request); return prepare(request) } }
@@ -93,7 +102,7 @@ async function fixture(t, { prepare = async () => ({}), mounted = false } = {}) 
   ctx.subagents.registerProvider({ ...provider, name: 'fork' })
   ctx.on('subagent/start', info => { starts.push(info) })
   await ctx.fiber.await()
-  const parentHandle = await ctx.agents.create({ sessionId: 'parent', meta: { cwd: pathA } })
+  const parentHandle = await ctx.agents.create({ sessionId: 'parent', meta: { cwd: pathA }, agentOptions: { provider: 'fixture', model: 'fixture' } })
   const parent = parentHandle.agent
   let host
   if (mounted) {
@@ -121,9 +130,7 @@ async function fixture(t, { prepare = async () => ({}), mounted = false } = {}) 
     activations.push(activation)
     return activation
   }
-  return { ctx, parent, pathA, pathB, start, temp, unregister, host, prepared, starts,
-    releaseStep() { release.resolve({ kind: 'reject' }) },
-    pauseStep() { release = Promise.withResolvers(); releases.push(release) } }
+  return { ctx, parent, pathA, pathB, start, temp, unregister, host, prepared, starts }
 }
 
 test('mounted creation port starts one real child per reserved id in the inherited effective cwd', options, async t => {
@@ -142,6 +149,7 @@ test('mounted creation port starts one real child per reserved id in the inherit
     assert(receipt.messageId.length > 0, 'real native inbox acceptance required')
     const child = f.ctx.agents.get(childId)
     assert(child, 'real registry must contain the reserved child')
+    assert(f.ctx.tools.get('mattpocock_controls', child), 'agent/created admits the verified child before its first tool step')
     assert.equal(f.ctx.workingDirectory.get(child.session), f.pathB)
     assert.equal(f.ctx.sandboxPolicy.resolve({ session: child.session }).mode, 'read-only', 'directory selection never widens inherited file policy')
     assert.equal(child.session.header.cwd, f.pathA, 'header is the inherited source, not effective cwd')

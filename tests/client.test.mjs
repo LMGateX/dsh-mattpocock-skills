@@ -4,6 +4,8 @@ import vm from 'node:vm'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
+import { createRequire } from 'node:module'
+import { loadClientModule, staticModules } from './fixtures/client-sdk.mjs'
 import { buildClient, generateClientDeclaration, BASELINE_EXTERNALS } from '../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './fixtures/client-primitives.mjs'
 
@@ -192,7 +194,7 @@ test('closed client build rejects Node, undeclared external, and dynamic module 
 })
 
 test('actual installed SlotCore accepts native contribution options and unloads cleanly', async () => {
-  const { SlotCore } = await import('@deepseek-ai/dsh-client-ui-slots')
+  const { SlotCore } = await loadClientModule(createRequire(import.meta.url), staticModules([]), '@deepseek-ai/dsh-client-ui-slots')
   const core = new SlotCore()
   const kinds = {
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' }, 'plugins.row.config': { kind: 'keyed', scope: 'root' },

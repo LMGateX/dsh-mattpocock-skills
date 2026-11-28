@@ -23,7 +23,8 @@ import type { DomainSpec, Domain } from '@deepseek-ai/dsh-storage-domain'
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import type { SubagentCatalogEntry, SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolActivationContext, ToolExecution, ToolExecutionResult, ToolRunContext, ToolGuard } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition, ToolExecution, ToolExecutionResult, ToolRunContext, ToolGuard } from '@deepseek-ai/dsh-tools'
+import { AgentToolRegistry } from '@deepseek-ai/dsh-tools/pipeline'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry'
 import { z } from 'zod'
@@ -1963,6 +1964,8 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     const storedControls = createDomainControlsStorage(await open('controls', parseControlsDocument))
     let onNativePolicyCommitted: (policy: PolicySnapshot) => void = () => {}
     let onNativePolicyUnavailable: () => void = () => {}
+    let publishToolPolicy: (policy: PolicySnapshot) => Promise<void> = async () => {}
+    let withdrawToolPolicy: () => void = () => {}
     const controlsStorage: ControlsStorage = {
       read: () => storedControls.read(),
       async compareAndSwap(expectedRevision, next) {
@@ -1972,10 +1975,13 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         let wrote: boolean
         try { wrote = await storedControls.compareAndSwap(expectedRevision, next) }
         catch (error) {
-          try { await storedControls.read() } catch { onNativePolicyUnavailable() }
+          try { await storedControls.read() } catch { onNativePolicyUnavailable(); withdrawToolPolicy() }
           throw error
         }
-        if (wrote) onNativePolicyCommitted(policy)
+        if (wrote) {
+          onNativePolicyCommitted(policy)
+          await publishToolPolicy(policy)
+        }
         return wrote
       },
     }
@@ -2081,17 +2087,62 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       const policy = await readSessionPolicy(agent.id, signal)
       return liveScope(agent) !== undefined && policy?.collaborationEnabled === true
     }
-    // DSH shares one context object across a step's registrations. Use one coherent
-    // decision for the whole plugin tool surface; each execute rechecks independently.
-    const stepActivation = new WeakMap<ToolActivationContext, Promise<boolean>>()
-    const activation = { when(context: ToolActivationContext) {
-      let result = stepActivation.get(context)
-      if (result === undefined) {
-        result = collaborationForAgent(context.agent, context.signal)
-        stepActivation.set(context, result)
+    // Alpha.3 captures the root registry synchronously, before agent/pre-step.
+    // Publish verified per-Agent visibility on lifecycle and durable policy edges;
+    // a cached admission is never authority for an actual plugin effect.
+    const collaborationTools = new AgentToolRegistry()
+    const toolNames = new Set<string>()
+    const toolWorkspace = new WeakMap<Agent, string>()
+    const hasVerifiedToolScope = (scope: object): boolean => {
+      const agent = liveScope(scope)
+      const workspace = agent === undefined ? undefined : toolWorkspace.get(agent)
+      try { return workspace !== undefined && ctx.workspaceRegistry.get(WorkspaceId(workspace)) !== undefined }
+      catch { return false }
+    }
+    disposers.push(ctx.tools.include({
+      get: (name, scope) => scope === undefined || hasVerifiedToolScope(scope) ? collaborationTools.get(name, scope) : undefined,
+      getAll: scope => scope === undefined || hasVerifiedToolScope(scope) ? collaborationTools.getAll(scope) : [],
+    }))
+    const refreshTokens = new WeakMap<Agent, object>()
+    let toolPolicyRevision: number | undefined
+    let toolPolicyEpoch = 0
+    const applyToolVisibility = (agent: Agent, enabled: boolean) => collaborationTools.set(agent, enabled ? [...toolNames] : [])
+    const refreshToolVisibility = async (agent: Agent, signal?: AbortSignal): Promise<boolean> => {
+      const epoch = toolPolicyEpoch, token = {}
+      refreshTokens.set(agent, token)
+      if (liveScope(agent) === undefined) return false
+      const policy = await readSessionPolicy(agent.id, signal)
+      if (toolPolicyEpoch !== epoch || refreshTokens.get(agent) !== token || liveScope(agent) === undefined || signal?.aborted) return false
+      const enabled = policy?.collaborationEnabled === true
+      if (policy === undefined) toolWorkspace.delete(agent)
+      else toolWorkspace.set(agent, policy.controlWorkspaceId)
+      applyToolVisibility(agent, enabled)
+      return enabled
+    }
+    withdrawToolPolicy = () => {
+      toolPolicyEpoch += 1
+      toolPolicyRevision = undefined
+      for (const agent of ctx.agents.list()) { toolWorkspace.delete(agent); applyToolVisibility(agent, false) }
+    }
+    publishToolPolicy = async policy => {
+      if (closing || (toolPolicyRevision !== undefined && policy.revision <= toolPolicyRevision)) return
+      toolPolicyRevision = policy.revision
+      toolPolicyEpoch += 1
+      const agents = ctx.agents.list()
+      // Withdraw immediately on the durable commit callback, before any of the
+      // asynchronous workspace reads below can yield. Different workspaces keep
+      // their independent permission; an unverified binding never grants one.
+      for (const agent of agents) {
+        const workspace = toolWorkspace.get(agent)
+        if (workspace === undefined || !resolvePolicy(policy, workspace, true).collaborationEnabled) applyToolVisibility(agent, false)
       }
-      return result
-    } }
+      await Promise.all(agents.map(agent => refreshToolVisibility(agent)))
+    }
+    const registerCollaborationTool = (definition: ToolDefinition) => {
+      const unregister = collaborationTools.register(definition)
+      toolNames.add(definition.name)
+      return () => { unregister(); toolNames.delete(definition.name) }
+    }
     const ports: HostPorts = {
       controlsStorage, instrumentStorage, windowStorage, resourceStorage, ...identity, readSessionPolicy,
       capabilities: freeze({ ...HOST_CAPABILITIES,
@@ -2254,11 +2305,9 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       return undefined
     }
     let syncAuditTool: (snapshot: SupervisionConfigSnapshot) => void = () => {}
-    let pointerAdmission = new WeakMap<Agent, boolean>()
-    const onPolicyChanged = () => {
-      pointerAdmission = new WeakMap()
-      options.onPolicyChanged?.()
-    }
+    const assembledAdmission = new WeakMap<Agent, { readonly signal: AbortSignal; readonly allowed: boolean; readonly pointer: boolean }>()
+    const pointerAdmission = new WeakMap<Agent, AbortSignal>()
+    const onPolicyChanged = () => options.onPolicyChanged?.()
     const service = new MattPocockControlsService(ctx, active, ports, grants, supervisionStorage, { signal: lifetime.signal, track, onPolicyChanged, onSupervisionChanged: snapshot => syncAuditTool(snapshot) })
     disposers.push(ctx.typert.register(hostRemoteContribution()))
     // Optional enhancement failure never removes the established base namespace or tools.
@@ -2276,7 +2325,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       return new ModelOutputError(typeof value?.code === 'string' ? previewText(value.code, 128).text : 'plugin-error', previewText(typeof value?.message === 'string' ? value.message : 'Plugin operation failed; source outcome may be unknown', 768).text, typeof value?.reason === 'string' ? previewText(value.reason, 128).text : undefined)
     }
     const tool = (name: string, description: string, action: (raw: Record<string, unknown>, caller: HostCaller, exec: ToolRunContext) => Promise<unknown>) => {
-      disposers.push(ctx.tools.register(defineTool({ name, description: modelToolDescription(name, description), parameters: { request: { type: 'json', required: true } },
+      disposers.push(registerCollaborationTool(defineTool({ name, description: modelToolDescription(name, description), parameters: { request: { type: 'json', required: true } },
         output: { schema: { type: 'json' }, render: (_, value) => [{ type: 'text', text: JSON.stringify(value) }] },
         async execute(args, exec) {
           try {
@@ -2292,7 +2341,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
             }))))
           } catch (error) { exec.signal.throwIfAborted(); throw boundedError(error) }
         },
-      }), activation))
+      })))
     }
     tool('mattpocock_controls', 'Read saved workspace controls or save an explicitly delegated policy change. Extra keys are rejected and the error lists the accepted keys.', async (raw, caller, exec) => {
       if (raw.action === 'read') { record(raw, 'policy read', ['action', 'query']); await ports.authority.authorizePolicy(caller.principalId, 'read'); return active.readPolicy(caller, exec.signal) }
@@ -2419,7 +2468,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       if (!enabled) { supervisionLedger.clear(); auditToolDispose?.(); auditToolDispose = undefined; return }
       if (auditToolDispose !== undefined) return
       try {
-        auditToolDispose = ctx.tools.register(defineTool({ name: 'mattpocock_audit', description: modelToolDescription('mattpocock_audit', 'Read the optional delivery-supervision ledger for the authenticated owner session. It never calls a model, mutates tickets, releases T/S or delivers a message. It is registered only while supervision is enabled in configured defaults or a workspace override; per-workspace policy still gates each call.'), parameters: { request: { type: 'json', required: true } },
+        auditToolDispose = registerCollaborationTool(defineTool({ name: 'mattpocock_audit', description: modelToolDescription('mattpocock_audit', 'Read the optional delivery-supervision ledger for the authenticated owner session. It never calls a model, mutates tickets, releases T/S or delivers a message. It is registered only while supervision is enabled in configured defaults or a workspace override; per-workspace policy still gates each call.'), parameters: { request: { type: 'json', required: true } },
           output: { schema: { type: 'json' }, render: (_, value) => [{ type: 'text', text: JSON.stringify(value) }] },
           async execute(args, exec) {
             try {
@@ -2430,7 +2479,10 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
               if (!await collaborationForAgent(controlled.agent, controlled.signal)) deny('collaboration is unavailable for this session')
               return parseHostJson(JSON.parse(JSON.stringify(await track(async () => model.finish(await model.audit(caller, raw.query, await audit(caller, controlled), controlled.signal), 'mattpocock_audit', raw)))))
             } catch (error) { exec.signal.throwIfAborted(); throw boundedError(error) }
-          } }), activation)
+          } }))
+        for (const agent of ctx.agents.list()) {
+          if (collaborationTools.get('mattpocock_controls', agent) !== undefined) applyToolVisibility(agent, true)
+        }
       } catch (error) {
         auditToolDispose = undefined
         ctx.logger('mattpocock-controls').warn('audit tool registration failed; supervision observations remain off', error)
@@ -2518,7 +2570,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       else await commit()
     }
     disposers.push(() => { auditToolDispose?.(); auditToolDispose = undefined })
-    // Alpha.2 native compaction sends a mutable one-shot envelope, unlike the
+    // Native compaction sends a mutable one-shot envelope, unlike the
     // frozen AgentLoop request. Safely project only that exact auxiliary input
     // and keep the native continuation (routing, downstream hooks and usage).
     disposers.push(ctx.on('llm/stream', async function* (request, next) {
@@ -2552,7 +2604,12 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
     }))
     disposers.push(ctx.on('agent/created', async ({ agent, signal }) => {
       nativeCounter.created(agent)
-      await track(() => active.created(agentCaller(ctx, agent), signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal, agent)); return undefined
+      const control = signal === undefined ? lifetime.signal : AbortSignal.any([signal, lifetime.signal])
+      await track(async () => {
+        await active.created(agentCaller(ctx, agent), control, agent)
+        await refreshToolVisibility(agent, control)
+      })
+      return undefined
     }))
     // The host may assemble one model request several times (and a PTC step may complete several
     // nested dispatches); all of them share the same turn:step identity, which is the delivery step.
@@ -2575,10 +2632,15 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       }
     }
     disposers.push(ctx.on('agent/pre-step', async ({ agent, signal, turn, step }, next): Promise<PreStepDecision> => {
-      const allowedBefore = await collaborationForAgent(agent, signal)
+      const observed = assembledAdmission.get(agent)
+      assembledAdmission.delete(agent)
+      const assembled = observed?.signal === signal ? observed : undefined
+      const allowedNow = await refreshToolVisibility(agent, signal)
       signal.throwIfAborted()
-      // Run before downstream pressure compaction can borrow the previous model surface.
-      const startsSeries = !allowedBefore && reconcileSilentReplay(agent, turn, step)
+      const allowedAtAssembly = assembled?.allowed ?? allowedNow
+      // Only silent assemblies rebase: an already assembled ON step may complete
+      // normally even if the policy changes before these downstream listeners run.
+      const startsSeries = !allowedAtAssembly && reconcileSilentReplay(agent, turn, step)
       const decision = await next()
       if (decision.kind === 'reject') return decision
       const admittedStep = turn + ':' + step
@@ -2591,11 +2653,16 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
         return !rebased && messages.length === decision.messages.length ? decision
           : { ...decision, messages, ...(rebased ? { startsRequestSeries: true as const } : {}) }
       }
-      if (!await collaborationForAgent(agent, signal)) return silentDecision()
+      if (!allowedAtAssembly) return silentDecision()
+      if (assembled?.pointer === true) pointerAdmission.set(agent, signal)
+      else pointerAdmission.delete(agent)
+      // Admission is pinned, but generating a new plugin observation or snapshot
+      // remains an effect and requires current permission both before and after it.
+      const noNewEffects = () => assembled === undefined ? silentDecision() : decision
+      if (!await collaborationForAgent(agent, signal)) return noNewEffects()
       const messages = await track(() => active.preStep(agentCaller(ctx, agent), signal, decision.messages, admittedStep))
       signal.throwIfAborted()
-      if (!await collaborationForAgent(agent, signal)) return silentDecision()
-      pointerAdmission.set(agent, true)
+      if (!await collaborationForAgent(agent, signal)) return noNewEffects()
       return messages.length === 0 ? decision : { ...decision, messages: [...decision.messages, ...messages] }
     }, { prepend: true }))
     if (active.postExecute) disposers.push(ctx.on('tools/post-execute', async (exec, result, next) => {
@@ -2639,12 +2706,29 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       }
       return decision
     }))
+    const toolAdmission = (agent: Agent, toolStep: NonNullable<ToolExecution['toolStep']>) => {
+      // Native exposes exact step declarations; a PTC root exposes only run_code.
+      // Its bindings use our per-Agent admission instead of a direct root lookup.
+      const definition = hasVerifiedToolScope(agent) ? collaborationTools.get('mattpocock_controls', agent) : undefined
+      return { allowed: definition !== undefined,
+        pointer: definition !== undefined && (toolStep.declares(definition) || toolStep.declarations.some(tool => tool.name === 'run_code')) }
+    }
+    disposers.push(ctx.on('system-prompt/assemble', (_assembly, { agent, modelSelection, signal, toolStep }, next) => {
+      // Capture even if a separate native setting suppresses dynamic context.
+      if (agent !== undefined && toolStep?.agent === agent && modelSelection !== undefined && signal !== undefined) {
+        assembledAdmission.set(agent, { signal, ...toolAdmission(agent, toolStep) })
+      }
+      return next()
+    }, { prepend: true }))
     if (active.context) disposers.push(ctx.systemPrompt.context({ name: 'mattpocock-controls', order: 130,
-      // The current host refreshes dynamic context without a tool set, after the pre-step
-      // listener has independently checked policy. Diagnostics never inherit the step proof.
-      text: ({ agent, modelSelection, toolSet }) => agent !== undefined && modelSelection !== undefined
-        && (toolSet !== undefined ? ctx.tools.get('mattpocock_controls', agent, toolSet) !== undefined : pointerAdmission.get(agent) === true)
-        ? active.context!(agentCaller(ctx, agent)) : '' }))
+      text: ({ agent, modelSelection, signal, toolStep }) => {
+        if (agent === undefined || modelSelection === undefined || signal === undefined || liveScope(agent) !== agent) return ''
+        const pointer = toolStep?.agent === agent ? toolAdmission(agent, toolStep).pointer : pointerAdmission.get(agent) === signal
+        // Same-step attempts refresh dynamic context without the ToolStep. They
+        // retain its pointer decision and never borrow another signal's proof.
+        return pointer ? active.context!(agentCaller(ctx, agent)) : ''
+      },
+    }))
     const observe = (event: HostEvent) => { void track(() => active.observe(Object.freeze(event))).catch(error => ctx.logger('mattpocock-controls').warn(error)) }
     // One wake event per new terminal-outcome item; the item stays in the counter until the
     // child runs again, its start edge arrives, or a late end arrives.
@@ -2671,6 +2755,7 @@ export async function mountHost(ctx: Context, options: HostOptions): Promise<Hos
       observe({ kind: 'subagent-end', sessionId: info.id, runId: info.runId, provider: info.provider, local: info.local, stopReason: info.stopReason, ...(agent ? { actualAgent: agent } : {}) })
     }))
     ctx.effect(() => dispose)
+    await Promise.all(ctx.agents.list().map(agent => refreshToolVisibility(agent)))
     resolveNotificationObserverReady()
     return { service, ports, dispose, skillsEnabledForScope: async (scope, signal) => {
       const agent = liveScope(scope)

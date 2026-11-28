@@ -112,6 +112,9 @@ if (hostRoot) {
       await fiber
       fibers.push(fiber)
     }
+    const toolRoot = ctx.plugin(await load('@deepseek-ai/dsh-tool-registry-native'))
+    await toolRoot
+    fibers.push(toolRoot)
     const parent = { id: 'content-parent', cwd: '/synthetic/parent' }
     const child = { id: 'content-child', cwd: '/synthetic/child' }
     const stranger = { id: 'unrelated', cwd: '/synthetic/unrelated' }
@@ -333,8 +336,15 @@ if (hostRoot) {
       assert.equal(f.ctx.tools.get('skill', f.child), undefined)
       assert(f.ctx.tools.get('skill', f.parent))
       assert(f.ctx.tools.get('skill', f.stranger))
-      assert.equal(f.ctx.tools.executable('skill', f.child), undefined)
-      assert(f.ctx.tools.executable('skill', f.parent))
+      const execute = agent => f.ctx.tools.execute({ agent, signal: new AbortController().signal,
+        calls: [{ type: 'tool-call', id: 'native-skill-mask', name: 'skill', arguments: JSON.stringify({ name: 'ask-matt' }) }],
+      }).then(batch => batch.results[0].result)
+      const denied = await execute(f.child)
+      assert.equal(denied.isError, true)
+      assert.match(denied.error.message, /unknown tool/i)
+      const allowed = await execute(f.parent)
+      assert.equal(allowed.isError, false)
+      assert.equal(allowed.value.content, 'Parent project body only.')
     } finally {
       for (const fiber of additions.reverse()) await fiber.dispose()
       await f.dispose()

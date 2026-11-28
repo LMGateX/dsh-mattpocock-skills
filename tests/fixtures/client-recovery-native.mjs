@@ -7,10 +7,10 @@ import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './client-primitives.mjs'
-import { clientSdk, clientRegistration, readShellModules, staticModules } from './client-sdk.mjs'
+import { clientSdk, clientRegistration, loadClientModule, readShellModules, staticModules } from './client-sdk.mjs'
 
 // Explicit native-host precondition: never silently substitute a fake SlotCore or skip.
-// The original Web shell supplies the SlotCore through its public loader handoff.
+// The installed SDK supplies SlotCore via its immediately loaded /client entry.
 export const hostRoot = process.env.DSH_RECOVERY_HOST_ROOT ?? process.env.DSH_CONTROLS_HOST_ROOT
 if (!hostRoot) throw new Error('Set DSH_RECOVERY_HOST_ROOT to an isolated native DSH host; no native slot fallback')
 const metadata = JSON.parse(await readFile(join(hostRoot, 'package.json'), 'utf8'))
@@ -29,9 +29,8 @@ const modules = staticModules(registrations, {
   react: React, 'react/jsx-runtime': local('react/jsx-runtime'),
   'react-dom': local('react-dom'), 'react-dom/client': local('react-dom/client'), '@deepseek-ai/cordis': cordis,
 })
-assert.equal(typeof modules.get('@deepseek-ai/dsh-client-ui-slots').SlotCore, 'function')
-const rendererPath = requireHost.resolve('@deepseek-ai/dsh-client-ui-renderer/client')
-const renderer = clientRegistration(await readFile(rendererPath, 'utf8'), rendererPath).factory(modules.get)
+assert.equal(typeof (await loadClientModule(requireHost, modules, '@deepseek-ai/dsh-client-ui-slots')).SlotCore, 'function')
+const renderer = await loadClientModule(requireHost, modules, '@deepseek-ai/dsh-client-ui-renderer')
 const code = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') : (await buildClient()).code
 const registration = clientRegistration(code, 'recovery-plugin.js')
 export const client = registration.factory(name => {

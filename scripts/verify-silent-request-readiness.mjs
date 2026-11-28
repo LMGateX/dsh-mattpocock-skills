@@ -27,7 +27,7 @@ export function verifyExactHost(input) {
   const path = relative(root, entry)
   assert(path && !isAbsolute(path) && path !== '..' && !path.startsWith('..' + sep) && statSync(entry).isFile(), 'missing local DSH CLI entry')
   const require = createRequire(manifestPath)
-  for (const shortName of ['agent', 'agent-loop', 'compaction-basic', 'llm', 'session', 'session-projection', 'system-prompt', 'tool-executor-native', 'tool-executor-ptc', 'tools']) {
+  for (const shortName of ['agent', 'agent-loop', 'compaction-basic', 'llm', 'session', 'session-projection', 'system-prompt', 'tool-registry-native', 'tool-registry-ptc', 'tools']) {
     const name = '@deepseek-ai/dsh-' + shortName
     const sdk = packageJson(require.resolve(name + '/package.json'))
     assert.equal(sdk.name, name, 'wrong package at host resolution for ' + name)

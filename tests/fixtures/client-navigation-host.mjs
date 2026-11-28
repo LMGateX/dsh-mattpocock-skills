@@ -7,7 +7,7 @@ import * as React from 'react'
 import { Window } from 'happy-dom'
 import { buildClient } from '../../scripts/build-client.mjs'
 import { PRIMITIVES_ID, clientPrimitives } from './client-primitives.mjs'
-import { clientSdk, clientRegistration, readShellModules, staticModules } from './client-sdk.mjs'
+import { clientSdk, clientRegistration, loadClientModule, readShellModules, staticModules } from './client-sdk.mjs'
 
 // Explicit read-only host. Never substitute an object ctx, patch compiled strings,
 // deep-import private constructors, start a server, connect, or read real Sessions.
@@ -25,21 +25,20 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const req = clientSdk(hostRoot), local = createRequire(import.meta.url)
 const baseline = await readShellModules(req, async file => originals.set(file, digest(await readFile(file))))
 export const cordis = await import(pathToFileURL(req.resolve('@deepseek-ai/cordis')))
-const { cache, get, has } = staticModules(baseline, {
+const modules = staticModules(baseline, {
   react: React, 'react/jsx-runtime': local('react/jsx-runtime'),
   'react-dom': local('react-dom'), 'react-dom/client': local('react-dom/client'), '@deepseek-ai/cordis': cordis,
 })
-assert.equal(typeof get('@deepseek-ai/dsh-client-ui-slots').SlotCore, 'function')
-export async function loadNode(id) { const value = await import(pathToFileURL(req.resolve(id))); cache.set(id, value); return value }
-export async function load(id) {
-  if (has(id)) return get(id)
-  const file = req.resolve(id + '/client'), bytes = await readFile(file)
-  originals.set(file, digest(bytes))
-  const registration = clientRegistration(bytes.toString('utf8'), file)
-  const value = registration.factory(get)
-  cache.set(id, value); return value
+export const get = modules.get
+export async function loadNode(id) {
+  const value = await import(pathToFileURL(req.resolve(id)))
+  modules.cache.set(id.endsWith('/client') ? id.slice(0, -'/client'.length) : id, value)
+  return value
 }
-export { get }
+export const load = id => loadClientModule(req, modules, id, (file, bytes) => originals.set(file, digest(bytes)))
+assert.equal(typeof (await load('@deepseek-ai/dsh-client-ui-slots')).SlotCore, 'function')
+// Dockkit, the native sidebar, and the opt-in native primitive probe depend on this row.
+await load(PRIMITIVES_ID)
 const built = process.env.DSH_CONTROLS_CLIENT_BUNDLE ? { code: await readFile(process.env.DSH_CONTROLS_CLIENT_BUNDLE, 'utf8') } : await buildClient()
 export const clientHash = digest(built.code)
 const registration = clientRegistration(built.code, 'navigation-plugin.js')

@@ -55,7 +55,7 @@ const sessionProjection = process.env.DSH_CONTROLS_HOST_ROOT
   : {}
 export const sdk = {
   ...await load('@deepseek-ai/cordis'), ...await load('@deepseek-ai/dsh-storage-domain'),
-  ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-system-prompt'),
+  ...await load('@deepseek-ai/dsh-tools'), ...await load('@deepseek-ai/dsh-tools/pipeline'), ...await load('@deepseek-ai/dsh-system-prompt'),
   ...await load('@deepseek-ai/dsh-typert-registry'), ...await load('@deepseek-ai/dsh-llm'),
   ...sessionProjection,
 }
@@ -210,7 +210,8 @@ export async function mountedFixture(t, { futureNativeActivityKnown = false, del
     if (events === undefined) throw new Error('No cold session log for ' + key)
     return { header: { id: key, version: 4, createdAt: 0, cwd: '/fixture' }, inheritedEventCount: 0, events, [Symbol.dispose]() {} }
   } })
-  new sdk.TypertRegistry(ctx); new sdk.SystemPrompt(ctx, {}); new sdk.ToolRuntime(ctx, {})
+  new sdk.TypertRegistry(ctx); new sdk.SystemPrompt(ctx, {}); new sdk.ToolsService(ctx)
+  ctx.tools.setRoot(new sdk.NativeToolRegistry())
   const units = new Map([...seedUnits].map(([name, rows]) => [name, new Map(rows)]))
   const backend = { kv: { async open(descriptor) {
     let rows = units.get(descriptor.name)

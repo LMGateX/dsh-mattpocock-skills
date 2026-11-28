@@ -103,7 +103,7 @@ test('42 MB legacy projection cannot amplify 300 unchanged mounted model reads, 
     output: { schema: { type: 'json' }, render: () => [] }, async execute(_, exec) {
       outerTokens.push(exec.token)
       expectedNested.set(exec.callId + ':record', { parent: exec.token, rootCallId: exec.rootCallId })
-      return executeRegistryTool(large.ctx, { name: 'mattpocock_record', arguments: args, callId: exec.callId + ':record', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolSet: exec.toolSet }, loadSDK)
+      return executeRegistryTool(large.ctx, { name: 'mattpocock_record', arguments: args, callId: exec.callId + ':record', rootCallId: exec.rootCallId, parent: exec.token, agent: exec.agent, signal: exec.signal, toolStep: exec.toolStep }, loadSDK)
     } }))
   for (let index = 0; index < CALLS; index++) {
     if (index > 0) {

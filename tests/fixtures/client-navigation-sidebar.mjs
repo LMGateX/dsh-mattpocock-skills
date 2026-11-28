@@ -15,6 +15,8 @@ export async function installSidebar(ctx) {
     // This fixture does not render native lineage/status slots; the actual subagent
     // plugin still requires its session-status service to contribute navigation.
     c.provide('uiSession.sessionStatus', {})
+    // Alpha.3 gates the sidebar on the responsive service; this fixture does not render its expand button.
+    c.provide('uiResponsive', {})
     c.provide('layout', { panelInfo, openRightbar() {}, closeRightbar() {} }); c.provide('contextMenus', { register: noop, active: source(undefined) })
     c.provide('shortcuts', { register: noop, catalog: source([]), runtime: 'web', closeWindow: async () => {} })
     c.provide('uiWorkspace', { openSession: () => assert.fail('must not main-navigate') })

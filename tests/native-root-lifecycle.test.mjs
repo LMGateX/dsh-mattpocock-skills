@@ -41,10 +41,14 @@ test('native cold creators, cold wake and Host remount keep the exact runtime-ro
   await ctx.plugin(sdk.TypertRegistry); await ctx.plugin(sdk.SessionStore)
   await ctx.plugin(sdk.AgentRegistry); await ctx.plugin(sdk.SessionProjectionRegistry)
   await ctx.plugin(sdk.SystemPrompt, {}); await ctx.plugin(sdk.ToolRuntime, {})
-  if (typeof ctx.tools.setExecutor === 'function') await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-executor-native'))
+  await ctx.plugin(await loadSDK('@deepseek-ai/dsh-tool-registry-native'))
   await sdk.jsonl.apply(ctx, { root: join(temp, 'sessions'), compression: 'none' })
   await ctx.plugin(sdk.Query, { path: join(temp, 'query.sqlite'), openAt: 'never' })
-  ctx.provide('llm', { prepareCall() { modelCalls++; throw new Error('model prohibited') }, stream() { modelCalls++; throw new Error('model prohibited') } })
+  ctx.provide('llm', {
+    async resolveCallConfig(selection, control) { control.throwIfAborted(); assert.equal(selection.provider, 'none'); assert.equal(selection.model, 'none'); return selection },
+    prepareCall() { modelCalls++; throw new Error('model prohibited') },
+    stream() { modelCalls++; throw new Error('model prohibited') },
+  })
   await ctx.plugin(sdk.LocalFs, { cwd: temp, diffBasisMaxBytes: 10485760 })
   await ctx.plugin(sdk.WorkingDirectory, { defaultDirectory: temp })
   await ctx.plugin(sdk.AgentLoop, { agents: [], maxParallelToolCalls: 10 })

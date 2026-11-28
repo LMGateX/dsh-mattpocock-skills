@@ -6,6 +6,10 @@ This plan implements the accepted contract in [DESIGN.md](DESIGN.md). It is inte
 
 > **Historical record.** The original numbered phases below describe the **two-channel** (`stable` + `beta`) baseline at source distribution `v0.1.0-beta.1`: 26 Skills, 81 vendored files, and the counts and hashes it quotes. Those values are preserved as the record of what was verified then. Historical private-repository phases below retain their original meaning; the current plugin repository is public with private local evidence excluded, as amended in DESIGN.md. The current baseline is source distribution `v0.3.1`, mirroring upstream release `v1.3.2`: two channels (`stable` and `beta`), 27 Skills each, 85 vendored files. Do not read the numbers below as the current state.
 
+## DSH 0.2.3-alpha.3 适配与发布（2026-11-28）
+
+按[兼容性说明](<HOST_COMPATIBILITY.md>)核查精确标签、实际发布 SDK 与公开迁移指南；更新 Host 注册与 Client 接线后，在精确宿主上运行类型检查、生成物与 vendor 核验、源码完整套件、静默准入和真实包／双渠道 headless 验证。冻结一份正式制品、非强制推送主线与新标签、建立 GitHub 预发行，下载校验，不为本机安装。旧宿主与现有 Web 会话不受影响；不把 CLI 配置或隔离 DOM 当生产 GUI 证明。
+
 ## 工作区三态与静默交付（2026-11-27）
 
 以[工作区三态契约](<WORKSPACE_SILENT_MODE.md>)验证策略／Web 设置、可信会话的 Skills 发现／加载和宿主模型／事件入口。使用精确目标宿主复验既有会话、直接／PTC 调用、跨工作区、子代理和冷恢复。重点验证保存 OFF 后新准入步骤的静默、旧调用的效果拒绝，以及已组装或已准入步骤（含同一步内重试）仍走原生流程；验证从 OFF 状态进入的压缩不会重放本包材料。

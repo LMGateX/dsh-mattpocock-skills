@@ -659,7 +659,7 @@ test('uncertain policy stays silent without altering native messages or settled 
   assert.equal(result.additionalContexts.some(context => context.source.kind === 'mattpocock-controls'), false)
 })
 
-test('caller cancellation during an uncertain policy read retains the exact SDK admission reason', async t => {
+test('caller cancellation during an uncertain pre-step policy read retains the exact SDK reason', async t => {
   const f = await mountedFixture(t)
   await f.runtime.savePolicy(operator, { extensionEnabled: true, defaults: {}, workspaceOverrides: { W: { workspace: { enabled: true } } } }, 0, signal())
   const storage = f.mounted.ports.controlsStorage, realRead = storage.read
@@ -671,9 +671,9 @@ test('caller cancellation during an uncertain policy read retains the exact SDK 
   }
   t.after(() => { storage.read = realRead })
   const controller = new AbortController(), reason = new Error('exact caller cancellation reason')
-  const resolving = f.ctx.tools.resolve({ agent: f.root, modelSelection: { provider: 'fixture', model: 'fixture' }, signal: controller.signal })
+  const resolving = f.ctx.waterfall('agent/pre-step', { agent: f.root, messages: [], turn: 1, step: 1, signal: controller.signal }, async () => ({ kind: 'enter', messages: [] }))
   try {
-    await Promise.race([entered.promise, resolving.then(toolSet => { toolSet.dispose(); assert.fail('tool resolution did not read policy') })])
+    await Promise.race([entered.promise, resolving.then(() => { assert.fail('pre-step did not read policy') })])
     controller.abort(reason)
   } finally { release.resolve() }
   await assert.rejects(resolving, error => error === reason)

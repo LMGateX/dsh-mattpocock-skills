@@ -64,7 +64,9 @@ async function assembly(t, runtimeExtras = {}, factorySetup, seedUnits = new Map
   if (workingDirectory) ctx.provide('workingDirectory', { async ensure() { return f.owner.session.header.cwd } })
   new sdk.TypertRegistry(ctx)
   new sdk.SystemPrompt(ctx, {})
-  new sdk.ToolRuntime(ctx, {})
+  new sdk.ToolsService(ctx)
+  const { NativeToolRegistry } = await load('@deepseek-ai/dsh-tools/pipeline')
+  ctx.tools.setRoot(new NativeToolRegistry())
   const units = new Map([...seedUnits].map(([name, rows]) => [name, new Map(rows)]))
   const backend = { kv: { async open(descriptor) {
     let rows = units.get(descriptor.name); if (!rows) { rows = new Map(); units.set(descriptor.name, rows) }

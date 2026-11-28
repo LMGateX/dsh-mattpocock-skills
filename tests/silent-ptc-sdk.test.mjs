@@ -33,13 +33,13 @@ test('prose, comments, literals, nested members, near names and retired tools ar
 })
 
 const hostRoot = process.env.DSH_CONTROLS_HOST_ROOT
-test('exact alpha.2 renderer: paired projection is identical to rendering with only unrelated tools', {
-  skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT to the exact installed alpha.2 Host',
+test('exact alpha.3 renderer: paired projection is identical to rendering with only unrelated tools', {
+  skip: !hostRoot && 'set DSH_CONTROLS_HOST_ROOT to the exact installed alpha.3 Host',
 }, async () => {
   assert(isAbsolute(hostRoot))
   const requireHost = createRequire(pathToFileURL(join(hostRoot, 'package.json')))
-  const packageName = '@deepseek-ai/dsh-tool-executor-ptc'
-  assert.equal(requireHost(`${packageName}/package.json`).version, '0.2.3-alpha.2')
+  const packageName = '@deepseek-ai/dsh-tool-registry-ptc'
+  assert.equal(requireHost(`${packageName}/package.json`).version, '0.2.3-alpha.3')
   const { renderToolsSdk } = await import(pathToFileURL(requireHost.resolve(packageName)).href)
 
   const request = { type: 'object', properties: { request: {} }, required: ['request'] }

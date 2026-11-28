@@ -11,9 +11,9 @@ if (root) {
   assert(isAbsolute(root))
   const require = createRequire(join(root, 'package.json'))
   load = name => import(pathToFileURL(require.resolve(name)).href)
-  assert.equal(require('./package.json').version, '0.2.3-alpha.2')
+  assert.equal(require('./package.json').version, '0.2.3-alpha.3')
   for (const name of ['@deepseek-ai/dsh-session', '@deepseek-ai/dsh-llm']) {
-    assert.equal(require(name + '/package.json').version, '0.2.3-alpha.2')
+    assert.equal(require(name + '/package.json').version, '0.2.3-alpha.3')
   }
   const source = new URL('../src/', import.meta.url).href
   const hook = registerHooks({ resolve(specifier, context, next) {
@@ -27,8 +27,8 @@ if (root) {
     replay = await import('../src/silent-replay.ts')
     ;({ Session, SessionId } = await load('@deepseek-ai/dsh-session'))
     sdk = await load('@deepseek-ai/dsh-llm')
-    assert.equal(require('@deepseek-ai/dsh-tool-executor-ptc/package.json').version, '0.2.3-alpha.2')
-    ;({ renderToolsSdk } = await load('@deepseek-ai/dsh-tool-executor-ptc'))
+    assert.equal(require('@deepseek-ai/dsh-tool-registry-ptc/package.json').version, '0.2.3-alpha.3')
+    ;({ renderToolsSdk } = await load('@deepseek-ai/dsh-tool-registry-ptc'))
   } finally { hook.deregister() }
 }
 
